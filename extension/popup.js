@@ -30,6 +30,8 @@ const storedUrlLink = document.getElementById('storedUrlLink');
 const copyUrlBtn = document.getElementById('copyUrlBtn');
 
 const galleryBtn = document.getElementById('galleryBtn');
+const uploadProgress = document.getElementById('uploadProgress');
+const progressText = document.getElementById('progressText');
 
 // Initialize popup
 document.addEventListener('DOMContentLoaded', async () => {
@@ -37,7 +39,32 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadSettings();
   await loadPendingImage();
   setupEventListeners();
+  setupStatusListener();
 });
+
+// Listen for upload status updates from background script
+function setupStatusListener() {
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace === 'local' && changes.uploadStatus) {
+      const status = changes.uploadStatus.newValue;
+      if (status) {
+        // Show progress indicator with status
+        uploadProgress.style.display = 'flex';
+        progressText.textContent = status;
+        
+        // Hide after completion
+        if (status.includes('✅') || status.includes('✗')) {
+          setTimeout(() => {
+            uploadProgress.style.display = 'none';
+          }, 3000);
+        }
+      } else {
+        // Hide progress when status is cleared
+        uploadProgress.style.display = 'none';
+      }
+    }
+  });
+}
 
 async function loadSettings() {
   const settings = await chrome.storage.sync.get(['pixvidApiKey', 'firebaseConfig']);
