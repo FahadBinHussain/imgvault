@@ -1,9 +1,10 @@
 ﻿// background.js - Service worker for ImgVault extension
 // Handles context menu, image uploads to Pixvid, and storage
 
-importScripts('storage.js');
+importScripts('storage.js', 'duplicate-detector.js');
 
 const storage = new StorageManager();
+const duplicateDetector = new DuplicateDetector();
 
 // Initialize storage when extension loads
 storage.init().catch(err => console.error('Failed to initialize storage:', err));
@@ -60,6 +61,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 async function handleImageUpload(data) {
+  const updateStatus = (message) => {
+    // Send status update to popup
+    chrome.storage.local.set({ uploadStatus: message });
+  };
+
   try {
     // Get API key from storage
     const settings = await chrome.storage.sync.get(['pixvidApiKey']);
@@ -67,6 +73,8 @@ async function handleImageUpload(data) {
       throw new Error('Pixvid API key not configured. Please set it in the extension settings.');
     }
 
+    updateStatus('📥 Fetching image...');
+    
     // Fetch the image
     const imageResponse = await fetch(data.imageUrl);
     if (!imageResponse.ok) {
@@ -75,10 +83,67 @@ async function handleImageUpload(data) {
     
     const imageBlob = await imageResponse.blob();
     
+    updateStatus('🔍 Extracting image metadata...');
+    
+    // Extract comprehensive metadata for duplicate detection
+    const metadata = await duplicateDetector.extractMetadata(
+      imageBlob, 
+      data.imageUrl, 
+      data.pageUrl
+    );
+    
+    console.log('Extracted metadata:', {
+      sha256: metadata.sha256.substring(0, 16) + '...',
+      pHash: metadata.pHash.substring(0, 32) + '...',
+      width: metadata.width,
+      height: metadata.height,
+      size: metadata.size
+    });
+    
+    updateStatus('🔎 Checking for duplicates...');
+    
+    // Get existing images from Firebase
+    const existingImages = await storage.getAllImages();
+    
+    console.log(`Checking against ${existingImages.length} existing images`);
+    console.log('First existing image hashes:', existingImages[0] ? {
+      sha256: existingImages[0].sha256?.substring(0, 16) + '...',
+      pHash: existingImages[0].pHash?.substring(0, 32) + '...',
+      width: existingImages[0].width,
+      height: existingImages[0].height
+    } : 'No existing images');
+    
+    // Check for duplicates with progress updates
+    const duplicateCheck = await duplicateDetector.checkDuplicates(
+      metadata, 
+      existingImages,
+      (progressMsg) => updateStatus(`🔎 ${progressMsg}`)
+    );
+    
+    // If duplicate found, return error with details
+    if (duplicateCheck.isDuplicate) {
+      let errorMsg = 'Duplicate image detected!\n';
+      
+      if (duplicateCheck.contextMatch) {
+        errorMsg += '✗ Same image from same page already exists';
+      } else if (duplicateCheck.exactMatch) {
+        errorMsg += '✗ Identical file already exists (SHA-256 match)';
+      } else if (duplicateCheck.visualMatch) {
+        errorMsg += `✗ Visually similar image found (${duplicateCheck.visualMatch.hammingDistance}% difference)`;
+      }
+      
+      updateStatus('');
+      throw new Error(errorMsg);
+    }
+    
+    updateStatus('☁️ Uploading to Pixvid...');
+    
     // Upload to Pixvid
     const uploadResult = await uploadToPixvid(imageBlob, settings.pixvidApiKey, data.imageUrl);
     
-    // Save metadata to IndexedDB
+    updateStatus('💾 Saving to Firebase...');
+    
+    // Save metadata to Firebase with hash information
     const imageMetadata = {
       stored_url: uploadResult.url,
       delete_url: uploadResult.deleteUrl,
@@ -87,11 +152,20 @@ async function handleImageUpload(data) {
       page_title: data.pageTitle,
       file_type: imageBlob.type,
       file_size: imageBlob.size,
+      width: metadata.width,
+      height: metadata.height,
+      sha256: metadata.sha256,
+      pHash: metadata.pHash,
       tags: data.tags || [],
       notes: data.notes || ''
     };
     
     const savedId = await storage.saveImage(imageMetadata);
+    
+    updateStatus('✅ Image saved successfully!');
+    
+    // Clear status after 2 seconds
+    setTimeout(() => updateStatus(''), 2000);
     
     return {
       id: savedId,
@@ -100,6 +174,7 @@ async function handleImageUpload(data) {
     };
   } catch (error) {
     console.error('Upload error:', error);
+    updateStatus('');
     throw error;
   }
 }

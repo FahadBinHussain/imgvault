@@ -38,6 +38,10 @@ class StorageManager {
           page_title: { stringValue: imageData.page_title || '' },
           file_type: { stringValue: imageData.file_type || '' },
           file_size: { integerValue: imageData.file_size || 0 },
+          width: { integerValue: imageData.width || 0 },
+          height: { integerValue: imageData.height || 0 },
+          sha256: { stringValue: imageData.sha256 || '' },
+          pHash: { stringValue: imageData.pHash || '' },
           tags: { arrayValue: { values: (imageData.tags || []).map(t => ({ stringValue: t })) } },
           notes: { stringValue: imageData.notes || '' },
           created_at: { timestampValue: new Date().toISOString() }
@@ -104,6 +108,10 @@ class StorageManager {
           page_title: fields.page_title?.stringValue || '',
           file_type: fields.file_type?.stringValue || '',
           file_size: parseInt(fields.file_size?.integerValue || '0'),
+          width: parseInt(fields.width?.integerValue || '0'),
+          height: parseInt(fields.height?.integerValue || '0'),
+          sha256: fields.sha256?.stringValue || '',
+          pHash: fields.pHash?.stringValue || '',
           tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
           notes: fields.notes?.stringValue || '',
           created_at: fields.created_at?.timestampValue || ''
