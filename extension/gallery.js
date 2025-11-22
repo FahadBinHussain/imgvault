@@ -22,6 +22,7 @@ const modalTags = document.getElementById('modalTags');
 const closeModal = document.getElementById('closeModal');
 const copyImageUrl = document.getElementById('copyImageUrl');
 const openOriginal = document.getElementById('openOriginal');
+const deleteImage = document.getElementById('deleteImage');
 const notesSection = document.getElementById('notesSection');
 const tagsSection = document.getElementById('tagsSection');
 
@@ -38,6 +39,7 @@ function setupEventListeners() {
   closeModal.addEventListener('click', hideModal);
   document.querySelector('.modal-overlay').addEventListener('click', hideModal);
   copyImageUrl.addEventListener('click', copyUrl);
+  deleteImage.addEventListener('click', handleDelete);
   openOriginal.addEventListener('click', () => {
     if (currentImage) {
       window.open(currentImage.stored_url, '_blank');
@@ -185,6 +187,10 @@ function formatDateHeader(dateStr) {
 function showImageDetails(image) {
   currentImage = image;
   
+  // Reset delete button state
+  deleteImage.disabled = false;
+  deleteImage.textContent = '🗑️';
+  
   modalImage.src = image.stored_url;
   modalTitle.textContent = image.page_title || 'Untitled';
   
@@ -263,6 +269,40 @@ async function copyUrl() {
     }, 2000);
   } catch (error) {
     console.error('Failed to copy:', error);
+  }
+}
+
+async function handleDelete() {
+  if (!currentImage) return;
+  
+  const confirmed = confirm('Are you sure you want to delete this image from your vault? This will remove it from Firebase but the image will still exist on Pixvid.');
+  
+  if (!confirmed) return;
+  
+  try {
+    // Disable button during deletion
+    deleteImage.disabled = true;
+    deleteImage.textContent = '⏳';
+    
+    await storageManager.deleteImage(currentImage.id);
+    
+    // Remove from allImages array
+    allImages = allImages.filter(img => img.id !== currentImage.id);
+    
+    // Close modal and refresh gallery
+    hideModal();
+    displayImages(allImages);
+    
+    // Show empty state if no images left
+    if (allImages.length === 0) {
+      galleryContainer.innerHTML = '';
+      galleryEmpty.style.display = 'flex';
+    }
+  } catch (error) {
+    console.error('Failed to delete image:', error);
+    alert('Failed to delete image. Please try again.');
+    deleteImage.disabled = false;
+    deleteImage.textContent = '🗑️';
   }
 }
 
