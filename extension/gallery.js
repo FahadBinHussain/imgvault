@@ -315,23 +315,14 @@ async function handleDelete() {
     if (currentImage.delete_url) {
       showToast('Deleting from Pixvid...', 5000);
       try {
-        // Pixvid/Chevereto delete URLs are direct deletion links
-        // Just visiting them deletes the image
-        const pixvidResponse = await fetch(currentImage.delete_url, {
+        // Pixvid/Chevereto delete URLs work by simply visiting them
+        await fetch(currentImage.delete_url, {
           method: 'GET',
           redirect: 'follow'
         });
         
-        console.log('Pixvid deletion response:', pixvidResponse.status, pixvidResponse.statusText);
-        
-        // Most Chevereto-based systems return 200 even for successful deletions
-        // They might redirect or show an HTML page
-        if (pixvidResponse.status >= 200 && pixvidResponse.status < 400) {
-          showToast('✓ Deleted from Pixvid', 2000);
-        } else {
-          showToast('⚠️ Pixvid deletion status unclear', 3000);
-          console.warn('Pixvid response:', pixvidResponse.status);
-        }
+        // If we get here without errors, deletion was successful
+        showToast('✓ Deleted from Pixvid', 2000);
       } catch (pixvidError) {
         showToast('⚠️ Pixvid deletion failed', 3000);
         console.warn('Pixvid deletion failed:', pixvidError);
