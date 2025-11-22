@@ -7,7 +7,12 @@
 
 class DuplicateDetector {
   constructor() {
-    this.pHashThreshold = 5; // Hamming distance threshold for similarity
+    // Hamming distance threshold for pHash similarity
+    // Out of 1024 bits (32x32 grid):
+    // - 0-10: Very strict (minor compression changes)
+    // - 10-50: Moderate (resized, recompressed)
+    // - 50-100: Loose (significant edits, filters)
+    this.pHashThreshold = 50; // ~5% tolerance for visual similarity
   }
 
   // Generate SHA-256 hash from image blob
@@ -118,11 +123,17 @@ class DuplicateDetector {
     });
 
     // Phase 1: Fast pre-filter (dimensions + file size)
+    // More lenient size tolerance for recompressed images
     onProgress && onProgress('Checking dimensions and file size...');
     const fastFilterMatches = existingImages.filter(img => {
       const widthMatch = Math.abs(img.width - newMetadata.width) <= 10;
       const heightMatch = Math.abs(img.height - newMetadata.height) <= 10;
-      const sizeMatch = Math.abs((img.file_size || img.size) - newMetadata.size) <= 1024; // 1KB tolerance
+      
+      // Allow 10% file size variance for compression differences
+      const existingSize = img.file_size || img.size;
+      const sizeDiff = Math.abs(existingSize - newMetadata.size);
+      const maxSizeDiff = Math.max(existingSize, newMetadata.size) * 0.1; // 10% tolerance
+      const sizeMatch = sizeDiff <= maxSizeDiff;
       
       console.log(`Comparing with existing image:`, {
         existingWidth: img.width,
@@ -131,8 +142,10 @@ class DuplicateDetector {
         existingHeight: img.height,
         newHeight: newMetadata.height,
         heightMatch,
-        existingSize: img.file_size || img.size,
+        existingSize,
         newSize: newMetadata.size,
+        sizeDiff,
+        maxSizeDiff: maxSizeDiff.toFixed(0),
         sizeMatch
       });
       
@@ -218,11 +231,21 @@ class DuplicateDetector {
     for (const img of fastFilterMatches) {
       if (img.pHash) {
         const distance = this.hammingDistance(newMetadata.pHash, img.pHash);
-        console.log(`pHash distance: ${distance} (threshold: ${this.pHashThreshold})`);
+        const totalBits = newMetadata.pHash.length;
+        const similarity = ((totalBits - distance) / totalBits * 100).toFixed(1);
+        
+        console.log(`pHash comparison:`, {
+          distance,
+          totalBits,
+          similarity: `${similarity}%`,
+          threshold: this.pHashThreshold,
+          isMatch: distance <= this.pHashThreshold
+        });
+        
         if (distance <= this.pHashThreshold) {
           results.isDuplicate = true;
-          results.visualMatch = { ...img, hammingDistance: distance };
-          onProgress && onProgress(`✗ Visually similar image found (${distance}% difference)`);
+          results.visualMatch = { ...img, hammingDistance: distance, similarity };
+          onProgress && onProgress(`✗ Visually similar image found (${similarity}% similar)`);
           console.log('Duplicate found: visual similarity');
           return results;
         }
