@@ -1,7 +1,7 @@
 ﻿// background.js - Service worker for ImgVault extension
 // Handles context menu, image uploads to Pixvid, and storage
 
-importScripts('storage.js', 'duplicate-detector.js');
+importScripts('storage.js', 'duplicate-detector.js', 'url-normalizer.js');
 
 const storage = new StorageManager();
 const duplicateDetector = new DuplicateDetector();

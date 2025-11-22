@@ -150,21 +150,42 @@ class DuplicateDetector {
     onProgress && onProgress(`Found ${fastFilterMatches.length} potential matches, checking hashes...`);
 
     // Phase 2: Context-based check (source URL + page URL)
+    // Use normalized URLs for CDN sources with dynamic query parameters
     onProgress && onProgress('Checking source URL and page URL...');
     
-    console.log('Checking context match...');
+    const normalizedSourceUrl = URLNormalizer.normalize(newMetadata.sourceUrl);
+    const normalizedPageUrl = URLNormalizer.normalize(newMetadata.pageUrl);
+    
+    console.log('=== PHASE 2: Context Check ===');
+    console.log('New image context:', {
+      sourceUrl: newMetadata.sourceUrl,
+      normalizedSourceUrl,
+      pageUrl: newMetadata.pageUrl,
+      normalizedPageUrl
+    });
+    
     for (let i = 0; i < existingImages.length; i++) {
       const img = existingImages[i];
-      console.log(`Image ${i}: sourceUrl match = ${img.source_image_url === newMetadata.sourceUrl}, pageUrl match = ${img.source_page_url === newMetadata.pageUrl}`);
-      if (img.source_image_url === newMetadata.sourceUrl && img.source_page_url === newMetadata.pageUrl) {
-        console.log('CONTEXT MATCH FOUND!');
-      }
+      const existingNormalizedSourceUrl = URLNormalizer.normalize(img.source_image_url);
+      const existingNormalizedPageUrl = URLNormalizer.normalize(img.source_page_url);
+      
+      console.log(`Existing image ${i} context:`, {
+        sourceUrl: img.source_image_url,
+        normalizedSourceUrl: existingNormalizedSourceUrl,
+        pageUrl: img.source_page_url,
+        normalizedPageUrl: existingNormalizedPageUrl,
+        sourceMatch: existingNormalizedSourceUrl === normalizedSourceUrl,
+        pageMatch: existingNormalizedPageUrl === normalizedPageUrl,
+        bothMatch: (existingNormalizedSourceUrl === normalizedSourceUrl && existingNormalizedPageUrl === normalizedPageUrl)
+      });
     }
     
-    const contextMatch = existingImages.find(img => 
-      img.source_image_url === newMetadata.sourceUrl && 
-      img.source_page_url === newMetadata.pageUrl
-    );
+    const contextMatch = existingImages.find(img => {
+      const existingNormalizedSourceUrl = URLNormalizer.normalize(img.source_image_url);
+      const existingNormalizedPageUrl = URLNormalizer.normalize(img.source_page_url);
+      return existingNormalizedSourceUrl === normalizedSourceUrl && 
+             existingNormalizedPageUrl === normalizedPageUrl;
+    });
 
     if (contextMatch) {
       results.isDuplicate = true;
@@ -173,6 +194,7 @@ class DuplicateDetector {
       console.log('Duplicate found: context match');
       return results;
     }
+    console.log('No context match found, continuing to SHA-256...');
 
     // Phase 3: SHA-256 exact match
     onProgress && onProgress('Calculating SHA-256 hash...');
