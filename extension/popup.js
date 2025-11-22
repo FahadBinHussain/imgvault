@@ -230,7 +230,6 @@ async function handleUpload() {
   
   uploadBtn.disabled = true;
   uploadBtn.textContent = 'Uploading...';
-  showStatus('Uploading image...', 'info');
   
   try {
     const uploadData = {
