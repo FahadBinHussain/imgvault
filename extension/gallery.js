@@ -311,22 +311,33 @@ async function handleDelete() {
     deleteImage.disabled = true;
     deleteImage.textContent = '⏳';
     
-    showToast('Deleting image...');
-    
     // Delete from Pixvid if delete_url exists
     if (currentImage.delete_url) {
+      showToast('Deleting from Pixvid...', 5000);
       try {
         const pixvidResponse = await fetch(currentImage.delete_url);
         if (!pixvidResponse.ok) {
-          console.warn('Failed to delete from Pixvid, but continuing with Firebase deletion');
+          showToast('⚠️ Failed to delete from Pixvid', 3000);
+          console.warn('Failed to delete from Pixvid');
+        } else {
+          showToast('✓ Deleted from Pixvid', 2000);
         }
       } catch (pixvidError) {
+        showToast('⚠️ Pixvid deletion failed', 3000);
         console.warn('Pixvid deletion failed:', pixvidError);
       }
+      
+      // Wait a bit before showing next status
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
     // Delete from Firebase
+    showToast('Deleting from Firebase...', 5000);
     await storageManager.deleteImage(currentImage.id);
+    showToast('✓ Deleted from Firebase', 2000);
+    
+    // Wait a bit before showing final status
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     // Remove from allImages array
     allImages = allImages.filter(img => img.id !== currentImage.id);
@@ -341,10 +352,10 @@ async function handleDelete() {
       galleryEmpty.style.display = 'flex';
     }
     
-    showToast('Image deleted successfully');
+    showToast('✅ Image deleted successfully', 3000);
   } catch (error) {
     console.error('Failed to delete image:', error);
-    showToast('Failed to delete image');
+    showToast('❌ Failed to delete from Firebase', 4000);
     deleteImage.disabled = false;
     deleteImage.textContent = '🗑️';
   }
