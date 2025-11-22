@@ -15,6 +15,7 @@
         <h2>ImgVault</h2>
         <p>Your personal image vault</p>
       </div>
+      <button id="galleryBtn" class="icon-btn" title="View Gallery">🖼️</button>
       <button id="settingsBtn" class="icon-btn" title="Settings">⚙️</button>
     </div>
     
@@ -144,7 +145,30 @@
     </div>
   </div>
 
+  <!-- Gallery View -->
+  <div id="galleryView" class="view" style="display: none;">
+    <div class="header">
+      <button id="backFromGalleryBtn" class="icon-btn">←</button>
+      <div class="header-content">
+        <h2>Image Vault</h2>
+        <p id="galleryCount">Loading...</p>
+      </div>
+      <button id="refreshGalleryBtn" class="icon-btn" title="Refresh">🔄</button>
+    </div>
+    
+    <div id="galleryGrid" class="gallery-grid">
+      <!-- Images will be loaded here -->
+    </div>
+    
+    <div id="galleryEmpty" class="empty-state" style="display: none;">
+      <div class="empty-icon">📭</div>
+      <h3>No Images Saved</h3>
+      <p>Start saving images to build your vault</p>
+    </div>
+  </div>
+
   <!-- Load scripts -->
+  <script src="storage.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
