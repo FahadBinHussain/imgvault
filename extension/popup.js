@@ -21,45 +21,19 @@ const statusMessage = document.getElementById('statusMessage');
 const apiKeyInput = document.getElementById('apiKeyInput');
 const saveSettingsBtn = document.getElementById('saveSettingsBtn');
 const settingsBtns = document.querySelectorAll('#settingsBtn');
-const openTabBtn = document.getElementById('openTabBtn');
 const backToImageBtn = document.getElementById('backToImageBtn');
 
-const firebaseApiKey = document.getElementById('firebaseApiKey');
-const firebaseAuthDomain = document.getElementById('firebaseAuthDomain');
-const firebaseProjectId = document.getElementById('firebaseProjectId');
-const firebaseStorageBucket = document.getElementById('firebaseStorageBucket');
-const firebaseMessagingSenderId = document.getElementById('firebaseMessagingSenderId');
-const firebaseAppId = document.getElementById('firebaseAppId');
+const firebaseConfigPaste = document.getElementById('firebaseConfigPaste');
 
 const storedUrlLink = document.getElementById('storedUrlLink');
 const copyUrlBtn = document.getElementById('copyUrlBtn');
-const viewImagesBtn = document.getElementById('viewImagesBtn');
 
 // Initialize popup
 document.addEventListener('DOMContentLoaded', async () => {
   await loadSettings();
   await loadPendingImage();
-  await restoreViewState();
   setupEventListeners();
 });
-
-async function restoreViewState() {
-  // If there's a pending image, prioritize that  
-  if (currentImageData) {
-    return;
-  }
-  
-  const { lastView, lastUploadedUrl } = await chrome.storage.local.get(['lastView', 'lastUploadedUrl']);
-  
-  // Otherwise restore last view
-  if (lastView === 'settings') {
-    showSettings();
-  } else if (lastView === 'success' && lastUploadedUrl) {
-    showSuccessView(lastUploadedUrl);
-  } else {
-    showNoImageView();
-  }
-}
 
 async function loadSettings() {
   const settings = await chrome.storage.sync.get(['pixvidApiKey', 'firebaseConfig']);
@@ -69,34 +43,16 @@ async function loadSettings() {
   }
   
   if (settings.firebaseConfig) {
-    const config = settings.firebaseConfig;
-    firebaseApiKey.value = config.apiKey || '';
-    firebaseAuthDomain.value = config.authDomain || '';
-    firebaseProjectId.value = config.projectId || '';
-    firebaseStorageBucket.value = config.storageBucket || '';
-    firebaseMessagingSenderId.value = config.messagingSenderId || '';
-    firebaseAppId.value = config.appId || '';
+    // Show the config in a formatted way in the textarea
+    firebaseConfigPaste.value = JSON.stringify(settings.firebaseConfig, null, 2);
   }
 }
 
 async function loadPendingImage() {
-  let result = await chrome.storage.local.get('pendingImage');
-  
-  // If no pending image, check for saved current image
-  if (!result.pendingImage) {
-    result = await chrome.storage.local.get('currentImage');
-    if (result.currentImage) {
-      currentImageData = result.currentImage;
-      showImageView();
-      displayImageData(currentImageData);
-      return;
-    }
-  }
+  const result = await chrome.storage.local.get('pendingImage');
   
   if (result.pendingImage) {
     currentImageData = result.pendingImage;
-    // Save as current image so it persists
-    await chrome.storage.local.set({ currentImage: result.pendingImage });
     await chrome.storage.local.remove('pendingImage');
     showImageView();
     displayImageData(currentImageData);
@@ -114,38 +70,6 @@ function displayImageData(data) {
   if (data.pageTitle) {
     notesInput.placeholder = `From: ${data.pageTitle}`;
   }
-  
-  // Restore saved notes and tags if they exist
-  restoreFormData();
-  
-  // Auto-save form data as user types
-  notesInput.addEventListener('input', saveFormData);
-  tagsInput.addEventListener('input', saveFormData);
-  pageUrlInput.addEventListener('input', saveFormData);
-}
-
-async function saveFormData() {
-  await chrome.storage.local.set({
-    draftNotes: notesInput.value,
-    draftTags: tagsInput.value,
-    draftPageUrl: pageUrlInput.value
-  });
-}
-
-async function restoreFormData() {
-  const { draftNotes, draftTags, draftPageUrl } = await chrome.storage.local.get([
-    'draftNotes',
-    'draftTags',
-    'draftPageUrl'
-  ]);
-  
-  if (draftNotes) notesInput.value = draftNotes;
-  if (draftTags) tagsInput.value = draftTags;
-  if (draftPageUrl) pageUrlInput.value = draftPageUrl; // Override with draft if exists
-}
-
-function clearFormData() {
-  chrome.storage.local.remove(['draftNotes', 'draftTags', 'draftPageUrl', 'currentImage']);
 }
 
 function truncateUrl(url, maxLength = 50) {
@@ -157,10 +81,6 @@ function setupEventListeners() {
   settingsBtns.forEach(btn => {
     btn.addEventListener('click', showSettings);
   });
-  
-  if (openTabBtn) {
-    openTabBtn.addEventListener('click', openVaultTab);
-  }
   
   backToImageBtn.addEventListener('click', () => {
     if (currentImageData) {
@@ -174,37 +94,21 @@ function setupEventListeners() {
   editPageUrlBtn.addEventListener('click', togglePageUrlEdit);
   uploadBtn.addEventListener('click', handleUpload);
   copyUrlBtn.addEventListener('click', copyStoredUrl);
-  viewImagesBtn.addEventListener('click', openVaultTab);
-  
-  // Add keyboard shortcut to open in tab
-  document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key === 't') {
-      e.preventDefault();
-      openVaultTab();
-    }
-  });
-}
-
-function openVaultTab() {
-  chrome.tabs.create({ url: chrome.runtime.getURL('popup.html') });
 }
 
 function showImageView() {
   hideAllViews();
   imageView.style.display = 'block';
-  chrome.storage.local.set({ lastView: 'image' });
 }
 
 function showNoImageView() {
   hideAllViews();
   noImageView.style.display = 'block';
-  chrome.storage.local.set({ lastView: 'empty' });
 }
 
 function showSettings() {
   hideAllViews();
   settingsView.style.display = 'block';
-  chrome.storage.local.set({ lastView: 'settings' });
 }
 
 function showSuccessView(storedUrl) {
@@ -212,10 +116,6 @@ function showSuccessView(storedUrl) {
   successView.style.display = 'block';
   storedUrlLink.href = storedUrl;
   storedUrlLink.textContent = truncateUrl(storedUrl, 40);
-  chrome.storage.local.set({ 
-    lastView: 'success',
-    lastUploadedUrl: storedUrl
-  });
 }
 
 function hideAllViews() {
@@ -233,24 +133,40 @@ async function saveSettings() {
     return;
   }
   
-  // Validate Firebase config
-  const fbApiKey = firebaseApiKey.value.trim();
-  const fbAuthDomain = firebaseAuthDomain.value.trim();
-  const fbProjectId = firebaseProjectId.value.trim();
-  
-  if (!fbApiKey || !fbAuthDomain || !fbProjectId) {
-    showStatus('Please fill in all required Firebase fields', 'error');
+  // Parse Firebase config from textarea
+  let firebaseConfig;
+  try {
+    const pastedText = firebaseConfigPaste.value.trim();
+    
+    if (!pastedText) {
+      showStatus('Please paste your Firebase config', 'error');
+      return;
+    }
+    
+    // Extract JSON from various formats
+    let jsonStr = pastedText;
+    
+    // Remove variable declaration if present
+    jsonStr = jsonStr.replace(/^(const|let|var)\\s+firebaseConfig\\s*=\\s*/, '');
+    
+    // Remove trailing semicolon
+    jsonStr = jsonStr.replace(/;\\s*$/, '');
+    
+    // Remove comments
+    jsonStr = jsonStr.replace(/\/\/.*$/gm, '');
+    
+    // Parse the JSON
+    firebaseConfig = JSON.parse(jsonStr);
+    
+    // Validate required fields
+    if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId) {
+      throw new Error('Missing required fields');
+    }
+  } catch (error) {
+    console.error('Parse error:', error);
+    showStatus('Invalid Firebase config. Please paste the entire config object.', 'error');
     return;
   }
-  
-  const firebaseConfig = {
-    apiKey: fbApiKey,
-    authDomain: fbAuthDomain,
-    projectId: fbProjectId,
-    storageBucket: firebaseStorageBucket.value.trim(),
-    messagingSenderId: firebaseMessagingSenderId.value.trim(),
-    appId: firebaseAppId.value.trim()
-  };
   
   await chrome.storage.sync.set({ 
     pixvidApiKey: apiKey,
@@ -325,7 +241,6 @@ async function handleUpload() {
     
     if (response.success) {
       showStatus('Upload successful!', 'success');
-      clearFormData(); // Clear saved draft
       showSuccessView(response.data.storedUrl);
     } else {
       throw new Error(response.error || 'Upload failed');
