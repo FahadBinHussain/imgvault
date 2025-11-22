@@ -88,6 +88,25 @@
     </div>
   </div>
 
+  <!-- Confirmation Dialog -->
+  <div id="confirmDialog" class="confirm-dialog" style="display: none;">
+    <div class="confirm-overlay"></div>
+    <div class="confirm-content">
+      <div class="confirm-icon">⚠️</div>
+      <h3 id="confirmTitle">Confirm Action</h3>
+      <p id="confirmMessage">Are you sure?</p>
+      <div class="confirm-buttons">
+        <button id="confirmCancel" class="confirm-btn confirm-btn-cancel">Cancel</button>
+        <button id="confirmOk" class="confirm-btn confirm-btn-danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast" style="display: none;">
+    <span id="toastMessage"></span>
+  </div>
+
   <script src="storage.js"></script>
   <script src="gallery.js"></script>
 </body>
