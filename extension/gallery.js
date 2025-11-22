@@ -26,6 +26,15 @@ const deleteImage = document.getElementById('deleteImage');
 const notesSection = document.getElementById('notesSection');
 const tagsSection = document.getElementById('tagsSection');
 
+const confirmDialog = document.getElementById('confirmDialog');
+const confirmTitle = document.getElementById('confirmTitle');
+const confirmMessage = document.getElementById('confirmMessage');
+const confirmOk = document.getElementById('confirmOk');
+const confirmCancel = document.getElementById('confirmCancel');
+
+const toast = document.getElementById('toast');
+const toastMessage = document.getElementById('toastMessage');
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   storageManager = new StorageManager();
@@ -39,17 +48,24 @@ function setupEventListeners() {
   closeModal.addEventListener('click', hideModal);
   document.querySelector('.modal-overlay').addEventListener('click', hideModal);
   copyImageUrl.addEventListener('click', copyUrl);
-  deleteImage.addEventListener('click', handleDelete);
+  deleteImage.addEventListener('click', confirmDelete);
   openOriginal.addEventListener('click', () => {
     if (currentImage) {
       window.open(currentImage.stored_url, '_blank');
     }
   });
   
+  confirmCancel.addEventListener('click', hideConfirm);
+  document.querySelector('.confirm-overlay').addEventListener('click', hideConfirm);
+  
   // ESC key to close modal
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && imageModal.style.display !== 'none') {
-      hideModal();
+    if (e.key === 'Escape') {
+      if (confirmDialog.style.display !== 'none') {
+        hideConfirm();
+      } else if (imageModal.style.display !== 'none') {
+        hideModal();
+      }
     }
   });
 }
@@ -262,27 +278,40 @@ async function copyUrl() {
   
   try {
     await navigator.clipboard.writeText(currentImage.stored_url);
-    const originalText = copyImageUrl.textContent;
-    copyImageUrl.textContent = '✓ Copied';
-    setTimeout(() => {
-      copyImageUrl.textContent = originalText;
-    }, 2000);
+    showToast('Link copied to clipboard');
   } catch (error) {
     console.error('Failed to copy:', error);
+    showToast('Failed to copy link');
   }
 }
 
-async function handleDelete() {
+function confirmDelete() {
   if (!currentImage) return;
   
-  const confirmed = confirm('Are you sure you want to delete this image? This will remove it from both Firebase and Pixvid permanently.');
+  confirmTitle.textContent = 'Delete Image?';
+  confirmMessage.textContent = 'This will permanently delete the image from both your vault and Pixvid. This action cannot be undone.';
+  confirmDialog.style.display = 'flex';
   
-  if (!confirmed) return;
+  // Set up one-time click handler for confirm
+  confirmOk.onclick = handleDelete;
+}
+
+function hideConfirm() {
+  confirmDialog.style.display = 'none';
+  confirmOk.onclick = null;
+}
+
+async function handleDelete() {
+  hideConfirm();
+  
+  if (!currentImage) return;
   
   try {
     // Disable button during deletion
     deleteImage.disabled = true;
     deleteImage.textContent = '⏳';
+    
+    showToast('Deleting image...');
     
     // Delete from Pixvid if delete_url exists
     if (currentImage.delete_url) {
@@ -311,12 +340,28 @@ async function handleDelete() {
       galleryContainer.innerHTML = '';
       galleryEmpty.style.display = 'flex';
     }
+    
+    showToast('Image deleted successfully');
   } catch (error) {
     console.error('Failed to delete image:', error);
-    alert('Failed to delete image. Please try again.');
+    showToast('Failed to delete image');
     deleteImage.disabled = false;
     deleteImage.textContent = '🗑️';
   }
+}
+
+function showToast(message, duration = 3000) {
+  toastMessage.textContent = message;
+  toast.style.display = 'block';
+  toast.classList.remove('hiding');
+  
+  setTimeout(() => {
+    toast.classList.add('hiding');
+    setTimeout(() => {
+      toast.style.display = 'none';
+      toast.classList.remove('hiding');
+    }, 300);
+  }, duration);
 }
 
 function truncateUrl(url, maxLength = 50) {
