@@ -10,7 +10,8 @@
     "scripting"
   ],
   "host_permissions": [
-    "http://localhost:8080/*"
+    "https://pixvid.org/*",
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"
@@ -32,6 +33,12 @@
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["lib/*.js"],
+      "matches": ["<all_urls>"]
     }
   ]
 }
