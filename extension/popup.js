@@ -9,7 +9,6 @@ const settingsView = document.getElementById('settingsView');
 const imageView = document.getElementById('imageView');
 const successView = document.getElementById('successView');
 const noImageView = document.getElementById('noImageView');
-const galleryView = document.getElementById('galleryView');
 
 const previewImage = document.getElementById('previewImage');
 const sourceUrlDisplay = document.getElementById('sourceUrlDisplay');
@@ -31,11 +30,6 @@ const storedUrlLink = document.getElementById('storedUrlLink');
 const copyUrlBtn = document.getElementById('copyUrlBtn');
 
 const galleryBtn = document.getElementById('galleryBtn');
-const galleryGrid = document.getElementById('galleryGrid');
-const galleryEmpty = document.getElementById('galleryEmpty');
-const galleryCount = document.getElementById('galleryCount');
-const backFromGalleryBtn = document.getElementById('backFromGalleryBtn');
-const refreshGalleryBtn = document.getElementById('refreshGalleryBtn');
 
 // Initialize popup
 document.addEventListener('DOMContentLoaded', async () => {
@@ -105,15 +99,7 @@ function setupEventListeners() {
   uploadBtn.addEventListener('click', handleUpload);
   copyUrlBtn.addEventListener('click', copyStoredUrl);
   
-  galleryBtn.addEventListener('click', showGallery);
-  backFromGalleryBtn.addEventListener('click', () => {
-    if (currentImageData) {
-      showImageView();
-    } else {
-      showNoImageView();
-    }
-  });
-  refreshGalleryBtn.addEventListener('click', loadGallery);
+  galleryBtn.addEventListener('click', openGallery);
 }
 
 function showImageView() {
@@ -138,10 +124,8 @@ function showSuccessView(storedUrl) {
   storedUrlLink.textContent = truncateUrl(storedUrl, 40);
 }
 
-async function showGallery() {
-  hideAllViews();
-  galleryView.style.display = 'block';
-  await loadGallery();
+function openGallery() {
+  chrome.tabs.create({ url: chrome.runtime.getURL('gallery.html') });
 }
 
 function hideAllViews() {
@@ -149,7 +133,6 @@ function hideAllViews() {
   imageView.style.display = 'none';
   successView.style.display = 'none';
   noImageView.style.display = 'none';
-  galleryView.style.display = 'none';
 }
 
 async function saveSettings() {
@@ -306,50 +289,5 @@ async function copyStoredUrl() {
     }, 2000);
   } catch (error) {
     console.error('Failed to copy:', error);
-  }
-}
-
-async function loadGallery() {
-  try {
-    galleryCount.textContent = 'Loading...';
-    galleryGrid.innerHTML = '';
-    galleryEmpty.style.display = 'none';
-    
-    const images = await storageManager.getAllImages();
-    
-    if (!images || images.length === 0) {
-      galleryEmpty.style.display = 'block';
-      galleryCount.textContent = 'No images';
-      return;
-    }
-    
-    galleryCount.textContent = `${images.length} image${images.length !== 1 ? 's' : ''}`;
-    
-    images.forEach(image => {
-      const item = document.createElement('div');
-      item.className = 'gallery-item';
-      
-      item.innerHTML = `
-        <img src="${image.stored_url}" alt="${image.page_title || 'Image'}" loading="lazy">
-        <div class="gallery-item-overlay">
-          <div class="gallery-item-title">${image.page_title || 'Untitled'}</div>
-          ${image.tags && image.tags.length > 0 ? `
-            <div class="gallery-item-tags">
-              ${image.tags.slice(0, 2).map(tag => `<span class="gallery-tag">${tag}</span>`).join('')}
-            </div>
-          ` : ''}
-        </div>
-      `;
-      
-      item.addEventListener('click', () => {
-        window.open(image.stored_url, '_blank');
-      });
-      
-      galleryGrid.appendChild(item);
-    });
-  } catch (error) {
-    console.error('Failed to load gallery:', error);
-    galleryCount.textContent = 'Error loading images';
-    showStatus('Failed to load gallery', 'error');
   }
 }

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ImgVault Gallery</title>
+  <link rel="stylesheet" href="gallery.css">
+</head>
+<body>
+  <div class="header">
+    <div class="header-content">
+      <div class="logo">📦</div>
+      <div>
+        <h1>ImgVault Gallery</h1>
+        <p id="galleryCount">Loading...</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <input type="text" id="searchInput" placeholder="Search images..." class="search-input">
+      <button id="refreshBtn" class="btn btn-secondary">🔄 Refresh</button>
+    </div>
+  </div>
+
+  <div id="galleryGrid" class="gallery-grid">
+    <!-- Images will be loaded here -->
+  </div>
+
+  <div id="galleryEmpty" class="empty-state" style="display: none;">
+    <div class="empty-icon">📭</div>
+    <h2>No Images Saved</h2>
+    <p>Start saving images to build your vault</p>
+  </div>
+
+  <div id="loadingSpinner" class="loading-spinner">
+    <div class="spinner"></div>
+    <p>Loading your vault...</p>
+  </div>
+
+  <!-- Image Detail Modal -->
+  <div id="imageModal" class="modal" style="display: none;">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <button id="closeModal" class="close-btn">✕</button>
+      <div class="modal-body">
+        <img id="modalImage" src="" alt="">
+        <div class="modal-info">
+          <h3 id="modalTitle"></h3>
+          <div class="modal-meta">
+            <p><strong>Source:</strong> <a id="modalSourceUrl" href="#" target="_blank"></a></p>
+            <p><strong>Page:</strong> <a id="modalPageUrl" href="#" target="_blank"></a></p>
+            <p id="modalDate"><strong>Saved:</strong> <span id="modalDateValue"></span></p>
+          </div>
+          <div id="modalNotes" class="modal-notes"></div>
+          <div id="modalTags" class="modal-tags"></div>
+          <div class="modal-actions">
+            <button id="copyImageUrl" class="btn btn-primary">📋 Copy Image URL</button>
+            <button id="openOriginal" class="btn btn-secondary">🔗 Open Original</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="storage.js"></script>
+  <script src="gallery.js"></script>
+</body>
+</html>
