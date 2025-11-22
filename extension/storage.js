@@ -32,6 +32,7 @@ class StorageManager {
       const doc = {
         fields: {
           stored_url: { stringValue: imageData.stored_url },
+          delete_url: { stringValue: imageData.delete_url || '' },
           source_image_url: { stringValue: imageData.source_image_url },
           source_page_url: { stringValue: imageData.source_page_url },
           page_title: { stringValue: imageData.page_title || '' },
@@ -97,6 +98,7 @@ class StorageManager {
         return {
           id,
           stored_url: fields.stored_url?.stringValue || '',
+          delete_url: fields.delete_url?.stringValue || '',
           source_image_url: fields.source_image_url?.stringValue || '',
           source_page_url: fields.source_page_url?.stringValue || '',
           page_title: fields.page_title?.stringValue || '',
@@ -136,6 +138,7 @@ class StorageManager {
       return {
         id,
         stored_url: fields.stored_url?.stringValue || '',
+        delete_url: fields.delete_url?.stringValue || '',
         source_image_url: fields.source_image_url?.stringValue || '',
         source_page_url: fields.source_page_url?.stringValue || '',
         page_title: fields.page_title?.stringValue || '',

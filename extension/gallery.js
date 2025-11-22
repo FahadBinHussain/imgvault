@@ -275,7 +275,7 @@ async function copyUrl() {
 async function handleDelete() {
   if (!currentImage) return;
   
-  const confirmed = confirm('Are you sure you want to delete this image from your vault? This will remove it from Firebase but the image will still exist on Pixvid.');
+  const confirmed = confirm('Are you sure you want to delete this image? This will remove it from both Firebase and Pixvid permanently.');
   
   if (!confirmed) return;
   
@@ -284,6 +284,19 @@ async function handleDelete() {
     deleteImage.disabled = true;
     deleteImage.textContent = '⏳';
     
+    // Delete from Pixvid if delete_url exists
+    if (currentImage.delete_url) {
+      try {
+        const pixvidResponse = await fetch(currentImage.delete_url);
+        if (!pixvidResponse.ok) {
+          console.warn('Failed to delete from Pixvid, but continuing with Firebase deletion');
+        }
+      } catch (pixvidError) {
+        console.warn('Pixvid deletion failed:', pixvidError);
+      }
+    }
+    
+    // Delete from Firebase
     await storageManager.deleteImage(currentImage.id);
     
     // Remove from allImages array

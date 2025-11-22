@@ -81,6 +81,7 @@ async function handleImageUpload(data) {
     // Save metadata to IndexedDB
     const imageMetadata = {
       stored_url: uploadResult.url,
+      delete_url: uploadResult.deleteUrl,
       source_image_url: data.imageUrl,
       source_page_url: data.pageUrl,
       page_title: data.pageTitle,
