@@ -15,7 +15,6 @@
         <h2>ImgVault</h2>
         <p>Your personal image vault</p>
       </div>
-      <button id="openTabBtn" class="icon-btn" title="Open in new tab (Ctrl+T)">↗️</button>
       <button id="settingsBtn" class="icon-btn" title="Settings">⚙️</button>
     </div>
     
@@ -96,7 +95,6 @@
       
       <div class="button-group">
         <button id="copyUrlBtn" class="btn btn-secondary">📋 Copy URL</button>
-        <button id="viewImagesBtn" class="btn btn-primary">🗂️ View Vault</button>
       </div>
     </div>
   </div>
@@ -127,34 +125,16 @@
         <p class="help-text">Firebase Firestore stores your image metadata securely in the cloud. Get your config from the <a href="https://console.firebase.google.com" target="_blank">Firebase Console</a></p>
         
         <div class="form-group">
-          <label>API Key</label>
-          <input type="text" id="firebaseApiKey" placeholder="AIza...">
-        </div>
-        
-        <div class="form-group">
-          <label>Auth Domain</label>
-          <input type="text" id="firebaseAuthDomain" placeholder="your-app.firebaseapp.com">
-        </div>
-        
-        <div class="form-group">
-          <label>Project ID</label>
-          <input type="text" id="firebaseProjectId" placeholder="your-project-id">
-        </div>
-        
-        <div class="form-group">
-          <label>Storage Bucket (Optional)</label>
-          <input type="text" id="firebaseStorageBucket" placeholder="your-app.appspot.com">
-          <small>Leave empty if you haven't set up Firebase Storage</small>
-        </div>
-        
-        <div class="form-group">
-          <label>Messaging Sender ID</label>
-          <input type="text" id="firebaseMessagingSenderId" placeholder="123456789">
-        </div>
-        
-        <div class="form-group">
-          <label>App ID</label>
-          <input type="text" id="firebaseAppId" placeholder="1:123456789:web:abc123">
+          <label>Paste Firebase Config</label>
+          <textarea id="firebaseConfigPaste" rows="10" placeholder='const firebaseConfig = {
+  apiKey: "AIza...",
+  authDomain: "your-app.firebaseapp.com",
+  projectId: "your-project",
+  storageBucket: "your-app.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:abc123"
+};'></textarea>
+          <small>Paste your entire Firebase config object from Firebase Console → Project Settings</small>
         </div>
       </div>
       
