@@ -1,290 +1,249 @@
-# ImgVault
+# ImgVault - Cloud-Based Browser Extension
 
-A browser extension with Go backend that saves images to your personal vault using Pixeldrain API and PostgreSQL.
+![ImgVault Logo](extension/icons/icon128.png)
+
+ImgVault is a browser extension that saves images with full context metadata to the cloud. Right-click any image, save it to [Pixvid](https://pixvid.org), and store metadata in Firebase Firestore!
 
 ## Features
 
-- 🖼️ **Context Menu Integration**: Right-click any image and save to vault
-- 📸 **Image Preview**: See the image before uploading
-- 🔗 **URL Tracking**: Automatically captures source image URL and page URL
-- ✏️ **Editable Metadata**: Edit page URLs, add notes and tags
-- ☁️ **Cloud Storage**: Images uploaded to Pixeldrain
-- 🗄️ **PostgreSQL Database**: All metadata stored in PostgreSQL
-- 🔍 **Search & Filter**: Tag-based organization (coming soon)
+✨ **Context Menu Integration** - Right-click any image and select "Save to ImgVault"  
+🖼️ **Image Preview** - See the image before uploading  
+📝 **Smart Metadata** - Automatically captures source URL and page information  
+✏️ **Editable Source** - Edit the page URL if needed  
+🏷️ **Tags & Notes** - Add custom tags and notes to organize your images  
+☁️ **Cloud Storage** - Firebase Firestore for permanent, accessible-anywhere metadata  
+🔄 **Pixvid Integration** - Uploads images to Pixvid for permanent hosting  
 
-## Architecture
+## Installation
 
-```
-ImgVault/
-├── extension/          # Browser extension (Chrome/Edge/Brave)
-│   ├── manifest.json
-│   ├── popup.html/css/js
-│   ├── background.js
-│   └── content.js
-└── backend/           # Go API server
-    ├── cmd/server/
-    ├── internal/
-    │   ├── api/
-    │   ├── database/
-    │   ├── models/
-    │   └── services/
-    └── go.mod
-```
+### 1. Set Up Firebase
 
-## Prerequisites
-
-- **Go** 1.21 or higher
-- **PostgreSQL** 14 or higher
-- **Chrome/Edge/Brave** browser (for extension)
-
-## Setup Instructions
-
-### 1. Database Setup
-
-#### Option A: Using Neon DB (Recommended)
-
-1. Sign up at [Neon.tech](https://neon.tech)
-2. Create a new project
-3. Copy your connection string
-4. Add to `.env` file:
+1. Go to [Firebase Console](https://console.firebase.google.com)
+2. Create a new project (or use existing one)
+3. Click on "Web" icon (</>) to add a web app
+4. Register your app (name it "ImgVault")
+5. Copy the Firebase configuration (you'll need this later)
+6. Enable Firestore Database:
+   - Go to Firestore Database in the left menu
+   - Click "Create database"
+   - Start in **production mode**
+   - Choose a location close to you
+7. Set up Firestore Security Rules:
    ```
-   DATABASE_URL=postgresql://user:pass@host/dbname?sslmode=require
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /images/{imageId} {
+         allow read, write: if true;  // For testing. Secure this later!
+       }
+     }
+   }
    ```
 
-#### Option B: Using Local PostgreSQL
+### 2. Get Your Pixvid API Key
 
-```powershell
-# Connect to PostgreSQL
-psql -U postgres
+1. Go to [pixvid.org](https://pixvid.org)
+2. Create an account or log in
+3. Navigate to Settings → API
+4. Copy your API key
 
-# Create database
-CREATE DATABASE imgvault;
-
-# Connect to the database
-\c imgvault
-
-# Tables will be created automatically by the Go application
-```
-
-Then configure individual variables in `.env`:
-```
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=your_password
-DB_NAME=imgvault
-DB_SSLMODE=disable
-```
-
-### 2. Backend Setup
-
-```powershell
-# Navigate to backend directory
-cd backend
-
-# Copy environment file
-copy .env.example .env
-
-# Edit .env with your database credentials
-notepad .env
-
-# Download dependencies
-go mod download
-
-# Run the server
-go run cmd/server/main.go
-```
-
-The server will start on `http://localhost:8080`
-
-### 3. Browser Extension Setup
+### 3. Load the Extension
 
 #### Chrome/Edge/Brave
 
-1. Open your browser and navigate to:
-   - **Chrome**: `chrome://extensions/`
-   - **Edge**: `edge://extensions/`
-   - **Brave**: `brave://extensions/`
-
-2. Enable "Developer mode" (toggle in top-right corner)
-
+1. Open your browser and go to `chrome://extensions/` (or `edge://extensions/`)
+2. Enable "Developer mode" (toggle in top right)
 3. Click "Load unpacked"
-
 4. Select the `extension` folder from this project
+5. The ImgVault extension should now be installed!
 
-5. The ImgVault extension should now appear in your extensions list
+#### Firefox
 
-### 4. Usage
+1. Open Firefox and go to `about:debugging#/runtime/this-firefox`
+2. Click "Load Temporary Add-on"
+3. Select the `manifest.json` file from the `extension` folder
 
-1. **Save an Image**:
-   - Right-click on any image
-   - Select "Save to ImgVault"
-   - Extension popup opens with image preview
+### 4. Configure the Extension
 
-2. **Review & Edit**:
-   - Preview the image
-   - Edit the page URL if needed (click edit icon)
-   - Add notes and tags (optional)
+1. Click the ImgVault extension icon in your browser toolbar
+2. Click the Settings (⚙️) button
+3. Fill in the **Pixvid API** section:
+   - Enter your Pixvid API key
+4. Fill in the **Firebase Configuration** section:
+   - API Key: `your-firebase-api-key`
+   - Auth Domain: `your-app.firebaseapp.com`
+   - Project ID: `your-project-id`
+   - Storage Bucket: `your-app.appspot.com`
+   - Messaging Sender ID: `123456789`
+   - App ID: `1:123456789:web:abc123`
+5. Click "Save Settings"
 
-3. **Upload**:
-   - Click "Upload to Vault"
-   - Image is uploaded to Pixeldrain
-   - Metadata saved to PostgreSQL
+## Usage
 
-4. **View Your Images**:
-   - Access via API: `GET http://localhost:8080/api/images`
-   - (Web dashboard coming soon)
+### Saving an Image
 
-## API Endpoints
+1. **Right-click** on any image on a webpage
+2. Select **"Save to ImgVault"** from the context menu
+3. The ImgVault popup will open showing:
+   - Image preview
+   - Source image URL (automatically captured)
+   - Page URL (automatically captured, editable)
+   - Optional notes field
+   - Optional tags field
+4. (Optional) Click the ✏️ icon to edit the page URL
+5. (Optional) Add notes or tags
+6. Click **"Upload to ImgVault"**
+7. Your image will be uploaded to Pixvid and metadata saved to Firebase!
 
-### Upload Image
-```
-POST /api/upload
-Content-Type: multipart/form-data
+### Viewing Saved Images
 
-Fields:
-- file: image file
-- source_image_url: original image URL
-- source_page_url: page where image was found
-- page_title: page title
-- notes: optional notes
-- tags: comma-separated tags
-```
+All image metadata is stored in Firebase Firestore under the `images` collection with this structure:
 
-### Get All Images
-```
-GET /api/images
-```
-
-### Get Single Image
-```
-GET /api/images/{id}
-```
-
-### Delete Image
-```
-DELETE /api/images/{id}
-```
-
-### Health Check
-```
-GET /api/health
-```
-
-## Database Schema
-
-```sql
-CREATE TABLE images (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  stored_url TEXT NOT NULL,
-  source_image_url TEXT,
-  source_page_url TEXT,
-  page_title TEXT,
-  file_type TEXT,
-  file_size INTEGER,
-  notes TEXT,
-  tags TEXT[],
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
+```javascript
+{
+  id: "auto-generated-id",
+  stored_url: "https://pixvid.org/images/...",
+  source_image_url: "https://example.com/image.jpg",
+  source_page_url: "https://example.com/page",
+  page_title: "Example Page Title",
+  file_type: "image/jpeg",
+  file_size: 123456,
+  tags: ["tag1", "tag2"],
+  notes: "My notes about this image",
+  created_at: Timestamp
+}
 ```
 
-## Configuration
+You can view your data in the Firebase Console under Firestore Database.
 
-### Backend (.env)
+## Project Structure
 
-**Database Options:**
-- `DATABASE_URL`: Single PostgreSQL connection string (recommended for Neon DB)
-  - OR use individual variables below:
-- `DB_HOST`: PostgreSQL host
-- `DB_PORT`: PostgreSQL port
-- `DB_USER`: Database user
-- `DB_PASSWORD`: Database password
-- `DB_NAME`: Database name
-- `DB_SSLMODE`: SSL mode (require for Neon, disable for local)
-
-**Server:**
-- `PORT`: API server port (default: 8080)
-
-**API Keys:**
-- `PIXVID_API_KEY`: **Required** Pixvid API key (get from https://pixvid.org/settings/api)
-
-### Extension
-
-Update `manifest.json` if you need to change the backend URL:
-
-```json
-"host_permissions": [
-  "http://localhost:8080/*"
-]
+```
+ImgVault/
+├── extension/
+│   ├── manifest.json       # Extension configuration
+│   ├── background.js       # Service worker (handles uploads)
+│   ├── storage.js          # Firebase Firestore management
+│   ├── popup.html          # Extension popup UI
+│   ├── popup.css           # Popup styling
+│   ├── popup.js            # Popup logic
+│   ├── content.js          # Content script
+│   ├── lib/                # Firebase SDKs
+│   │   ├── firebase-app.js
+│   │   └── firebase-firestore.js
+│   └── icons/              # Extension icons
+├── archive/
+│   └── backend/            # Old Go backend (deprecated)
+└── README.md
 ```
 
-For production, change to your production API URL.
+## Technology Stack
 
-## Pixvid Integration
+- **Frontend**: Vanilla JavaScript, HTML5, CSS3
+- **Cloud Storage**: Firebase Firestore
+- **Image Hosting**: Pixvid API (Chevereto)
+- **Platform**: Chrome Extension Manifest V3
 
-This project uses [Pixvid.org](https://pixvid.org) (Chevereto-based) for image hosting:
+## Permissions
 
-- **API Key Required**: Get your free API key from https://pixvid.org/settings/api
-- Files are publicly accessible via URL
-- Reliable image hosting with Chevereto platform
-- Direct image URLs for easy sharing
+The extension requires these permissions:
 
-To get started:
-1. Create an account at https://pixvid.org
-2. Go to Settings → API
-3. Copy your API key
-4. Set `PIXVID_API_KEY` in your `.env` file
+- `contextMenus` - To add right-click menu option
+- `activeTab` - To capture page information
+- `storage` - To store settings locally
+- `tabs` - To access page title and URL
+- `https://pixvid.org/*` - To upload images to Pixvid
+- `<all_urls>` - To capture images from any website
 
-## Development
+## Privacy
 
-### Run Backend in Development
-```powershell
-cd backend
-go run cmd/server/main.go
+- Image metadata is stored in **your** Firebase project (you control the data)
+- Only images are uploaded to Pixvid (using your API key)
+- Your API keys are stored in browser's sync storage (encrypted by browser)
+- No data is sent to any other third-party servers
+
+## Security Recommendations
+
+### Firebase Security Rules
+
+For production use, update your Firestore security rules to restrict access:
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /images/{imageId} {
+      // Option 1: Authenticated users only (recommended)
+      allow read, write: if request.auth != null;
+      
+      // Option 2: Specific user only
+      // allow read, write: if request.auth.uid == "your-user-id";
+    }
+  }
+}
 ```
 
-### Build Backend for Production
-```powershell
-cd backend
-go build -o imgvault.exe cmd/server/main.go
-```
-
-### Extension Development
-- Make changes to extension files
-- Click reload icon in browser extensions page
-- Test immediately
+Then enable Firebase Authentication in your project.
 
 ## Troubleshooting
 
-### "Failed to connect to database"
-- Verify PostgreSQL is running
-- Check `.env` credentials
-- Ensure database exists
+### "Firebase not configured"
+- Make sure you've entered all Firebase configuration fields
+- Verify the values match your Firebase Console project settings
+- Check browser console for detailed error messages
+
+### "Pixvid API key not configured"
+- Make sure you've entered your API key in Settings
+- Verify the API key is correct from pixvid.org/settings/api
+
+### "Failed to fetch image"
+- The image might be protected or from a private network
+- Try saving a different image
 
 ### "Upload failed"
-- Check backend server is running on port 8080
-- Verify CORS settings in `server.go`
-- Check browser console for errors
+- Check your Pixvid API key is valid
+- Check your Firebase configuration is correct
+- Ensure Firestore is enabled in your Firebase project
+- Verify security rules allow writes
+- Check browser console for detailed error messages
 
-### Extension not working
-- Verify extension is enabled
-- Check manifest.json for errors
-- Look at browser extension console (background page)
+## Future Features
 
-## Future Enhancements
+- [ ] Image gallery view to browse saved images
+- [ ] Search and filter by tags, notes, or source
+- [ ] Firebase Authentication integration
+- [ ] Export metadata to JSON
+- [ ] Bulk operations
+- [ ] Custom upload services
+- [ ] Multi-user support
 
-- [ ] Web dashboard for browsing saved images
-- [ ] Full-text search
-- [ ] Image collections/albums
-- [ ] Export functionality
-- [ ] Multiple cloud storage providers
-- [ ] OCR for image text extraction
-- [ ] Duplicate detection
+## Cost Considerations
+
+### Firebase Free Tier
+
+- **Firestore**: 1 GB storage, 50K reads/day, 20K writes/day, 20K deletes/day
+- Perfect for personal use!
+- [Firebase Pricing](https://firebase.google.com/pricing)
+
+### Pixvid
+
+- Check their pricing and limits at [pixvid.org](https://pixvid.org)
 
 ## License
 
-See LICENSE file for details.
+MIT License - See LICENSE file for details
 
 ## Contributing
 
 Contributions welcome! Please open an issue or submit a pull request.
+
+## Support
+
+For issues or questions:
+- Open an issue on GitHub
+- Check Firebase documentation for Firestore-related questions
+- Check Pixvid documentation for API-related questions
+
+---
+
+**Made with ❤️ for digital packrats and cloud enthusiasts**

@@ -1,162 +1,274 @@
-// State management
-let imageData = null;
-let isEditingPageUrl = false;
+// popup.js - ImgVault Extension Popup with Firebase
+// Handles image preview, metadata editing, and upload
 
-// DOM elements
-const noImageState = document.getElementById('noImageState');
-const imageState = document.getElementById('imageState');
+let currentImageData = null;
+
+// DOM Elements  
+const settingsView = document.getElementById('settingsView');
+const imageView = document.getElementById('imageView');
+const successView = document.getElementById('successView');
+const noImageView = document.getElementById('noImageView');
+
 const previewImage = document.getElementById('previewImage');
-const imageUrlInput = document.getElementById('imageUrl');
-const pageUrlInput = document.getElementById('pageUrl');
-const pageTitleInput = document.getElementById('pageTitle');
-const notesInput = document.getElementById('notes');
-const tagsInput = document.getElementById('tags');
+const sourceUrlDisplay = document.getElementById('sourceUrlDisplay');
+const pageUrlInput = document.getElementById('pageUrlInput');
+const editPageUrlBtn = document.getElementById('editPageUrlBtn');
+const notesInput = document.getElementById('notesInput');
+const tagsInput = document.getElementById('tagsInput');
 const uploadBtn = document.getElementById('uploadBtn');
 const statusMessage = document.getElementById('statusMessage');
-const editPageUrlBtn = document.getElementById('editPageUrl');
-const copyImageUrlBtn = document.getElementById('copyImageUrl');
 
-// Initialize
+const apiKeyInput = document.getElementById('apiKeyInput');
+const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+const settingsBtns = document.querySelectorAll('#settingsBtn');
+const backToImageBtn = document.getElementById('backToImageBtn');
+
+const firebaseApiKey = document.getElementById('firebaseApiKey');
+const firebaseAuthDomain = document.getElementById('firebaseAuthDomain');
+const firebaseProjectId = document.getElementById('firebaseProjectId');
+const firebaseStorageBucket = document.getElementById('firebaseStorageBucket');
+const firebaseMessagingSenderId = document.getElementById('firebaseMessagingSenderId');
+const firebaseAppId = document.getElementById('firebaseAppId');
+
+const storedUrlLink = document.getElementById('storedUrlLink');
+const copyUrlBtn = document.getElementById('copyUrlBtn');
+const viewImagesBtn = document.getElementById('viewImagesBtn');
+
+// Initialize popup
 document.addEventListener('DOMContentLoaded', async () => {
-  // Check if there's pending image data
-  const { pendingImage } = await chrome.storage.local.get('pendingImage');
-  
-  if (pendingImage) {
-    imageData = pendingImage;
-    displayImage(imageData);
-    // Clear the pending image
-    chrome.storage.local.remove('pendingImage');
-  }
+  await loadSettings();
+  await loadPendingImage();
+  setupEventListeners();
 });
 
-// Display image function
-function displayImage(data) {
-  noImageState.style.display = 'none';
-  imageState.style.display = 'block';
+async function loadSettings() {
+  const settings = await chrome.storage.sync.get(['pixvidApiKey', 'firebaseConfig']);
   
-  previewImage.src = data.imageUrl;
-  imageUrlInput.value = data.imageUrl;
-  pageUrlInput.value = data.pageUrl;
-  pageTitleInput.value = data.pageTitle || 'Untitled Page';
+  if (settings.pixvidApiKey) {
+    apiKeyInput.value = settings.pixvidApiKey;
+  }
+  
+  if (settings.firebaseConfig) {
+    const config = settings.firebaseConfig;
+    firebaseApiKey.value = config.apiKey || '';
+    firebaseAuthDomain.value = config.authDomain || '';
+    firebaseProjectId.value = config.projectId || '';
+    firebaseStorageBucket.value = config.storageBucket || '';
+    firebaseMessagingSenderId.value = config.messagingSenderId || '';
+    firebaseAppId.value = config.appId || '';
+  }
 }
 
-// Edit page URL
-editPageUrlBtn.addEventListener('click', () => {
-  if (!isEditingPageUrl) {
-    pageUrlInput.removeAttribute('readonly');
-    pageUrlInput.classList.add('editing');
-    pageUrlInput.focus();
-    pageUrlInput.select();
-    editPageUrlBtn.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <polyline points="20 6 9 17 4 12"></polyline>
-      </svg>
-    `;
-    editPageUrlBtn.title = 'Save';
-    isEditingPageUrl = true;
+async function loadPendingImage() {
+  const result = await chrome.storage.local.get('pendingImage');
+  
+  if (result.pendingImage) {
+    currentImageData = result.pendingImage;
+    showImageView();
+    displayImageData(currentImageData);
+    await chrome.storage.local.remove('pendingImage');
   } else {
-    pageUrlInput.setAttribute('readonly', 'true');
-    pageUrlInput.classList.remove('editing');
-    editPageUrlBtn.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-      </svg>
-    `;
-    editPageUrlBtn.title = 'Edit';
-    isEditingPageUrl = false;
+    showNoImageView();
   }
-});
+}
 
-// Copy image URL
-copyImageUrlBtn.addEventListener('click', async () => {
-  try {
-    await navigator.clipboard.writeText(imageUrlInput.value);
-    showStatus('URL copied to clipboard!', 'success');
-  } catch (err) {
-    showStatus('Failed to copy URL', 'error');
+function displayImageData(data) {
+  previewImage.src = data.srcUrl;
+  sourceUrlDisplay.textContent = truncateUrl(data.srcUrl);
+  sourceUrlDisplay.title = data.srcUrl;
+  pageUrlInput.value = data.pageUrl || '';
+  
+  if (data.pageTitle) {
+    notesInput.placeholder = `From: ${data.pageTitle}`;
   }
-});
+}
 
-// Upload button
-uploadBtn.addEventListener('click', async () => {
-  if (!imageData) {
-    showStatus('No image data available', 'error');
+function truncateUrl(url, maxLength = 50) {
+  if (url.length <= maxLength) return url;
+  return url.substring(0, maxLength) + '...';
+}
+
+function setupEventListeners() {
+  settingsBtns.forEach(btn => {
+    btn.addEventListener('click', showSettings);
+  });
+  
+  backToImageBtn.addEventListener('click', () => {
+    if (currentImageData) {
+      showImageView();
+    } else {
+      showNoImageView();
+    }
+  });
+  
+  saveSettingsBtn.addEventListener('click', saveSettings);
+  editPageUrlBtn.addEventListener('click', togglePageUrlEdit);
+  uploadBtn.addEventListener('click', handleUpload);
+  copyUrlBtn.addEventListener('click', copyStoredUrl);
+  viewImagesBtn.addEventListener('click', () => {
+    alert('Gallery view coming soon!');
+  });
+}
+
+function showImageView() {
+  hideAllViews();
+  imageView.style.display = 'block';
+}
+
+function showNoImageView() {
+  hideAllViews();
+  noImageView.style.display = 'block';
+}
+
+function showSettings() {
+  hideAllViews();
+  settingsView.style.display = 'block';
+}
+
+function showSuccessView(storedUrl) {
+  hideAllViews();
+  successView.style.display = 'block';
+  storedUrlLink.href = storedUrl;
+  storedUrlLink.textContent = truncateUrl(storedUrl, 40);
+}
+
+function hideAllViews() {
+  settingsView.style.display = 'none';
+  imageView.style.display = 'none';
+  successView.style.display = 'none';
+  noImageView.style.display = 'none';
+}
+
+async function saveSettings() {
+  const apiKey = apiKeyInput.value.trim();
+  
+  if (!apiKey) {
+    showStatus('Please enter a Pixvid API key', 'error');
     return;
   }
-
-  uploadBtn.disabled = true;
-  showStatus('Uploading image...', 'loading');
-
-  try {
-    // Fetch the image as blob
-    const response = await fetch(imageData.imageUrl);
-    const blob = await response.blob();
-
-    // Prepare form data
-    const formData = new FormData();
-    formData.append('file', blob, `image_${Date.now()}.${getFileExtension(imageData.imageUrl)}`);
-    formData.append('source_image_url', imageData.imageUrl);
-    formData.append('source_page_url', pageUrlInput.value);
-    formData.append('page_title', pageTitleInput.value);
-    formData.append('notes', notesInput.value);
-    formData.append('tags', tagsInput.value);
-
-    // Upload to backend
-    const uploadResponse = await fetch('http://localhost:8080/api/upload', {
-      method: 'POST',
-      body: formData
-    });
-
-    if (!uploadResponse.ok) {
-      const errorData = await uploadResponse.json();
-      throw new Error(errorData.error || 'Upload failed');
+  
+  // Validate Firebase config
+  const fbApiKey = firebaseApiKey.value.trim();
+  const fbAuthDomain = firebaseAuthDomain.value.trim();
+  const fbProjectId = firebaseProjectId.value.trim();
+  
+  if (!fbApiKey || !fbAuthDomain || !fbProjectId) {
+    showStatus('Please fill in all required Firebase fields', 'error');
+    return;
+  }
+  
+  const firebaseConfig = {
+    apiKey: fbApiKey,
+    authDomain: fbAuthDomain,
+    projectId: fbProjectId,
+    storageBucket: firebaseStorageBucket.value.trim(),
+    messagingSenderId: firebaseMessagingSenderId.value.trim(),
+    appId: firebaseAppId.value.trim()
+  };
+  
+  await chrome.storage.sync.set({ 
+    pixvidApiKey: apiKey,
+    firebaseConfig: firebaseConfig
+  });
+  
+  showStatus('Settings saved!', 'success');
+  
+  setTimeout(() => {
+    if (currentImageData) {
+      showImageView();
+    } else {
+      showNoImageView();
     }
+  }, 1000);
+}
 
-    const result = await uploadResponse.json();
-    showStatus('✓ Image saved to vault successfully!', 'success');
+function togglePageUrlEdit() {
+  const isReadonly = pageUrlInput.hasAttribute('readonly');
+  
+  if (isReadonly) {
+    pageUrlInput.removeAttribute('readonly');
+    pageUrlInput.focus();
+    pageUrlInput.select();
+    editPageUrlBtn.textContent = '✓';
+    editPageUrlBtn.title = 'Save';
+  } else {
+    pageUrlInput.setAttribute('readonly', 'readonly');
+    editPageUrlBtn.innerHTML = '✏️';
+    editPageUrlBtn.title = 'Edit page URL';
+  }
+}
 
-    // Clear form after 2 seconds
-    setTimeout(() => {
-      resetForm();
-    }, 2000);
-
+async function handleUpload() {
+  if (!currentImageData) {
+    showStatus('No image to upload', 'error');
+    return;
+  }
+  
+  const settings = await chrome.storage.sync.get(['pixvidApiKey', 'firebaseConfig']);
+  
+  if (!settings.pixvidApiKey) {
+    showStatus('Please configure your Pixvid API key in settings', 'error');
+    setTimeout(() => showSettings(), 1500);
+    return;
+  }
+  
+  if (!settings.firebaseConfig) {
+    showStatus('Please configure Firebase in settings', 'error');
+    setTimeout(() => showSettings(), 1500);
+    return;
+  }
+  
+  uploadBtn.disabled = true;
+  uploadBtn.textContent = 'Uploading...';
+  showStatus('Uploading image...', 'info');
+  
+  try {
+    const uploadData = {
+      imageUrl: currentImageData.srcUrl,
+      pageUrl: pageUrlInput.value,
+      pageTitle: currentImageData.pageTitle,
+      tags: tagsInput.value.split(',').map(t => t.trim()).filter(t => t),
+      notes: notesInput.value
+    };
+    
+    const response = await chrome.runtime.sendMessage({
+      action: 'uploadImage',
+      data: uploadData
+    });
+    
+    if (response.success) {
+      showStatus('Upload successful!', 'success');
+      showSuccessView(response.data.storedUrl);
+    } else {
+      throw new Error(response.error || 'Upload failed');
+    }
   } catch (error) {
     console.error('Upload error:', error);
     showStatus(`Upload failed: ${error.message}`, 'error');
-  } finally {
     uploadBtn.disabled = false;
+    uploadBtn.textContent = 'Upload to ImgVault';
   }
-});
+}
 
-// Utility functions
-function showStatus(message, type) {
+function showStatus(message, type = 'info') {
   statusMessage.textContent = message;
-  statusMessage.className = `status-message ${type}`;
+  statusMessage.className = `status ${type}`;
   statusMessage.style.display = 'block';
-
-  if (type !== 'loading') {
-    setTimeout(() => {
-      statusMessage.style.display = 'none';
-    }, 5000);
-  }
+  
+  setTimeout(() => {
+    statusMessage.style.display = 'none';
+  }, 3000);
 }
 
-function getFileExtension(url) {
+async function copyStoredUrl() {
+  const url = storedUrlLink.href;
   try {
-    const pathname = new URL(url).pathname;
-    const ext = pathname.split('.').pop();
-    return ext || 'jpg';
-  } catch {
-    return 'jpg';
+    await navigator.clipboard.writeText(url);
+    copyUrlBtn.textContent = 'Copied!';
+    setTimeout(() => {
+      copyUrlBtn.textContent = 'Copy URL';
+    }, 2000);
+  } catch (error) {
+    console.error('Failed to copy:', error);
   }
-}
-
-function resetForm() {
-  imageData = null;
-  noImageState.style.display = 'block';
-  imageState.style.display = 'none';
-  notesInput.value = '';
-  tagsInput.value = '';
-  statusMessage.style.display = 'none';
 }
