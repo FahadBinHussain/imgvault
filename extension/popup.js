@@ -133,7 +133,7 @@ async function saveSettings() {
     return;
   }
   
-  // Parse Firebase config from textarea
+  // Parse Firebase config from textarea using regex extraction
   let firebaseConfig;
   try {
     const pastedText = firebaseConfigPaste.value.trim();
@@ -143,28 +143,35 @@ async function saveSettings() {
       return;
     }
     
-    // Extract JSON from various formats
-    let jsonStr = pastedText;
+    // Extract values using regex
+    const extractValue = (key) => {
+      const regex = new RegExp(key + '\\s*:\\s*["\']([^"\']+)["\']', 'i');
+      const match = pastedText.match(regex);
+      return match ? match[1] : null;
+    };
     
-    // Remove variable declaration if present
-    jsonStr = jsonStr.replace(/^(const|let|var)\\s+firebaseConfig\\s*=\\s*/, '');
+    firebaseConfig = {
+      apiKey: extractValue('apiKey'),
+      authDomain: extractValue('authDomain'),
+      projectId: extractValue('projectId'),
+      storageBucket: extractValue('storageBucket'),
+      messagingSenderId: extractValue('messagingSenderId'),
+      appId: extractValue('appId'),
+      measurementId: extractValue('measurementId')
+    };
     
-    // Remove trailing semicolon
-    jsonStr = jsonStr.replace(/;\\s*$/, '');
-    
-    // Remove comments
-    jsonStr = jsonStr.replace(/\/\/.*$/gm, '');
-    
-    // Parse the JSON
-    firebaseConfig = JSON.parse(jsonStr);
+    // Remove null/undefined values
+    Object.keys(firebaseConfig).forEach(key => {
+      if (!firebaseConfig[key]) delete firebaseConfig[key];
+    });
     
     // Validate required fields
     if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId) {
-      throw new Error('Missing required fields');
+      throw new Error('Missing required fields: apiKey, authDomain, and projectId');
     }
   } catch (error) {
     console.error('Parse error:', error);
-    showStatus('Invalid Firebase config. Please paste the entire config object.', 'error');
+    showStatus(error.message || 'Invalid Firebase config. Please paste the entire config object.', 'error');
     return;
   }
   
