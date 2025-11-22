@@ -21,6 +21,7 @@ const statusMessage = document.getElementById('statusMessage');
 const apiKeyInput = document.getElementById('apiKeyInput');
 const saveSettingsBtn = document.getElementById('saveSettingsBtn');
 const settingsBtns = document.querySelectorAll('#settingsBtn');
+const openTabBtn = document.getElementById('openTabBtn');
 const backToImageBtn = document.getElementById('backToImageBtn');
 
 const firebaseApiKey = document.getElementById('firebaseApiKey');
@@ -38,8 +39,27 @@ const viewImagesBtn = document.getElementById('viewImagesBtn');
 document.addEventListener('DOMContentLoaded', async () => {
   await loadSettings();
   await loadPendingImage();
+  await restoreViewState();
   setupEventListeners();
 });
+
+async function restoreViewState() {
+  // If there's a pending image, prioritize that  
+  if (currentImageData) {
+    return;
+  }
+  
+  const { lastView, lastUploadedUrl } = await chrome.storage.local.get(['lastView', 'lastUploadedUrl']);
+  
+  // Otherwise restore last view
+  if (lastView === 'settings') {
+    showSettings();
+  } else if (lastView === 'success' && lastUploadedUrl) {
+    showSuccessView(lastUploadedUrl);
+  } else {
+    showNoImageView();
+  }
+}
 
 async function loadSettings() {
   const settings = await chrome.storage.sync.get(['pixvidApiKey', 'firebaseConfig']);
@@ -60,13 +80,26 @@ async function loadSettings() {
 }
 
 async function loadPendingImage() {
-  const result = await chrome.storage.local.get('pendingImage');
+  let result = await chrome.storage.local.get('pendingImage');
+  
+  // If no pending image, check for saved current image
+  if (!result.pendingImage) {
+    result = await chrome.storage.local.get('currentImage');
+    if (result.currentImage) {
+      currentImageData = result.currentImage;
+      showImageView();
+      displayImageData(currentImageData);
+      return;
+    }
+  }
   
   if (result.pendingImage) {
     currentImageData = result.pendingImage;
+    // Save as current image so it persists
+    await chrome.storage.local.set({ currentImage: result.pendingImage });
+    await chrome.storage.local.remove('pendingImage');
     showImageView();
     displayImageData(currentImageData);
-    await chrome.storage.local.remove('pendingImage');
   } else {
     showNoImageView();
   }
@@ -81,6 +114,38 @@ function displayImageData(data) {
   if (data.pageTitle) {
     notesInput.placeholder = `From: ${data.pageTitle}`;
   }
+  
+  // Restore saved notes and tags if they exist
+  restoreFormData();
+  
+  // Auto-save form data as user types
+  notesInput.addEventListener('input', saveFormData);
+  tagsInput.addEventListener('input', saveFormData);
+  pageUrlInput.addEventListener('input', saveFormData);
+}
+
+async function saveFormData() {
+  await chrome.storage.local.set({
+    draftNotes: notesInput.value,
+    draftTags: tagsInput.value,
+    draftPageUrl: pageUrlInput.value
+  });
+}
+
+async function restoreFormData() {
+  const { draftNotes, draftTags, draftPageUrl } = await chrome.storage.local.get([
+    'draftNotes',
+    'draftTags',
+    'draftPageUrl'
+  ]);
+  
+  if (draftNotes) notesInput.value = draftNotes;
+  if (draftTags) tagsInput.value = draftTags;
+  if (draftPageUrl) pageUrlInput.value = draftPageUrl; // Override with draft if exists
+}
+
+function clearFormData() {
+  chrome.storage.local.remove(['draftNotes', 'draftTags', 'draftPageUrl', 'currentImage']);
 }
 
 function truncateUrl(url, maxLength = 50) {
@@ -92,6 +157,10 @@ function setupEventListeners() {
   settingsBtns.forEach(btn => {
     btn.addEventListener('click', showSettings);
   });
+  
+  if (openTabBtn) {
+    openTabBtn.addEventListener('click', openVaultTab);
+  }
   
   backToImageBtn.addEventListener('click', () => {
     if (currentImageData) {
@@ -105,24 +174,37 @@ function setupEventListeners() {
   editPageUrlBtn.addEventListener('click', togglePageUrlEdit);
   uploadBtn.addEventListener('click', handleUpload);
   copyUrlBtn.addEventListener('click', copyStoredUrl);
-  viewImagesBtn.addEventListener('click', () => {
-    alert('Gallery view coming soon!');
+  viewImagesBtn.addEventListener('click', openVaultTab);
+  
+  // Add keyboard shortcut to open in tab
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 't') {
+      e.preventDefault();
+      openVaultTab();
+    }
   });
+}
+
+function openVaultTab() {
+  chrome.tabs.create({ url: chrome.runtime.getURL('popup.html') });
 }
 
 function showImageView() {
   hideAllViews();
   imageView.style.display = 'block';
+  chrome.storage.local.set({ lastView: 'image' });
 }
 
 function showNoImageView() {
   hideAllViews();
   noImageView.style.display = 'block';
+  chrome.storage.local.set({ lastView: 'empty' });
 }
 
 function showSettings() {
   hideAllViews();
   settingsView.style.display = 'block';
+  chrome.storage.local.set({ lastView: 'settings' });
 }
 
 function showSuccessView(storedUrl) {
@@ -130,6 +212,10 @@ function showSuccessView(storedUrl) {
   successView.style.display = 'block';
   storedUrlLink.href = storedUrl;
   storedUrlLink.textContent = truncateUrl(storedUrl, 40);
+  chrome.storage.local.set({ 
+    lastView: 'success',
+    lastUploadedUrl: storedUrl
+  });
 }
 
 function hideAllViews() {
@@ -195,6 +281,7 @@ function togglePageUrlEdit() {
     pageUrlInput.setAttribute('readonly', 'readonly');
     editPageUrlBtn.innerHTML = '✏️';
     editPageUrlBtn.title = 'Edit page URL';
+    saveFormData(); // Save when user finishes editing
   }
 }
 
@@ -238,6 +325,7 @@ async function handleUpload() {
     
     if (response.success) {
       showStatus('Upload successful!', 'success');
+      clearFormData(); // Clear saved draft
       showSuccessView(response.data.storedUrl);
     } else {
       throw new Error(response.error || 'Upload failed');
