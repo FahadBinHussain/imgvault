@@ -34,16 +34,16 @@ class StorageManager {
     try {
       const doc = {
         fields: {
-          stored_url: { stringValue: imageData.stored_url },
-          delete_url: { stringValue: imageData.delete_url || '' },
-          imgbb_url: { stringValue: imageData.imgbb_url || '' },
-          imgbb_delete_url: { stringValue: imageData.imgbb_delete_url || '' },
-          imgbb_thumb_url: { stringValue: imageData.imgbb_thumb_url || '' },
-          source_image_url: { stringValue: imageData.source_image_url },
-          source_page_url: { stringValue: imageData.source_page_url },
-          page_title: { stringValue: imageData.page_title || '' },
-          file_type: { stringValue: imageData.file_type || '' },
-          file_size: { integerValue: imageData.file_size || 0 },
+          storedUrl: { stringValue: imageData.storedUrl },
+          deleteUrl: { stringValue: imageData.deleteUrl || '' },
+          imgbbUrl: { stringValue: imageData.imgbbUrl || '' },
+          imgbbDeleteUrl: { stringValue: imageData.imgbbDeleteUrl || '' },
+          imgbbThumbUrl: { stringValue: imageData.imgbbThumbUrl || '' },
+          sourceImageUrl: { stringValue: imageData.sourceImageUrl },
+          sourcePageUrl: { stringValue: imageData.sourcePageUrl },
+          pageTitle: { stringValue: imageData.pageTitle || '' },
+          fileType: { stringValue: imageData.fileType || '' },
+          fileSize: { integerValue: imageData.fileSize || 0 },
           width: { integerValue: imageData.width || 0 },
           height: { integerValue: imageData.height || 0 },
           sha256: { stringValue: imageData.sha256 || '' },
@@ -52,7 +52,7 @@ class StorageManager {
           dHash: { stringValue: imageData.dHash || '' },
           tags: { arrayValue: { values: (imageData.tags || []).map(t => ({ stringValue: t })) } },
           notes: { stringValue: imageData.notes || '' },
-          created_at: { timestampValue: new Date().toISOString() }
+          createdAt: { timestampValue: new Date().toISOString() }
         }
       };
 
@@ -109,16 +109,16 @@ class StorageManager {
         
         return {
           id,
-          stored_url: fields.stored_url?.stringValue || '',
-          delete_url: fields.delete_url?.stringValue || '',
-          imgbb_url: fields.imgbb_url?.stringValue || '',
-          imgbb_delete_url: fields.imgbb_delete_url?.stringValue || '',
-          imgbb_thumb_url: fields.imgbb_thumb_url?.stringValue || '',
-          source_image_url: fields.source_image_url?.stringValue || '',
-          source_page_url: fields.source_page_url?.stringValue || '',
-          page_title: fields.page_title?.stringValue || '',
-          file_type: fields.file_type?.stringValue || '',
-          file_size: parseInt(fields.file_size?.integerValue || '0'),
+          storedUrl: fields.storedUrl?.stringValue || fields.stored_url?.stringValue || '',
+          deleteUrl: fields.deleteUrl?.stringValue || fields.delete_url?.stringValue || '',
+          imgbbUrl: fields.imgbbUrl?.stringValue || fields.imgbb_url?.stringValue || '',
+          imgbbDeleteUrl: fields.imgbbDeleteUrl?.stringValue || fields.imgbb_delete_url?.stringValue || '',
+          imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || fields.imgbb_thumb_url?.stringValue || '',
+          sourceImageUrl: fields.sourceImageUrl?.stringValue || fields.source_image_url?.stringValue || '',
+          sourcePageUrl: fields.sourcePageUrl?.stringValue || fields.source_page_url?.stringValue || '',
+          pageTitle: fields.pageTitle?.stringValue || fields.page_title?.stringValue || '',
+          fileType: fields.fileType?.stringValue || fields.file_type?.stringValue || '',
+          fileSize: parseInt(fields.fileSize?.integerValue || fields.file_size?.integerValue || '0'),
           width: parseInt(fields.width?.integerValue || '0'),
           height: parseInt(fields.height?.integerValue || '0'),
           sha256: fields.sha256?.stringValue || '',
@@ -127,7 +127,7 @@ class StorageManager {
           dHash: fields.dHash?.stringValue || '',
           tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
           notes: fields.notes?.stringValue || '',
-          created_at: fields.created_at?.timestampValue || ''
+          createdAt: fields.createdAt?.timestampValue || fields.created_at?.timestampValue || ''
         };
       });
     } catch (error) {
@@ -158,16 +158,16 @@ class StorageManager {
       
       return {
         id,
-        stored_url: fields.stored_url?.stringValue || '',
-        delete_url: fields.delete_url?.stringValue || '',
-        imgbb_url: fields.imgbb_url?.stringValue || '',
-        imgbb_delete_url: fields.imgbb_delete_url?.stringValue || '',
-        imgbb_thumb_url: fields.imgbb_thumb_url?.stringValue || '',
-        source_image_url: fields.source_image_url?.stringValue || '',
-        source_page_url: fields.source_page_url?.stringValue || '',
-        page_title: fields.page_title?.stringValue || '',
-        file_type: fields.file_type?.stringValue || '',
-        file_size: parseInt(fields.file_size?.integerValue || '0'),
+        storedUrl: fields.storedUrl?.stringValue || fields.stored_url?.stringValue || '',
+        deleteUrl: fields.deleteUrl?.stringValue || fields.delete_url?.stringValue || '',
+        imgbbUrl: fields.imgbbUrl?.stringValue || fields.imgbb_url?.stringValue || '',
+        imgbbDeleteUrl: fields.imgbbDeleteUrl?.stringValue || fields.imgbb_delete_url?.stringValue || '',
+        imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || fields.imgbb_thumb_url?.stringValue || '',
+        sourceImageUrl: fields.sourceImageUrl?.stringValue || fields.source_image_url?.stringValue || '',
+        sourcePageUrl: fields.sourcePageUrl?.stringValue || fields.source_page_url?.stringValue || '',
+        pageTitle: fields.pageTitle?.stringValue || fields.page_title?.stringValue || '',
+        fileType: fields.fileType?.stringValue || fields.file_type?.stringValue || '',
+        fileSize: parseInt(fields.fileSize?.integerValue || fields.file_size?.integerValue || '0'),
         width: parseInt(fields.width?.integerValue || '0'),
         height: parseInt(fields.height?.integerValue || '0'),
         sha256: fields.sha256?.stringValue || '',
@@ -176,7 +176,7 @@ class StorageManager {
         dHash: fields.dHash?.stringValue || '',
         tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
         notes: fields.notes?.stringValue || '',
-        created_at: fields.created_at?.timestampValue || ''
+        createdAt: fields.createdAt?.timestampValue || fields.created_at?.timestampValue || ''
       };
     } catch (error) {
       console.error('Error getting image:', error);
@@ -251,8 +251,8 @@ class StorageManager {
     const lowerQuery = query.toLowerCase();
     
     return allImages.filter(img => 
-      img.page_title?.toLowerCase().includes(lowerQuery) ||
-      img.source_page_url?.toLowerCase().includes(lowerQuery) ||
+      img.pageTitle?.toLowerCase().includes(lowerQuery) ||
+      img.sourcePageUrl?.toLowerCase().includes(lowerQuery) ||
       img.notes?.toLowerCase().includes(lowerQuery) ||
       img.tags?.some(tag => tag.toLowerCase().includes(lowerQuery))
     );
