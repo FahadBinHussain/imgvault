@@ -257,6 +257,104 @@ class StorageManager {
       img.tags?.some(tag => tag.toLowerCase().includes(lowerQuery))
     );
   }
+
+  async saveUserSettings(settings) {
+    if (!this.initialized) {
+      const success = await this.init();
+      if (!success) {
+        throw new Error('Firebase not configured');
+      }
+    }
+
+    try {
+      const doc = {
+        fields: {
+          pixvidApiKey: { stringValue: settings.pixvidApiKey || '' },
+          imgbbApiKey: { stringValue: settings.imgbbApiKey || '' },
+          defaultGallerySource: { stringValue: settings.defaultGallerySource || 'imgbb' },
+          updatedAt: { timestampValue: new Date().toISOString() }
+        }
+      };
+
+      // First try to get the document to see if it exists
+      const getUrl = `https://firestore.googleapis.com/v1/projects/${this.config.projectId}/databases/(default)/documents/userSettings/config?key=${this.config.apiKey}`;
+      const getResponse = await fetch(getUrl);
+      
+      if (getResponse.ok) {
+        // Document exists, update it with PATCH
+        const patchUrl = `https://firestore.googleapis.com/v1/projects/${this.config.projectId}/databases/(default)/documents/userSettings/config?key=${this.config.apiKey}&updateMask.fieldPaths=pixvidApiKey&updateMask.fieldPaths=imgbbApiKey&updateMask.fieldPaths=defaultGallerySource&updateMask.fieldPaths=updatedAt`;
+        
+        const response = await fetch(patchUrl, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(doc)
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to update settings: ${errorText}`);
+        }
+      } else {
+        // Document doesn't exist, create it with POST (same as images)
+        const createUrl = `https://firestore.googleapis.com/v1/projects/${this.config.projectId}/databases/(default)/documents/userSettings?documentId=config&key=${this.config.apiKey}`;
+        
+        const response = await fetch(createUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(doc)
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to create settings: ${errorText}`);
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      throw error;
+    }
+  }
+
+  async getUserSettings() {
+    if (!this.initialized) {
+      const success = await this.init();
+      if (!success) {
+        return null;
+      }
+    }
+
+    try {
+      const url = `https://firestore.googleapis.com/v1/projects/${this.config.projectId}/databases/(default)/documents/userSettings/config?key=${this.config.apiKey}`;
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          return null; // No settings saved yet
+        }
+        throw new Error('Failed to fetch settings');
+      }
+
+      const doc = await response.json();
+      const fields = doc.fields;
+      
+      return {
+        pixvidApiKey: fields.pixvidApiKey?.stringValue || '',
+        imgbbApiKey: fields.imgbbApiKey?.stringValue || '',
+        defaultGallerySource: fields.defaultGallerySource?.stringValue || 'imgbb',
+        updatedAt: fields.updatedAt?.timestampValue || ''
+      };
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+      return null;
+    }
+  }
 }
 
 // Export for use in other scripts

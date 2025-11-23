@@ -111,7 +111,22 @@
       <h1>ImgVault Settings</h1>
       <p>Configure your storage and upload preferences
         <span id="autoSaveIndicator" class="auto-save-indicator">✅ Auto-saved</span>
+        <span id="firebaseSyncStatus" class="auto-save-indicator" style="margin-left: 8px;"></span>
       </p>
+    </div>
+    
+    <div class="form-group">
+      <label>📦 Firebase Configuration (Required First)</label>
+      <textarea id="firebaseConfigPaste" rows="12" placeholder='const firebaseConfig = {
+  apiKey: "...",
+  authDomain: "...",
+  projectId: "...",
+  storageBucket: "...",
+  messagingSenderId: "...",
+  appId: "...",
+  measurementId: "..."
+};'></textarea>
+      <small>Paste your entire Firebase config object from Firebase Console → Project Settings. This is required to sync your settings across devices.</small>
     </div>
     
     <div class="form-group">
@@ -124,20 +139,6 @@
       <label>☁️ ImgBB API Key</label>
       <input type="text" id="imgbbApiKeyInput" placeholder="Enter your ImgBB API key">
       <small>Get your API key from <a href="https://api.imgbb.com/" target="_blank">ImgBB API</a></small>
-    </div>
-    
-    <div class="form-group">
-      <label>📦 Firebase Configuration</label>
-      <textarea id="firebaseConfigPaste" rows="12" placeholder='const firebaseConfig = {
-  apiKey: "...",
-  authDomain: "...",
-  projectId: "...",
-  storageBucket: "...",
-  messagingSenderId: "...",
-  appId: "...",
-  measurementId: "..."
-};'></textarea>
-      <small>Paste your entire Firebase config object from Firebase Console → Project Settings</small>
     </div>
     
     <div class="form-group">
@@ -156,6 +157,7 @@
     </button>
   </div>
   
+  <script src="storage.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>

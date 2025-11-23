@@ -7,6 +7,17 @@ const defaultGallerySource = document.getElementById('defaultGallerySource');
 const saveSettingsBtn = document.getElementById('saveSettingsBtn');
 const statusMessage = document.getElementById('statusMessage');
 const autoSaveIndicator = document.getElementById('autoSaveIndicator');
+const firebaseSyncStatus = document.getElementById('firebaseSyncStatus');
+
+let storageManager = null;
+let isLoadingFromFirebase = false;
+
+function showFirebaseStatus(message, type = 'info') {
+  firebaseSyncStatus.textContent = message;
+  firebaseSyncStatus.style.color = type === 'success' ? 'var(--success)' : type === 'error' ? 'var(--error)' : 'var(--text-secondary)';
+  firebaseSyncStatus.classList.add('show');
+  // Keep status visible permanently, don't auto-hide
+}
 
 // Load settings on page load
 document.addEventListener('DOMContentLoaded', loadSettings);
@@ -22,9 +33,54 @@ const autoSave = () => {
 
 apiKeyInput.addEventListener('input', autoSave);
 imgbbApiKeyInput.addEventListener('input', autoSave);
-firebaseConfigPaste.addEventListener('input', autoSave);
+firebaseConfigPaste.addEventListener('input', () => {
+  autoSave();
+  // Also try to connect when config changes
+  setTimeout(tryLoadFromFirebase, 1000);
+});
 defaultGallerySource.addEventListener('change', autoSave);
 saveSettingsBtn.addEventListener('click', () => saveSettings(false));
+
+async function tryLoadFromFirebase() {
+  if (isLoadingFromFirebase) return;
+  
+  try {
+    isLoadingFromFirebase = true;
+    showFirebaseStatus('🔄 Connecting to Firebase...', 'info');
+    
+    const settings = await chrome.storage.sync.get(['firebaseConfig']);
+    
+    if (settings.firebaseConfig) {
+      storageManager = new StorageManager();
+      await storageManager.init();
+      
+      const firebaseSettings = await storageManager.getUserSettings();
+      
+      if (firebaseSettings) {
+        // Only update if not already filled
+        if (!apiKeyInput.value && firebaseSettings.pixvidApiKey) {
+          apiKeyInput.value = firebaseSettings.pixvidApiKey;
+        }
+        if (!imgbbApiKeyInput.value && firebaseSettings.imgbbApiKey) {
+          imgbbApiKeyInput.value = firebaseSettings.imgbbApiKey;
+        }
+        if (firebaseSettings.defaultGallerySource) {
+          defaultGallerySource.value = firebaseSettings.defaultGallerySource;
+        }
+        
+        showFirebaseStatus('✅ Synced from Firebase', 'success');
+        showStatus('✅ Settings loaded from Firebase', 'success');
+      } else {
+        showFirebaseStatus('ℹ️ No cloud settings found', 'info');
+      }
+    }
+  } catch (error) {
+    console.error('Error loading from Firebase:', error);
+    showFirebaseStatus('❌ Firebase sync failed', 'error');
+  } finally {
+    isLoadingFromFirebase = false;
+  }
+}
 
 async function loadSettings() {
   const settings = await chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey', 'firebaseConfigRaw', 'firebaseConfig', 'defaultGallerySource']);
@@ -48,6 +104,9 @@ async function loadSettings() {
   } else {
     defaultGallerySource.value = 'imgbb'; // Default to ImgBB
   }
+  
+  // Try to load from Firebase after local settings are loaded
+  setTimeout(tryLoadFromFirebase, 500);
 }
 
 async function saveSettings(silent = false) {
@@ -132,6 +191,31 @@ async function saveSettings(silent = false) {
       firebaseConfigRaw: pastedText
     });
     console.log('✅ Firebase config saved');
+  }
+  
+  // Save to Firebase if configured
+  try {
+    const settings = await chrome.storage.sync.get(['firebaseConfig']);
+    if (settings.firebaseConfig && (apiKey || imgbbApiKey || gallerySource)) {
+      showFirebaseStatus('🔄 Syncing to Firebase...', 'info');
+      
+      if (!storageManager) {
+        storageManager = new StorageManager();
+        await storageManager.init();
+      }
+      
+      await storageManager.saveUserSettings({
+        pixvidApiKey: apiKey,
+        imgbbApiKey: imgbbApiKey,
+        defaultGallerySource: gallerySource
+      });
+      
+      showFirebaseStatus('✅ Synced to Firebase', 'success');
+      console.log('✅ Settings synced to Firebase');
+    }
+  } catch (error) {
+    console.warn('Could not sync to Firebase:', error);
+    showFirebaseStatus('❌ Firebase sync failed', 'error');
   }
   
   if (silent) {
