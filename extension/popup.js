@@ -287,7 +287,13 @@ async function handleUpload() {
       showStatus('Upload successful!', 'success');
       showSuccessView(response.data.storedUrl);
     } else {
-      throw new Error(response.error || 'Upload failed');
+      // Check if it's a duplicate with image data
+      if (response.duplicate) {
+        showStatus(`Upload failed: ${response.error}`, 'error');
+        showDuplicateImage(response.duplicate);
+      } else {
+        throw new Error(response.error || 'Upload failed');
+      }
     }
   } catch (error) {
     console.error('Upload error:', error);
@@ -297,9 +303,39 @@ async function handleUpload() {
     
     // Show error in status message
     showStatus(`Upload failed: ${error.message}`, 'error');
+    
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = 'Upload to ImgVault';
+  } finally {
     uploadBtn.disabled = false;
     uploadBtn.textContent = 'Upload to ImgVault';
   }
+}
+
+function showDuplicateImage(duplicateData) {
+  // Create a duplicate info display
+  const duplicateInfo = document.createElement('div');
+  duplicateInfo.className = 'duplicate-info';
+  duplicateInfo.innerHTML = `
+    <div class="duplicate-header">
+      <span class="duplicate-icon">🔗</span>
+      <strong>Existing Image:</strong>
+    </div>
+    <div class="duplicate-preview">
+      <img src="${duplicateData.stored_url}" alt="Duplicate image" />
+    </div>
+    <div class="duplicate-actions">
+      <a href="${duplicateData.stored_url}" target="_blank" class="btn-link">
+        Open Image
+      </a>
+      <button class="btn-link" onclick="navigator.clipboard.writeText('${duplicateData.stored_url}'); this.textContent='Copied!'">
+        Copy URL
+      </button>
+    </div>
+  `;
+  
+  // Insert after status message
+  statusMessage.parentNode.insertBefore(duplicateInfo, statusMessage.nextSibling);
 }
 
 function showStatus(message, type = 'info') {

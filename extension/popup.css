@@ -559,3 +559,69 @@ body {
   font-weight: 500;
 }
 
+/* Duplicate Image Display */
+.duplicate-info {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--bg-glass);
+  border: 2px solid var(--warning);
+  border-radius: 12px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.duplicate-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.duplicate-icon {
+  font-size: 20px;
+}
+
+.duplicate-preview {
+  margin: 12px 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.duplicate-preview img {
+  width: 100%;
+  height: auto;
+  max-height: 200px;
+  object-fit: contain;
+  display: block;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.duplicate-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.btn-link {
+  flex: 1;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  text-decoration: none;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-link:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: var(--primary-light);
+  transform: translateY(-1px);
+}
+
