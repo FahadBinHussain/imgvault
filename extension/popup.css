@@ -619,7 +619,7 @@ body {
 }
 
 .btn-sm {
-  padding: 4px 8px;
+  padding: 0;
   font-size: 16px;
   min-width: auto;
   width: 32px;
@@ -633,6 +633,9 @@ body {
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-sm:hover {
