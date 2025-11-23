@@ -57,14 +57,14 @@ async function tryLoadFromFirebase() {
       const firebaseSettings = await storageManager.getUserSettings();
       
       if (firebaseSettings) {
-        // Only update if not already filled
-        if (!apiKeyInput.value && firebaseSettings.pixvidApiKey) {
+        // Only update if not already filled AND Firebase has a non-empty value
+        if (!apiKeyInput.value && firebaseSettings.pixvidApiKey && firebaseSettings.pixvidApiKey.trim()) {
           apiKeyInput.value = firebaseSettings.pixvidApiKey;
         }
-        if (!imgbbApiKeyInput.value && firebaseSettings.imgbbApiKey) {
+        if (!imgbbApiKeyInput.value && firebaseSettings.imgbbApiKey && firebaseSettings.imgbbApiKey.trim()) {
           imgbbApiKeyInput.value = firebaseSettings.imgbbApiKey;
         }
-        if (firebaseSettings.defaultGallerySource) {
+        if (firebaseSettings.defaultGallerySource && firebaseSettings.defaultGallerySource.trim()) {
           defaultGallerySource.value = firebaseSettings.defaultGallerySource;
         }
         
@@ -196,7 +196,8 @@ async function saveSettings(silent = false) {
   // Save to Firebase if configured
   try {
     const settings = await chrome.storage.sync.get(['firebaseConfig']);
-    if (settings.firebaseConfig && (apiKey || imgbbApiKey || gallerySource)) {
+    if (settings.firebaseConfig && (apiKey || imgbbApiKey)) {
+      // Only sync to Firebase if we have actual API keys to save
       showFirebaseStatus('🔄 Syncing to Firebase...', 'info');
       
       if (!storageManager) {
@@ -205,13 +206,16 @@ async function saveSettings(silent = false) {
       }
       
       await storageManager.saveUserSettings({
-        pixvidApiKey: apiKey,
-        imgbbApiKey: imgbbApiKey,
-        defaultGallerySource: gallerySource
+        pixvidApiKey: apiKey || '',
+        imgbbApiKey: imgbbApiKey || '',
+        defaultGallerySource: gallerySource || 'imgbb'
       });
       
       showFirebaseStatus('✅ Synced to Firebase', 'success');
       console.log('✅ Settings synced to Firebase');
+    } else if (settings.firebaseConfig && !apiKey && !imgbbApiKey && !silent) {
+      // Don't show error on auto-save, only on manual save
+      showFirebaseStatus('ℹ️ Enter API keys to sync', 'info');
     }
   } catch (error) {
     console.warn('Could not sync to Firebase:', error);
