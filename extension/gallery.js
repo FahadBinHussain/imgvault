@@ -374,12 +374,38 @@ async function handleDelete() {
     if (currentImage.imgbb_delete_url) {
       showToast('Deleting from ImgBB...', 5000);
       try {
-        await fetch(currentImage.imgbb_delete_url, {
-          method: 'GET',
-          redirect: 'follow'
-        });
+        // Parse image ID and hash from delete URL
+        // ImgBB delete URL format: https://ibb.co/$image_id/$image_hash
+        const deleteUrl = new URL(currentImage.imgbb_delete_url);
+        const pathParts = deleteUrl.pathname.split('/').filter(p => p);
         
-        showToast('✓ Deleted from ImgBB', 2000);
+        if (pathParts.length >= 2) {
+          const imageId = pathParts[0];
+          const imageHash = pathParts[1];
+          
+          // Create form data for deletion
+          const formData = new FormData();
+          formData.append('pathname', `/${imageId}/${imageHash}`);
+          formData.append('action', 'delete');
+          formData.append('delete', 'image');
+          formData.append('from', 'resource');
+          formData.append('deleting[id]', imageId);
+          formData.append('deleting[hash]', imageHash);
+          
+          // Send POST request to ImgBB
+          const response = await fetch('https://ibb.co/json', {
+            method: 'POST',
+            body: formData
+          });
+          
+          if (response.ok) {
+            showToast('✓ Deleted from ImgBB', 2000);
+          } else {
+            throw new Error(`ImgBB returned ${response.status}`);
+          }
+        } else {
+          throw new Error('Invalid ImgBB delete URL format');
+        }
       } catch (imgbbError) {
         showToast('⚠️ ImgBB deletion failed', 3000);
         console.warn('ImgBB deletion failed:', imgbbError);
