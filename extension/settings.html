@@ -64,6 +64,44 @@
     .auto-save-indicator.show {
       opacity: 1;
     }
+    
+    select {
+      width: 100%;
+      padding: 14px 16px;
+      background: #ffffff;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      color: #1e293b;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%231e293b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      background-size: 20px;
+      padding-right: 40px;
+    }
+    
+    select:hover {
+      border-color: #6366f1;
+      background-color: #f8fafc;
+    }
+    
+    select:focus {
+      outline: none;
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+      background-color: #ffffff;
+    }
+    
+    select option {
+      background: #ffffff;
+      color: #1e293b;
+      padding: 12px;
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
@@ -100,6 +138,15 @@
   measurementId: "..."
 };'></textarea>
       <small>Paste your entire Firebase config object from Firebase Console → Project Settings</small>
+    </div>
+    
+    <div class="form-group">
+      <label>🖼️ Default Gallery Source</label>
+      <select id="defaultGallerySource">
+        <option value="imgbb">ImgBB - Original Quality</option>
+        <option value="pixvid">Pixvid - Compressed Quality</option>
+      </select>
+      <small>Choose which image source to display by default in the gallery.</small>
     </div>
     
     <div id="statusMessage" class="status" style="display: none;"></div>
