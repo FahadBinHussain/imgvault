@@ -273,56 +273,19 @@ class DuplicateDetector {
     console.log(`Total existing images in database: ${existingImages.length}`);
     console.log('==========================================');
 
-    // Phase 1: Fast pre-filter (dimensions + file size)
-    console.log('\n📏 PHASE 1: FAST PRE-FILTER (File Size Only)');
+    // Phase 1: Fast pre-filter - DISABLED (was causing false negatives)
+    // Rely entirely on perceptual hashes for accurate duplicate detection
+    console.log('\n📏 PHASE 1: PRE-FILTER');
     console.log('------------------------------------------');
-    console.log('Note: Dimension check removed to catch resized duplicates');
-    onProgress && onProgress('Phase 1: Checking file size...');
+    console.log('✅ Pre-filter disabled - checking all images with perceptual hashes');
+    console.log('This ensures resized/recompressed duplicates are caught');
+    console.log('------------------------------------------\n');
     
-    const fastFilterMatches = existingImages.filter((img, index) => {
-      // Allow 50% file size variance for major resizing/compression
-      const existingSize = img.file_size || img.size;
-      const sizeDiff = Math.abs(existingSize - newMetadata.size);
-      const maxSizeDiff = Math.max(existingSize, newMetadata.size) * 0.5; // 50% tolerance
-      const sizeMatch = sizeDiff <= maxSizeDiff;
-      
-      // Skip images with no size data
-      if (!existingSize || !newMetadata.size) {
-        console.log(`Image ${index + 1}/${existingImages.length}: ⚠️  SKIPPED (missing size data)`);
-        return true; // Include it anyway for hash checking
-      }
-      
-      const passed = sizeMatch;
-      
-      console.log(`Image ${index + 1}/${existingImages.length}:`, {
-        id: img.id?.substring(0, 8) + '...',
-        existingDimensions: `${img.width}x${img.height}`,
-        newDimensions: `${newMetadata.width}x${newMetadata.height}`,
-        existingSize: `${(existingSize/1024).toFixed(1)}KB`,
-        newSize: `${(newMetadata.size/1024).toFixed(1)}KB`,
-        sizeDiff: `${(sizeDiff/1024).toFixed(1)}KB`,
-        maxAllowedDiff: `${(maxSizeDiff/1024).toFixed(1)}KB`,
-        sizeMatch: sizeMatch ? '✅' : '❌',
-        PASSED: passed ? '✅ YES' : '❌ NO (size too different)'
-      });
-      
-      return passed;
-    });
+    onProgress && onProgress('Phase 1: Preparing to check all images...');
+    
+    // Pass all images to hash checking
+    const fastFilterMatches = existingImages;
     results.fastFilterMatches = fastFilterMatches;
-
-    console.log('------------------------------------------');
-    console.log(`Phase 1 Result: ${fastFilterMatches.length} matches (out of ${existingImages.length} total)`);
-    console.log('------------------------------------------');
-
-    if (fastFilterMatches.length === 0) {
-      console.log('❌ No images passed Phase 1 - STOPPING CHECK');
-      console.log('==========================================\n');
-      onProgress && onProgress('✓ No duplicates found (failed Phase 1)');
-      return results;
-    }
-
-    console.log(`✅ ${fastFilterMatches.length} image(s) passed Phase 1 - CONTINUING TO PHASE 2\n`);
-    onProgress && onProgress(`Found ${fastFilterMatches.length} potential matches, checking context...`);
 
     // Phase 2: Context-based check (source URL + page URL)
     console.log('🔗 PHASE 2: CONTEXT CHECK (Source URL + Page URL)');
