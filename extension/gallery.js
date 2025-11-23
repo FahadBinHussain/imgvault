@@ -14,6 +14,7 @@ const searchInput = document.getElementById('searchInput');
 const imageModal = document.getElementById('imageModal');
 const modalImage = document.getElementById('modalImage');
 const modalTitle = document.getElementById('modalTitle');
+const displaySource = document.getElementById('displaySource');
 const modalPixvidUrl = document.getElementById('modalPixvidUrl');
 const modalImgbbUrl = document.getElementById('modalImgbbUrl');
 const imgbbUrlSection = document.getElementById('imgbbUrlSection');
@@ -135,7 +136,8 @@ function displayImages(images) {
       photoItem.className = 'photo-item';
       
       const img = document.createElement('img');
-      img.src = image.stored_url;
+      // Use ImgBB URL if available, otherwise fall back to Pixvid URL
+      img.src = image.imgbb_url || image.stored_url;
       img.alt = image.page_title || 'Image';
       img.loading = 'lazy';
       
@@ -234,8 +236,26 @@ function showImageDetails(image) {
   modalSourceUrlInput.setAttribute('readonly', 'readonly');
   modalPageUrlInput.setAttribute('readonly', 'readonly');
   
-  modalImage.src = image.stored_url;
+  // Determine which source to use and display
+  const usingImgBB = !!image.imgbb_url;
+  const displayUrl = usingImgBB ? image.imgbb_url : image.stored_url;
+  const sourceName = usingImgBB ? 'ImgBB' : 'Pixvid';
+  
+  // Store the current display source on the image object
+  currentImage._displaySource = sourceName;
+  currentImage._displayUrl = displayUrl;
+  
+  // Use ImgBB URL if available, otherwise fall back to Pixvid URL
+  modalImage.src = displayUrl;
   modalTitle.textContent = image.page_title || 'Untitled';
+  
+  // Display Source indicator
+  displaySource.textContent = `${sourceName} ⚡`;
+  displaySource.style.color = usingImgBB ? '#10b981' : '#818cf8';
+  displaySource.style.fontWeight = '600';
+  
+  // Update download button
+  downloadImage.innerHTML = `<span class="download-icon">⬇️</span> Download from ${sourceName}`;
   
   // Pixvid URL
   modalPixvidUrl.href = image.stored_url;
@@ -463,15 +483,18 @@ async function handleDownload() {
   if (!currentImage) return;
   
   try {
+    const sourceName = currentImage._displaySource || 'Pixvid';
+    const sourceUrl = currentImage._displayUrl || currentImage.stored_url;
+    
     downloadImage.disabled = true;
     downloadImage.innerHTML = '<span class="download-icon">⏳</span> Downloading...';
     
-    // Fetch the image
-    const response = await fetch(currentImage.stored_url);
+    // Fetch the image from the display source
+    const response = await fetch(sourceUrl);
     const blob = await response.blob();
     
     // Extract filename from URL or use title
-    const url = new URL(currentImage.stored_url);
+    const url = new URL(sourceUrl);
     const pathParts = url.pathname.split('/');
     const filename = pathParts[pathParts.length - 1] || `${currentImage.page_title || 'image'}.jpg`;
     
@@ -486,12 +509,13 @@ async function handleDownload() {
     URL.revokeObjectURL(downloadUrl);
     
     downloadImage.disabled = false;
-    downloadImage.innerHTML = '<span class="download-icon">⬇️</span> Download Image';
+    downloadImage.innerHTML = `<span class="download-icon">⬇️</span> Download from ${sourceName}`;
     showToast('✅ Image downloaded successfully', 2000);
   } catch (error) {
     console.error('Download failed:', error);
+    const sourceName = currentImage._displaySource || 'Pixvid';
     downloadImage.disabled = false;
-    downloadImage.innerHTML = '<span class="download-icon">⬇️</span> Download Image';
+    downloadImage.innerHTML = `<span class="download-icon">⬇️</span> Download from ${sourceName}`;
     showToast('❌ Download failed', 3000);
   }
 }
