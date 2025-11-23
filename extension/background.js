@@ -176,7 +176,6 @@ async function handleImageUpload(data) {
       pHash: metadata.pHash,
       aHash: metadata.aHash,
       dHash: metadata.dHash,
-      colorHistogram: metadata.colorHistogram,
       tags: data.tags || [],
       notes: data.notes || ''
     };
