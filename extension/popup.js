@@ -72,14 +72,17 @@ function setupStatusListener() {
 }
 
 async function loadSettings() {
-  const settings = await chrome.storage.sync.get(['pixvidApiKey', 'firebaseConfig']);
+  const settings = await chrome.storage.sync.get(['pixvidApiKey', 'firebaseConfig', 'firebaseConfigRaw']);
   
   if (settings.pixvidApiKey) {
     apiKeyInput.value = settings.pixvidApiKey;
   }
   
-  if (settings.firebaseConfig) {
-    // Show the config in a formatted way in the textarea
+  if (settings.firebaseConfigRaw) {
+    // Load the raw text that was typed
+    firebaseConfigPaste.value = settings.firebaseConfigRaw;
+  } else if (settings.firebaseConfig) {
+    // Fallback: Show the parsed config as formatted JSON
     firebaseConfigPaste.value = JSON.stringify(settings.firebaseConfig, null, 2);
   }
 }
@@ -123,7 +126,10 @@ function truncateUrl(url, maxLength = 50) {
 
 function setupEventListeners() {
   settingsBtns.forEach(btn => {
-    btn.addEventListener('click', showSettings);
+    btn.addEventListener('click', () => {
+      // Open settings in new tab
+      chrome.tabs.create({ url: chrome.runtime.getURL('settings.html') });
+    });
   });
   
   backToImageBtn.addEventListener('click', () => {
@@ -140,6 +146,22 @@ function setupEventListeners() {
   copyUrlBtn.addEventListener('click', copyStoredUrl);
   
   galleryBtn.addEventListener('click', openGallery);
+  
+  // Auto-save settings with debounce
+  let saveTimeout;
+  const autoSaveSettings = () => {
+    console.log('🔵 Auto-save triggered');
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(() => {
+      console.log('🔵 Saving settings...');
+      saveSettings(true); // true = silent save (no status messages)
+    }, 1000); // Save 1 second after user stops typing
+  };
+  
+  console.log('🔵 Setting up auto-save listeners');
+  apiKeyInput.addEventListener('input', autoSaveSettings);
+  firebaseConfigPaste.addEventListener('input', autoSaveSettings);
+  console.log('🔵 Auto-save listeners attached');
   
   // File upload - use event delegation on document
   document.addEventListener('click', (e) => {
@@ -213,10 +235,13 @@ function hideAllViews() {
   noImageView.style.display = 'none';
 }
 
-async function saveSettings() {
+async function saveSettings(silent = false) {
   const apiKey = apiKeyInput.value.trim();
+  const pastedText = firebaseConfigPaste.value.trim();
   
-  if (!apiKey) {
+  console.log('🔵 saveSettings called - silent:', silent, 'apiKey:', apiKey ? 'filled' : 'empty', 'config:', pastedText ? `${pastedText.length} chars` : 'empty');
+  
+  if (!apiKey && !silent) {
     showStatus('Please enter a Pixvid API key', 'error');
     return;
   }
@@ -224,10 +249,56 @@ async function saveSettings() {
   // Parse Firebase config from textarea using regex extraction
   let firebaseConfig;
   try {
-    const pastedText = firebaseConfigPaste.value.trim();
-    
-    if (!pastedText) {
+    if (!pastedText && !silent) {
       showStatus('Please paste your Firebase config', 'error');
+      return;
+    }
+    
+    // Skip if both fields are empty (silent mode)
+    if (!apiKey && !pastedText && silent) {
+      console.log('🔵 Skipping save - both fields empty');
+      return;
+    }
+    
+    // If only API key is filled, save just that
+    if (apiKey && !pastedText && silent) {
+      await chrome.storage.sync.set({ pixvidApiKey: apiKey });
+      console.log('🔵 API key saved');
+      return;
+    }
+    
+    // If only Firebase config is filled, save just that with raw text
+    if (pastedText && !apiKey && silent) {
+      console.log('🔵 Saving Firebase config only, length:', pastedText.length);
+      // Try to parse, but save raw text even if parsing fails
+      const extractValue = (key) => {
+        const regex = new RegExp(key + '\\s*:\\s*["\']([^"\']+)["\']', 'i');
+        const match = pastedText.match(regex);
+        return match ? match[1] : null;
+      };
+      
+      const parsedConfig = {
+        apiKey: extractValue('apiKey'),
+        authDomain: extractValue('authDomain'),
+        projectId: extractValue('projectId'),
+        storageBucket: extractValue('storageBucket'),
+        messagingSenderId: extractValue('messagingSenderId'),
+        appId: extractValue('appId'),
+        measurementId: extractValue('measurementId')
+      };
+      
+      console.log('🔵 Parsed config:', parsedConfig);
+      
+      // Remove null/undefined values
+      Object.keys(parsedConfig).forEach(key => {
+        if (!parsedConfig[key]) delete parsedConfig[key];
+      });
+      
+      await chrome.storage.sync.set({ 
+        firebaseConfig: parsedConfig,
+        firebaseConfigRaw: pastedText
+      });
+      console.log('🔵 Firebase config saved successfully');
       return;
     }
     
@@ -255,28 +326,44 @@ async function saveSettings() {
     
     // Validate required fields
     if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId) {
-      throw new Error('Missing required fields: apiKey, authDomain, and projectId');
+      if (!silent) {
+        throw new Error('Missing required fields: apiKey, authDomain, and projectId');
+      }
+      return; // Skip save in silent mode if validation fails
     }
   } catch (error) {
-    console.error('Parse error:', error);
-    showStatus(error.message || 'Invalid Firebase config. Please paste the entire config object.', 'error');
+    console.error('🔴 Parse error:', error);
+    if (!silent) {
+      showStatus(error.message || 'Invalid Firebase config. Please paste the entire config object.', 'error');
+    }
     return;
   }
   
   await chrome.storage.sync.set({ 
     pixvidApiKey: apiKey,
-    firebaseConfig: firebaseConfig
+    firebaseConfig: firebaseConfig,
+    firebaseConfigRaw: pastedText // Save the raw text too
   });
   
-  showStatus('Settings saved!', 'success');
+  console.log('🔵 Settings saved to storage', { apiKey: apiKey.substring(0, 10) + '...', configLength: pastedText.length });
   
-  setTimeout(() => {
-    if (currentImageData) {
-      showImageView();
-    } else {
-      showNoImageView();
-    }
-  }, 1000);
+  if (!silent) {
+    showStatus('Settings saved!', 'success');
+    
+    setTimeout(() => {
+      if (currentImageData) {
+        showImageView();
+      } else {
+        showNoImageView();
+      }
+    }, 1000);
+  } else {
+    // Silent save - just show a subtle indicator
+    saveSettingsBtn.textContent = '✅ Auto-saved';
+    setTimeout(() => {
+      saveSettingsBtn.textContent = '💾 Save Configuration';
+    }, 1500);
+  }
 }
 
 function togglePageUrlEdit() {

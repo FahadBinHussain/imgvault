@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ImgVault Settings</title>
+  <link rel="stylesheet" href="popup.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    .settings-container {
+      background: var(--bg-white);
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      width: 90%;
+      max-width: 600px;
+      padding: 40px;
+    }
+    
+    .settings-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    
+    .settings-header .logo {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    
+    .settings-header h1 {
+      font-size: 28px;
+      margin-bottom: 8px;
+      color: var(--text-primary);
+    }
+    
+    .settings-header p {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+    
+    .auto-save-indicator {
+      display: inline-block;
+      margin-left: 12px;
+      font-size: 12px;
+      color: var(--success);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    
+    .auto-save-indicator.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="settings-container">
+    <div class="settings-header">
+      <div class="logo">📦</div>
+      <h1>ImgVault Settings</h1>
+      <p>Configure your storage and upload preferences
+        <span id="autoSaveIndicator" class="auto-save-indicator">✅ Auto-saved</span>
+      </p>
+    </div>
+    
+    <div class="form-group">
+      <label>🔑 Pixvid API Key</label>
+      <input type="text" id="apiKeyInput" placeholder="Enter your Pixvid API key">
+      <small>Get your API key from <a href="https://pixvid.org/settings" target="_blank">Pixvid Settings</a></small>
+    </div>
+    
+    <div class="form-group">
+      <label>🔥 Firebase Configuration</label>
+      <textarea id="firebaseConfigPaste" rows="12" placeholder='const firebaseConfig = {
+  apiKey: "...",
+  authDomain: "...",
+  projectId: "...",
+  storageBucket: "...",
+  messagingSenderId: "...",
+  appId: "...",
+  measurementId: "..."
+};'></textarea>
+      <small>Paste your entire Firebase config object from Firebase Console → Project Settings</small>
+    </div>
+    
+    <div id="statusMessage" class="status" style="display: none;"></div>
+    
+    <button id="saveSettingsBtn" class="btn btn-primary">
+      💾 Save Configuration
+    </button>
+  </div>
+  
+  <script src="settings.js"></script>
+</body>
+</html>
