@@ -587,30 +587,30 @@ body {
 /* Stored URL */
 .stored-url {
   margin: 12px 0;
-  padding: 12px;
+  padding: 12px 42px 12px 12px;
   background: var(--bg-card);
   border-radius: 12px;
   border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   position: relative;
 }
 
 .stored-url strong {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
-  margin-bottom: 4px;
+  display: block;
 }
 
 .stored-url a {
   color: var(--primary-light);
   text-decoration: none;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   transition: color 0.3s;
   word-break: break-all;
-  flex: 1;
+  display: block;
 }
 
 .stored-url a:hover {
@@ -619,13 +619,25 @@ body {
 }
 
 .btn-sm {
-  padding: 6px 12px;
-  font-size: 14px;
-  min-width: 40px;
+  padding: 4px 8px;
+  font-size: 16px;
+  min-width: auto;
+  width: 32px;
+  height: 32px;
   position: absolute;
-  right: 12px;
+  right: 8px;
   top: 50%;
   transform: translateY(-50%);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-sm:hover {
+  background: var(--bg-card);
+  border-color: var(--primary);
 }
 
 /* Settings Sections */
