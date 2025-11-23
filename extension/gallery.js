@@ -15,8 +15,10 @@ const imageModal = document.getElementById('imageModal');
 const modalImage = document.getElementById('modalImage');
 const modalTitle = document.getElementById('modalTitle');
 const modalPixvidUrl = document.getElementById('modalPixvidUrl');
-const modalSourceUrl = document.getElementById('modalSourceUrl');
-const modalPageUrl = document.getElementById('modalPageUrl');
+const modalSourceUrlInput = document.getElementById('modalSourceUrlInput');
+const modalPageUrlInput = document.getElementById('modalPageUrlInput');
+const editSourceUrl = document.getElementById('editSourceUrl');
+const editPageUrl = document.getElementById('editPageUrl');
 const modalDate = document.getElementById('modalDate');
 const modalNotes = document.getElementById('modalNotes');
 const modalTags = document.getElementById('modalTags');
@@ -52,6 +54,8 @@ function setupEventListeners() {
   copyImageUrl.addEventListener('click', copyUrl);
   deleteImage.addEventListener('click', confirmDelete);
   downloadImage.addEventListener('click', handleDownload);
+  editSourceUrl.addEventListener('click', () => toggleEdit('source'));
+  editPageUrl.addEventListener('click', () => toggleEdit('page'));
   openOriginal.addEventListener('click', () => {
     if (currentImage) {
       window.open(currentImage.stored_url, '_blank');
@@ -210,6 +214,14 @@ function showImageDetails(image) {
   deleteImage.disabled = false;
   deleteImage.textContent = '🗑️';
   
+  // Reset edit buttons
+  editSourceUrl.textContent = '✏️';
+  editPageUrl.textContent = '✏️';
+  editSourceUrl.classList.remove('saving');
+  editPageUrl.classList.remove('saving');
+  modalSourceUrlInput.setAttribute('readonly', 'readonly');
+  modalPageUrlInput.setAttribute('readonly', 'readonly');
+  
   modalImage.src = image.stored_url;
   modalTitle.textContent = image.page_title || 'Untitled';
   
@@ -217,11 +229,9 @@ function showImageDetails(image) {
   modalPixvidUrl.href = image.stored_url;
   modalPixvidUrl.textContent = truncateUrl(image.stored_url, 40);
   
-  modalSourceUrl.href = image.source_image_url;
-  modalSourceUrl.textContent = truncateUrl(image.source_image_url, 40);
-  
-  modalPageUrl.href = image.source_page_url;
-  modalPageUrl.textContent = truncateUrl(image.source_page_url, 40);
+  // Source and Page URLs (using inputs)
+  modalSourceUrlInput.value = image.source_image_url || '';
+  modalPageUrlInput.value = image.source_page_url || '';
   
   if (image.created_at) {
     const date = new Date(image.created_at);
@@ -419,6 +429,58 @@ async function handleDownload() {
     showToast('❌ Download failed', 3000);
   }
 }
+
+async function toggleEdit(field) {
+  const input = field === 'source' ? modalSourceUrlInput : modalPageUrlInput;
+  const btn = field === 'source' ? editSourceUrl : editPageUrl;
+  const isReadonly = input.hasAttribute('readonly');
+  
+  if (isReadonly) {
+    // Enter edit mode
+    input.removeAttribute('readonly');
+    input.focus();
+    input.select();
+    btn.textContent = '✓';
+    btn.title = 'Save';
+  } else {
+    // Save mode
+    try {
+      btn.disabled = true;
+      btn.classList.add('saving');
+      btn.textContent = '⏳';
+      
+      const newValue = input.value.trim();
+      
+      // Update in Firebase
+      const updateData = {};
+      if (field === 'source') {
+        updateData.source_image_url = newValue;
+        currentImage.source_image_url = newValue;
+      } else {
+        updateData.source_page_url = newValue;
+        currentImage.source_page_url = newValue;
+      }
+      
+      await storageManager.updateImage(currentImage.id, updateData);
+      
+      // Lock the input again
+      input.setAttribute('readonly', 'readonly');
+      btn.textContent = '✏️';
+      btn.title = 'Edit';
+      btn.classList.remove('saving');
+      btn.disabled = false;
+      
+      showToast('✅ URL updated successfully', 2000);
+    } catch (error) {
+      console.error('Failed to update URL:', error);
+      showToast('❌ Failed to update URL', 3000);
+      btn.textContent = '✏️';
+      btn.classList.remove('saving');
+      btn.disabled = false;
+    }
+  }
+}
+
 
 function truncateUrl(url, maxLength = 50) {
   if (url.length <= maxLength) return url;

@@ -77,13 +77,19 @@
                 <span class="detail-label">Pixvid URL</span>
                 <a id="modalPixvidUrl" href="#" target="_blank" class="detail-value"></a>
               </div>
-              <div class="detail-item">
-                <span class="detail-label">Source</span>
-                <a id="modalSourceUrl" href="#" target="_blank" class="detail-value"></a>
+              <div class="detail-item detail-item-editable">
+                <span class="detail-label">Source URL</span>
+                <div class="detail-edit-group">
+                  <input type="text" id="modalSourceUrlInput" class="detail-input" readonly>
+                  <button id="editSourceUrl" class="edit-detail-btn" title="Edit">✏️</button>
+                </div>
               </div>
-              <div class="detail-item">
-                <span class="detail-label">Page</span>
-                <a id="modalPageUrl" href="#" target="_blank" class="detail-value"></a>
+              <div class="detail-item detail-item-editable">
+                <span class="detail-label">Page URL</span>
+                <div class="detail-edit-group">
+                  <input type="text" id="modalPageUrlInput" class="detail-input" readonly>
+                  <button id="editPageUrl" class="edit-detail-btn" title="Edit">✏️</button>
+                </div>
               </div>
               <div class="detail-item detail-item-full">
                 <button id="downloadImage" class="download-btn">

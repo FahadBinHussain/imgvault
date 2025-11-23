@@ -196,6 +196,44 @@ class StorageManager {
     }
   }
 
+  async updateImage(id, updates) {
+    if (!this.initialized) {
+      const success = await this.init();
+      if (!success) {
+        throw new Error('Firebase not configured');
+      }
+    }
+
+    try {
+      const url = `https://firestore.googleapis.com/v1/projects/${this.config.projectId}/databases/(default)/documents/images/${id}?key=${this.config.apiKey}&updateMask.fieldPaths=${Object.keys(updates).join('&updateMask.fieldPaths=')}`;
+      
+      // Convert updates to Firestore format
+      const firestoreData = {};
+      for (const [key, value] of Object.entries(updates)) {
+        firestoreData[key] = { stringValue: value };
+      }
+      
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          fields: firestoreData
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update image');
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error updating image:', error);
+      throw error;
+    }
+  }
+
   async searchImages(query) {
     const allImages = await this.getAllImages();
     const lowerQuery = query.toLowerCase();

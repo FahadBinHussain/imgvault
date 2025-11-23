@@ -487,6 +487,67 @@ body {
   text-decoration: underline;
 }
 
+.detail-item-editable {
+  position: relative;
+}
+
+.detail-edit-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-input {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: var(--bg-gray);
+  transition: all 0.3s ease;
+}
+
+.detail-input:read-only {
+  border-color: transparent;
+  background: transparent;
+  color: var(--primary);
+  cursor: default;
+}
+
+.detail-input:not(:read-only) {
+  background: var(--bg-white);
+  border-color: var(--primary);
+}
+
+.edit-detail-btn {
+  background: var(--bg-gray);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.edit-detail-btn:hover {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+  transform: scale(1.1);
+}
+
+.edit-detail-btn.saving {
+  background: var(--success);
+  color: white;
+  border-color: var(--success);
+}
+
 .download-btn {
   width: 100%;
   background: linear-gradient(135deg, var(--primary), var(--primary-dark));
