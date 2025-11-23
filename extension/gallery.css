@@ -113,6 +113,43 @@ body::before {
   background-clip: text;
 }
 
+.source-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-left: 12px;
+  transition: all 0.3s ease;
+}
+
+.source-indicator:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.source-indicator::before {
+  content: '⚡';
+  font-size: 14px;
+}
+
+.source-indicator.imgbb {
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.source-indicator.pixvid {
+  color: #818cf8;
+  border-color: rgba(129, 140, 248, 0.3);
+  background: rgba(129, 140, 248, 0.1);
+}
+
 .topbar-center {
   flex: 1;
   max-width: 720px;

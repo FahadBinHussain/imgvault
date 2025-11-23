@@ -3,6 +3,7 @@
 const apiKeyInput = document.getElementById('apiKeyInput');
 const imgbbApiKeyInput = document.getElementById('imgbbApiKeyInput');
 const firebaseConfigPaste = document.getElementById('firebaseConfigPaste');
+const defaultGallerySource = document.getElementById('defaultGallerySource');
 const saveSettingsBtn = document.getElementById('saveSettingsBtn');
 const statusMessage = document.getElementById('statusMessage');
 const autoSaveIndicator = document.getElementById('autoSaveIndicator');
@@ -22,10 +23,11 @@ const autoSave = () => {
 apiKeyInput.addEventListener('input', autoSave);
 imgbbApiKeyInput.addEventListener('input', autoSave);
 firebaseConfigPaste.addEventListener('input', autoSave);
+defaultGallerySource.addEventListener('change', autoSave);
 saveSettingsBtn.addEventListener('click', () => saveSettings(false));
 
 async function loadSettings() {
-  const settings = await chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey', 'firebaseConfigRaw', 'firebaseConfig']);
+  const settings = await chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey', 'firebaseConfigRaw', 'firebaseConfig', 'defaultGallerySource']);
   
   if (settings.pixvidApiKey) {
     apiKeyInput.value = settings.pixvidApiKey;
@@ -40,14 +42,21 @@ async function loadSettings() {
   } else if (settings.firebaseConfig) {
     firebaseConfigPaste.value = JSON.stringify(settings.firebaseConfig, null, 2);
   }
+  
+  if (settings.defaultGallerySource) {
+    defaultGallerySource.value = settings.defaultGallerySource;
+  } else {
+    defaultGallerySource.value = 'imgbb'; // Default to ImgBB
+  }
 }
 
 async function saveSettings(silent = false) {
   const apiKey = apiKeyInput.value.trim();
   const imgbbApiKey = imgbbApiKeyInput.value.trim();
   const pastedText = firebaseConfigPaste.value.trim();
+  const gallerySource = defaultGallerySource.value;
   
-  console.log('🔵 Saving settings - Pixvid API key:', apiKey ? 'present' : 'missing', 'ImgBB API key:', imgbbApiKey ? 'present' : 'missing', 'Config:', pastedText ? `${pastedText.length} chars` : 'missing');
+  console.log('🔵 Saving settings - Pixvid API key:', apiKey ? 'present' : 'missing', 'ImgBB API key:', imgbbApiKey ? 'present' : 'missing', 'Config:', pastedText ? `${pastedText.length} chars` : 'missing', 'Gallery source:', gallerySource);
   
   // Save API keys if present
   if (apiKey) {
@@ -59,6 +68,10 @@ async function saveSettings(silent = false) {
     await chrome.storage.sync.set({ imgbbApiKey: imgbbApiKey });
     console.log('✅ ImgBB API key saved');
   }
+  
+  // Save gallery source preference
+  await chrome.storage.sync.set({ defaultGallerySource: gallerySource });
+  console.log('✅ Default gallery source saved:', gallerySource);
   
   // Save Firebase config if present
   if (pastedText) {

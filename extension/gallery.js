@@ -3,6 +3,7 @@
 let storageManager = null;
 let allImages = [];
 let currentImage = null;
+let defaultGallerySource = 'imgbb'; // Default preference
 
 // DOM Elements
 const galleryContainer = document.getElementById('galleryContainer');
@@ -40,15 +41,40 @@ const confirmMessage = document.getElementById('confirmMessage');
 const confirmOk = document.getElementById('confirmOk');
 const confirmCancel = document.getElementById('confirmCancel');
 
+const sourceIndicator = document.getElementById('sourceIndicator');
+
 const toast = document.getElementById('toast');
 const toastMessage = document.getElementById('toastMessage');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   storageManager = new StorageManager();
+  
+  // Load gallery source preference
+  const settings = await chrome.storage.sync.get(['defaultGallerySource']);
+  if (settings.defaultGallerySource) {
+    defaultGallerySource = settings.defaultGallerySource;
+    console.log('🔵 Default gallery source:', defaultGallerySource);
+  }
+  
+  // Update source indicator
+  updateSourceIndicator();
+  
   await loadGallery();
   setupEventListeners();
 });
+
+function updateSourceIndicator() {
+  if (defaultGallerySource === 'imgbb') {
+    sourceIndicator.textContent = 'ImgBB';
+    sourceIndicator.className = 'source-indicator imgbb';
+    sourceIndicator.title = 'Displaying images from ImgBB when available';
+  } else {
+    sourceIndicator.textContent = 'Pixvid';
+    sourceIndicator.className = 'source-indicator pixvid';
+    sourceIndicator.title = 'Displaying images from Pixvid';
+  }
+}
 
 function setupEventListeners() {
   refreshBtn.addEventListener('click', loadGallery);
@@ -136,8 +162,18 @@ function displayImages(images) {
       photoItem.className = 'photo-item';
       
       const img = document.createElement('img');
-      // Use ImgBB URL if available, otherwise fall back to Pixvid URL
-      img.src = image.imgbb_url || image.stored_url;
+      // Use preference to determine which URL to display
+      let imageUrl;
+      if (defaultGallerySource === 'imgbb' && image.imgbb_url) {
+        imageUrl = image.imgbb_url;
+      } else if (defaultGallerySource === 'pixvid' || !image.imgbb_url) {
+        imageUrl = image.stored_url;
+      } else {
+        // Fallback: use ImgBB if available, otherwise Pixvid
+        imageUrl = image.imgbb_url || image.stored_url;
+      }
+      
+      img.src = imageUrl;
       img.alt = image.page_title || 'Image';
       img.loading = 'lazy';
       
@@ -236,22 +272,31 @@ function showImageDetails(image) {
   modalSourceUrlInput.setAttribute('readonly', 'readonly');
   modalPageUrlInput.setAttribute('readonly', 'readonly');
   
-  // Determine which source to use and display
-  const usingImgBB = !!image.imgbb_url;
-  const displayUrl = usingImgBB ? image.imgbb_url : image.stored_url;
-  const sourceName = usingImgBB ? 'ImgBB' : 'Pixvid';
+  // Determine which source to use based on preference
+  let displayUrl, sourceName;
+  if (defaultGallerySource === 'imgbb' && image.imgbb_url) {
+    displayUrl = image.imgbb_url;
+    sourceName = 'ImgBB';
+  } else if (defaultGallerySource === 'pixvid') {
+    displayUrl = image.stored_url;
+    sourceName = 'Pixvid';
+  } else {
+    // Fallback: use ImgBB if available, otherwise Pixvid
+    displayUrl = image.imgbb_url || image.stored_url;
+    sourceName = image.imgbb_url ? 'ImgBB' : 'Pixvid';
+  }
   
   // Store the current display source on the image object
   currentImage._displaySource = sourceName;
   currentImage._displayUrl = displayUrl;
   
-  // Use ImgBB URL if available, otherwise fall back to Pixvid URL
+  // Set the modal image
   modalImage.src = displayUrl;
   modalTitle.textContent = image.page_title || 'Untitled';
   
   // Display Source indicator
   displaySource.textContent = `${sourceName} ⚡`;
-  displaySource.style.color = usingImgBB ? '#10b981' : '#818cf8';
+  displaySource.style.color = sourceName === 'ImgBB' ? '#10b981' : '#818cf8';
   displaySource.style.fontWeight = '600';
   
   // Update download button
