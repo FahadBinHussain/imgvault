@@ -89,7 +89,7 @@ class StorageManager {
     }
 
     try {
-      const url = `https://firestore.googleapis.com/v1/projects/${this.config.projectId}/databases/(default)/documents/images?key=${this.config.apiKey}&orderBy=created_at desc`;
+      const url = `https://firestore.googleapis.com/v1/projects/${this.config.projectId}/databases/(default)/documents/images?key=${this.config.apiKey}&orderBy=createdAt desc`;
       
       const response = await fetch(url);
       

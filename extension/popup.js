@@ -27,8 +27,11 @@ const backToImageBtn = document.getElementById('backToImageBtn');
 
 const firebaseConfigPaste = document.getElementById('firebaseConfigPaste');
 
-const storedUrlLink = document.getElementById('storedUrlLink');
-const copyUrlBtn = document.getElementById('copyUrlBtn');
+const pixvidUrlLink = document.getElementById('pixvidUrlLink');
+const imgbbUrlLink = document.getElementById('imgbbUrlLink');
+const imgbbUrlSection = document.getElementById('imgbbUrlSection');
+const copyPixvidBtn = document.getElementById('copyPixvidBtn');
+const copyImgbbBtn = document.getElementById('copyImgbbBtn');
 
 const galleryBtn = document.getElementById('galleryBtn');
 const uploadProgress = document.getElementById('uploadProgress');
@@ -167,7 +170,8 @@ function setupEventListeners() {
   saveSettingsBtn.addEventListener('click', saveSettings);
   editPageUrlBtn.addEventListener('click', togglePageUrlEdit);
   uploadBtn.addEventListener('click', handleUpload);
-  copyUrlBtn.addEventListener('click', copyStoredUrl);
+  copyPixvidBtn.addEventListener('click', () => copyUrl(pixvidUrlLink));
+  copyImgbbBtn.addEventListener('click', () => copyUrl(imgbbUrlLink));
   
   galleryBtn.addEventListener('click', openGallery);
   
@@ -241,11 +245,20 @@ function showSettings() {
   settingsView.style.display = 'block';
 }
 
-function showSuccessView(storedUrl) {
+function showSuccessView(pixvidUrl, imgbbUrl) {
   hideAllViews();
   successView.style.display = 'block';
-  storedUrlLink.href = storedUrl;
-  storedUrlLink.textContent = truncateUrl(storedUrl, 40);
+  
+  pixvidUrlLink.href = pixvidUrl;
+  pixvidUrlLink.textContent = truncateUrl(pixvidUrl, 40);
+  
+  if (imgbbUrl) {
+    imgbbUrlSection.style.display = 'block';
+    imgbbUrlLink.href = imgbbUrl;
+    imgbbUrlLink.textContent = truncateUrl(imgbbUrl, 40);
+  } else {
+    imgbbUrlSection.style.display = 'none';
+  }
 }
 
 function openGallery() {
@@ -501,7 +514,7 @@ async function handleUpload() {
     
     if (response.success) {
       showStatus('Upload successful!', 'success');
-      showSuccessView(response.data.storedUrl);
+      showSuccessView(response.data.pixvidUrl, response.data.imgbbUrl);
     } else {
       // Check if it's a duplicate with image data
       if (response.duplicate) {
@@ -538,13 +551,13 @@ function showDuplicateImage(duplicateData) {
       <strong>Existing Image:</strong>
     </div>
     <div class="duplicate-preview">
-      <img src="${duplicateData.stored_url}" alt="Duplicate image" />
+      <img src="${duplicateData.pixvidUrl}" alt="Duplicate image" />
     </div>
     <div class="duplicate-actions">
-      <a href="${duplicateData.stored_url}" target="_blank" class="btn-link">
+      <a href="${duplicateData.pixvidUrl}" target="_blank" class="btn-link">
         Open Image
       </a>
-      <button class="btn-link" onclick="navigator.clipboard.writeText('${duplicateData.stored_url}'); this.textContent='Copied!'">
+      <button class="btn-link" onclick="navigator.clipboard.writeText('${duplicateData.pixvidUrl}'); this.textContent='Copied!'">
         Copy URL
       </button>
     </div>
@@ -567,13 +580,15 @@ function showStatus(message, type = 'info') {
   }
 }
 
-async function copyStoredUrl() {
-  const url = storedUrlLink.href;
+async function copyUrl(linkElement) {
+  const url = linkElement.href;
+  const buttonElement = linkElement.nextElementSibling; // Get the copy button next to the link
   try {
     await navigator.clipboard.writeText(url);
-    copyUrlBtn.textContent = 'Copied!';
+    const originalText = buttonElement.textContent;
+    buttonElement.textContent = '✓';
     setTimeout(() => {
-      copyUrlBtn.textContent = 'Copy URL';
+      buttonElement.textContent = originalText;
     }, 2000);
   } catch (error) {
     console.error('Failed to copy:', error);
