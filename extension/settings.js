@@ -1,6 +1,7 @@
 // settings.js - Settings page for ImgVault
 
 const apiKeyInput = document.getElementById('apiKeyInput');
+const imgbbApiKeyInput = document.getElementById('imgbbApiKeyInput');
 const firebaseConfigPaste = document.getElementById('firebaseConfigPaste');
 const saveSettingsBtn = document.getElementById('saveSettingsBtn');
 const statusMessage = document.getElementById('statusMessage');
@@ -19,14 +20,19 @@ const autoSave = () => {
 };
 
 apiKeyInput.addEventListener('input', autoSave);
+imgbbApiKeyInput.addEventListener('input', autoSave);
 firebaseConfigPaste.addEventListener('input', autoSave);
 saveSettingsBtn.addEventListener('click', () => saveSettings(false));
 
 async function loadSettings() {
-  const settings = await chrome.storage.sync.get(['pixvidApiKey', 'firebaseConfigRaw', 'firebaseConfig']);
+  const settings = await chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey', 'firebaseConfigRaw', 'firebaseConfig']);
   
   if (settings.pixvidApiKey) {
     apiKeyInput.value = settings.pixvidApiKey;
+  }
+  
+  if (settings.imgbbApiKey) {
+    imgbbApiKeyInput.value = settings.imgbbApiKey;
   }
   
   if (settings.firebaseConfigRaw) {
@@ -38,14 +44,20 @@ async function loadSettings() {
 
 async function saveSettings(silent = false) {
   const apiKey = apiKeyInput.value.trim();
+  const imgbbApiKey = imgbbApiKeyInput.value.trim();
   const pastedText = firebaseConfigPaste.value.trim();
   
-  console.log('🔵 Saving settings - API key:', apiKey ? 'present' : 'missing', 'Config:', pastedText ? `${pastedText.length} chars` : 'missing');
+  console.log('🔵 Saving settings - Pixvid API key:', apiKey ? 'present' : 'missing', 'ImgBB API key:', imgbbApiKey ? 'present' : 'missing', 'Config:', pastedText ? `${pastedText.length} chars` : 'missing');
   
-  // Save API key if present
+  // Save API keys if present
   if (apiKey) {
     await chrome.storage.sync.set({ pixvidApiKey: apiKey });
-    console.log('✅ API key saved');
+    console.log('✅ Pixvid API key saved');
+  }
+  
+  if (imgbbApiKey) {
+    await chrome.storage.sync.set({ imgbbApiKey: imgbbApiKey });
+    console.log('✅ ImgBB API key saved');
   }
   
   // Save Firebase config if present

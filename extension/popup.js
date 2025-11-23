@@ -72,7 +72,7 @@ function setupStatusListener() {
 }
 
 async function loadSettings() {
-  const settings = await chrome.storage.sync.get(['pixvidApiKey', 'firebaseConfig', 'firebaseConfigRaw']);
+  const settings = await chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey', 'firebaseConfig', 'firebaseConfigRaw']);
   
   if (settings.pixvidApiKey) {
     apiKeyInput.value = settings.pixvidApiKey;
@@ -85,6 +85,30 @@ async function loadSettings() {
     // Fallback: Show the parsed config as formatted JSON
     firebaseConfigPaste.value = JSON.stringify(settings.firebaseConfig, null, 2);
   }
+  
+  // Update services indicator
+  updateServicesIndicator(settings.pixvidApiKey, settings.imgbbApiKey);
+}
+
+function updateServicesIndicator(hasPixvid, hasImgbb) {
+  const indicator = document.getElementById('uploadServicesIndicator');
+  const statusSpan = document.getElementById('servicesStatus');
+  
+  if (!indicator || !statusSpan) return;
+  
+  let html = '';
+  
+  if (hasPixvid) {
+    html += '<span class="service-badge pixvid">Pixvid</span>';
+  }
+  
+  if (hasImgbb) {
+    html += '<span class="service-badge imgbb">ImgBB</span>';
+  } else {
+    html += '<span class="service-badge disabled">ImgBB (not configured)</span>';
+  }
+  
+  statusSpan.innerHTML = html;
 }
 
 async function loadPendingImage() {
