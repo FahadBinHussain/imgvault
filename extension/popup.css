@@ -231,6 +231,51 @@ body {
   padding: 12px;
 }
 
+.image-controls {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  background: var(--bg-glass);
+  border-top: 1px solid var(--border);
+}
+
+.replace-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-card);
+  border: 2px solid var(--primary);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 999;
+  position: relative;
+}
+
+.replace-btn:hover {
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: white;
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(24, 119, 242, 0.3);
+}
+
+.replace-btn:active {
+  transform: translateY(0);
+}
+
+.replace-btn .icon {
+  font-size: 16px;
+}
+
+.replace-btn .text {
+  font-size: 12px;
+}
+
 /* Form Groups */
 .form-section {
   padding: 20px;

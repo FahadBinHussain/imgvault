@@ -79,13 +79,20 @@ async function handleImageUpload(data) {
 
     updateStatus('📥 Fetching image...');
     
-    // Fetch the image
-    const imageResponse = await fetch(data.imageUrl);
-    if (!imageResponse.ok) {
-      throw new Error('Failed to fetch image');
+    // Fetch the image (handles both URLs and data URLs)
+    let imageBlob;
+    if (data.imageUrl.startsWith('data:')) {
+      // It's a data URL (uploaded file)
+      const response = await fetch(data.imageUrl);
+      imageBlob = await response.blob();
+    } else {
+      // It's a regular URL
+      const imageResponse = await fetch(data.imageUrl);
+      if (!imageResponse.ok) {
+        throw new Error('Failed to fetch image');
+      }
+      imageBlob = await imageResponse.blob();
     }
-    
-    const imageBlob = await imageResponse.blob();
     
     updateStatus('🔍 Extracting image metadata...');
     

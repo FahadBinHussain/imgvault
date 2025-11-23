@@ -1,5 +1,6 @@
 // popup.js - ImgVault Extension Popup with Firebase
 // Handles image preview, metadata editing, and upload
+console.log('🔵 ImgVault popup.js loaded - v2.0');
 
 let currentImageData = null;
 let storageManager = null;
@@ -35,10 +36,13 @@ const progressText = document.getElementById('progressText');
 
 // Initialize popup
 document.addEventListener('DOMContentLoaded', async () => {
+  console.log('🔵 DOMContentLoaded event fired');
   storageManager = new StorageManager();
   await loadSettings();
   await loadPendingImage();
+  console.log('🔵 About to setup event listeners');
   setupEventListeners();
+  console.log('🔵 Event listeners setup complete');
   setupStatusListener();
 });
 
@@ -128,6 +132,34 @@ function setupEventListeners() {
   copyUrlBtn.addEventListener('click', copyStoredUrl);
   
   galleryBtn.addEventListener('click', openGallery);
+  
+  // File upload - use event delegation on document
+  document.addEventListener('click', (e) => {
+    console.log('🔵 Click target:', e.target.tagName, e.target.className, e.target.id);
+    
+    // Check if the click is on the replace button or any of its children
+    const replaceBtn = e.target.closest('.replace-btn') || (e.target.classList && e.target.classList.contains('replace-btn'));
+    
+    if (replaceBtn) {
+      console.log('✅ Replace button clicked!');
+      e.preventDefault();
+      e.stopPropagation();
+      const fileInput = document.getElementById('fileInput');
+      console.log('🔵 File input element:', fileInput);
+      if (fileInput) {
+        console.log('🔵 Triggering file input click');
+        fileInput.click();
+      }
+    }
+  });
+  
+  // File input change listener
+  document.addEventListener('change', (e) => {
+    if (e.target.id === 'fileInput') {
+      console.log('File input changed via delegation');
+      handleFileUpload(e);
+    }
+  });
 }
 
 function showImageView() {
@@ -246,6 +278,58 @@ function togglePageUrlEdit() {
   }
 }
 
+async function handleFileUpload(event) {
+  console.log('handleFileUpload called', event);
+  const file = event.target.files[0];
+  console.log('Selected file:', file);
+  
+  if (!file) {
+    console.log('No file selected');
+    return;
+  }
+  
+  // Validate file is an image
+  if (!file.type.startsWith('image/')) {
+    showStatus('Please select an image file', 'error');
+    return;
+  }
+  
+  console.log('Reading file:', file.name, file.type, file.size);
+  
+  try {
+    // Read the file as data URL
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      console.log('File loaded, data URL length:', e.target.result.length);
+      const dataUrl = e.target.result;
+      
+      // Update the current image data
+      currentImageData.srcUrl = dataUrl;
+      currentImageData.isUploadedFile = true;
+      
+      // Update preview
+      previewImage.src = dataUrl;
+      
+      // Show confirmation
+      showStatus('✅ Image replaced! Ready to upload higher quality version', 'success');
+      
+      // Update source URL display to show it's a local file
+      sourceUrlDisplay.textContent = `📁 Local file: ${file.name}`;
+      sourceUrlDisplay.title = file.name;
+      
+      console.log('Image replaced successfully');
+    };
+    
+    reader.readAsDataURL(file);
+  } catch (error) {
+    console.error('File upload error:', error);
+    showStatus('Failed to load file', 'error');
+  }
+  
+  // Clear the input so the same file can be selected again
+  event.target.value = '';
+}
+
 async function handleUpload() {
   if (!currentImageData) {
     showStatus('No image to upload', 'error');
@@ -275,7 +359,8 @@ async function handleUpload() {
       pageUrl: pageUrlInput.value,
       pageTitle: currentImageData.pageTitle,
       tags: tagsInput.value.split(',').map(t => t.trim()).filter(t => t),
-      notes: notesInput.value
+      notes: notesInput.value,
+      isUploadedFile: currentImageData.isUploadedFile || false
     };
     
     const response = await chrome.runtime.sendMessage({
