@@ -22,12 +22,17 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'saveToImgVault') {
     // Store the image info for the popup to use
+    // Check if the page is Google Drive
+    const pageUrl = info.pageUrl || tab.url;
+    const isGoogleDrive = pageUrl.includes('drive.google.com');
+    
     chrome.storage.local.set({
       pendingImage: {
         srcUrl: info.srcUrl,
-        pageUrl: info.pageUrl || tab.url,
+        pageUrl: pageUrl,
         pageTitle: tab.title,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        isGoogleDrive: isGoogleDrive
       }
     }, () => {
       // Open the popup by triggering the action

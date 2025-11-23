@@ -106,6 +106,14 @@ function displayImageData(data) {
   if (data.pageTitle) {
     notesInput.placeholder = `From: ${data.pageTitle}`;
   }
+  
+  // Show Google Drive tip if applicable
+  const gdriveTip = document.getElementById('gdriveTip');
+  if (data.isGoogleDrive) {
+    gdriveTip.style.display = 'flex';
+  } else {
+    gdriveTip.style.display = 'none';
+  }
 }
 
 function truncateUrl(url, maxLength = 50) {
@@ -158,6 +166,13 @@ function setupEventListeners() {
     if (e.target.id === 'fileInput') {
       console.log('File input changed via delegation');
       handleFileUpload(e);
+    }
+  });
+  
+  // Tip banner close button
+  document.addEventListener('click', (e) => {
+    if (e.target.id === 'closeTip') {
+      document.getElementById('gdriveTip').style.display = 'none';
     }
   });
 }

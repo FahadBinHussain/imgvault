@@ -199,6 +199,52 @@ body {
   }
 }
 
+/* Tip Banner */
+.tip-banner {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 16px 20px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: #92400e;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
+}
+
+.tip-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.tip-text {
+  flex: 1;
+  line-height: 1.5;
+}
+
+.tip-close {
+  background: transparent;
+  border: none;
+  color: #92400e;
+  font-size: 16px;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.tip-close:hover {
+  background: rgba(146, 64, 14, 0.1);
+}
+
+
 /* Image Preview */
 .image-preview {
   margin: 20px;
