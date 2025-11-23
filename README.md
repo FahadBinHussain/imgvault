@@ -1,5 +1,9 @@
 # ImgVault
 
+<p align="center">
+  <img src="extension/icons/icon.svg" alt="ImgVault Logo" width="128" height="128">
+</p>
+
 Browser extension to save images with metadata to Pixvid/ImgBB + Firebase Firestore.
 
 ## Quick Setup
