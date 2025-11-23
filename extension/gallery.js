@@ -87,13 +87,13 @@ function setupEventListeners() {
   editSourceUrl.addEventListener('click', () => toggleEdit('source'));
   editPageUrl.addEventListener('click', () => toggleEdit('page'));
   openPageUrl.addEventListener('click', () => {
-    if (currentImage && currentImage.source_page_url) {
-      window.open(currentImage.source_page_url, '_blank');
+    if (currentImage && currentImage.sourcePageUrl) {
+      window.open(currentImage.sourcePageUrl, '_blank');
     }
   });
   openOriginal.addEventListener('click', () => {
     if (currentImage) {
-      window.open(currentImage.stored_url, '_blank');
+      window.open(currentImage.storedUrl, '_blank');
     }
   });
   
@@ -164,27 +164,27 @@ function displayImages(images) {
       const img = document.createElement('img');
       // Use preference to determine which URL to display
       let imageUrl;
-      if (defaultGallerySource === 'imgbb' && image.imgbb_url) {
-        imageUrl = image.imgbb_url;
-      } else if (defaultGallerySource === 'pixvid' || !image.imgbb_url) {
-        imageUrl = image.stored_url;
+      if (defaultGallerySource === 'imgbb' && image.imgbbUrl) {
+        imageUrl = image.imgbbUrl;
+      } else if (defaultGallerySource === 'pixvid' || !image.imgbbUrl) {
+        imageUrl = image.storedUrl;
       } else {
         // Fallback: use ImgBB if available, otherwise Pixvid
-        imageUrl = image.imgbb_url || image.stored_url;
+        imageUrl = image.imgbbUrl || image.storedUrl;
       }
       
       img.src = imageUrl;
-      img.alt = image.page_title || 'Image';
+      img.alt = image.pageTitle || 'Image';
       img.loading = 'lazy';
       
       const overlay = document.createElement('div');
       overlay.className = 'photo-overlay';
       
       // Show time if available
-      if (image.created_at) {
+      if (image.createdAt) {
         const time = document.createElement('div');
         time.className = 'photo-time';
-        time.textContent = new Date(image.created_at).toLocaleTimeString('en-US', { 
+        time.textContent = new Date(image.createdAt).toLocaleTimeString('en-US', { 
           hour: 'numeric', 
           minute: '2-digit' 
         });
@@ -221,7 +221,7 @@ function groupImagesByDate(images) {
   const grouped = {};
   
   images.forEach(image => {
-    const date = image.created_at ? new Date(image.created_at) : new Date();
+    const date = image.createdAt ? new Date(image.createdAt) : new Date();
     const dateKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
     
     if (!grouped[dateKey]) {
@@ -274,16 +274,16 @@ function showImageDetails(image) {
   
   // Determine which source to use based on preference
   let displayUrl, sourceName;
-  if (defaultGallerySource === 'imgbb' && image.imgbb_url) {
-    displayUrl = image.imgbb_url;
+  if (defaultGallerySource === 'imgbb' && image.imgbbUrl) {
+    displayUrl = image.imgbbUrl;
     sourceName = 'ImgBB';
   } else if (defaultGallerySource === 'pixvid') {
-    displayUrl = image.stored_url;
+    displayUrl = image.storedUrl;
     sourceName = 'Pixvid';
   } else {
     // Fallback: use ImgBB if available, otherwise Pixvid
-    displayUrl = image.imgbb_url || image.stored_url;
-    sourceName = image.imgbb_url ? 'ImgBB' : 'Pixvid';
+    displayUrl = image.imgbbUrl || image.storedUrl;
+    sourceName = image.imgbbUrl ? 'ImgBB' : 'Pixvid';
   }
   
   // Store the current display source on the image object
@@ -292,7 +292,7 @@ function showImageDetails(image) {
   
   // Set the modal image
   modalImage.src = displayUrl;
-  modalTitle.textContent = image.page_title || 'Untitled';
+  modalTitle.textContent = image.pageTitle || 'Untitled';
   
   // Display Source indicator
   displaySource.textContent = `${sourceName} ⚡`;
@@ -303,24 +303,24 @@ function showImageDetails(image) {
   downloadImage.innerHTML = `<span class="download-icon">⬇️</span> Download from ${sourceName}`;
   
   // Pixvid URL
-  modalPixvidUrl.href = image.stored_url;
-  modalPixvidUrl.textContent = truncateUrl(image.stored_url, 40);
+  modalPixvidUrl.href = image.storedUrl;
+  modalPixvidUrl.textContent = truncateUrl(image.storedUrl, 40);
   
   // ImgBB URL (if available)
-  if (image.imgbb_url) {
+  if (image.imgbbUrl) {
     imgbbUrlSection.style.display = 'flex';
-    modalImgbbUrl.href = image.imgbb_url;
-    modalImgbbUrl.textContent = truncateUrl(image.imgbb_url, 40);
+    modalImgbbUrl.href = image.imgbbUrl;
+    modalImgbbUrl.textContent = truncateUrl(image.imgbbUrl, 40);
   } else {
     imgbbUrlSection.style.display = 'none';
   }
   
   // Source and Page URLs (using inputs)
-  modalSourceUrlInput.value = image.source_image_url || '';
-  modalPageUrlInput.value = image.source_page_url || '';
+  modalSourceUrlInput.value = image.sourceImageUrl || '';
+  modalPageUrlInput.value = image.sourcePageUrl || '';
   
-  if (image.created_at) {
-    const date = new Date(image.created_at);
+  if (image.createdAt) {
+    const date = new Date(image.createdAt);
     modalDate.textContent = date.toLocaleDateString('en-US', { 
       weekday: 'short', 
       year: 'numeric', 
@@ -367,7 +367,7 @@ function handleSearch(e) {
   
   const filtered = allImages.filter(image => {
     return (
-      (image.page_title && image.page_title.toLowerCase().includes(query)) ||
+      (image.pageTitle && image.pageTitle.toLowerCase().includes(query)) ||
       (image.notes && image.notes.toLowerCase().includes(query)) ||
       (image.tags && image.tags.some(tag => tag.toLowerCase().includes(query)))
     );
@@ -380,7 +380,7 @@ async function copyUrl() {
   if (!currentImage) return;
   
   try {
-    await navigator.clipboard.writeText(currentImage.stored_url);
+    await navigator.clipboard.writeText(currentImage.storedUrl);
     showToast('Link copied to clipboard');
   } catch (error) {
     console.error('Failed to copy:', error);
@@ -414,12 +414,12 @@ async function handleDelete() {
     deleteImage.disabled = true;
     deleteImage.textContent = '⏳';
     
-    // Delete from Pixvid if delete_url exists
-    if (currentImage.delete_url) {
+    // Delete from Pixvid if deleteUrl exists
+    if (currentImage.deleteUrl) {
       showToast('Deleting from Pixvid...', 5000);
       try {
         // Pixvid/Chevereto delete URLs work by simply visiting them
-        await fetch(currentImage.delete_url, {
+        await fetch(currentImage.deleteUrl, {
           method: 'GET',
           redirect: 'follow'
         });
@@ -435,13 +435,13 @@ async function handleDelete() {
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
-    // Delete from ImgBB if delete_url exists
-    if (currentImage.imgbb_delete_url) {
+    // Delete from ImgBB if imgbbDeleteUrl exists
+    if (currentImage.imgbbDeleteUrl) {
       showToast('Deleting from ImgBB...', 5000);
       try {
         // Parse image ID and hash from delete URL
         // ImgBB delete URL format: https://ibb.co/$image_id/$image_hash
-        const deleteUrl = new URL(currentImage.imgbb_delete_url);
+        const deleteUrl = new URL(currentImage.imgbbDeleteUrl);
         const pathParts = deleteUrl.pathname.split('/').filter(p => p);
         
         if (pathParts.length >= 2) {
@@ -529,7 +529,7 @@ async function handleDownload() {
   
   try {
     const sourceName = currentImage._displaySource || 'Pixvid';
-    const sourceUrl = currentImage._displayUrl || currentImage.stored_url;
+    const sourceUrl = currentImage._displayUrl || currentImage.storedUrl;
     
     downloadImage.disabled = true;
     downloadImage.innerHTML = '<span class="download-icon">⏳</span> Downloading...';
@@ -541,7 +541,7 @@ async function handleDownload() {
     // Extract filename from URL or use title
     const url = new URL(sourceUrl);
     const pathParts = url.pathname.split('/');
-    const filename = pathParts[pathParts.length - 1] || `${currentImage.page_title || 'image'}.jpg`;
+    const filename = pathParts[pathParts.length - 1] || `${currentImage.pageTitle || 'image'}.jpg`;
     
     // Create download link
     const downloadUrl = URL.createObjectURL(blob);
@@ -589,11 +589,11 @@ async function toggleEdit(field) {
       // Update in Firebase
       const updateData = {};
       if (field === 'source') {
-        updateData.source_image_url = newValue;
-        currentImage.source_image_url = newValue;
+        updateData.sourceImageUrl = newValue;
+        currentImage.sourceImageUrl = newValue;
       } else {
-        updateData.source_page_url = newValue;
-        currentImage.source_page_url = newValue;
+        updateData.sourcePageUrl = newValue;
+        currentImage.sourcePageUrl = newValue;
       }
       
       await storageManager.updateImage(currentImage.id, updateData);
