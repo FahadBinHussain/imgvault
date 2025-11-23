@@ -95,6 +95,8 @@ async function handleImageUpload(data) {
     console.log('Extracted metadata:', {
       sha256: metadata.sha256.substring(0, 16) + '...',
       pHash: metadata.pHash.substring(0, 32) + '...',
+      aHash: metadata.aHash.substring(0, 16) + '...',
+      dHash: metadata.dHash.substring(0, 16) + '...',
       width: metadata.width,
       height: metadata.height,
       size: metadata.size
@@ -156,6 +158,9 @@ async function handleImageUpload(data) {
       height: metadata.height,
       sha256: metadata.sha256,
       pHash: metadata.pHash,
+      aHash: metadata.aHash,
+      dHash: metadata.dHash,
+      colorHistogram: metadata.colorHistogram,
       tags: data.tags || [],
       notes: data.notes || ''
     };
