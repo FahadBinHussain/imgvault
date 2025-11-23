@@ -586,12 +586,21 @@ body {
 
 /* Stored URL */
 .stored-url {
-  margin: 20px 0;
-  padding: 16px;
+  margin: 12px 0;
+  padding: 12px;
   background: var(--bg-card);
   border-radius: 12px;
-  word-break: break-all;
   border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+
+.stored-url strong {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
 }
 
 .stored-url a {
@@ -600,11 +609,23 @@ body {
   font-size: 13px;
   font-weight: 500;
   transition: color 0.3s;
+  word-break: break-all;
+  flex: 1;
 }
 
 .stored-url a:hover {
   color: var(--primary);
   text-decoration: underline;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 14px;
+  min-width: 40px;
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 /* Settings Sections */
