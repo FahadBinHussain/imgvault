@@ -93,7 +93,7 @@ function setupEventListeners() {
   });
   openOriginal.addEventListener('click', () => {
     if (currentImage) {
-      window.open(currentImage.storedUrl, '_blank');
+      window.open(currentImage.pixvidUrl, '_blank');
     }
   });
   
@@ -167,10 +167,10 @@ function displayImages(images) {
       if (defaultGallerySource === 'imgbb' && image.imgbbUrl) {
         imageUrl = image.imgbbUrl;
       } else if (defaultGallerySource === 'pixvid' || !image.imgbbUrl) {
-        imageUrl = image.storedUrl;
+        imageUrl = image.pixvidUrl;
       } else {
         // Fallback: use ImgBB if available, otherwise Pixvid
-        imageUrl = image.imgbbUrl || image.storedUrl;
+        imageUrl = image.imgbbUrl || image.pixvidUrl;
       }
       
       img.src = imageUrl;
@@ -278,11 +278,11 @@ function showImageDetails(image) {
     displayUrl = image.imgbbUrl;
     sourceName = 'ImgBB';
   } else if (defaultGallerySource === 'pixvid') {
-    displayUrl = image.storedUrl;
+    displayUrl = image.pixvidUrl;
     sourceName = 'Pixvid';
   } else {
     // Fallback: use ImgBB if available, otherwise Pixvid
-    displayUrl = image.imgbbUrl || image.storedUrl;
+    displayUrl = image.imgbbUrl || image.pixvidUrl;
     sourceName = image.imgbbUrl ? 'ImgBB' : 'Pixvid';
   }
   
@@ -303,8 +303,8 @@ function showImageDetails(image) {
   downloadImage.innerHTML = `<span class="download-icon">⬇️</span> Download from ${sourceName}`;
   
   // Pixvid URL
-  modalPixvidUrl.href = image.storedUrl;
-  modalPixvidUrl.textContent = truncateUrl(image.storedUrl, 40);
+  modalPixvidUrl.href = image.pixvidUrl;
+  modalPixvidUrl.textContent = truncateUrl(image.pixvidUrl, 40);
   
   // ImgBB URL (if available)
   if (image.imgbbUrl) {
@@ -380,7 +380,7 @@ async function copyUrl() {
   if (!currentImage) return;
   
   try {
-    await navigator.clipboard.writeText(currentImage.storedUrl);
+    await navigator.clipboard.writeText(currentImage.pixvidUrl);
     showToast('Link copied to clipboard');
   } catch (error) {
     console.error('Failed to copy:', error);
@@ -414,12 +414,12 @@ async function handleDelete() {
     deleteImage.disabled = true;
     deleteImage.textContent = '⏳';
     
-    // Delete from Pixvid if deleteUrl exists
-    if (currentImage.deleteUrl) {
+    // Delete from Pixvid if pixvidDeleteUrl exists
+    if (currentImage.pixvidDeleteUrl) {
       showToast('Deleting from Pixvid...', 5000);
       try {
         // Pixvid/Chevereto delete URLs work by simply visiting them
-        await fetch(currentImage.deleteUrl, {
+        await fetch(currentImage.pixvidDeleteUrl, {
           method: 'GET',
           redirect: 'follow'
         });
@@ -529,7 +529,7 @@ async function handleDownload() {
   
   try {
     const sourceName = currentImage._displaySource || 'Pixvid';
-    const sourceUrl = currentImage._displayUrl || currentImage.storedUrl;
+    const sourceUrl = currentImage._displayUrl || currentImage.pixvidUrl;
     
     downloadImage.disabled = true;
     downloadImage.innerHTML = '<span class="download-icon">⏳</span> Downloading...';

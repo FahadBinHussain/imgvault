@@ -208,8 +208,8 @@ async function handleImageUpload(data) {
     
     // Save metadata to Firebase with hash information
     const imageMetadata = {
-      storedUrl: pixvidResult.url,
-      deleteUrl: pixvidResult.deleteUrl,
+      pixvidUrl: pixvidResult.url,
+      pixvidDeleteUrl: pixvidResult.deleteUrl,
       imgbbUrl: imgbbResult && !imgbbResult.error ? imgbbResult.url : null,
       imgbbDeleteUrl: imgbbResult && !imgbbResult.error ? imgbbResult.deleteUrl : null,
       imgbbThumbUrl: imgbbResult && !imgbbResult.error ? imgbbResult.thumbUrl : null,
@@ -237,7 +237,7 @@ async function handleImageUpload(data) {
     
     return {
       id: savedId,
-      storedUrl: pixvidResult.url,
+      pixvidUrl: pixvidResult.url,
       imgbbUrl: imgbbResult && !imgbbResult.error ? imgbbResult.url : null,
       ...imageMetadata
     };
