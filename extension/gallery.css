@@ -47,7 +47,9 @@ body {
 }
 
 .logo {
-  font-size: 28px;
+  width: 32px;
+  height: 32px;
+  display: block;
 }
 
 .topbar h1 {

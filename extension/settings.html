@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ImgVault Settings</title>
+  <link rel="icon" type="image/png" href="icons/icon48.png">
   <link rel="stylesheet" href="popup.css">
   <style>
     body {
@@ -31,8 +32,10 @@
     }
     
     .settings-header .logo {
-      font-size: 48px;
-      margin-bottom: 16px;
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 16px;
+      display: block;
     }
     
     .settings-header h1 {
@@ -63,7 +66,7 @@
 <body>
   <div class="settings-container">
     <div class="settings-header">
-      <div class="logo">📦</div>
+      <img src="icons/icon48.png" alt="ImgVault" class="logo">
       <h1>ImgVault Settings</h1>
       <p>Configure your storage and upload preferences
         <span id="autoSaveIndicator" class="auto-save-indicator">✅ Auto-saved</span>
