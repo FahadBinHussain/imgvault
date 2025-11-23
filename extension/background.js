@@ -131,10 +131,13 @@ async function handleImageUpload(data) {
       } else if (duplicateCheck.exactMatch) {
         errorMsg += '✗ Identical file already exists (SHA-256 match)';
       } else if (duplicateCheck.visualMatch) {
-        errorMsg += `✗ Visually similar image found (${duplicateCheck.visualMatch.hammingDistance}% difference)`;
+        const similarity = duplicateCheck.visualMatch.similarity || '0';
+        const matchCount = duplicateCheck.visualMatch.matchCount || 0;
+        errorMsg += `✗ Visually similar image found (${similarity}% similar, ${matchCount}/3 hashes matched)`;
       }
       
-      updateStatus('');
+      // Keep the duplicate message visible (don't clear it)
+      updateStatus(`🚫 ${errorMsg}`);
       throw new Error(errorMsg);
     }
     
@@ -169,8 +172,8 @@ async function handleImageUpload(data) {
     
     updateStatus('✅ Image saved successfully!');
     
-    // Clear status after 2 seconds
-    setTimeout(() => updateStatus(''), 2000);
+    // Keep success message visible (don't clear it)
+    // User will see it until they close the popup
     
     return {
       id: savedId,
@@ -179,7 +182,8 @@ async function handleImageUpload(data) {
     };
   } catch (error) {
     console.error('Upload error:', error);
-    updateStatus('');
+    // Don't clear status on error - let the error message persist
+    // updateStatus('') <- REMOVED so error messages stay visible
     throw error;
   }
 }

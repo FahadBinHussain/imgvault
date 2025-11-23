@@ -52,12 +52,13 @@ function setupStatusListener() {
         uploadProgress.style.display = 'flex';
         progressText.textContent = status;
         
-        // Hide after completion
-        if (status.includes('✅') || status.includes('✗')) {
+        // Only auto-hide success messages, keep errors/duplicates visible
+        if (status.includes('✅')) {
           setTimeout(() => {
             uploadProgress.style.display = 'none';
-          }, 3000);
+          }, 5000); // 5 seconds for success
         }
+        // Errors (✗) and duplicates (🚫) stay visible until user closes popup
       } else {
         // Hide progress when status is cleared
         uploadProgress.style.display = 'none';
@@ -290,6 +291,11 @@ async function handleUpload() {
     }
   } catch (error) {
     console.error('Upload error:', error);
+    
+    // Hide the upload progress indicator
+    uploadProgress.style.display = 'none';
+    
+    // Show error in status message
     showStatus(`Upload failed: ${error.message}`, 'error');
     uploadBtn.disabled = false;
     uploadBtn.textContent = 'Upload to ImgVault';
@@ -301,9 +307,12 @@ function showStatus(message, type = 'info') {
   statusMessage.className = `status ${type}`;
   statusMessage.style.display = 'block';
   
-  setTimeout(() => {
-    statusMessage.style.display = 'none';
-  }, 3000);
+  // Only auto-hide success/info messages, keep errors visible
+  if (type !== 'error') {
+    setTimeout(() => {
+      statusMessage.style.display = 'none';
+    }, 3000);
+  }
 }
 
 async function copyStoredUrl() {
