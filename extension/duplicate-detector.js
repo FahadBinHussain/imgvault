@@ -374,16 +374,16 @@ class DuplicateDetector {
 
     // Phase 4: Perceptual hash for visual similarity
     // Check all three perceptual hashes: pHash, aHash, dHash
-    // Treat as duplicate if at least 2 out of 3 match
+    // Treat as duplicate if ANY hash matches (1 out of 3)
     console.log('👁️ PHASE 4: PERCEPTUAL HASH (Visual Similarity)');
     console.log('------------------------------------------');
-    console.log(`Checking ${fastFilterMatches.length} image(s) that passed Phase 1`);
+    console.log(`Checking ${fastFilterMatches.length} image(s)`);
     console.log('Thresholds:', {
       pHash: `${this.pHashThreshold}/1024 bits (~${(this.pHashThreshold/1024*100).toFixed(1)}%)`,
       aHash: `${this.aHashThreshold}/64 bits (~${(this.aHashThreshold/64*100).toFixed(1)}%)`,
       dHash: `${this.dHashThreshold}/64 bits (~${(this.dHashThreshold/64*100).toFixed(1)}%)`
     });
-    console.log('Need 2/3 hashes to match for duplicate detection');
+    console.log('Need ANY 1 hash to match for duplicate detection');
     console.log('------------------------------------------');
     onProgress && onProgress('Phase 4: Analyzing visual similarity...');
     
@@ -446,10 +446,10 @@ class DuplicateDetector {
         console.log(`  dHash: ⚠️  SKIPPED (missing)`);
       }
       
-      const isDuplicate = matchCount >= 2;
+      const isDuplicate = matchCount >= 1;
       console.log(`  SUMMARY: ${matchCount}/3 hashes matched → ${isDuplicate ? '🚨 DUPLICATE!' : 'Not a duplicate'}`);
       
-      // If at least 2 out of 3 hashes match, it's a duplicate
+      // If ANY hash matches, it's a duplicate
       if (isDuplicate) {
         const avgSimilarity = (
           (hashResults.pHash.similarity + hashResults.aHash.similarity + hashResults.dHash.similarity) / 3
