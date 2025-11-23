@@ -709,6 +709,56 @@ body {
   font-weight: 500;
 }
 
+.upload-services-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg-card);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.services-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.services-status {
+  color: var(--text-primary);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.service-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.service-badge.pixvid {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.service-badge.imgbb {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+}
+
+.service-badge.disabled {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
 /* Duplicate Image Display */
 .duplicate-info {
   margin-top: 16px;

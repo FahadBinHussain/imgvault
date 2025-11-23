@@ -15,10 +15,13 @@ const imageModal = document.getElementById('imageModal');
 const modalImage = document.getElementById('modalImage');
 const modalTitle = document.getElementById('modalTitle');
 const modalPixvidUrl = document.getElementById('modalPixvidUrl');
+const modalImgbbUrl = document.getElementById('modalImgbbUrl');
+const imgbbUrlSection = document.getElementById('imgbbUrlSection');
 const modalSourceUrlInput = document.getElementById('modalSourceUrlInput');
 const modalPageUrlInput = document.getElementById('modalPageUrlInput');
 const editSourceUrl = document.getElementById('editSourceUrl');
 const editPageUrl = document.getElementById('editPageUrl');
+const openPageUrl = document.getElementById('openPageUrl');
 const modalDate = document.getElementById('modalDate');
 const modalNotes = document.getElementById('modalNotes');
 const modalTags = document.getElementById('modalTags');
@@ -56,6 +59,11 @@ function setupEventListeners() {
   downloadImage.addEventListener('click', handleDownload);
   editSourceUrl.addEventListener('click', () => toggleEdit('source'));
   editPageUrl.addEventListener('click', () => toggleEdit('page'));
+  openPageUrl.addEventListener('click', () => {
+    if (currentImage && currentImage.source_page_url) {
+      window.open(currentImage.source_page_url, '_blank');
+    }
+  });
   openOriginal.addEventListener('click', () => {
     if (currentImage) {
       window.open(currentImage.stored_url, '_blank');
@@ -233,6 +241,15 @@ function showImageDetails(image) {
   modalPixvidUrl.href = image.stored_url;
   modalPixvidUrl.textContent = truncateUrl(image.stored_url, 40);
   
+  // ImgBB URL (if available)
+  if (image.imgbb_url) {
+    imgbbUrlSection.style.display = 'flex';
+    modalImgbbUrl.href = image.imgbb_url;
+    modalImgbbUrl.textContent = truncateUrl(image.imgbb_url, 40);
+  } else {
+    imgbbUrlSection.style.display = 'none';
+  }
+  
   // Source and Page URLs (using inputs)
   modalSourceUrlInput.value = image.source_image_url || '';
   modalPageUrlInput.value = image.source_page_url || '';
@@ -347,6 +364,25 @@ async function handleDelete() {
       } catch (pixvidError) {
         showToast('⚠️ Pixvid deletion failed', 3000);
         console.warn('Pixvid deletion failed:', pixvidError);
+      }
+      
+      // Wait a bit before showing next status
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    // Delete from ImgBB if delete_url exists
+    if (currentImage.imgbb_delete_url) {
+      showToast('Deleting from ImgBB...', 5000);
+      try {
+        await fetch(currentImage.imgbb_delete_url, {
+          method: 'GET',
+          redirect: 'follow'
+        });
+        
+        showToast('✓ Deleted from ImgBB', 2000);
+      } catch (imgbbError) {
+        showToast('⚠️ ImgBB deletion failed', 3000);
+        console.warn('ImgBB deletion failed:', imgbbError);
       }
       
       // Wait a bit before showing next status

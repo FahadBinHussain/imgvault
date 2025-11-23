@@ -76,11 +76,13 @@ async function handleImageUpload(data) {
   };
 
   try {
-    // Get API key from storage
-    const settings = await chrome.storage.sync.get(['pixvidApiKey']);
+    // Get API keys from storage
+    const settings = await chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey']);
     if (!settings.pixvidApiKey) {
       throw new Error('Pixvid API key not configured. Please set it in the extension settings.');
     }
+    
+    const hasImgbb = !!settings.imgbbApiKey;
 
     updateStatus('📥 Fetching image...');
     
@@ -166,17 +168,51 @@ async function handleImageUpload(data) {
       throw error;
     }
     
-    updateStatus('☁️ Uploading to Pixvid...');
+    // Upload to both APIs in parallel
+    updateStatus(hasImgbb ? '☁️ Uploading to Pixvid and ImgBB...' : '☁️ Uploading to Pixvid...');
     
-    // Upload to Pixvid
-    const uploadResult = await uploadToPixvid(imageBlob, settings.pixvidApiKey, data.imageUrl);
+    const uploadPromises = [
+      uploadToPixvid(imageBlob, settings.pixvidApiKey, data.imageUrl)
+        .then(result => ({ type: 'pixvid', ...result }))
+        .catch(error => ({ type: 'pixvid', error: error.message }))
+    ];
+    
+    if (hasImgbb) {
+      uploadPromises.push(
+        uploadToImgbb(imageBlob, settings.imgbbApiKey)
+          .then(result => ({ type: 'imgbb', ...result }))
+          .catch(error => ({ type: 'imgbb', error: error.message }))
+      );
+    }
+    
+    const uploadResults = await Promise.all(uploadPromises);
+    
+    // Process results
+    const pixvidResult = uploadResults.find(r => r.type === 'pixvid');
+    const imgbbResult = uploadResults.find(r => r.type === 'imgbb');
+    
+    // Check if Pixvid (required) upload failed
+    if (pixvidResult.error) {
+      throw new Error(`Pixvid upload failed: ${pixvidResult.error}`);
+    }
+    
+    // Log imgbb error if it failed (but don't throw)
+    if (imgbbResult && imgbbResult.error) {
+      console.warn('ImgBB upload failed:', imgbbResult.error);
+      updateStatus('⚠️ Pixvid upload successful, ImgBB failed. Saving...');
+    } else if (imgbbResult) {
+      updateStatus('✅ Both uploads successful! Saving...');
+    }
     
     updateStatus('💾 Saving to Firebase...');
     
     // Save metadata to Firebase with hash information
     const imageMetadata = {
-      stored_url: uploadResult.url,
-      delete_url: uploadResult.deleteUrl,
+      stored_url: pixvidResult.url,
+      delete_url: pixvidResult.deleteUrl,
+      imgbb_url: imgbbResult && !imgbbResult.error ? imgbbResult.url : null,
+      imgbb_delete_url: imgbbResult && !imgbbResult.error ? imgbbResult.deleteUrl : null,
+      imgbb_thumb_url: imgbbResult && !imgbbResult.error ? imgbbResult.thumbUrl : null,
       source_image_url: data.originalSourceUrl || data.imageUrl,
       source_page_url: data.pageUrl,
       page_title: data.pageTitle,
@@ -201,7 +237,8 @@ async function handleImageUpload(data) {
     
     return {
       id: savedId,
-      storedUrl: uploadResult.url,
+      storedUrl: pixvidResult.url,
+      imgbbUrl: imgbbResult && !imgbbResult.error ? imgbbResult.url : null,
       ...imageMetadata
     };
   } catch (error) {
@@ -245,5 +282,49 @@ async function uploadToPixvid(blob, apiKey, originalFilename) {
   } catch (error) {
     console.error('Pixvid API error:', error);
     throw new Error(`Failed to upload to Pixvid: ${error.message}`);
+  }
+}
+
+async function uploadToImgbb(blob, apiKey) {
+  const formData = new FormData();
+  
+  // Convert blob to base64
+  const base64 = await new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64data = reader.result.split(',')[1];
+      resolve(base64data);
+    };
+    reader.readAsDataURL(blob);
+  });
+  
+  formData.append('image', base64);
+  
+  try {
+    const response = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`ImgBB upload failed: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    
+    if (!result.success) {
+      throw new Error(result.error?.message || 'Upload failed');
+    }
+
+    return {
+      url: result.data.url,
+      deleteUrl: result.data.delete_url,
+      displayUrl: result.data.display_url,
+      thumbUrl: result.data.thumb?.url
+    };
+  } catch (error) {
+    console.error('ImgBB API error:', error);
+    throw new Error(`Failed to upload to ImgBB: ${error.message}`);
   }
 }
