@@ -57,15 +57,25 @@ async function tryLoadFromFirebase() {
       const firebaseSettings = await storageManager.getUserSettings();
       
       if (firebaseSettings) {
+        let updated = false;
+        
         // Only update if not already filled AND Firebase has a non-empty value
         if (!apiKeyInput.value && firebaseSettings.pixvidApiKey && firebaseSettings.pixvidApiKey.trim()) {
           apiKeyInput.value = firebaseSettings.pixvidApiKey;
+          updated = true;
         }
         if (!imgbbApiKeyInput.value && firebaseSettings.imgbbApiKey && firebaseSettings.imgbbApiKey.trim()) {
           imgbbApiKeyInput.value = firebaseSettings.imgbbApiKey;
+          updated = true;
         }
         if (firebaseSettings.defaultGallerySource && firebaseSettings.defaultGallerySource.trim()) {
           defaultGallerySource.value = firebaseSettings.defaultGallerySource;
+          updated = true;
+        }
+        
+        // Save the loaded values to local storage
+        if (updated) {
+          await saveSettings(true); // Silent save to local storage
         }
         
         showFirebaseStatus('✅ Synced from Firebase', 'success');
