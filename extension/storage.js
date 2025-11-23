@@ -34,8 +34,8 @@ class StorageManager {
     try {
       const doc = {
         fields: {
-          storedUrl: { stringValue: imageData.storedUrl },
-          deleteUrl: { stringValue: imageData.deleteUrl || '' },
+          pixvidUrl: { stringValue: imageData.pixvidUrl },
+          pixvidDeleteUrl: { stringValue: imageData.pixvidDeleteUrl || '' },
           imgbbUrl: { stringValue: imageData.imgbbUrl || '' },
           imgbbDeleteUrl: { stringValue: imageData.imgbbDeleteUrl || '' },
           imgbbThumbUrl: { stringValue: imageData.imgbbThumbUrl || '' },
@@ -109,16 +109,16 @@ class StorageManager {
         
         return {
           id,
-          storedUrl: fields.storedUrl?.stringValue || fields.stored_url?.stringValue || '',
-          deleteUrl: fields.deleteUrl?.stringValue || fields.delete_url?.stringValue || '',
-          imgbbUrl: fields.imgbbUrl?.stringValue || fields.imgbb_url?.stringValue || '',
-          imgbbDeleteUrl: fields.imgbbDeleteUrl?.stringValue || fields.imgbb_delete_url?.stringValue || '',
-          imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || fields.imgbb_thumb_url?.stringValue || '',
-          sourceImageUrl: fields.sourceImageUrl?.stringValue || fields.source_image_url?.stringValue || '',
-          sourcePageUrl: fields.sourcePageUrl?.stringValue || fields.source_page_url?.stringValue || '',
-          pageTitle: fields.pageTitle?.stringValue || fields.page_title?.stringValue || '',
-          fileType: fields.fileType?.stringValue || fields.file_type?.stringValue || '',
-          fileSize: parseInt(fields.fileSize?.integerValue || fields.file_size?.integerValue || '0'),
+          pixvidUrl: fields.pixvidUrl?.stringValue || '',
+          pixvidDeleteUrl: fields.pixvidDeleteUrl?.stringValue || '',
+          imgbbUrl: fields.imgbbUrl?.stringValue || '',
+          imgbbDeleteUrl: fields.imgbbDeleteUrl?.stringValue || '',
+          imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
+          sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
+          sourcePageUrl: fields.sourcePageUrl?.stringValue || '',
+          pageTitle: fields.pageTitle?.stringValue || '',
+          fileType: fields.fileType?.stringValue || '',
+          fileSize: parseInt(fields.fileSize?.integerValue || '0'),
           width: parseInt(fields.width?.integerValue || '0'),
           height: parseInt(fields.height?.integerValue || '0'),
           sha256: fields.sha256?.stringValue || '',
@@ -127,7 +127,7 @@ class StorageManager {
           dHash: fields.dHash?.stringValue || '',
           tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
           notes: fields.notes?.stringValue || '',
-          createdAt: fields.createdAt?.timestampValue || fields.created_at?.timestampValue || ''
+          createdAt: fields.createdAt?.timestampValue || ''
         };
       });
     } catch (error) {
@@ -158,16 +158,16 @@ class StorageManager {
       
       return {
         id,
-        storedUrl: fields.storedUrl?.stringValue || fields.stored_url?.stringValue || '',
-        deleteUrl: fields.deleteUrl?.stringValue || fields.delete_url?.stringValue || '',
-        imgbbUrl: fields.imgbbUrl?.stringValue || fields.imgbb_url?.stringValue || '',
-        imgbbDeleteUrl: fields.imgbbDeleteUrl?.stringValue || fields.imgbb_delete_url?.stringValue || '',
-        imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || fields.imgbb_thumb_url?.stringValue || '',
-        sourceImageUrl: fields.sourceImageUrl?.stringValue || fields.source_image_url?.stringValue || '',
-        sourcePageUrl: fields.sourcePageUrl?.stringValue || fields.source_page_url?.stringValue || '',
-        pageTitle: fields.pageTitle?.stringValue || fields.page_title?.stringValue || '',
-        fileType: fields.fileType?.stringValue || fields.file_type?.stringValue || '',
-        fileSize: parseInt(fields.fileSize?.integerValue || fields.file_size?.integerValue || '0'),
+        pixvidUrl: fields.pixvidUrl?.stringValue || '',
+        pixvidDeleteUrl: fields.pixvidDeleteUrl?.stringValue || '',
+        imgbbUrl: fields.imgbbUrl?.stringValue || '',
+        imgbbDeleteUrl: fields.imgbbDeleteUrl?.stringValue || '',
+        imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
+        sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
+        sourcePageUrl: fields.sourcePageUrl?.stringValue || '',
+        pageTitle: fields.pageTitle?.stringValue || '',
+        fileType: fields.fileType?.stringValue || '',
+        fileSize: parseInt(fields.fileSize?.integerValue || '0'),
         width: parseInt(fields.width?.integerValue || '0'),
         height: parseInt(fields.height?.integerValue || '0'),
         sha256: fields.sha256?.stringValue || '',
@@ -176,7 +176,7 @@ class StorageManager {
         dHash: fields.dHash?.stringValue || '',
         tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
         notes: fields.notes?.stringValue || '',
-        createdAt: fields.createdAt?.timestampValue || fields.created_at?.timestampValue || ''
+        createdAt: fields.createdAt?.timestampValue || ''
       };
     } catch (error) {
       console.error('Error getting image:', error);
