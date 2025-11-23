@@ -172,7 +172,7 @@ async function handleImageUpload(data) {
     const imageMetadata = {
       stored_url: uploadResult.url,
       delete_url: uploadResult.deleteUrl,
-      source_image_url: data.imageUrl,
+      source_image_url: data.originalSourceUrl || data.imageUrl,
       source_page_url: data.pageUrl,
       page_title: data.pageTitle,
       file_type: imageBlob.type,

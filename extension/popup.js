@@ -303,7 +303,12 @@ async function handleFileUpload(event) {
       console.log('File loaded, data URL length:', e.target.result.length);
       const dataUrl = e.target.result;
       
-      // Update the current image data
+      // Preserve the original source URL
+      if (!currentImageData.originalSrcUrl) {
+        currentImageData.originalSrcUrl = currentImageData.srcUrl;
+      }
+      
+      // Update the current image data with uploaded file
       currentImageData.srcUrl = dataUrl;
       currentImageData.isUploadedFile = true;
       
@@ -312,10 +317,6 @@ async function handleFileUpload(event) {
       
       // Show confirmation
       showStatus('✅ Image replaced! Ready to upload higher quality version', 'success');
-      
-      // Update source URL display to show it's a local file
-      sourceUrlDisplay.textContent = `📁 Local file: ${file.name}`;
-      sourceUrlDisplay.title = file.name;
       
       console.log('Image replaced successfully');
     };
@@ -356,6 +357,7 @@ async function handleUpload() {
   try {
     const uploadData = {
       imageUrl: currentImageData.srcUrl,
+      originalSourceUrl: currentImageData.originalSrcUrl || currentImageData.srcUrl,
       pageUrl: pageUrlInput.value,
       pageTitle: currentImageData.pageTitle,
       tags: tagsInput.value.split(',').map(t => t.trim()).filter(t => t),
