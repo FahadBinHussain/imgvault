@@ -215,7 +215,13 @@ async function saveSettings(silent = false) {
     }
   } catch (error) {
     console.warn('Could not sync to Firebase:', error);
-    showFirebaseStatus('❌ Firebase sync failed', 'error');
+    
+    if (error.message && error.message.includes('PERMISSION_DENIED')) {
+      showFirebaseStatus('❌ Firebase: Permission denied. Update Firestore rules.', 'error');
+      showStatus('⚠️ Local settings saved. Firebase sync failed: Update Firestore security rules to allow reads/writes.', 'warning');
+    } else {
+      showFirebaseStatus('❌ Firebase sync failed', 'error');
+    }
   }
   
   if (silent) {
