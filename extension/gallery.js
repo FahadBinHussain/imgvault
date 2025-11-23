@@ -14,6 +14,7 @@ const searchInput = document.getElementById('searchInput');
 const imageModal = document.getElementById('imageModal');
 const modalImage = document.getElementById('modalImage');
 const modalTitle = document.getElementById('modalTitle');
+const modalPixvidUrl = document.getElementById('modalPixvidUrl');
 const modalSourceUrl = document.getElementById('modalSourceUrl');
 const modalPageUrl = document.getElementById('modalPageUrl');
 const modalDate = document.getElementById('modalDate');
@@ -23,6 +24,7 @@ const closeModal = document.getElementById('closeModal');
 const copyImageUrl = document.getElementById('copyImageUrl');
 const openOriginal = document.getElementById('openOriginal');
 const deleteImage = document.getElementById('deleteImage');
+const downloadImage = document.getElementById('downloadImage');
 const notesSection = document.getElementById('notesSection');
 const tagsSection = document.getElementById('tagsSection');
 
@@ -49,6 +51,7 @@ function setupEventListeners() {
   document.querySelector('.modal-overlay').addEventListener('click', hideModal);
   copyImageUrl.addEventListener('click', copyUrl);
   deleteImage.addEventListener('click', confirmDelete);
+  downloadImage.addEventListener('click', handleDownload);
   openOriginal.addEventListener('click', () => {
     if (currentImage) {
       window.open(currentImage.stored_url, '_blank');
@@ -209,6 +212,10 @@ function showImageDetails(image) {
   
   modalImage.src = image.stored_url;
   modalTitle.textContent = image.page_title || 'Untitled';
+  
+  // Pixvid URL
+  modalPixvidUrl.href = image.stored_url;
+  modalPixvidUrl.textContent = truncateUrl(image.stored_url, 40);
   
   modalSourceUrl.href = image.source_image_url;
   modalSourceUrl.textContent = truncateUrl(image.source_image_url, 40);
@@ -374,6 +381,43 @@ function showToast(message, duration = 3000) {
       toast.classList.remove('hiding');
     }, 300);
   }, duration);
+}
+
+async function handleDownload() {
+  if (!currentImage) return;
+  
+  try {
+    downloadImage.disabled = true;
+    downloadImage.innerHTML = '<span class="download-icon">⏳</span> Downloading...';
+    
+    // Fetch the image
+    const response = await fetch(currentImage.stored_url);
+    const blob = await response.blob();
+    
+    // Extract filename from URL or use title
+    const url = new URL(currentImage.stored_url);
+    const pathParts = url.pathname.split('/');
+    const filename = pathParts[pathParts.length - 1] || `${currentImage.page_title || 'image'}.jpg`;
+    
+    // Create download link
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(downloadUrl);
+    
+    downloadImage.disabled = false;
+    downloadImage.innerHTML = '<span class="download-icon">⬇️</span> Download Image';
+    showToast('✅ Image downloaded successfully', 2000);
+  } catch (error) {
+    console.error('Download failed:', error);
+    downloadImage.disabled = false;
+    downloadImage.innerHTML = '<span class="download-icon">⬇️</span> Download Image';
+    showToast('❌ Download failed', 3000);
+  }
 }
 
 function truncateUrl(url, maxLength = 50) {
