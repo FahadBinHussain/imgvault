@@ -41,7 +41,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'uploadImage') {
     handleImageUpload(request.data)
       .then(result => sendResponse({ success: true, data: result }))
-      .catch(error => sendResponse({ success: false, error: error.message }));
+      .catch(error => sendResponse({ 
+        success: false, 
+        error: error.message,
+        duplicate: error.duplicate || null // Include duplicate image data if available
+      }));
     return true; // Keep the message channel open for async response
   }
   
@@ -125,20 +129,29 @@ async function handleImageUpload(data) {
     // If duplicate found, return error with details
     if (duplicateCheck.isDuplicate) {
       let errorMsg = 'Duplicate image detected!\n';
+      let duplicateData = null;
       
       if (duplicateCheck.contextMatch) {
         errorMsg += '✗ Same image from same page already exists';
+        duplicateData = duplicateCheck.contextMatch;
       } else if (duplicateCheck.exactMatch) {
         errorMsg += '✗ Identical file already exists (SHA-256 match)';
+        duplicateData = duplicateCheck.exactMatch;
       } else if (duplicateCheck.visualMatch) {
         const similarity = duplicateCheck.visualMatch.similarity || '0';
         const matchCount = duplicateCheck.visualMatch.matchCount || 0;
         errorMsg += `✗ Visually similar image found (${similarity}% similar, ${matchCount}/3 hashes matched)`;
+        duplicateData = duplicateCheck.visualMatch;
       }
       
-      // Keep the duplicate message visible (don't clear it)
-      updateStatus(`🚫 ${errorMsg}`);
-      throw new Error(errorMsg);
+      // Don't use updateStatus for duplicates - let popup handle the display
+      // Clear the progress status
+      updateStatus('');
+      
+      // Store duplicate data for popup to display
+      const error = new Error(errorMsg);
+      error.duplicate = duplicateData; // Attach duplicate image data to error
+      throw error;
     }
     
     updateStatus('☁️ Uploading to Pixvid...');
