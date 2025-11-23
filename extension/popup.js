@@ -174,6 +174,9 @@ function setupEventListeners() {
     if (e.target.id === 'closeTip') {
       document.getElementById('gdriveTip').style.display = 'none';
     }
+    if (e.target.id === 'closeReplaced') {
+      document.getElementById('replacedBanner').style.display = 'none';
+    }
   });
 }
 
@@ -330,8 +333,8 @@ async function handleFileUpload(event) {
       // Update preview
       previewImage.src = dataUrl;
       
-      // Show confirmation
-      showStatus('✅ Image replaced! Ready to upload higher quality version', 'success');
+      // Show persistent banner
+      document.getElementById('replacedBanner').style.display = 'flex';
       
       console.log('Image replaced successfully');
     };
