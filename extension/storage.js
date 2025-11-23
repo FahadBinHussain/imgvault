@@ -8,15 +8,18 @@ class StorageManager {
   }
 
   async init() {
+    console.log('🔵 StorageManager.init() called');
     const result = await chrome.storage.sync.get(['firebaseConfig']);
+    console.log('🔵 Firebase config from storage:', result.firebaseConfig ? 'found' : 'not found');
     
     if (!result.firebaseConfig) {
-      console.warn('Firebase not configured');
+      console.warn('⚠️ Firebase not configured');
       return false;
     }
 
     this.config = result.firebaseConfig;
     this.initialized = true;
+    console.log('✅ StorageManager initialized with project:', this.config.projectId);
     return true;
   }
 

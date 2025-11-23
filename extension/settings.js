@@ -40,39 +40,73 @@ async function saveSettings(silent = false) {
   const apiKey = apiKeyInput.value.trim();
   const pastedText = firebaseConfigPaste.value.trim();
   
+  console.log('🔵 Saving settings - API key:', apiKey ? 'present' : 'missing', 'Config:', pastedText ? `${pastedText.length} chars` : 'missing');
+  
   // Save API key if present
   if (apiKey) {
     await chrome.storage.sync.set({ pixvidApiKey: apiKey });
+    console.log('✅ API key saved');
   }
   
   // Save Firebase config if present
   if (pastedText) {
-    // Parse config
-    const extractValue = (key) => {
-      const regex = new RegExp(key + '\\s*:\\s*["\']([^"\']+)["\']', 'i');
-      const match = pastedText.match(regex);
-      return match ? match[1] : null;
-    };
+    let firebaseConfig = null;
     
-    const firebaseConfig = {
-      apiKey: extractValue('apiKey'),
-      authDomain: extractValue('authDomain'),
-      projectId: extractValue('projectId'),
-      storageBucket: extractValue('storageBucket'),
-      messagingSenderId: extractValue('messagingSenderId'),
-      appId: extractValue('appId'),
-      measurementId: extractValue('measurementId')
-    };
+    // Try parsing as JSON first
+    try {
+      firebaseConfig = JSON.parse(pastedText);
+      console.log('✅ Parsed as JSON:', firebaseConfig);
+    } catch (e) {
+      console.log('🔵 Not valid JSON, trying regex parsing...');
+      
+      // Parse config with regex (for JS object format)
+      const extractValue = (key) => {
+        // Match both "key": "value" and key: "value" formats
+        const regex = new RegExp('["\']?' + key + '["\']?\\s*:\\s*["\']([^"\']+)["\']', 'i');
+        const match = pastedText.match(regex);
+        console.log(`🔵 Extracting ${key}:`, match ? match[1].substring(0, 20) + '...' : 'NOT FOUND');
+        return match ? match[1] : null;
+      };
+      
+      firebaseConfig = {
+        apiKey: extractValue('apiKey'),
+        authDomain: extractValue('authDomain'),
+        projectId: extractValue('projectId'),
+        storageBucket: extractValue('storageBucket'),
+        messagingSenderId: extractValue('messagingSenderId'),
+        appId: extractValue('appId'),
+        measurementId: extractValue('measurementId')
+      };
+      
+      console.log('🔵 Parsed config:', firebaseConfig);
+      
+      // Remove null values
+      Object.keys(firebaseConfig).forEach(key => {
+        if (!firebaseConfig[key]) delete firebaseConfig[key];
+      });
+    }
     
-    // Remove null values
-    Object.keys(firebaseConfig).forEach(key => {
-      if (!firebaseConfig[key]) delete firebaseConfig[key];
-    });
+    console.log('🔵 Final config:', firebaseConfig);
+    
+    // Validate critical fields
+    const criticalFields = ['apiKey', 'projectId', 'authDomain'];
+    const missingFields = criticalFields.filter(field => !firebaseConfig[field]);
+    
+    if (missingFields.length > 0) {
+      console.error('❌ Missing critical Firebase fields:', missingFields);
+      if (!silent) {
+        alert(`⚠️ Firebase config is missing critical fields: ${missingFields.join(', ')}\n\nPlease paste the complete config from Firebase Console.`);
+      }
+      return;
+    }
+    
+    console.log('✅ All critical Firebase fields present');
     
     await chrome.storage.sync.set({ 
       firebaseConfig: firebaseConfig,
       firebaseConfigRaw: pastedText
     });
+    console.log('✅ Firebase config saved');
   }
   
   if (silent) {

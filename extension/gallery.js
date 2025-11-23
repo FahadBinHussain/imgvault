@@ -79,24 +79,28 @@ function setupEventListeners() {
 
 async function loadGallery() {
   try {
+    console.log('🔵 Loading gallery...');
     loadingSpinner.style.display = 'flex';
     galleryContainer.innerHTML = '';
     galleryEmpty.style.display = 'none';
     
     allImages = await storageManager.getAllImages();
+    console.log('🔵 Loaded images:', allImages ? allImages.length : 0);
     
     loadingSpinner.style.display = 'none';
     
     if (!allImages || allImages.length === 0) {
+      console.log('🔵 No images found, showing empty state');
       galleryEmpty.style.display = 'flex';
       return;
     }
     
+    console.log('🔵 Displaying images');
     displayImages(allImages);
   } catch (error) {
-    console.error('Failed to load gallery:', error);
+    console.error('🔴 Failed to load gallery:', error);
     loadingSpinner.style.display = 'none';
-    alert('Error loading images. Please check your Firebase configuration.');
+    alert(`Error loading images: ${error.message}\n\nPlease check your Firebase configuration in settings.`);
   }
 }
 
