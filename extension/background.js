@@ -220,6 +220,18 @@ async function handleImageUpload(data) {
     
     updateStatus('💾 Saving to Firebase...');
     
+    // Extract filename if not provided
+    let fileName = data.fileName || '';
+    if (!fileName && data.imageUrl && !data.imageUrl.startsWith('data:')) {
+      // Extract filename from URL
+      try {
+        const urlPath = new URL(data.imageUrl).pathname;
+        fileName = urlPath.split('/').pop().split('?')[0] || '';
+      } catch (e) {
+        console.log('Could not extract filename from URL:', e);
+      }
+    }
+    
     // Save metadata to Firebase with hash information
     const imageMetadata = {
       pixvidUrl: pixvidResult.url,
@@ -230,6 +242,7 @@ async function handleImageUpload(data) {
       sourceImageUrl: data.originalSourceUrl || data.imageUrl,
       sourcePageUrl: data.pageUrl,
       pageTitle: data.pageTitle,
+      fileName: fileName,
       fileType: imageBlob.type,
       fileSize: imageBlob.size,
       width: metadata.width,

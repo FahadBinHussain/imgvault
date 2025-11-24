@@ -453,6 +453,7 @@ async function handleFileUpload(event) {
       // Update the current image data with uploaded file
       currentImageData.srcUrl = dataUrl;
       currentImageData.isUploadedFile = true;
+      currentImageData.fileName = file.name; // Store the filename
       
       // Update preview
       previewImage.src = dataUrl;
@@ -504,7 +505,8 @@ async function handleUpload() {
       pageTitle: currentImageData.pageTitle,
       tags: tagsInput.value.split(',').map(t => t.trim()).filter(t => t),
       notes: notesInput.value,
-      isUploadedFile: currentImageData.isUploadedFile || false
+      isUploadedFile: currentImageData.isUploadedFile || false,
+      fileName: currentImageData.fileName || ''
     };
     
     const response = await chrome.runtime.sendMessage({
