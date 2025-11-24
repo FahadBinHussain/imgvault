@@ -521,7 +521,7 @@ async function handleUpload() {
     return;
   }
   
-  const settings = await chrome.storage.sync.get(['pixvidApiKey', 'firebaseConfig']);
+  const settings = await chrome.storage.sync.get(['pixvidApiKey', 'firebaseConfig', 'imgbbApiKey']);
   
   if (!settings.pixvidApiKey) {
     showStatus('Please configure your Pixvid API key in settings', 'error');
@@ -539,32 +539,37 @@ async function handleUpload() {
   uploadBtn.textContent = 'Uploading...';
   
   try {
-    const uploadData = {
-      imageUrl: currentImageData.srcUrl,
-      originalSourceUrl: currentImageData.originalSrcUrl || currentImageData.srcUrl,
-      pageUrl: pageUrlInput.value,
-      pageTitle: currentImageData.pageTitle,
-      tags: tagsInput.value.split(',').map(t => t.trim()).filter(t => t),
-      description: notesInput.value,
-      isUploadedFile: currentImageData.isUploadedFile || false,
-      fileName: currentImageData.fileName || ''
-    };
-    
-    const response = await chrome.runtime.sendMessage({
-      action: 'uploadImage',
-      data: uploadData
-    });
-    
-    if (response.success) {
-      showStatus('Upload successful!', 'success');
-      showSuccessView(response.data.pixvidUrl, response.data.imgbbUrl);
+    // If this is an uploaded file, handle it directly in popup
+    if (currentImageData.isUploadedFile) {
+      await handleFileUpload(currentImageData, settings);
     } else {
-      // Check if it's a duplicate with image data
-      if (response.duplicate) {
-        showStatus(`Upload failed: ${response.error}`, 'error');
-        showDuplicateImage(response.duplicate, uploadData);
+      // For right-clicked images, send to background script
+      const uploadData = {
+        imageUrl: currentImageData.srcUrl,
+        originalSourceUrl: currentImageData.originalSrcUrl || currentImageData.srcUrl,
+        pageUrl: pageUrlInput.value,
+        pageTitle: currentImageData.pageTitle,
+        tags: tagsInput.value.split(',').map(t => t.trim()).filter(t => t),
+        description: notesInput.value,
+        fileName: currentImageData.fileName || ''
+      };
+      
+      const response = await chrome.runtime.sendMessage({
+        action: 'uploadImage',
+        data: uploadData
+      });
+      
+      if (response.success) {
+        showStatus('Upload successful!', 'success');
+        showSuccessView(response.data.pixvidUrl, response.data.imgbbUrl);
       } else {
-        throw new Error(response.error || 'Upload failed');
+        // Check if it's a duplicate with image data
+        if (response.duplicate) {
+          showStatus(`Upload failed: ${response.error}`, 'error');
+          showDuplicateImage(response.duplicate, uploadData);
+        } else {
+          throw new Error(response.error || 'Upload failed');
+        }
       }
     }
   } catch (error) {
@@ -582,6 +587,111 @@ async function handleUpload() {
     uploadBtn.disabled = false;
     uploadBtn.textContent = 'Upload to ImgVault';
   }
+}
+
+// Handle file uploads directly in popup (to avoid Chrome message size limit)
+async function handleFileUpload(imageData, settings) {
+  showStatus('Converting image...', 'info');
+  
+  // Convert base64 to blob
+  const response = await fetch(imageData.srcUrl);
+  const blob = await response.blob();
+  
+  // TODO: Add duplicate checking here similar to background.js
+  
+  showStatus('Uploading to Pixvid...', 'info');
+  
+  // Upload to Pixvid
+  const pixvidFormData = new FormData();
+  pixvidFormData.append('key', settings.pixvidApiKey);
+  pixvidFormData.append('source', blob, imageData.fileName);
+  pixvidFormData.append('format', 'json');
+  
+  const pixvidResponse = await fetch('https://pixvid.org/api/1/upload', {
+    method: 'POST',
+    body: pixvidFormData
+  });
+  
+  if (!pixvidResponse.ok) {
+    throw new Error(`Pixvid upload failed: ${pixvidResponse.status}`);
+  }
+  
+  const pixvidResult = await pixvidResponse.json();
+  const pixvidUrl = pixvidResult.image.url;
+  const pixvidDeleteUrl = pixvidResult.image.delete_url;
+  
+  // Upload to ImgBB if API key is available
+  let imgbbUrl = '';
+  let imgbbDeleteUrl = '';
+  let imgbbThumbUrl = '';
+  
+  if (settings.imgbbApiKey) {
+    try {
+      showStatus('Uploading to ImgBB...', 'info');
+      
+      const imgbbFormData = new FormData();
+      imgbbFormData.append('key', settings.imgbbApiKey);
+      imgbbFormData.append('image', blob, imageData.fileName);
+      
+      const imgbbResponse = await fetch('https://api.imgbb.com/1/upload', {
+        method: 'POST',
+        body: imgbbFormData
+      });
+      
+      if (imgbbResponse.ok) {
+        const imgbbResult = await imgbbResponse.json();
+        if (imgbbResult.success) {
+          imgbbUrl = imgbbResult.data.url;
+          imgbbDeleteUrl = imgbbResult.data.delete_url;
+          imgbbThumbUrl = imgbbResult.data.thumb?.url || imgbbUrl;
+        }
+      }
+    } catch (error) {
+      console.warn('ImgBB upload failed:', error);
+    }
+  }
+  
+  // Save to Firebase (similar to background.js)
+  showStatus('Saving to Firebase...', 'info');
+  
+  // Initialize storage manager
+  const storageManager = new StorageManager();
+  await storageManager.init();
+  
+  // Get image metadata
+  const img = new Image();
+  await new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = reject;
+    img.src = imageData.srcUrl;
+  });
+  
+  const saveData = {
+    pixvidUrl,
+    pixvidDeleteUrl,
+    imgbbUrl,
+    imgbbDeleteUrl,
+    imgbbThumbUrl,
+    sourceImageUrl: '',  // Empty for uploaded files
+    sourcePageUrl: pageUrlInput.value || '',
+    pageTitle: imageData.pageTitle,
+    fileName: imageData.fileName,
+    fileType: blob.type,
+    fileSize: blob.size,
+    width: img.width,
+    height: img.height,
+    tags: tagsInput.value.split(',').map(t => t.trim()).filter(t => t),
+    description: notesInput.value,
+    sha256: '', // TODO: Calculate hashes for duplicate detection
+    pHash: '',
+    aHash: '',
+    dHash: ''
+  };
+  
+  await storageManager.saveImage(saveData);
+  
+  showStatus('Upload successful!', 'success');
+  showSuccessView(pixvidUrl, imgbbUrl);
 }
 
 function showDuplicateImage(duplicateData, uploadData) {
