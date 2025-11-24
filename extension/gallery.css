@@ -644,12 +644,52 @@ body::before {
 .info-section h3 {
   font-size: 24px;
   font-weight: 600;
-  margin-bottom: 8px;
+  margin-bottom: 16px;
   color: var(--text-primary);
   background: linear-gradient(135deg, var(--primary-light), var(--secondary));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+/* Detail Tabs */
+.detail-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--border);
+}
+
+.detail-tab {
+  flex: 1;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  margin-bottom: -2px;
+}
+
+.detail-tab:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.detail-tab.active {
+  color: var(--primary-light);
+  border-bottom-color: var(--primary);
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
 }
 
 .info-section h4 {
@@ -719,14 +759,32 @@ body::before {
 
 .detail-value {
   font-size: 14px;
-  color: var(--primary-light);
+  color: var(--text-primary) !important;
   text-decoration: none;
   word-break: break-all;
   transition: all 0.3s ease;
+  display: inline-block;
+  min-height: 20px;
+}
+
+.detail-value.mono {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  background: var(--bg-secondary);
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--text-primary) !important;
+  display: block;
+  min-height: 30px;
+}
+
+.detail-value.small {
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .detail-value:hover {
-  color: var(--secondary);
+  color: var(--primary-light) !important;
   text-decoration: underline;
 }
 

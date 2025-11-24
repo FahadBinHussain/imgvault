@@ -15,10 +15,9 @@ const searchInput = document.getElementById('searchInput');
 const imageModal = document.getElementById('imageModal');
 const modalImage = document.getElementById('modalImage');
 const modalTitle = document.getElementById('modalTitle');
+const modalFileName = document.getElementById('modalFileName');
+const fileNameSection = document.getElementById('fileNameSection');
 const displaySource = document.getElementById('displaySource');
-const modalPixvidUrl = document.getElementById('modalPixvidUrl');
-const modalImgbbUrl = document.getElementById('modalImgbbUrl');
-const imgbbUrlSection = document.getElementById('imgbbUrlSection');
 const modalSourceUrlInput = document.getElementById('modalSourceUrlInput');
 const modalPageUrlInput = document.getElementById('modalPageUrlInput');
 const editSourceUrl = document.getElementById('editSourceUrl');
@@ -294,6 +293,14 @@ function showImageDetails(image) {
   modalImage.src = displayUrl;
   modalTitle.textContent = image.pageTitle || 'Untitled';
   
+  // Display filename if available
+  if (image.fileName) {
+    modalFileName.textContent = image.fileName;
+    fileNameSection.style.display = 'flex';
+  } else {
+    fileNameSection.style.display = 'none';
+  }
+  
   // Display Source indicator
   displaySource.textContent = `${sourceName} ⚡`;
   displaySource.style.color = sourceName === 'ImgBB' ? '#10b981' : '#818cf8';
@@ -302,26 +309,13 @@ function showImageDetails(image) {
   // Update download button
   downloadImage.innerHTML = `<span class="download-icon">⬇️</span> Download from ${sourceName}`;
   
-  // Pixvid URL
-  modalPixvidUrl.href = image.pixvidUrl;
-  modalPixvidUrl.textContent = truncateUrl(image.pixvidUrl, 40);
-  
-  // ImgBB URL (if available)
-  if (image.imgbbUrl) {
-    imgbbUrlSection.style.display = 'flex';
-    modalImgbbUrl.href = image.imgbbUrl;
-    modalImgbbUrl.textContent = truncateUrl(image.imgbbUrl, 40);
-  } else {
-    imgbbUrlSection.style.display = 'none';
-  }
-  
   // Source and Page URLs (using inputs)
   modalSourceUrlInput.value = image.sourceImageUrl || '';
   modalPageUrlInput.value = image.sourcePageUrl || '';
   
   if (image.createdAt) {
     const date = new Date(image.createdAt);
-    modalDate.textContent = date.toLocaleDateString('en-US', { 
+    const dateStr = date.toLocaleDateString('en-US', { 
       weekday: 'short', 
       year: 'numeric', 
       month: 'short', 
@@ -329,8 +323,11 @@ function showImageDetails(image) {
       hour: 'numeric',
       minute: '2-digit'
     });
+    modalDate.textContent = dateStr;
+    document.getElementById('nerdDate').textContent = dateStr;
   } else {
     modalDate.textContent = '';
+    document.getElementById('nerdDate').textContent = 'N/A';
   }
   
   if (image.notes) {
@@ -348,6 +345,57 @@ function showImageDetails(image) {
   } else {
     tagsSection.style.display = 'none';
   }
+  
+  // Populate Nerds tab with all technical details
+  console.log('Populating Nerds tab with image data:', image);
+  const nerdDocId = document.getElementById('nerdDocId');
+  const nerdTitle = document.getElementById('nerdTitle');
+  const nerdFileName = document.getElementById('nerdFileName');
+  const nerdFileType = document.getElementById('nerdFileType');
+  const nerdFileSize = document.getElementById('nerdFileSize');
+  const nerdDimensions = document.getElementById('nerdDimensions');
+  const nerdSha256 = document.getElementById('nerdSha256');
+  const nerdPHash = document.getElementById('nerdPHash');
+  const nerdAHash = document.getElementById('nerdAHash');
+  const nerdDHash = document.getElementById('nerdDHash');
+  const nerdPixvidUrl = document.getElementById('nerdPixvidUrl');
+  const nerdImgbbUrl = document.getElementById('nerdImgbbUrl');
+  const nerdImgbbUrlSection = document.getElementById('nerdImgbbUrlSection');
+  const nerdTags = document.getElementById('nerdTags');
+  const nerdNotes = document.getElementById('nerdNotes');
+  
+  console.log('Nerd elements found:', {
+    nerdDocId: !!nerdDocId,
+    nerdTitle: !!nerdTitle,
+    nerdFileName: !!nerdFileName
+  });
+  
+  if (nerdDocId) nerdDocId.textContent = image.id || 'N/A';
+  if (nerdTitle) nerdTitle.textContent = image.pageTitle || 'Untitled';
+  if (nerdFileName) nerdFileName.textContent = image.fileName || 'N/A';
+  if (nerdFileType) nerdFileType.textContent = image.fileType || 'N/A';
+  if (nerdFileSize) nerdFileSize.textContent = image.fileSize ? `${(image.fileSize / 1024).toFixed(2)} KB` : 'N/A';
+  if (nerdDimensions) nerdDimensions.textContent = (image.width && image.height) ? `${image.width} × ${image.height}` : 'N/A';
+  if (nerdSha256) nerdSha256.textContent = image.sha256 || 'N/A';
+  if (nerdPHash) nerdPHash.textContent = image.pHash ? `${image.pHash.substring(0, 64)}...` : 'N/A';
+  if (nerdAHash) nerdAHash.textContent = image.aHash || 'N/A';
+  if (nerdDHash) nerdDHash.textContent = image.dHash || 'N/A';
+  
+  if (nerdPixvidUrl) {
+    nerdPixvidUrl.href = image.pixvidUrl;
+    nerdPixvidUrl.textContent = truncateUrl(image.pixvidUrl, 40);
+  }
+  
+  if (image.imgbbUrl && nerdImgbbUrlSection && nerdImgbbUrl) {
+    nerdImgbbUrlSection.style.display = 'flex';
+    nerdImgbbUrl.href = image.imgbbUrl;
+    nerdImgbbUrl.textContent = truncateUrl(image.imgbbUrl, 40);
+  } else if (nerdImgbbUrlSection) {
+    nerdImgbbUrlSection.style.display = 'none';
+  }
+  
+  if (nerdTags) nerdTags.textContent = (image.tags && image.tags.length > 0) ? image.tags.join(', ') : 'N/A';
+  if (nerdNotes) nerdNotes.textContent = image.notes || 'N/A';
   
   imageModal.style.display = 'flex';
 }
@@ -621,3 +669,38 @@ function truncateUrl(url, maxLength = 50) {
   if (url.length <= maxLength) return url;
   return url.substring(0, maxLength) + '...';
 }
+
+// Tab switching functionality
+document.addEventListener('DOMContentLoaded', () => {
+  const tabs = document.querySelectorAll('.detail-tab');
+  const tabContents = document.querySelectorAll('.tab-content');
+  
+  console.log('Tab switching initialized. Tabs found:', tabs.length, 'Contents found:', tabContents.length);
+  
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const tabName = tab.getAttribute('data-tab');
+      console.log('Tab clicked:', tabName);
+      
+      // Remove active class from all tabs and contents
+      tabs.forEach(t => t.classList.remove('active'));
+      tabContents.forEach(tc => {
+        tc.classList.remove('active');
+        console.log('Removing active from:', tc.id);
+      });
+      
+      // Add active class to clicked tab
+      tab.classList.add('active');
+      
+      // Show corresponding content
+      const targetContent = document.getElementById(`${tabName}Tab`);
+      console.log('Target content:', targetContent, 'ID:', `${tabName}Tab`);
+      if (targetContent) {
+        targetContent.classList.add('active');
+        targetContent.style.display = 'block'; // Force display
+        console.log('Activated tab:', `${tabName}Tab`, 'Display:', targetContent.style.display);
+      }
+    });
+  });
+});
+
