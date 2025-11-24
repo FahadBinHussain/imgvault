@@ -397,6 +397,21 @@ function showImageDetails(image) {
   if (nerdTags) nerdTags.textContent = (image.tags && image.tags.length > 0) ? image.tags.join(', ') : 'N/A';
   if (nerdNotes) nerdNotes.textContent = image.notes || 'N/A';
   
+  // Reset tabs to "For Noobs" when opening an image
+  const tabs = document.querySelectorAll('.detail-tab');
+  const tabContents = document.querySelectorAll('.tab-content');
+  
+  tabs.forEach(t => t.classList.remove('active'));
+  tabContents.forEach(tc => tc.classList.remove('active'));
+  
+  // Activate the first tab (For Noobs)
+  if (tabs[0]) tabs[0].classList.add('active');
+  const noobsTab = document.getElementById('noobsTab');
+  if (noobsTab) {
+    noobsTab.classList.add('active');
+    noobsTab.style.display = 'block';
+  }
+  
   imageModal.style.display = 'flex';
 }
 
