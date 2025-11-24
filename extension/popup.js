@@ -504,7 +504,7 @@ async function handleUpload() {
       pageUrl: pageUrlInput.value,
       pageTitle: currentImageData.pageTitle,
       tags: tagsInput.value.split(',').map(t => t.trim()).filter(t => t),
-      notes: notesInput.value,
+      description: notesInput.value,
       isUploadedFile: currentImageData.isUploadedFile || false,
       fileName: currentImageData.fileName || ''
     };

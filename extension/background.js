@@ -252,7 +252,7 @@ async function handleImageUpload(data) {
       aHash: metadata.aHash,
       dHash: metadata.dHash,
       tags: data.tags || [],
-      notes: data.notes || ''
+      description: data.description || ''
     };
     
     const savedId = await storage.saveImage(imageMetadata);

@@ -347,12 +347,12 @@ function showImageDetails(image) {
     document.getElementById('nerdDate').textContent = 'N/A';
   }
   
-  // Always show notes and tags sections
-  if (image.notes) {
-    console.log('Image has notes:', image.notes);
-    modalNotes.textContent = image.notes;
+  // Always show description and tags sections
+  if (image.description) {
+    console.log('Image has description:', image.description);
+    modalNotes.textContent = image.description;
   } else {
-    console.log('No notes - showing empty');
+    console.log('No description - showing empty');
     modalNotes.textContent = 'No description';
   }
   if (notesSection) {
@@ -439,7 +439,7 @@ function handleSearch(e) {
   const filtered = allImages.filter(image => {
     return (
       (image.pageTitle && image.pageTitle.toLowerCase().includes(query)) ||
-      (image.notes && image.notes.toLowerCase().includes(query)) ||
+      (image.description && image.description.toLowerCase().includes(query)) ||
       (image.tags && image.tags.some(tag => tag.toLowerCase().includes(query)))
     );
   });

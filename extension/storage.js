@@ -52,7 +52,7 @@ class StorageManager {
           aHash: { stringValue: imageData.aHash || '' },
           dHash: { stringValue: imageData.dHash || '' },
           tags: { arrayValue: { values: (imageData.tags || []).map(t => ({ stringValue: t })) } },
-          notes: { stringValue: imageData.notes || '' },
+          description: { stringValue: imageData.description || '' },
           createdAt: { timestampValue: new Date().toISOString() }
         }
       };
@@ -128,7 +128,7 @@ class StorageManager {
           aHash: fields.aHash?.stringValue || '',
           dHash: fields.dHash?.stringValue || '',
           tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
-          notes: fields.notes?.stringValue || '',
+          description: fields.description?.stringValue || '',
           createdAt: fields.createdAt?.timestampValue || ''
         };
       });
@@ -178,7 +178,7 @@ class StorageManager {
         aHash: fields.aHash?.stringValue || '',
         dHash: fields.dHash?.stringValue || '',
         tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
-        notes: fields.notes?.stringValue || '',
+        description: fields.description?.stringValue || '',
         createdAt: fields.createdAt?.timestampValue || ''
       };
     } catch (error) {
@@ -256,7 +256,7 @@ class StorageManager {
     return allImages.filter(img => 
       img.pageTitle?.toLowerCase().includes(lowerQuery) ||
       img.sourcePageUrl?.toLowerCase().includes(lowerQuery) ||
-      img.notes?.toLowerCase().includes(lowerQuery) ||
+      img.description?.toLowerCase().includes(lowerQuery) ||
       img.tags?.some(tag => tag.toLowerCase().includes(lowerQuery))
     );
   }
