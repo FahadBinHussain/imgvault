@@ -202,8 +202,15 @@ function setupEventListeners() {
         sourceUrlDisplay.textContent = file.name;
         pageUrlInput.value = '';
         
-        // Store the file for upload
-        window.selectedFile = file;
+        // Set currentImageData for upload
+        currentImageData = {
+          srcUrl: event.target.result, // Base64 data URL
+          originalSrcUrl: '',
+          pageUrl: '',
+          pageTitle: file.name,
+          isUploadedFile: true,
+          fileName: file.name
+        };
       };
       reader.readAsDataURL(file);
     });
