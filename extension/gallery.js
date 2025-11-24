@@ -27,11 +27,9 @@ const modalDate = document.getElementById('modalDate');
 const modalNotes = document.getElementById('modalNotes');
 const modalTags = document.getElementById('modalTags');
 const closeModal = document.getElementById('closeModal');
-const copyImageUrl = document.getElementById('copyImageUrl');
-const openOriginal = document.getElementById('openOriginal');
 const deleteImage = document.getElementById('deleteImage');
-const downloadImagePixvid = document.getElementById('downloadImagePixvid');
-const downloadImageImgbb = document.getElementById('downloadImageImgbb');
+const downloadImagePixvidHeader = document.getElementById('downloadImagePixvidHeader');
+const downloadImageImgbbHeader = document.getElementById('downloadImageImgbbHeader');
 const notesSection = document.getElementById('notesSection');
 const tagsSection = document.getElementById('tagsSection');
 
@@ -77,24 +75,18 @@ function updateSourceIndicator() {
 }
 
 function setupEventListeners() {
-  refreshBtn.addEventListener('click', loadGallery);
+  refreshBtn.addEventListener('click', loadImages);
   searchInput.addEventListener('input', handleSearch);
   closeModal.addEventListener('click', hideModal);
   document.querySelector('.modal-overlay').addEventListener('click', hideModal);
-  copyImageUrl.addEventListener('click', copyUrl);
   deleteImage.addEventListener('click', confirmDelete);
-  downloadImagePixvid.addEventListener('click', () => handleDownload('pixvid'));
-  downloadImageImgbb.addEventListener('click', () => handleDownload('imgbb'));
+  downloadImagePixvidHeader.addEventListener('click', () => handleDownload('pixvid'));
+  downloadImageImgbbHeader.addEventListener('click', () => handleDownload('imgbb'));
   editSourceUrl.addEventListener('click', () => toggleEdit('source'));
   editPageUrl.addEventListener('click', () => toggleEdit('page'));
   openPageUrl.addEventListener('click', () => {
     if (currentImage && currentImage.sourcePageUrl) {
       window.open(currentImage.sourcePageUrl, '_blank');
-    }
-  });
-  openOriginal.addEventListener('click', () => {
-    if (currentImage) {
-      window.open(currentImage.pixvidUrl, '_blank');
     }
   });
   
@@ -322,16 +314,12 @@ function showImageDetails(image) {
     noobImgbbUrlSection.style.display = 'flex';
     noobImgbbUrl.href = image.imgbbUrl;
     noobImgbbUrl.textContent = truncateUrl(image.imgbbUrl, 40);
-    // Show ImgBB download button
-    if (downloadImageImgbb) {
-      downloadImageImgbb.style.display = 'flex';
-    }
+    // Show ImgBB download header button
+    downloadImageImgbbHeader.style.display = 'flex';
   } else if (noobImgbbUrlSection) {
     noobImgbbUrlSection.style.display = 'none';
-    // Hide ImgBB download button
-    if (downloadImageImgbb) {
-      downloadImageImgbb.style.display = 'none';
-    }
+    // Hide ImgBB download header button
+    downloadImageImgbbHeader.style.display = 'none';
   }
   
   // Source and Page URLs (using inputs)
@@ -355,20 +343,29 @@ function showImageDetails(image) {
     document.getElementById('nerdDate').textContent = 'N/A';
   }
   
+  // Always show notes and tags sections
   if (image.notes) {
+    console.log('Image has notes:', image.notes);
     modalNotes.textContent = image.notes;
-    notesSection.style.display = 'block';
   } else {
-    notesSection.style.display = 'none';
+    console.log('No notes - showing empty');
+    modalNotes.textContent = 'No description';
+  }
+  if (notesSection) {
+    notesSection.style.display = '';
   }
   
   if (image.tags && image.tags.length > 0) {
+    console.log('Image has tags:', image.tags);
     modalTags.innerHTML = image.tags.map(tag => 
       `<span class="modal-tag">${tag}</span>`
     ).join('');
-    tagsSection.style.display = 'block';
   } else {
-    tagsSection.style.display = 'none';
+    console.log('No tags - showing empty');
+    modalTags.innerHTML = '<span style="color: var(--text-muted); font-style: italic;">No tags</span>';
+  }
+  if (tagsSection) {
+    tagsSection.style.display = '';
   }
   
   // Populate Nerds tab with all technical details
@@ -444,18 +441,6 @@ function handleSearch(e) {
   });
   
   displayImages(filtered);
-}
-
-async function copyUrl() {
-  if (!currentImage) return;
-  
-  try {
-    await navigator.clipboard.writeText(currentImage.pixvidUrl);
-    showToast('Link copied to clipboard');
-  } catch (error) {
-    console.error('Failed to copy:', error);
-    showToast('Failed to copy link');
-  }
 }
 
 function confirmDelete() {
