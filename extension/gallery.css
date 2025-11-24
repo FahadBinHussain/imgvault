@@ -226,6 +226,22 @@ body::before {
   transform: translateY(0);
 }
 
+.download-btn-labeled {
+  width: auto;
+  padding: 0 16px;
+  gap: 8px;
+  min-width: 100px;
+}
+
+.download-btn-labeled .btn-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.download-btn-labeled .btn-icon {
+  font-size: 18px;
+}
+
 .delete-btn {
   color: var(--text-secondary);
 }
