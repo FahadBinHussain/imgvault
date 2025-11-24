@@ -383,8 +383,6 @@ function showImageDetails(image) {
   const nerdPHash = document.getElementById('nerdPHash');
   const nerdAHash = document.getElementById('nerdAHash');
   const nerdDHash = document.getElementById('nerdDHash');
-  const nerdTags = document.getElementById('nerdTags');
-  const nerdNotes = document.getElementById('nerdNotes');
   
   console.log('Nerd elements found:', {
     nerdDocId: !!nerdDocId,
@@ -402,9 +400,6 @@ function showImageDetails(image) {
   if (nerdPHash) nerdPHash.textContent = image.pHash ? `${image.pHash.substring(0, 64)}...` : 'N/A';
   if (nerdAHash) nerdAHash.textContent = image.aHash || 'N/A';
   if (nerdDHash) nerdDHash.textContent = image.dHash || 'N/A';
-  
-  if (nerdTags) nerdTags.textContent = (image.tags && image.tags.length > 0) ? image.tags.join(', ') : 'N/A';
-  if (nerdNotes) nerdNotes.textContent = image.notes || 'N/A';
   
   // Reset tabs to "For Noobs" when opening an image
   const tabs = document.querySelectorAll('.detail-tab');
