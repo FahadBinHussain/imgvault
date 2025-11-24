@@ -175,6 +175,40 @@ function setupEventListeners() {
   
   galleryBtn.addEventListener('click', openGallery);
   
+  // Upload from computer button in no-image view
+  const uploadFromPCBtn = document.getElementById('uploadFromPCBtn');
+  const uploadFileInput = document.getElementById('uploadFileInput');
+  
+  if (uploadFromPCBtn && uploadFileInput) {
+    uploadFromPCBtn.addEventListener('click', () => {
+      uploadFileInput.click();
+    });
+    
+    uploadFileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      // Reset input
+      e.target.value = '';
+      
+      // Show the image upload view with the selected file
+      noImageView.style.display = 'none';
+      imageView.style.display = 'block';
+      
+      // Load the selected file as an image
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        previewImage.src = event.target.result;
+        sourceUrlDisplay.textContent = file.name;
+        pageUrlInput.value = '';
+        
+        // Store the file for upload
+        window.selectedFile = file;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  
   // Auto-save settings with debounce
   let saveTimeout;
   const autoSaveSettings = () => {
