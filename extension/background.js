@@ -133,48 +133,53 @@ async function handleImageUpload(data) {
       height: existingImages[0].height
     } : 'No existing images');
     
-    // Check for duplicates with progress updates
-    const duplicateCheck = await duplicateDetector.checkDuplicates(
-      metadata, 
-      existingImages,
-      (progressMsg) => updateStatus(`🔎 ${progressMsg}`)
-    );
-    
-    // If duplicate found, return error with details
-    if (duplicateCheck.isDuplicate) {
-      let errorMsg = 'Duplicate image detected!\n';
-      let duplicateData = null;
+    // Check for duplicates with progress updates (unless user wants to ignore)
+    if (!data.ignoreDuplicate) {
+      const duplicateCheck = await duplicateDetector.checkDuplicates(
+        metadata, 
+        existingImages,
+        (progressMsg) => updateStatus(`🔎 ${progressMsg}`)
+      );
       
-      if (duplicateCheck.contextMatch) {
-        errorMsg += '✗ Same image from same page already exists';
-        duplicateData = duplicateCheck.contextMatch;
-      } else if (duplicateCheck.exactMatch) {
-        errorMsg += '✗ Identical file already exists (SHA-256 match)';
-        duplicateData = duplicateCheck.exactMatch;
-      } else if (duplicateCheck.visualMatch) {
-        const similarity = duplicateCheck.visualMatch.similarity || '0';
-        const matchCount = duplicateCheck.visualMatch.matchCount || 0;
-        const hashResults = duplicateCheck.visualMatch.hashResults || {};
+      // If duplicate found, return error with details
+      if (duplicateCheck.isDuplicate) {
+        let errorMsg = 'Duplicate image detected!\n';
+        let duplicateData = null;
         
-        // Build matched hashes list
-        const matchedHashes = [];
-        if (hashResults.pHash?.match) matchedHashes.push('pHash');
-        if (hashResults.aHash?.match) matchedHashes.push('aHash');
-        if (hashResults.dHash?.match) matchedHashes.push('dHash');
+        if (duplicateCheck.contextMatch) {
+          errorMsg += '✗ Same image from same page already exists';
+          duplicateData = duplicateCheck.contextMatch;
+        } else if (duplicateCheck.exactMatch) {
+          errorMsg += '✗ Identical file already exists (SHA-256 match)';
+          duplicateData = duplicateCheck.exactMatch;
+        } else if (duplicateCheck.visualMatch) {
+          const similarity = duplicateCheck.visualMatch.similarity || '0';
+          const matchCount = duplicateCheck.visualMatch.matchCount || 0;
+          const hashResults = duplicateCheck.visualMatch.hashResults || {};
+          
+          // Build matched hashes list
+          const matchedHashes = [];
+          if (hashResults.pHash?.match) matchedHashes.push('pHash');
+          if (hashResults.aHash?.match) matchedHashes.push('aHash');
+          if (hashResults.dHash?.match) matchedHashes.push('dHash');
+          
+          const matchedHashesStr = matchedHashes.length > 0 ? matchedHashes.join(', ') : 'unknown';
+          errorMsg += `✗ Visually similar image found (${similarity}% similar, ${matchCount}/3 hashes matched: ${matchedHashesStr})`;
+          duplicateData = duplicateCheck.visualMatch;
+        }
         
-        const matchedHashesStr = matchedHashes.length > 0 ? matchedHashes.join(', ') : 'unknown';
-        errorMsg += `✗ Visually similar image found (${similarity}% similar, ${matchCount}/3 hashes matched: ${matchedHashesStr})`;
-        duplicateData = duplicateCheck.visualMatch;
+        // Don't use updateStatus for duplicates - let popup handle the display
+        // Clear the progress status
+        updateStatus('');
+        
+        // Store duplicate data for popup to display
+        const error = new Error(errorMsg);
+        error.duplicate = duplicateData; // Attach duplicate image data to error
+        throw error;
       }
-      
-      // Don't use updateStatus for duplicates - let popup handle the display
-      // Clear the progress status
-      updateStatus('');
-      
-      // Store duplicate data for popup to display
-      const error = new Error(errorMsg);
-      error.duplicate = duplicateData; // Attach duplicate image data to error
-      throw error;
+    } else {
+      console.log('⚠️ Duplicate check SKIPPED - User chose to ignore duplicates');
+      updateStatus('⚠️ Skipping duplicate check...');
     }
     
     // Upload to both APIs in parallel
