@@ -10,6 +10,7 @@ const galleryContainer = document.getElementById('galleryContainer');
 const galleryEmpty = document.getElementById('galleryEmpty');
 const loadingSpinner = document.getElementById('loadingSpinner');
 const refreshBtn = document.getElementById('refreshBtn');
+const uploadBtn = document.getElementById('uploadBtn');
 const searchInput = document.getElementById('searchInput');
 
 const imageModal = document.getElementById('imageModal');
@@ -75,6 +76,10 @@ function updateSourceIndicator() {
 
 function setupEventListeners() {
   refreshBtn.addEventListener('click', loadGallery);
+  uploadBtn.addEventListener('click', () => {
+    // Navigate to the popup page for uploading
+    window.location.href = 'popup.html';
+  });
   searchInput.addEventListener('input', handleSearch);
   closeModal.addEventListener('click', hideModal);
   document.querySelector('.modal-overlay').addEventListener('click', (e) => {
