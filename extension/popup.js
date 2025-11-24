@@ -519,7 +519,7 @@ async function handleUpload() {
       // Check if it's a duplicate with image data
       if (response.duplicate) {
         showStatus(`Upload failed: ${response.error}`, 'error');
-        showDuplicateImage(response.duplicate);
+        showDuplicateImage(response.duplicate, uploadData);
       } else {
         throw new Error(response.error || 'Upload failed');
       }
@@ -541,7 +541,7 @@ async function handleUpload() {
   }
 }
 
-function showDuplicateImage(duplicateData) {
+function showDuplicateImage(duplicateData, uploadData) {
   // Create a duplicate info display
   const duplicateInfo = document.createElement('div');
   duplicateInfo.className = 'duplicate-info';
@@ -560,11 +560,49 @@ function showDuplicateImage(duplicateData) {
       <button class="btn-link" onclick="navigator.clipboard.writeText('${duplicateData.pixvidUrl}'); this.textContent='Copied!'">
         Copy URL
       </button>
+      <button class="btn-ignore-duplicate" style="background: #ff9800; color: white; margin-left: 10px;">
+        Ignore & Upload Anyway
+      </button>
     </div>
   `;
   
   // Insert after status message
   statusMessage.parentNode.insertBefore(duplicateInfo, statusMessage.nextSibling);
+  
+  // Add click handler for ignore button
+  const ignoreBtn = duplicateInfo.querySelector('.btn-ignore-duplicate');
+  ignoreBtn.addEventListener('click', async () => {
+    // Remove the duplicate info display
+    duplicateInfo.remove();
+    
+    // Clear error status
+    statusMessage.style.display = 'none';
+    
+    // Upload with ignore flag
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'Uploading...';
+    
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'uploadImage',
+        data: { ...uploadData, ignoreDuplicate: true }
+      });
+      
+      if (response.success) {
+        showStatus('Upload successful!', 'success');
+        showSuccessView(response.data.pixvidUrl, response.data.imgbbUrl);
+      } else {
+        throw new Error(response.error || 'Upload failed');
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      uploadProgress.style.display = 'none';
+      showStatus(`Upload failed: ${error.message}`, 'error');
+    } finally {
+      uploadBtn.disabled = false;
+      uploadBtn.textContent = 'Upload to ImgVault';
+    }
+  });
 }
 
 function showStatus(message, type = 'info') {
