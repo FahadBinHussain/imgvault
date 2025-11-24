@@ -154,7 +154,16 @@ async function handleImageUpload(data) {
       } else if (duplicateCheck.visualMatch) {
         const similarity = duplicateCheck.visualMatch.similarity || '0';
         const matchCount = duplicateCheck.visualMatch.matchCount || 0;
-        errorMsg += `✗ Visually similar image found (${similarity}% similar, ${matchCount}/3 hashes matched)`;
+        const hashResults = duplicateCheck.visualMatch.hashResults || {};
+        
+        // Build matched hashes list
+        const matchedHashes = [];
+        if (hashResults.pHash?.match) matchedHashes.push('pHash');
+        if (hashResults.aHash?.match) matchedHashes.push('aHash');
+        if (hashResults.dHash?.match) matchedHashes.push('dHash');
+        
+        const matchedHashesStr = matchedHashes.length > 0 ? matchedHashes.join(', ') : 'unknown';
+        errorMsg += `✗ Visually similar image found (${similarity}% similar, ${matchCount}/3 hashes matched: ${matchedHashesStr})`;
         duplicateData = duplicateCheck.visualMatch;
       }
       
