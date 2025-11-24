@@ -369,8 +369,6 @@ function showImageDetails(image) {
   
   // Reset Nerds tab to show loading state
   const nerdDocId = document.getElementById('nerdDocId');
-  const nerdTitle = document.getElementById('nerdTitle');
-  const nerdFileName = document.getElementById('nerdFileName');
   const nerdFileType = document.getElementById('nerdFileType');
   const nerdFileSize = document.getElementById('nerdFileSize');
   const nerdDimensions = document.getElementById('nerdDimensions');
@@ -378,12 +376,9 @@ function showImageDetails(image) {
   const nerdPHash = document.getElementById('nerdPHash');
   const nerdAHash = document.getElementById('nerdAHash');
   const nerdDHash = document.getElementById('nerdDHash');
-  const nerdDate = document.getElementById('nerdDate');
   
   // Set loading placeholders
   if (nerdDocId) nerdDocId.textContent = image.id || 'N/A';
-  if (nerdTitle) nerdTitle.textContent = image.pageTitle || 'Untitled';
-  if (nerdFileName) nerdFileName.textContent = 'Loading...';
   if (nerdFileType) nerdFileType.textContent = 'Loading...';
   if (nerdFileSize) nerdFileSize.textContent = 'Loading...';
   if (nerdDimensions) nerdDimensions.textContent = 'Loading...';
@@ -391,20 +386,6 @@ function showImageDetails(image) {
   if (nerdPHash) nerdPHash.textContent = 'Loading...';
   if (nerdAHash) nerdAHash.textContent = 'Loading...';
   if (nerdDHash) nerdDHash.textContent = 'Loading...';
-  if (nerdDate && image.createdAt) {
-    const date = new Date(image.createdAt);
-    const dateStr = date.toLocaleDateString('en-US', { 
-      weekday: 'short', 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
-    });
-    nerdDate.textContent = dateStr;
-  } else if (nerdDate) {
-    nerdDate.textContent = 'N/A';
-  }
   
   // Reset tabs to "For Noobs" when opening an image
   const tabs = document.querySelectorAll('.detail-tab');
@@ -468,7 +449,6 @@ async function loadFullImageDetails(imageId) {
     modalSourceUrlInput.value = fullImage.sourceImageUrl || '';
     
     // Update Nerds tab with real data
-    const nerdFileName = document.getElementById('nerdFileName');
     const nerdFileType = document.getElementById('nerdFileType');
     const nerdFileSize = document.getElementById('nerdFileSize');
     const nerdDimensions = document.getElementById('nerdDimensions');
@@ -477,7 +457,6 @@ async function loadFullImageDetails(imageId) {
     const nerdAHash = document.getElementById('nerdAHash');
     const nerdDHash = document.getElementById('nerdDHash');
     
-    if (nerdFileName) nerdFileName.textContent = fullImage.fileName || 'N/A';
     if (nerdFileType) nerdFileType.textContent = fullImage.fileType || 'N/A';
     if (nerdFileSize) nerdFileSize.textContent = fullImage.fileSize ? `${(fullImage.fileSize / 1024).toFixed(2)} KB` : 'N/A';
     if (nerdDimensions) nerdDimensions.textContent = (fullImage.width && fullImage.height) ? `${fullImage.width} × ${fullImage.height}` : 'N/A';
@@ -491,7 +470,7 @@ async function loadFullImageDetails(imageId) {
     console.error('❌ Error loading full image details:', error);
     // Update to show error state
     const nerdElements = [
-      'nerdFileName', 'nerdFileType', 'nerdFileSize', 'nerdDimensions',
+      'nerdFileType', 'nerdFileSize', 'nerdDimensions',
       'nerdSha256', 'nerdPHash', 'nerdAHash', 'nerdDHash'
     ];
     nerdElements.forEach(id => {
