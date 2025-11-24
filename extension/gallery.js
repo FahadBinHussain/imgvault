@@ -30,7 +30,8 @@ const closeModal = document.getElementById('closeModal');
 const copyImageUrl = document.getElementById('copyImageUrl');
 const openOriginal = document.getElementById('openOriginal');
 const deleteImage = document.getElementById('deleteImage');
-const downloadImage = document.getElementById('downloadImage');
+const downloadImagePixvid = document.getElementById('downloadImagePixvid');
+const downloadImageImgbb = document.getElementById('downloadImageImgbb');
 const notesSection = document.getElementById('notesSection');
 const tagsSection = document.getElementById('tagsSection');
 
@@ -82,7 +83,8 @@ function setupEventListeners() {
   document.querySelector('.modal-overlay').addEventListener('click', hideModal);
   copyImageUrl.addEventListener('click', copyUrl);
   deleteImage.addEventListener('click', confirmDelete);
-  downloadImage.addEventListener('click', handleDownload);
+  downloadImagePixvid.addEventListener('click', () => handleDownload('pixvid'));
+  downloadImageImgbb.addEventListener('click', () => handleDownload('imgbb'));
   editSourceUrl.addEventListener('click', () => toggleEdit('source'));
   editPageUrl.addEventListener('click', () => toggleEdit('page'));
   openPageUrl.addEventListener('click', () => {
@@ -306,9 +308,6 @@ function showImageDetails(image) {
   displaySource.style.color = sourceName === 'ImgBB' ? '#10b981' : '#818cf8';
   displaySource.style.fontWeight = '600';
   
-  // Update download button
-  downloadImage.innerHTML = `<span class="download-icon">⬇️</span> Download from ${sourceName}`;
-  
   // Populate Pixvid and ImgBB URLs in Noobs tab
   const noobPixvidUrl = document.getElementById('noobPixvidUrl');
   const noobImgbbUrl = document.getElementById('noobImgbbUrl');
@@ -323,8 +322,16 @@ function showImageDetails(image) {
     noobImgbbUrlSection.style.display = 'flex';
     noobImgbbUrl.href = image.imgbbUrl;
     noobImgbbUrl.textContent = truncateUrl(image.imgbbUrl, 40);
+    // Show ImgBB download button
+    if (downloadImageImgbb) {
+      downloadImageImgbb.style.display = 'flex';
+    }
   } else if (noobImgbbUrlSection) {
     noobImgbbUrlSection.style.display = 'none';
+    // Hide ImgBB download button
+    if (downloadImageImgbb) {
+      downloadImageImgbb.style.display = 'none';
+    }
   }
   
   // Source and Page URLs (using inputs)
@@ -592,17 +599,31 @@ function showToast(message, duration = 3000) {
   }, duration);
 }
 
-async function handleDownload() {
+async function handleDownload(source = 'pixvid') {
   if (!currentImage) return;
   
   try {
-    const sourceName = currentImage._displaySource || 'Pixvid';
-    const sourceUrl = currentImage._displayUrl || currentImage.pixvidUrl;
+    let sourceUrl, sourceName, downloadBtn;
     
-    downloadImage.disabled = true;
-    downloadImage.innerHTML = '<span class="download-icon">⏳</span> Downloading...';
+    if (source === 'imgbb') {
+      sourceUrl = currentImage.imgbbUrl;
+      sourceName = 'ImgBB';
+      downloadBtn = downloadImageImgbb;
+    } else {
+      sourceUrl = currentImage.pixvidUrl;
+      sourceName = 'Pixvid';
+      downloadBtn = downloadImagePixvid;
+    }
     
-    // Fetch the image from the display source
+    if (!sourceUrl) {
+      showToast('❌ Source not available', 2000);
+      return;
+    }
+    
+    downloadBtn.disabled = true;
+    downloadBtn.innerHTML = '<span class="download-icon">⏳</span> Downloading...';
+    
+    // Fetch the image from the source
     const response = await fetch(sourceUrl);
     const blob = await response.blob();
     
@@ -621,14 +642,18 @@ async function handleDownload() {
     document.body.removeChild(a);
     URL.revokeObjectURL(downloadUrl);
     
-    downloadImage.disabled = false;
-    downloadImage.innerHTML = `<span class="download-icon">⬇️</span> Download from ${sourceName}`;
+    downloadBtn.disabled = false;
+    downloadBtn.innerHTML = `<span class="download-icon">⬇️</span> Download from ${sourceName}`;
     showToast('✅ Image downloaded successfully', 2000);
   } catch (error) {
     console.error('Download failed:', error);
-    const sourceName = currentImage._displaySource || 'Pixvid';
-    downloadImage.disabled = false;
-    downloadImage.innerHTML = `<span class="download-icon">⬇️</span> Download from ${sourceName}`;
+    if (source === 'imgbb') {
+      downloadImageImgbb.disabled = false;
+      downloadImageImgbb.innerHTML = '<span class="download-icon">⬇️</span> Download from ImgBB';
+    } else {
+      downloadImagePixvid.disabled = false;
+      downloadImagePixvid.innerHTML = '<span class="download-icon">⬇️</span> Download from Pixvid';
+    }
     showToast('❌ Download failed', 3000);
   }
 }
