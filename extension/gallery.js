@@ -317,11 +317,11 @@ function showImageDetails(image) {
     downloadImageImgbbHeader.style.display = 'none';
   }
   
-  // Source and Page URLs - show placeholder until full data loads
-  modalSourceUrlLink.href = image.sourcePageUrl || '#';
-  modalSourceUrlLink.textContent = truncateUrl(image.sourcePageUrl || 'Loading...', 50);
+  // Source and Page URLs - both available in lightweight data now
+  modalSourceUrlLink.href = image.sourceImageUrl || '#';
+  modalSourceUrlLink.textContent = truncateUrl(image.sourceImageUrl || 'N/A', 50);
   modalPageUrlLink.href = image.sourcePageUrl || '#';
-  modalPageUrlLink.textContent = truncateUrl(image.sourcePageUrl || 'Loading...', 50);
+  modalPageUrlLink.textContent = truncateUrl(image.sourcePageUrl || 'N/A', 50);
   
   if (image.createdAt) {
     const date = new Date(image.createdAt);
@@ -440,10 +440,6 @@ async function loadFullImageDetails(imageId) {
       modalFileName.textContent = fullImage.fileName;
       fileNameSection.style.display = 'flex';
     }
-    
-    // Update source URL
-    modalSourceUrlLink.href = fullImage.sourceImageUrl || '#';
-    modalSourceUrlLink.textContent = truncateUrl(fullImage.sourceImageUrl || 'N/A', 50);
     
     // Update Nerds tab with real data
     const nerdFileType = document.getElementById('nerdFileType');

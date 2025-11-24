@@ -94,7 +94,7 @@ class StorageManager {
       const startTime = performance.now();
       
       // Only fetch essential fields for gallery grid view (optimized for performance)
-      const url = `https://firestore.googleapis.com/v1/projects/${this.config.projectId}/databases/(default)/documents/images?key=${this.config.apiKey}&orderBy=createdAt desc&mask.fieldPaths=pixvidUrl&mask.fieldPaths=imgbbUrl&mask.fieldPaths=imgbbThumbUrl&mask.fieldPaths=sourcePageUrl&mask.fieldPaths=pageTitle&mask.fieldPaths=tags&mask.fieldPaths=description&mask.fieldPaths=createdAt`;
+      const url = `https://firestore.googleapis.com/v1/projects/${this.config.projectId}/databases/(default)/documents/images?key=${this.config.apiKey}&orderBy=createdAt desc&mask.fieldPaths=pixvidUrl&mask.fieldPaths=imgbbUrl&mask.fieldPaths=imgbbThumbUrl&mask.fieldPaths=sourceImageUrl&mask.fieldPaths=sourcePageUrl&mask.fieldPaths=pageTitle&mask.fieldPaths=tags&mask.fieldPaths=description&mask.fieldPaths=createdAt`;
       
       const response = await fetch(url);
       
@@ -119,6 +119,7 @@ class StorageManager {
           pixvidUrl: fields.pixvidUrl?.stringValue || '',
           imgbbUrl: fields.imgbbUrl?.stringValue || '',
           imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
+          sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
           sourcePageUrl: fields.sourcePageUrl?.stringValue || '',
           pageTitle: fields.pageTitle?.stringValue || '',
           tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
