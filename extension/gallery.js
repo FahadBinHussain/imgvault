@@ -402,7 +402,10 @@ function showImageDetails(image) {
   const tabContents = document.querySelectorAll('.tab-content');
   
   tabs.forEach(t => t.classList.remove('active'));
-  tabContents.forEach(tc => tc.classList.remove('active'));
+  tabContents.forEach(tc => {
+    tc.classList.remove('active');
+    tc.style.display = 'none';
+  });
   
   // Activate the first tab (For Noobs)
   if (tabs[0]) tabs[0].classList.add('active');
@@ -701,7 +704,8 @@ document.addEventListener('DOMContentLoaded', () => {
       tabs.forEach(t => t.classList.remove('active'));
       tabContents.forEach(tc => {
         tc.classList.remove('active');
-        console.log('Removing active from:', tc.id);
+        tc.style.display = 'none'; // Force hide
+        console.log('Hiding tab:', tc.id);
       });
       
       // Add active class to clicked tab
@@ -713,7 +717,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (targetContent) {
         targetContent.classList.add('active');
         targetContent.style.display = 'block'; // Force display
-        console.log('Activated tab:', `${tabName}Tab`, 'Display:', targetContent.style.display);
+        console.log('Showing tab:', `${tabName}Tab`);
       }
     });
   });
