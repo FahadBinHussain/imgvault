@@ -708,6 +708,18 @@ body::before {
   display: block;
 }
 
+/* Tab content sections styling */
+#noobsTab .info-section,
+#nerdsTab .info-section {
+  margin-top: 24px;
+  margin-bottom: 24px;
+}
+
+#noobsTab .info-section:last-child,
+#nerdsTab .info-section:last-child {
+  margin-bottom: 0;
+}
+
 .info-section h4 {
   font-size: 12px;
   font-weight: 700;
