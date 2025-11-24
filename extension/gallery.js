@@ -18,11 +18,10 @@ const modalTitle = document.getElementById('modalTitle');
 const modalFileName = document.getElementById('modalFileName');
 const fileNameSection = document.getElementById('fileNameSection');
 const displaySource = document.getElementById('displaySource');
-const modalSourceUrlInput = document.getElementById('modalSourceUrlInput');
-const modalPageUrlInput = document.getElementById('modalPageUrlInput');
+const modalSourceUrlLink = document.getElementById('modalSourceUrlLink');
+const modalPageUrlLink = document.getElementById('modalPageUrlLink');
 const editSourceUrl = document.getElementById('editSourceUrl');
 const editPageUrl = document.getElementById('editPageUrl');
-const openPageUrl = document.getElementById('openPageUrl');
 const modalDate = document.getElementById('modalDate');
 const modalNotes = document.getElementById('modalNotes');
 const modalTags = document.getElementById('modalTags');
@@ -88,11 +87,6 @@ function setupEventListeners() {
   downloadImageImgbbHeader.addEventListener('click', () => handleDownload('imgbb'));
   editSourceUrl.addEventListener('click', () => toggleEdit('source'));
   editPageUrl.addEventListener('click', () => toggleEdit('page'));
-  openPageUrl.addEventListener('click', () => {
-    if (currentImage && currentImage.sourcePageUrl) {
-      window.open(currentImage.sourcePageUrl, '_blank');
-    }
-  });
   
   confirmCancel.addEventListener('click', hideConfirm);
   document.querySelector('.confirm-overlay').addEventListener('click', hideConfirm);
@@ -268,8 +262,8 @@ function showImageDetails(image) {
   editPageUrl.textContent = '✏️';
   editSourceUrl.classList.remove('saving');
   editPageUrl.classList.remove('saving');
-  modalSourceUrlInput.setAttribute('readonly', 'readonly');
-  modalPageUrlInput.setAttribute('readonly', 'readonly');
+  modalSourceUrlLink.style.display = 'inline';
+  modalPageUrlLink.style.display = 'inline';
   
   // Determine which source to use based on preference
   let displayUrl, sourceName;
@@ -324,8 +318,10 @@ function showImageDetails(image) {
   }
   
   // Source and Page URLs - show placeholder until full data loads
-  modalSourceUrlInput.value = image.sourcePageUrl || 'Loading...';
-  modalPageUrlInput.value = image.sourcePageUrl || '';
+  modalSourceUrlLink.href = image.sourcePageUrl || '#';
+  modalSourceUrlLink.textContent = truncateUrl(image.sourcePageUrl || 'Loading...', 50);
+  modalPageUrlLink.href = image.sourcePageUrl || '#';
+  modalPageUrlLink.textContent = truncateUrl(image.sourcePageUrl || 'Loading...', 50);
   
   if (image.createdAt) {
     const date = new Date(image.createdAt);
@@ -446,7 +442,8 @@ async function loadFullImageDetails(imageId) {
     }
     
     // Update source URL
-    modalSourceUrlInput.value = fullImage.sourceImageUrl || '';
+    modalSourceUrlLink.href = fullImage.sourceImageUrl || '#';
+    modalSourceUrlLink.textContent = truncateUrl(fullImage.sourceImageUrl || 'N/A', 50);
     
     // Update Nerds tab with real data
     const nerdFileType = document.getElementById('nerdFileType');
@@ -703,13 +700,24 @@ async function handleDownload(source = 'pixvid') {
 }
 
 async function toggleEdit(field) {
-  const input = field === 'source' ? modalSourceUrlInput : modalPageUrlInput;
+  const link = field === 'source' ? modalSourceUrlLink : modalPageUrlLink;
   const btn = field === 'source' ? editSourceUrl : editPageUrl;
-  const isReadonly = input.hasAttribute('readonly');
+  const editGroup = link.parentElement;
   
-  if (isReadonly) {
-    // Enter edit mode
-    input.removeAttribute('readonly');
+  // Check if we're in edit mode (input exists)
+  const existingInput = editGroup.querySelector('input');
+  
+  if (!existingInput) {
+    // Enter edit mode - replace link with input
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'detail-input';
+    input.value = link.href === '#' || link.href.endsWith('#') ? '' : link.href;
+    input.style.flex = '1';
+    
+    link.style.display = 'none';
+    editGroup.insertBefore(input, btn);
+    
     input.focus();
     input.select();
     btn.textContent = '✓';
@@ -721,22 +729,27 @@ async function toggleEdit(field) {
       btn.classList.add('saving');
       btn.textContent = '⏳';
       
-      const newValue = input.value.trim();
+      const newValue = existingInput.value.trim();
       
       // Update in Firebase
       const updateData = {};
       if (field === 'source') {
         updateData.sourceImageUrl = newValue;
         currentImage.sourceImageUrl = newValue;
+        link.href = newValue || '#';
+        link.textContent = truncateUrl(newValue || 'N/A', 50);
       } else {
         updateData.sourcePageUrl = newValue;
         currentImage.sourcePageUrl = newValue;
+        link.href = newValue || '#';
+        link.textContent = truncateUrl(newValue || 'N/A', 50);
       }
       
       await storageManager.updateImage(currentImage.id, updateData);
       
-      // Lock the input again
-      input.setAttribute('readonly', 'readonly');
+      // Remove input and show link again
+      existingInput.remove();
+      link.style.display = 'inline';
       btn.textContent = '✏️';
       btn.title = 'Edit';
       btn.classList.remove('saving');
