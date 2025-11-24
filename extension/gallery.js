@@ -309,6 +309,24 @@ function showImageDetails(image) {
   // Update download button
   downloadImage.innerHTML = `<span class="download-icon">⬇️</span> Download from ${sourceName}`;
   
+  // Populate Pixvid and ImgBB URLs in Noobs tab
+  const noobPixvidUrl = document.getElementById('noobPixvidUrl');
+  const noobImgbbUrl = document.getElementById('noobImgbbUrl');
+  const noobImgbbUrlSection = document.getElementById('noobImgbbUrlSection');
+  
+  if (noobPixvidUrl) {
+    noobPixvidUrl.href = image.pixvidUrl;
+    noobPixvidUrl.textContent = truncateUrl(image.pixvidUrl, 40);
+  }
+  
+  if (image.imgbbUrl && noobImgbbUrlSection && noobImgbbUrl) {
+    noobImgbbUrlSection.style.display = 'flex';
+    noobImgbbUrl.href = image.imgbbUrl;
+    noobImgbbUrl.textContent = truncateUrl(image.imgbbUrl, 40);
+  } else if (noobImgbbUrlSection) {
+    noobImgbbUrlSection.style.display = 'none';
+  }
+  
   // Source and Page URLs (using inputs)
   modalSourceUrlInput.value = image.sourceImageUrl || '';
   modalPageUrlInput.value = image.sourcePageUrl || '';
