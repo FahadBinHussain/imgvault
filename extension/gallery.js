@@ -75,10 +75,14 @@ function updateSourceIndicator() {
 }
 
 function setupEventListeners() {
-  refreshBtn.addEventListener('click', loadImages);
+  refreshBtn.addEventListener('click', loadGallery);
   searchInput.addEventListener('input', handleSearch);
   closeModal.addEventListener('click', hideModal);
-  document.querySelector('.modal-overlay').addEventListener('click', hideModal);
+  document.querySelector('.modal-overlay').addEventListener('click', (e) => {
+    if (e.target.classList.contains('modal-overlay')) {
+      hideModal();
+    }
+  });
   deleteImage.addEventListener('click', confirmDelete);
   downloadImagePixvidHeader.addEventListener('click', () => handleDownload('pixvid'));
   downloadImageImgbbHeader.addEventListener('click', () => handleDownload('imgbb'));
