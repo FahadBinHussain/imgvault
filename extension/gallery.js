@@ -592,11 +592,11 @@ async function handleDownload(source = 'pixvid') {
     if (source === 'imgbb') {
       sourceUrl = currentImage.imgbbUrl;
       sourceName = 'ImgBB';
-      downloadBtn = downloadImageImgbb;
+      downloadBtn = downloadImageImgbbHeader;
     } else {
       sourceUrl = currentImage.pixvidUrl;
       sourceName = 'Pixvid';
-      downloadBtn = downloadImagePixvid;
+      downloadBtn = downloadImagePixvidHeader;
     }
     
     if (!sourceUrl) {
@@ -605,7 +605,8 @@ async function handleDownload(source = 'pixvid') {
     }
     
     downloadBtn.disabled = true;
-    downloadBtn.innerHTML = '<span class="download-icon">⏳</span> Downloading...';
+    const originalHTML = downloadBtn.innerHTML;
+    downloadBtn.innerHTML = '⏳';
     
     // Fetch the image from the source
     const response = await fetch(sourceUrl);
@@ -627,7 +628,7 @@ async function handleDownload(source = 'pixvid') {
     URL.revokeObjectURL(downloadUrl);
     
     downloadBtn.disabled = false;
-    downloadBtn.innerHTML = `<span class="download-icon">⬇️</span> Download from ${sourceName}`;
+    downloadBtn.innerHTML = originalHTML;
     showToast('✅ Image downloaded successfully', 2000);
   } catch (error) {
     console.error('Download failed:', error);
