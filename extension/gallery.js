@@ -111,23 +111,24 @@ function setupEventListeners() {
 
 async function loadGallery() {
   try {
-    console.log('🔵 Loading gallery...');
+    console.log('� [GALLERY LOAD] Starting gallery load...');
     loadingSpinner.style.display = 'flex';
     galleryContainer.innerHTML = '';
     galleryEmpty.style.display = 'none';
     
     allImages = await storageManager.getAllImages();
-    console.log('🔵 Loaded images:', allImages ? allImages.length : 0);
+    console.log(`� [GALLERY LOAD] Loaded ${allImages ? allImages.length : 0} images`);
+    console.log('💡 [OPTIMIZATION] Only lightweight data loaded. Full details (hashes, dimensions, etc.) will load when you CLICK an image');
     
     loadingSpinner.style.display = 'none';
     
     if (!allImages || allImages.length === 0) {
-      console.log('🔵 No images found, showing empty state');
+      console.log('� [GALLERY LOAD] No images found, showing empty state');
       galleryEmpty.style.display = 'flex';
       return;
     }
     
-    console.log('🔵 Displaying images');
+    console.log('� [GALLERY LOAD] Displaying images in grid');
     displayImages(allImages);
   } catch (error) {
     console.error('🔴 Failed to load gallery:', error);
@@ -203,7 +204,7 @@ function displayImages(images) {
       
       photoItem.appendChild(img);
       photoItem.appendChild(overlay);
-      photoItem.addEventListener('click', () => showImageDetails(image));
+      photoItem.addEventListener('click', async () => await showImageDetails(image));
       
       photosGrid.appendChild(photoItem);
     });
@@ -255,6 +256,7 @@ function formatDateHeader(dateStr) {
 }
 
 function showImageDetails(image) {
+  // Set basic info immediately from lightweight data
   currentImage = image;
   
   // Reset delete button state
@@ -291,13 +293,8 @@ function showImageDetails(image) {
   modalImage.src = displayUrl;
   modalTitle.textContent = image.pageTitle || 'Untitled';
   
-  // Display filename if available
-  if (image.fileName) {
-    modalFileName.textContent = image.fileName;
-    fileNameSection.style.display = 'flex';
-  } else {
-    fileNameSection.style.display = 'none';
-  }
+  // Display filename (will be populated when full data loads)
+  fileNameSection.style.display = 'none';
   
   // Display Source indicator
   displaySource.textContent = `${sourceName} ⚡`;
@@ -326,8 +323,8 @@ function showImageDetails(image) {
     downloadImageImgbbHeader.style.display = 'none';
   }
   
-  // Source and Page URLs (using inputs)
-  modalSourceUrlInput.value = image.sourceImageUrl || '';
+  // Source and Page URLs - show placeholder until full data loads
+  modalSourceUrlInput.value = image.sourcePageUrl || 'Loading...';
   modalPageUrlInput.value = image.sourcePageUrl || '';
   
   if (image.createdAt) {
@@ -341,13 +338,11 @@ function showImageDetails(image) {
       minute: '2-digit'
     });
     modalDate.textContent = dateStr;
-    document.getElementById('nerdDate').textContent = dateStr;
   } else {
     modalDate.textContent = '';
-    document.getElementById('nerdDate').textContent = 'N/A';
   }
   
-  // Always show description and tags sections
+  // Always show description and tags sections with available data
   if (image.description) {
     console.log('Image has description:', image.description);
     modalNotes.textContent = image.description;
@@ -372,8 +367,7 @@ function showImageDetails(image) {
     tagsSection.style.display = '';
   }
   
-  // Populate Nerds tab with all technical details
-  console.log('Populating Nerds tab with image data:', image);
+  // Reset Nerds tab to show loading state
   const nerdDocId = document.getElementById('nerdDocId');
   const nerdTitle = document.getElementById('nerdTitle');
   const nerdFileName = document.getElementById('nerdFileName');
@@ -384,23 +378,33 @@ function showImageDetails(image) {
   const nerdPHash = document.getElementById('nerdPHash');
   const nerdAHash = document.getElementById('nerdAHash');
   const nerdDHash = document.getElementById('nerdDHash');
+  const nerdDate = document.getElementById('nerdDate');
   
-  console.log('Nerd elements found:', {
-    nerdDocId: !!nerdDocId,
-    nerdTitle: !!nerdTitle,
-    nerdFileName: !!nerdFileName
-  });
-  
+  // Set loading placeholders
   if (nerdDocId) nerdDocId.textContent = image.id || 'N/A';
   if (nerdTitle) nerdTitle.textContent = image.pageTitle || 'Untitled';
-  if (nerdFileName) nerdFileName.textContent = image.fileName || 'N/A';
-  if (nerdFileType) nerdFileType.textContent = image.fileType || 'N/A';
-  if (nerdFileSize) nerdFileSize.textContent = image.fileSize ? `${(image.fileSize / 1024).toFixed(2)} KB` : 'N/A';
-  if (nerdDimensions) nerdDimensions.textContent = (image.width && image.height) ? `${image.width} × ${image.height}` : 'N/A';
-  if (nerdSha256) nerdSha256.textContent = image.sha256 || 'N/A';
-  if (nerdPHash) nerdPHash.textContent = image.pHash ? `${image.pHash.substring(0, 64)}...` : 'N/A';
-  if (nerdAHash) nerdAHash.textContent = image.aHash || 'N/A';
-  if (nerdDHash) nerdDHash.textContent = image.dHash || 'N/A';
+  if (nerdFileName) nerdFileName.textContent = 'Loading...';
+  if (nerdFileType) nerdFileType.textContent = 'Loading...';
+  if (nerdFileSize) nerdFileSize.textContent = 'Loading...';
+  if (nerdDimensions) nerdDimensions.textContent = 'Loading...';
+  if (nerdSha256) nerdSha256.textContent = 'Loading...';
+  if (nerdPHash) nerdPHash.textContent = 'Loading...';
+  if (nerdAHash) nerdAHash.textContent = 'Loading...';
+  if (nerdDHash) nerdDHash.textContent = 'Loading...';
+  if (nerdDate && image.createdAt) {
+    const date = new Date(image.createdAt);
+    const dateStr = date.toLocaleDateString('en-US', { 
+      weekday: 'short', 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+    nerdDate.textContent = dateStr;
+  } else if (nerdDate) {
+    nerdDate.textContent = 'N/A';
+  }
   
   // Reset tabs to "For Noobs" when opening an image
   const tabs = document.querySelectorAll('.detail-tab');
@@ -420,7 +424,83 @@ function showImageDetails(image) {
     noobsTab.style.display = 'block';
   }
   
+  // Show modal immediately with basic data
   imageModal.style.display = 'flex';
+  
+  // DO NOT lazy load here - wait until user clicks "For Nerds" tab
+  console.log('💡 [OPTIMIZATION] Modal opened with lightweight data only. Full details will load when user clicks "For Nerds" tab');
+}
+
+// New function to lazy-load full image details
+async function loadFullImageDetails(imageId) {
+  try {
+    console.log('� [USER CLICKED] Starting lazy load of full details for image:', imageId);
+    console.log('⏱️  [TIMING] This data was NOT loaded with the gallery - loading NOW on demand');
+    
+    const fullImage = await storageManager.getImageById(imageId);
+    
+    if (!fullImage) {
+      console.error('❌ Failed to load full image details');
+      return;
+    }
+    
+    // Update currentImage with full data
+    currentImage = { ...currentImage, ...fullImage };
+    
+    console.log('✅ [LAZY LOAD] Full image details loaded successfully:', {
+      fileName: fullImage.fileName,
+      fileType: fullImage.fileType,
+      fileSize: fullImage.fileSize,
+      dimensions: `${fullImage.width}x${fullImage.height}`,
+      sha256: fullImage.sha256 ? 'present' : 'missing',
+      pHash: fullImage.pHash ? 'present' : 'missing',
+      aHash: fullImage.aHash ? 'present' : 'missing',
+      dHash: fullImage.dHash ? 'present' : 'missing'
+    });
+    
+    // Update filename if available
+    if (fullImage.fileName) {
+      modalFileName.textContent = fullImage.fileName;
+      fileNameSection.style.display = 'flex';
+    }
+    
+    // Update source URL
+    modalSourceUrlInput.value = fullImage.sourceImageUrl || '';
+    
+    // Update Nerds tab with real data
+    const nerdFileName = document.getElementById('nerdFileName');
+    const nerdFileType = document.getElementById('nerdFileType');
+    const nerdFileSize = document.getElementById('nerdFileSize');
+    const nerdDimensions = document.getElementById('nerdDimensions');
+    const nerdSha256 = document.getElementById('nerdSha256');
+    const nerdPHash = document.getElementById('nerdPHash');
+    const nerdAHash = document.getElementById('nerdAHash');
+    const nerdDHash = document.getElementById('nerdDHash');
+    
+    if (nerdFileName) nerdFileName.textContent = fullImage.fileName || 'N/A';
+    if (nerdFileType) nerdFileType.textContent = fullImage.fileType || 'N/A';
+    if (nerdFileSize) nerdFileSize.textContent = fullImage.fileSize ? `${(fullImage.fileSize / 1024).toFixed(2)} KB` : 'N/A';
+    if (nerdDimensions) nerdDimensions.textContent = (fullImage.width && fullImage.height) ? `${fullImage.width} × ${fullImage.height}` : 'N/A';
+    if (nerdSha256) nerdSha256.textContent = fullImage.sha256 || 'N/A';
+    if (nerdPHash) nerdPHash.textContent = fullImage.pHash ? `${fullImage.pHash.substring(0, 64)}...` : 'N/A';
+    if (nerdAHash) nerdAHash.textContent = fullImage.aHash || 'N/A';
+    if (nerdDHash) nerdDHash.textContent = fullImage.dHash || 'N/A';
+    
+    console.log('✅ [UI UPDATE] Nerds tab populated with full technical details');
+  } catch (error) {
+    console.error('❌ Error loading full image details:', error);
+    // Update to show error state
+    const nerdElements = [
+      'nerdFileName', 'nerdFileType', 'nerdFileSize', 'nerdDimensions',
+      'nerdSha256', 'nerdPHash', 'nerdAHash', 'nerdDHash'
+    ];
+    nerdElements.forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.textContent === 'Loading...') {
+        el.textContent = 'Error loading';
+      }
+    });
+  }
 }
 
 function hideModal() {
@@ -730,6 +810,18 @@ document.addEventListener('DOMContentLoaded', () => {
         targetContent.classList.add('active');
         targetContent.style.display = 'block'; // Force display
         console.log('Showing tab:', `${tabName}Tab`);
+      }
+      
+      // Lazy load full details ONLY when "For Nerds" tab is clicked
+      if (tabName === 'nerds' && currentImage) {
+        console.log('🔍 [NERD TAB CLICKED] User wants to see technical details');
+        // Check if we already have full details loaded (check for actual data, not a flag)
+        if (!currentImage.sha256 || !currentImage.pHash || !currentImage.fileName) {
+          console.log('💡 [LAZY LOAD TRIGGER] Full details not loaded yet - fetching now...');
+          loadFullImageDetails(currentImage.id);
+        } else {
+          console.log('✅ [CACHE HIT] Full details already loaded, no need to fetch again');
+        }
       }
     });
   });

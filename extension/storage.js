@@ -90,7 +90,11 @@ class StorageManager {
     }
 
     try {
-      const url = `https://firestore.googleapis.com/v1/projects/${this.config.projectId}/databases/(default)/documents/images?key=${this.config.apiKey}&orderBy=createdAt desc`;
+      console.log('📊 [OPTIMIZE] Fetching lightweight gallery data (only essential fields)...');
+      const startTime = performance.now();
+      
+      // Only fetch essential fields for gallery grid view (optimized for performance)
+      const url = `https://firestore.googleapis.com/v1/projects/${this.config.projectId}/databases/(default)/documents/images?key=${this.config.apiKey}&orderBy=createdAt desc&mask.fieldPaths=pixvidUrl&mask.fieldPaths=imgbbUrl&mask.fieldPaths=imgbbThumbUrl&mask.fieldPaths=sourcePageUrl&mask.fieldPaths=pageTitle&mask.fieldPaths=tags&mask.fieldPaths=description&mask.fieldPaths=createdAt`;
       
       const response = await fetch(url);
       
@@ -99,39 +103,33 @@ class StorageManager {
       }
 
       const result = await response.json();
+      const endTime = performance.now();
       
       if (!result.documents) {
+        console.log('📊 [OPTIMIZE] No images found in gallery');
         return [];
       }
 
-      return result.documents.map(doc => {
+      const images = result.documents.map(doc => {
         const id = doc.name.split('/').pop();
         const fields = doc.fields;
         
         return {
           id,
           pixvidUrl: fields.pixvidUrl?.stringValue || '',
-          pixvidDeleteUrl: fields.pixvidDeleteUrl?.stringValue || '',
           imgbbUrl: fields.imgbbUrl?.stringValue || '',
-          imgbbDeleteUrl: fields.imgbbDeleteUrl?.stringValue || '',
           imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
-          sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
           sourcePageUrl: fields.sourcePageUrl?.stringValue || '',
           pageTitle: fields.pageTitle?.stringValue || '',
-          fileName: fields.fileName?.stringValue || '',
-          fileType: fields.fileType?.stringValue || '',
-          fileSize: parseInt(fields.fileSize?.integerValue || '0'),
-          width: parseInt(fields.width?.integerValue || '0'),
-          height: parseInt(fields.height?.integerValue || '0'),
-          sha256: fields.sha256?.stringValue || '',
-          pHash: fields.pHash?.stringValue || '',
-          aHash: fields.aHash?.stringValue || '',
-          dHash: fields.dHash?.stringValue || '',
           tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
           description: fields.description?.stringValue || '',
           createdAt: fields.createdAt?.timestampValue || ''
         };
       });
+      
+      console.log(`✅ [OPTIMIZE] Loaded ${images.length} images in ${(endTime - startTime).toFixed(2)}ms (lightweight mode - full details will load on demand)`);
+      
+      return images;
     } catch (error) {
       console.error('Error getting images:', error);
       return [];
@@ -147,6 +145,9 @@ class StorageManager {
     }
 
     try {
+      console.log(`🔍 [LAZY LOAD] Fetching full details for image: ${id}`);
+      const startTime = performance.now();
+      
       const url = `https://firestore.googleapis.com/v1/projects/${this.config.projectId}/databases/(default)/documents/images/${id}?key=${this.config.apiKey}`;
       
       const response = await fetch(url);
@@ -157,6 +158,9 @@ class StorageManager {
 
       const doc = await response.json();
       const fields = doc.fields;
+      const endTime = performance.now();
+      
+      console.log(`✅ [LAZY LOAD] Full details loaded in ${(endTime - startTime).toFixed(2)}ms`);
       
       return {
         id,
