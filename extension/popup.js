@@ -4,6 +4,7 @@ console.log('🔵 ImgVault popup.js loaded - v2.0');
 
 let currentImageData = null;
 let storageManager = null;
+let duplicateDetector = null;
 
 // DOM Elements  
 const settingsView = document.getElementById('settingsView');
@@ -41,6 +42,7 @@ const progressText = document.getElementById('progressText');
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('🔵 DOMContentLoaded event fired');
   storageManager = new StorageManager();
+  duplicateDetector = new DuplicateDetector();
   await loadSettings();
   await loadPendingImage();
   console.log('🔵 About to setup event listeners');
@@ -590,14 +592,89 @@ async function handleUpload() {
 }
 
 // Handle file uploads directly in popup (to avoid Chrome message size limit)
-async function handleFileUpload(imageData, settings) {
+async function handleFileUpload(imageData, settings, ignoreDuplicate = false) {
   showStatus('Converting image...', 'info', true); // persist
   
   // Convert base64 to blob
   const response = await fetch(imageData.srcUrl);
   const blob = await response.blob();
   
-  // TODO: Add duplicate checking here similar to background.js
+  // Extract metadata for duplicate detection
+  showStatus('🔍 Extracting image metadata...', 'info', true);
+  const metadata = await duplicateDetector.extractMetadata(
+    blob, 
+    imageData.srcUrl, 
+    imageData.pageUrl
+  );
+  
+  console.log('Extracted metadata:', {
+    sha256: metadata.sha256.substring(0, 16) + '...',
+    pHash: metadata.pHash.substring(0, 32) + '...',
+    aHash: metadata.aHash.substring(0, 16) + '...',
+    dHash: metadata.dHash.substring(0, 16) + '...',
+    width: metadata.width,
+    height: metadata.height,
+    size: metadata.size
+  });
+  
+  // Check for duplicates (unless user wants to ignore)
+  if (!ignoreDuplicate) {
+    showStatus('🔎 Checking for duplicates...', 'info', true);
+    
+    // Get existing images from Firebase (with full hash data for duplicate checking)
+    const existingImages = await storageManager.getAllImagesForDuplicateCheck();
+    
+    console.log(`Checking against ${existingImages.length} existing images`);
+    
+    // Check for duplicates
+    const duplicateCheck = await duplicateDetector.checkDuplicates(
+      metadata, 
+      existingImages,
+      (progressMsg) => showStatus(`🔎 ${progressMsg}`, 'info', true)
+    );
+    
+    // If duplicate found, show duplicate UI and throw error
+    if (duplicateCheck.isDuplicate) {
+      let duplicateData = null;
+      
+      if (duplicateCheck.contextMatch) {
+        duplicateData = duplicateCheck.contextMatch;
+      } else if (duplicateCheck.exactMatch) {
+        duplicateData = duplicateCheck.exactMatch;
+      } else if (duplicateCheck.visualMatch) {
+        duplicateData = duplicateCheck.visualMatch;
+      }
+      
+      // Show duplicate UI
+      showDuplicateImage(duplicateData, imageData);
+      
+      let errorMsg = 'Duplicate image detected!\n';
+      
+      if (duplicateCheck.contextMatch) {
+        errorMsg += '✗ Same image from same page already exists';
+      } else if (duplicateCheck.exactMatch) {
+        errorMsg += '✗ Identical file already exists (SHA-256 match)';
+      } else if (duplicateCheck.visualMatch) {
+        const similarity = duplicateCheck.visualMatch.similarity || '0';
+        const matchCount = duplicateCheck.visualMatch.matchCount || 0;
+        const hashResults = duplicateCheck.visualMatch.hashResults || {};
+        
+        // Build matched hashes list
+        const matchedHashes = [];
+        if (hashResults.pHash?.match) matchedHashes.push('pHash');
+        if (hashResults.aHash?.match) matchedHashes.push('aHash');
+        if (hashResults.dHash?.match) matchedHashes.push('dHash');
+        
+        const matchedHashesStr = matchedHashes.length > 0 ? matchedHashes.join(', ') : 'unknown';
+        errorMsg += `✗ Visually similar image found (${similarity}% similar, ${matchCount}/3 hashes matched: ${matchedHashesStr})`;
+      }
+      
+      throw new Error(errorMsg);
+    }
+  } else {
+    console.log('⚠️ Duplicate check SKIPPED - User chose to ignore duplicates');
+    showStatus('⚠️ Skipping duplicate check...', 'info', true);
+  }
   
   showStatus('Uploading to Pixvid...', 'info', true); // persist
   
@@ -654,17 +731,11 @@ async function handleFileUpload(imageData, settings) {
   // Save to Firebase (similar to background.js)
   showStatus('Saving to Firebase...', 'info', true); // persist
   
-  // Initialize storage manager
-  const storageManager = new StorageManager();
-  await storageManager.init();
-  
-  // Get image metadata
-  const img = new Image();
-  await new Promise((resolve, reject) => {
-    img.onload = resolve;
-    img.onerror = reject;
-    img.src = imageData.srcUrl;
-  });
+  // Initialize storage manager (use global one if not using local scope)
+  if (!storageManager) {
+    const localStorageManager = new StorageManager();
+    await localStorageManager.init();
+  }
   
   const saveData = {
     pixvidUrl,
@@ -678,14 +749,14 @@ async function handleFileUpload(imageData, settings) {
     fileName: imageData.fileName,
     fileType: blob.type,
     fileSize: blob.size,
-    width: img.width,
-    height: img.height,
+    width: metadata.width,
+    height: metadata.height,
     tags: tagsInput.value.split(',').map(t => t.trim()).filter(t => t),
     description: notesInput.value,
-    sha256: '', // TODO: Calculate hashes for duplicate detection
-    pHash: '',
-    aHash: '',
-    dHash: ''
+    sha256: metadata.sha256,
+    pHash: metadata.pHash,
+    aHash: metadata.aHash,
+    dHash: metadata.dHash
   };
   
   await storageManager.saveImage(saveData);
@@ -736,16 +807,25 @@ function showDuplicateImage(duplicateData, uploadData) {
     uploadBtn.textContent = 'Uploading...';
     
     try {
-      const response = await chrome.runtime.sendMessage({
-        action: 'uploadImage',
-        data: { ...uploadData, ignoreDuplicate: true }
-      });
+      const settings = await chrome.storage.sync.get(['pixvidApiKey', 'firebaseConfig', 'imgbbApiKey']);
       
-      if (response.success) {
-        showStatus('Upload successful!', 'success');
-        showSuccessView(response.data.pixvidUrl, response.data.imgbbUrl);
+      // Check if this is an uploaded file (direct popup handling) or right-clicked (background.js)
+      if (currentImageData && currentImageData.isUploadedFile) {
+        // Handle file upload directly with ignoreDuplicate flag
+        await handleFileUpload(currentImageData, settings, true);
       } else {
-        throw new Error(response.error || 'Upload failed');
+        // Send to background script with ignoreDuplicate flag
+        const response = await chrome.runtime.sendMessage({
+          action: 'uploadImage',
+          data: { ...uploadData, ignoreDuplicate: true }
+        });
+        
+        if (response.success) {
+          showStatus('Upload successful!', 'success');
+          showSuccessView(response.data.pixvidUrl, response.data.imgbbUrl);
+        } else {
+          throw new Error(response.error || 'Upload failed');
+        }
       }
     } catch (error) {
       console.error('Upload error:', error);

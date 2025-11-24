@@ -81,6 +81,74 @@ class StorageManager {
     }
   }
 
+  // Get all images with full data for duplicate checking
+  async getAllImagesForDuplicateCheck() {
+    if (!this.initialized) {
+      const success = await this.init();
+      if (!success) {
+        return [];
+      }
+    }
+
+    try {
+      console.log('🔍 [DUPLICATE CHECK] Fetching ALL image data (including hashes)...');
+      const startTime = performance.now();
+      
+      // Fetch ALL fields without mask for duplicate detection
+      const url = `https://firestore.googleapis.com/v1/projects/${this.config.projectId}/databases/(default)/documents/images?key=${this.config.apiKey}&orderBy=createdAt desc`;
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch images');
+      }
+
+      const result = await response.json();
+      const endTime = performance.now();
+      
+      if (!result.documents) {
+        console.log('🔍 [DUPLICATE CHECK] No existing images found');
+        return [];
+      }
+
+      const images = result.documents.map(doc => {
+        const id = doc.name.split('/').pop();
+        const fields = doc.fields;
+        
+        return {
+          id,
+          pixvidUrl: fields.pixvidUrl?.stringValue || '',
+          pixvidDeleteUrl: fields.pixvidDeleteUrl?.stringValue || '',
+          imgbbUrl: fields.imgbbUrl?.stringValue || '',
+          imgbbDeleteUrl: fields.imgbbDeleteUrl?.stringValue || '',
+          imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
+          sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
+          sourcePageUrl: fields.sourcePageUrl?.stringValue || '',
+          pageTitle: fields.pageTitle?.stringValue || '',
+          fileName: fields.fileName?.stringValue || '',
+          fileType: fields.fileType?.stringValue || '',
+          fileSize: parseInt(fields.fileSize?.integerValue || '0'),
+          width: parseInt(fields.width?.integerValue || '0'),
+          height: parseInt(fields.height?.integerValue || '0'),
+          sha256: fields.sha256?.stringValue || '',
+          pHash: fields.pHash?.stringValue || '',
+          aHash: fields.aHash?.stringValue || '',
+          dHash: fields.dHash?.stringValue || '',
+          tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
+          description: fields.description?.stringValue || '',
+          createdAt: fields.createdAt?.timestampValue || ''
+        };
+      });
+      
+      console.log(`✅ [DUPLICATE CHECK] Loaded ${images.length} images with full hash data in ${(endTime - startTime).toFixed(2)}ms`);
+      
+      return images;
+    } catch (error) {
+      console.error('Error getting images for duplicate check:', error);
+      return [];
+    }
+  }
+
   async getAllImages() {
     if (!this.initialized) {
       const success = await this.init();

@@ -122,8 +122,8 @@ async function handleImageUpload(data) {
     
     updateStatus('🔎 Checking for duplicates...');
     
-    // Get existing images from Firebase
-    const existingImages = await storage.getAllImages();
+    // Get existing images from Firebase (with full hash data for duplicate checking)
+    const existingImages = await storage.getAllImagesForDuplicateCheck();
     
     console.log(`Checking against ${existingImages.length} existing images`);
     console.log('First existing image hashes:', existingImages[0] ? {
