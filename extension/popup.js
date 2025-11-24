@@ -560,7 +560,7 @@ function showDuplicateImage(duplicateData, uploadData) {
       <button class="btn-link" onclick="navigator.clipboard.writeText('${duplicateData.pixvidUrl}'); this.textContent='Copied!'">
         Copy URL
       </button>
-      <button class="btn-ignore-duplicate" style="background: #ff9800; color: white; margin-left: 10px;">
+      <button class="btn-link btn-ignore-duplicate">
         Ignore & Upload Anyway
       </button>
     </div>
