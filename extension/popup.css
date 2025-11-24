@@ -855,3 +855,16 @@ body {
   transform: translateY(-1px);
 }
 
+.btn-ignore-duplicate {
+  background: linear-gradient(135deg, var(--warning), #f97316) !important;
+  border-color: var(--warning) !important;
+  color: white !important;
+  font-weight: 600;
+}
+
+.btn-ignore-duplicate:hover {
+  background: linear-gradient(135deg, #f97316, #ea580c) !important;
+  border-color: #f97316 !important;
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+}
+
