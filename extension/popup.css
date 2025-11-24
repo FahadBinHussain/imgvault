@@ -29,6 +29,15 @@ body {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: var(--text-primary);
   overflow-x: hidden;
+  margin: 0 auto; /* Center horizontally when opened in a tab */
+  padding: 20px 0; /* Add padding when in tab view */
+}
+
+/* When opened in a full window/tab, add max-width and center */
+@media (min-width: 600px) {
+  body {
+    max-width: 420px;
+  }
 }
 
 .view {
