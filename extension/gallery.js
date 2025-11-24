@@ -376,9 +376,6 @@ function showImageDetails(image) {
   const nerdPHash = document.getElementById('nerdPHash');
   const nerdAHash = document.getElementById('nerdAHash');
   const nerdDHash = document.getElementById('nerdDHash');
-  const nerdPixvidUrl = document.getElementById('nerdPixvidUrl');
-  const nerdImgbbUrl = document.getElementById('nerdImgbbUrl');
-  const nerdImgbbUrlSection = document.getElementById('nerdImgbbUrlSection');
   const nerdTags = document.getElementById('nerdTags');
   const nerdNotes = document.getElementById('nerdNotes');
   
@@ -398,19 +395,6 @@ function showImageDetails(image) {
   if (nerdPHash) nerdPHash.textContent = image.pHash ? `${image.pHash.substring(0, 64)}...` : 'N/A';
   if (nerdAHash) nerdAHash.textContent = image.aHash || 'N/A';
   if (nerdDHash) nerdDHash.textContent = image.dHash || 'N/A';
-  
-  if (nerdPixvidUrl) {
-    nerdPixvidUrl.href = image.pixvidUrl;
-    nerdPixvidUrl.textContent = truncateUrl(image.pixvidUrl, 40);
-  }
-  
-  if (image.imgbbUrl && nerdImgbbUrlSection && nerdImgbbUrl) {
-    nerdImgbbUrlSection.style.display = 'flex';
-    nerdImgbbUrl.href = image.imgbbUrl;
-    nerdImgbbUrl.textContent = truncateUrl(image.imgbbUrl, 40);
-  } else if (nerdImgbbUrlSection) {
-    nerdImgbbUrlSection.style.display = 'none';
-  }
   
   if (nerdTags) nerdTags.textContent = (image.tags && image.tags.length > 0) ? image.tags.join(', ') : 'N/A';
   if (nerdNotes) nerdNotes.textContent = image.notes || 'N/A';
