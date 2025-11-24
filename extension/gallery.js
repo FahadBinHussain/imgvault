@@ -520,17 +520,31 @@ async function handleDelete() {
   
   if (!currentImage) return;
   
+  // Capture image reference so delete can continue even if modal is closed
+  const imageToDelete = { ...currentImage };
+  
   try {
     // Disable button during deletion
     deleteImage.disabled = true;
     deleteImage.textContent = '⏳';
     
+    // If we don't have delete URLs yet, fetch full details first
+    if (!imageToDelete.pixvidDeleteUrl && !imageToDelete.imgbbDeleteUrl) {
+      console.log('🔍 [DELETE] Delete URLs not loaded, fetching full details first...');
+      showToast('Loading image details...', 3000);
+      const fullDetails = await storageManager.getImageById(imageToDelete.id);
+      if (fullDetails) {
+        imageToDelete.pixvidDeleteUrl = fullDetails.pixvidDeleteUrl;
+        imageToDelete.imgbbDeleteUrl = fullDetails.imgbbDeleteUrl;
+      }
+    }
+    
     // Delete from Pixvid if pixvidDeleteUrl exists
-    if (currentImage.pixvidDeleteUrl) {
+    if (imageToDelete.pixvidDeleteUrl) {
       showToast('Deleting from Pixvid...', 5000);
       try {
         // Pixvid/Chevereto delete URLs work by simply visiting them
-        await fetch(currentImage.pixvidDeleteUrl, {
+        await fetch(imageToDelete.pixvidDeleteUrl, {
           method: 'GET',
           redirect: 'follow'
         });
@@ -547,12 +561,12 @@ async function handleDelete() {
     }
     
     // Delete from ImgBB if imgbbDeleteUrl exists
-    if (currentImage.imgbbDeleteUrl) {
+    if (imageToDelete.imgbbDeleteUrl) {
       showToast('Deleting from ImgBB...', 5000);
       try {
         // Parse image ID and hash from delete URL
         // ImgBB delete URL format: https://ibb.co/$image_id/$image_hash
-        const deleteUrl = new URL(currentImage.imgbbDeleteUrl);
+        const deleteUrl = new URL(imageToDelete.imgbbDeleteUrl);
         const pathParts = deleteUrl.pathname.split('/').filter(p => p);
         
         if (pathParts.length >= 2) {
@@ -593,14 +607,27 @@ async function handleDelete() {
     
     // Delete from Firebase
     showToast('Deleting from Firebase...', 5000);
-    await storageManager.deleteImage(currentImage.id);
-    showToast('✓ Deleted from Firebase', 2000);
+    await storageManager.deleteImage(imageToDelete.id);
+    
+    // Verify deletion by checking if document still exists
+    console.log('🔍 [DELETE] Verifying deletion...');
+    showToast('Verifying deletion...', 3000);
+    await new Promise(resolve => setTimeout(resolve, 500)); // Small delay to ensure delete propagated
+    
+    const stillExists = await storageManager.getImageById(imageToDelete.id);
+    
+    if (stillExists) {
+      throw new Error('Verification failed: Image still exists in Firebase after delete attempt');
+    }
+    
+    console.log('✅ [DELETE] Verified: Image successfully deleted from Firebase');
+    showToast('✓ Deleted from Firebase (verified)', 2000);
     
     // Wait a bit before showing final status
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     // Remove from allImages array
-    allImages = allImages.filter(img => img.id !== currentImage.id);
+    allImages = allImages.filter(img => img.id !== imageToDelete.id);
     
     // Close modal and refresh gallery
     hideModal();
@@ -615,7 +642,7 @@ async function handleDelete() {
     showToast('✅ Image deleted successfully', 3000);
   } catch (error) {
     console.error('Failed to delete image:', error);
-    showToast('❌ Failed to delete from Firebase', 4000);
+    showToast(`❌ ${error.message || 'Failed to delete'}`, 4000);
     deleteImage.disabled = false;
     deleteImage.textContent = '🗑️';
   }
