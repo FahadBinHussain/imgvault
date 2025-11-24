@@ -591,7 +591,7 @@ async function handleUpload() {
 
 // Handle file uploads directly in popup (to avoid Chrome message size limit)
 async function handleFileUpload(imageData, settings) {
-  showStatus('Converting image...', 'info');
+  showStatus('Converting image...', 'info', true); // persist
   
   // Convert base64 to blob
   const response = await fetch(imageData.srcUrl);
@@ -599,7 +599,7 @@ async function handleFileUpload(imageData, settings) {
   
   // TODO: Add duplicate checking here similar to background.js
   
-  showStatus('Uploading to Pixvid...', 'info');
+  showStatus('Uploading to Pixvid...', 'info', true); // persist
   
   // Upload to Pixvid
   const pixvidFormData = new FormData();
@@ -627,7 +627,7 @@ async function handleFileUpload(imageData, settings) {
   
   if (settings.imgbbApiKey) {
     try {
-      showStatus('Uploading to ImgBB...', 'info');
+      showStatus('Uploading to ImgBB...', 'info', true); // persist
       
       const imgbbFormData = new FormData();
       imgbbFormData.append('key', settings.imgbbApiKey);
@@ -652,7 +652,7 @@ async function handleFileUpload(imageData, settings) {
   }
   
   // Save to Firebase (similar to background.js)
-  showStatus('Saving to Firebase...', 'info');
+  showStatus('Saving to Firebase...', 'info', true); // persist
   
   // Initialize storage manager
   const storageManager = new StorageManager();
@@ -758,13 +758,13 @@ function showDuplicateImage(duplicateData, uploadData) {
   });
 }
 
-function showStatus(message, type = 'info') {
+function showStatus(message, type = 'info', persist = false) {
   statusMessage.textContent = message;
   statusMessage.className = `status ${type}`;
   statusMessage.style.display = 'block';
   
-  // Only auto-hide success/info messages, keep errors visible
-  if (type !== 'error') {
+  // Only auto-hide if not persistent and not an error
+  if (!persist && type !== 'error') {
     setTimeout(() => {
       statusMessage.style.display = 'none';
     }, 3000);
