@@ -50,11 +50,14 @@ export function useChromeStorage(key, defaultValue = null, area = 'sync') {
  */
 export function useChromeMessage() {
   const sendMessage = useCallback((action, data = {}) => {
+    console.log('[useChromeMessage] Sending message:', action, data);
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
         { action, data },
         (response) => {
+          console.log('[useChromeMessage] Response received:', response);
           if (chrome.runtime.lastError) {
+            console.error('[useChromeMessage] Runtime error:', chrome.runtime.lastError);
             reject(chrome.runtime.lastError);
           } else if (response?.success) {
             resolve(response.data);
@@ -64,6 +67,7 @@ export function useChromeMessage() {
             if (response?.duplicate) {
               error.duplicate = response.duplicate;
             }
+            console.error('[useChromeMessage] Error:', error);
             reject(error);
           }
         }
