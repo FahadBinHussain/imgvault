@@ -228,31 +228,54 @@ export const Modal = ({ isOpen, onClose, children, className }) => {
 };
 
 /**
- * Toast component
+ * Toast component with enhanced styling
  */
 export const Toast = ({ message, type = 'info', onClose }) => {
   const types = {
-    info: 'bg-blue-500/90',
-    success: 'bg-green-500/90',
-    error: 'bg-red-500/90',
-    warning: 'bg-yellow-500/90'
+    info: {
+      bg: 'bg-gradient-to-r from-blue-500 to-cyan-500',
+      shadow: 'shadow-blue-500/50',
+      glow: 'shadow-2xl shadow-blue-500/50'
+    },
+    success: {
+      bg: 'bg-gradient-to-r from-green-500 to-emerald-500',
+      shadow: 'shadow-green-500/50',
+      glow: 'shadow-2xl shadow-green-500/50'
+    },
+    error: {
+      bg: 'bg-gradient-to-r from-red-500 to-rose-500',
+      shadow: 'shadow-red-500/50',
+      glow: 'shadow-2xl shadow-red-500/50'
+    },
+    warning: {
+      bg: 'bg-gradient-to-r from-yellow-500 to-orange-500',
+      shadow: 'shadow-yellow-500/50',
+      glow: 'shadow-2xl shadow-yellow-500/50'
+    }
   };
+
+  const config = types[type] || types.info;
 
   return (
     <div
       className={clsx(
         'fixed bottom-4 right-4 z-50',
-        'px-4 py-3 rounded-lg text-white shadow-lg',
+        'px-6 py-4 rounded-2xl text-white',
         'animate-slide-in-bottom',
-        types[type]
+        'border border-white/20',
+        config.bg,
+        config.glow,
+        'backdrop-blur-xl',
+        'transform transition-all duration-300',
+        'hover:scale-105'
       )}
     >
-      <div className="flex items-center gap-2">
-        <span>{message}</span>
+      <div className="flex items-center gap-3">
+        <span className="font-medium text-lg">{message}</span>
         {onClose && (
           <button
             onClick={onClose}
-            className="ml-2 text-white/80 hover:text-white"
+            className="ml-2 text-white/80 hover:text-white transition-all hover:rotate-90 transform duration-200"
           >
             ✕
           </button>

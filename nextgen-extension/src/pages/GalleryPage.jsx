@@ -848,17 +848,33 @@ export default function GalleryPage() {
                 {/* Action Buttons */}
                 <div className="flex gap-2 pt-4 border-t border-white/10 mt-6">
                   <div className="flex-1" />
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <button
                     onClick={() => {
                       setShowDeleteConfirm(true);
                     }}
-                    className="text-red-300 border-red-300/30 hover:border-red-300/50"
+                    className="group relative px-6 py-2.5 rounded-xl overflow-hidden
+                             bg-gradient-to-r from-red-500 to-rose-600
+                             border border-red-400/30 
+                             transform transition-all duration-300
+                             hover:scale-110 hover:shadow-2xl hover:shadow-red-500/50
+                             active:scale-95
+                             disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                   >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete
-                  </Button>
+                    {/* Animated background glow */}
+                    <div className="absolute inset-0 bg-gradient-to-r from-red-400 to-rose-500 opacity-0 
+                                  group-hover:opacity-100 blur-xl transition-opacity duration-300" />
+                    
+                    {/* Shimmer effect */}
+                    <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
+                                  bg-gradient-to-r from-transparent via-white/20 to-transparent 
+                                  transition-transform duration-700" />
+                    
+                    {/* Button content */}
+                    <div className="relative flex items-center gap-2 text-white font-semibold">
+                      <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
+                      <span>Delete</span>
+                    </div>
+                  </button>
                 </div>
                 </div>
               </div>
@@ -868,28 +884,71 @@ export default function GalleryPage() {
 
         {/* Delete Confirmation Modal */}
         <Modal isOpen={showDeleteConfirm} onClose={() => !isDeleting && setShowDeleteConfirm(false)}>
-          <div className="text-center space-y-4">
-            <div className="text-5xl">⚠️</div>
-            <h3 className="text-xl font-bold text-white">Delete Image?</h3>
-            <p className="text-slate-300">
-              This will permanently delete the image from both your vault and image hosts (Pixvid/ImgBB). This action cannot be undone.
+          <div className="text-center space-y-6">
+            {/* Animated warning icon */}
+            <div className="text-7xl animate-bounce">⚠️</div>
+            
+            <h3 className="text-2xl font-bold bg-gradient-to-r from-red-400 to-rose-500 
+                         bg-clip-text text-transparent">
+              Delete Image?
+            </h3>
+            
+            <p className="text-slate-300 text-lg leading-relaxed">
+              This will permanently delete the image from both your vault and image hosts (Pixvid/ImgBB). 
+              <br />
+              <span className="font-semibold text-red-400">This action cannot be undone.</span>
             </p>
-            <div className="flex gap-3 justify-center">
-              <Button 
-                variant="glass" 
+            
+            <div className="flex gap-4 justify-center pt-4">
+              <button
                 onClick={() => setShowDeleteConfirm(false)}
                 disabled={isDeleting}
+                className="px-6 py-3 rounded-xl bg-white/10 border border-white/20
+                         text-white font-medium
+                         hover:bg-white/20 hover:scale-105
+                         active:scale-95
+                         transition-all duration-200
+                         disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
-              </Button>
-              <Button
-                variant="outline"
+              </button>
+              
+              <button
                 onClick={handleDelete}
                 disabled={isDeleting}
-                className="text-red-300 border-red-300/30 hover:border-red-300/50"
+                className="group relative px-8 py-3 rounded-xl overflow-hidden
+                         bg-gradient-to-r from-red-600 to-rose-700
+                         border border-red-400/50
+                         transform transition-all duration-300
+                         hover:scale-105 hover:shadow-2xl hover:shadow-red-500/50
+                         active:scale-95
+                         disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
               >
-                {isDeleting ? 'Deleting...' : 'Delete'}
-              </Button>
+                {/* Animated pulse effect when deleting */}
+                {isDeleting && (
+                  <div className="absolute inset-0 bg-red-400 animate-ping opacity-25" />
+                )}
+                
+                {/* Shimmer effect */}
+                <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
+                              bg-gradient-to-r from-transparent via-white/20 to-transparent 
+                              transition-transform duration-700" />
+                
+                {/* Button content */}
+                <div className="relative flex items-center gap-2 text-white font-bold text-lg">
+                  {isDeleting ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
+                      <span>Delete Forever</span>
+                    </>
+                  )}
+                </div>
+              </button>
             </div>
           </div>
         </Modal>
