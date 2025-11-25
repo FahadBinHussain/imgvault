@@ -190,6 +190,20 @@ export class StorageManager {
     await this.ensureInitialized();
 
     try {
+      // Log the data size before saving
+      const dataSize = JSON.stringify(imageData).length;
+      console.log('📊 [SAVE IMAGE] Image metadata size:', dataSize, 'bytes');
+      
+      if (dataSize > 10000000) { // 10MB
+        console.warn('⚠️ [SAVE IMAGE] Payload approaching Firebase limit!');
+        console.log('📦 [SAVE IMAGE] Data keys:', Object.keys(imageData));
+        console.log('📏 [SAVE IMAGE] Field sizes:', 
+          Object.entries(imageData).map(([key, val]) => 
+            `${key}: ${JSON.stringify(val).length} bytes`
+          )
+        );
+      }
+      
       const doc = this.toFirestoreDoc({
         ...imageData,
         createdAt: new Date()
@@ -205,11 +219,13 @@ export class StorageManager {
 
       if (!response.ok) {
         const error = await response.json();
+        console.error('❌ [SAVE IMAGE] Firebase error:', error);
         throw new Error(error.error?.message || 'Failed to save to Firestore');
       }
 
       const result = await response.json();
       const docId = result.name.split('/').pop();
+      console.log('✅ [SAVE IMAGE] Saved successfully with ID:', docId);
       return docId;
     } catch (error) {
       console.error('Error saving to Firestore:', error);
