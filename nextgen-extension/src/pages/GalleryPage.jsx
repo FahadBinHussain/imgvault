@@ -120,6 +120,31 @@ export default function GalleryPage() {
     setEditValues({});
   };
 
+  const downloadImage = async (url, source) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      
+      // Extract filename from URL
+      const urlObj = new URL(url);
+      const pathParts = urlObj.pathname.split('/');
+      const filename = pathParts[pathParts.length - 1] || `image-${source}.jpg`;
+      
+      // Create download link
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error('Download failed:', error);
+      alert('Download failed');
+    }
+  };
+
   const groupImagesByDate = (images) => {
     const groups = {};
     images.forEach(img => {
@@ -662,7 +687,7 @@ export default function GalleryPage() {
                     <Button
                       variant="glass"
                       size="sm"
-                      onClick={() => window.open(selectedImage.pixvidUrl, '_blank')}
+                      onClick={() => downloadImage(selectedImage.pixvidUrl, 'pixvid')}
                     >
                       <Download className="w-4 h-4 mr-2" />
                       Download from Pixvid
@@ -671,7 +696,7 @@ export default function GalleryPage() {
                       <Button
                         variant="glass"
                         size="sm"
-                        onClick={() => window.open(selectedImage.imgbbUrl, '_blank')}
+                        onClick={() => downloadImage(selectedImage.imgbbUrl, 'imgbb')}
                       >
                         <Download className="w-4 h-4 mr-2" />
                         Download from ImgBB
