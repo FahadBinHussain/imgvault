@@ -149,20 +149,25 @@ export default function SettingsPage() {
         });
       });
 
-      if (firebaseConfig) {
+      if (firebaseConfig && (localPixvid || localImgbb)) {
         setFirebaseStatus('☁️ Syncing to Firebase...');
         
         const { StorageManager } = await import('../utils/storage.js');
         const storageManager = new StorageManager();
         await storageManager.init();
 
-        await storageManager.saveUserSettings({
-          pixvidApiKey: localPixvid,
-          imgbbApiKey: localImgbb,
-          defaultGallerySource: localGallerySource
-        });
+        // Only save non-empty values to Firebase
+        const settingsToSave = {};
+        if (localPixvid) settingsToSave.pixvidApiKey = localPixvid;
+        if (localImgbb) settingsToSave.imgbbApiKey = localImgbb;
+        if (localGallerySource) settingsToSave.defaultGallerySource = localGallerySource;
 
-        setFirebaseStatus('✅ Settings saved to Firebase');
+        if (Object.keys(settingsToSave).length > 0) {
+          await storageManager.saveUserSettings(settingsToSave);
+          setFirebaseStatus('✅ Settings saved to Firebase');
+        } else {
+          setFirebaseStatus('ℹ️ No settings to sync to Firebase');
+        }
       }
     } catch (error) {
       console.error('Error saving to Firebase:', error);

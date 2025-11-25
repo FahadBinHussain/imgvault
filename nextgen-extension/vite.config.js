@@ -22,11 +22,13 @@ export default defineConfig({
           }
           return 'assets/[name]-[hash].js';
         },
-        chunkFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: (chunkInfo) => {
+          return 'assets/[name]-[hash].js';
+        },
         assetFileNames: 'assets/[name]-[hash].[ext]'
       }
     },
-    // Ensure proper module format for service worker
+    // Ensure proper module format
     target: 'es2020',
     minify: 'esbuild',
     sourcemap: false

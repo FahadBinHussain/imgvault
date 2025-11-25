@@ -416,20 +416,37 @@ export class StorageManager {
     await this.ensureInitialized();
 
     try {
-      const doc = this.toFirestoreDoc({
-        ...settings,
-        updatedAt: new Date()
-      });
-
-      // Try to get existing document
+      // Try to get existing document first
       const getUrl = this.buildUrl('userSettings/config');
       const getResponse = await fetch(getUrl);
       
+      let existingSettings = {};
+      if (getResponse.ok) {
+        const doc = await getResponse.json();
+        const fields = doc.fields;
+        existingSettings = {
+          pixvidApiKey: fields.pixvidApiKey?.stringValue || '',
+          imgbbApiKey: fields.imgbbApiKey?.stringValue || '',
+          defaultGallerySource: fields.defaultGallerySource?.stringValue || 'imgbb'
+        };
+      }
+
+      // Merge with new settings (only update non-empty values)
+      const mergedSettings = { ...existingSettings };
+      if (settings.pixvidApiKey) mergedSettings.pixvidApiKey = settings.pixvidApiKey;
+      if (settings.imgbbApiKey) mergedSettings.imgbbApiKey = settings.imgbbApiKey;
+      if (settings.defaultGallerySource) mergedSettings.defaultGallerySource = settings.defaultGallerySource;
+
+      const doc = this.toFirestoreDoc({
+        ...mergedSettings,
+        updatedAt: new Date()
+      });
+
       let response;
       if (getResponse.ok) {
         // Document exists, update it
         const patchUrl = this.buildUrl('userSettings/config', {
-          'updateMask.fieldPaths': Object.keys(settings).concat(['updatedAt'])
+          'updateMask.fieldPaths': Object.keys(mergedSettings).concat(['updatedAt'])
         });
         
         response = await fetch(patchUrl, {
