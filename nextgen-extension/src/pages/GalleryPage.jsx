@@ -390,25 +390,12 @@ export default function GalleryPage() {
             setActiveTab('noobs');
             setFullImageDetails(null);
           }}
-          className="!max-w-7xl !w-full !h-[90vh] !p-0 !overflow-hidden"
+          className="!max-w-[95vw] !w-full !h-[95vh] !p-0 !overflow-hidden"
         >
           {selectedImage && (
             <div className="flex h-full relative">
-              {/* Close Button - Animated X */}
-              <button
-                onClick={() => {
-                  setSelectedImage(null);
-                  setActiveTab('noobs');
-                  setFullImageDetails(null);
-                }}
-                className="absolute top-4 left-4 z-50 w-10 h-10 rounded-full bg-red-500/20 
-                         hover:bg-red-500/40 border border-red-500/50 hover:border-red-500 
-                         flex items-center justify-center transition-all duration-300 
-                         hover:scale-110 hover:rotate-90 group"
-                title="Close"
-              >
-                <span className="text-red-300 group-hover:text-red-100 text-xl font-bold">✕</span>
-              </button>
+              {/* Close Button - Animated X - MOVED to top right of details panel */}
+              
 
               {/* LEFT SIDE - IMAGE */}
               <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-8 relative">
@@ -425,11 +412,27 @@ export default function GalleryPage() {
               </div>
 
               {/* RIGHT SIDE - DETAILS */}
-              <div className="w-[450px] flex-shrink-0 bg-slate-800/90 backdrop-blur-xl border-l border-white/10 
-                            overflow-y-auto flex flex-col"
+              <div className="w-[550px] flex-shrink-0 bg-slate-800/90 backdrop-blur-xl border-l border-white/10 
+                            overflow-y-auto flex flex-col relative"
                    style={{ scrollbarWidth: 'thin', scrollbarColor: '#6366f1 #1e293b' }}
               >
-                <div className="p-6 flex-1">
+                {/* Close Button - NOW at top of details sidebar */}
+                <button
+                  onClick={() => {
+                    setSelectedImage(null);
+                    setActiveTab('noobs');
+                    setFullImageDetails(null);
+                  }}
+                  className="absolute top-4 right-4 z-50 w-11 h-11 rounded-full bg-red-500/20 
+                           hover:bg-red-500/40 border border-red-500/50 hover:border-red-500 
+                           flex items-center justify-center transition-all duration-300 
+                           hover:scale-110 hover:rotate-90 group shadow-xl"
+                  title="Close"
+                >
+                  <span className="text-red-300 group-hover:text-red-100 text-2xl font-bold">✕</span>
+                </button>
+
+                <div className="p-6 flex-1 pt-16">
               {/* Tab Navigation */}
               <div className="flex gap-2 mb-4 border-b border-white/10">
                 <button
