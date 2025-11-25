@@ -998,6 +998,28 @@ export default function GalleryPage() {
           </div>
         </Modal>
 
+        {/* Floating Action Button (FAB) - Google Photos Style */}
+        {!loading && images.length > 0 && (
+          <button
+            onClick={() => chrome.tabs.create({ url: 'popup.html' })}
+            className="fixed bottom-8 right-8 z-50 w-16 h-16 rounded-full 
+                     bg-gradient-to-r from-primary-500 to-secondary-500
+                     text-white shadow-2xl hover:shadow-[0_8px_30px_rgb(99,102,241,0.4)]
+                     transform transition-all duration-300 ease-out
+                     hover:scale-110 active:scale-95
+                     flex items-center justify-center
+                     group"
+            title="Upload Image"
+          >
+            {/* Pulsing ring effect */}
+            <div className="absolute inset-0 rounded-full bg-primary-400 animate-ping opacity-20"></div>
+            
+            {/* Icon */}
+            <Upload className="w-7 h-7 relative z-10 transition-transform duration-300 
+                             group-hover:rotate-12" />
+          </button>
+        )}
+
         {/* Toast Notifications */}
         {toast && (
           <Toast
