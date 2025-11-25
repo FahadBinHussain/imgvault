@@ -12,8 +12,10 @@ export default function GalleryPage() {
   const { images, loading, reload, deleteImage } = useImages();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
+  const [fullImageDetails, setFullImageDetails] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [activeTab, setActiveTab] = useState('noobs'); // 'noobs' or 'nerds'
+  const [loadingNerdsTab, setLoadingNerdsTab] = useState(false);
 
   const filteredImages = images.filter(img => {
     const query = searchQuery.toLowerCase();
@@ -29,6 +31,55 @@ export default function GalleryPage() {
       await deleteImage(selectedImage.id);
       setShowDeleteConfirm(false);
       setSelectedImage(null);
+      setFullImageDetails(null);
+    }
+  };
+
+  // Lazy load full image details when nerds tab is clicked
+  const loadFullImageDetails = async (imageId) => {
+    if (fullImageDetails?.id === imageId) {
+      console.log('✅ [CACHE HIT] Full details already loaded');
+      return;
+    }
+
+    console.log('🔍 [NERD TAB CLICKED] User wants to see technical details');
+    console.log('💡 [LAZY LOAD TRIGGER] Full details not loaded yet - fetching now...');
+    
+    setLoadingNerdsTab(true);
+    
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'getImageById',
+        data: { id: imageId }
+      });
+
+      if (response.success && response.data) {
+        console.log('✅ [LAZY LOAD] Full image details loaded successfully:', {
+          fileName: response.data.fileName,
+          fileType: response.data.fileType,
+          fileSize: response.data.fileSize,
+          dimensions: `${response.data.width}x${response.data.height}`,
+          sha256: response.data.sha256 ? 'present' : 'missing',
+          pHash: response.data.pHash ? 'present' : 'missing',
+          aHash: response.data.aHash ? 'present' : 'missing',
+          dHash: response.data.dHash ? 'present' : 'missing'
+        });
+        setFullImageDetails(response.data);
+      }
+    } catch (error) {
+      console.error('❌ Error loading full image details:', error);
+    } finally {
+      setLoadingNerdsTab(false);
+    }
+  };
+
+  const handleTabSwitch = (tabName) => {
+    console.log('Tab clicked:', tabName);
+    setActiveTab(tabName);
+    
+    // Lazy load full details ONLY when "For Nerds" tab is clicked
+    if (tabName === 'nerds' && selectedImage) {
+      loadFullImageDetails(selectedImage.id);
     }
   };
 
@@ -181,24 +232,24 @@ export default function GalleryPage() {
               {/* Tab Navigation */}
               <div className="flex gap-2 mb-4 border-b border-white/10">
                 <button
-                  onClick={() => setActiveTab('noobs')}
+                  onClick={() => handleTabSwitch('noobs')}
                   className={`px-4 py-2 font-semibold transition-all ${
                     activeTab === 'noobs'
                       ? 'text-primary-300 border-b-2 border-primary-300'
                       : 'text-slate-400 hover:text-slate-300'
                   }`}
                 >
-                  For Noobs
+                  For Noobs 👶
                 </button>
                 <button
-                  onClick={() => setActiveTab('nerds')}
+                  onClick={() => handleTabSwitch('nerds')}
                   className={`px-4 py-2 font-semibold transition-all ${
                     activeTab === 'nerds'
                       ? 'text-green-300 border-b-2 border-green-300'
                       : 'text-slate-400 hover:text-slate-300'
                   }`}
                 >
-                  For Nerds
+                  For Nerds 🤓
                 </button>
               </div>
 
@@ -312,143 +363,158 @@ export default function GalleryPage() {
               {/* For Nerds Tab */}
               {activeTab === 'nerds' && (
                 <div className="space-y-4">
-                  {/* Technical Details Grid */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <h4 className="text-xs font-semibold text-slate-400 mb-1">Document ID</h4>
-                      <p className="text-white font-mono text-xs break-all">{selectedImage.id || 'N/A'}</p>
+                  {loadingNerdsTab && !fullImageDetails ? (
+                    <div className="flex justify-center items-center py-10">
+                      <Spinner size="md" />
+                      <span className="ml-3 text-slate-300">Loading technical details...</span>
                     </div>
-                    <div>
-                      <h4 className="text-xs font-semibold text-slate-400 mb-1">File Type</h4>
-                      <p className="text-white font-mono text-xs">{selectedImage.fileType || 'image/jpeg'}</p>
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-semibold text-slate-400 mb-1">File Size</h4>
-                      <p className="text-white font-mono text-xs">
-                        {selectedImage.fileSize ? `${(selectedImage.fileSize / 1024).toFixed(2)} KB` : 'N/A'}
-                      </p>
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-semibold text-slate-400 mb-1">Dimensions</h4>
-                      <p className="text-white font-mono text-xs">
-                        {selectedImage.width && selectedImage.height
-                          ? `${selectedImage.width} x ${selectedImage.height}`
-                          : 'N/A'}
-                      </p>
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-semibold text-slate-400 mb-1">Created</h4>
-                      <p className="text-white font-mono text-xs">
-                        {selectedImage.createdAt
-                          ? new Date(selectedImage.createdAt).toLocaleString('en-US', {
-                              weekday: 'short',
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                              hour: 'numeric',
-                              minute: '2-digit'
-                            })
-                          : 'N/A'}
-                      </p>
-                    </div>
-                  </div>
+                  ) : (
+                    <>
+                      {/* Technical Details Grid */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <h4 className="text-xs font-semibold text-slate-400 mb-1">Document ID</h4>
+                          <p className="text-white font-mono text-xs break-all">{selectedImage.id || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-semibold text-slate-400 mb-1">File Type</h4>
+                          <p className="text-white font-mono text-xs">
+                            {fullImageDetails?.fileType || loadingNerdsTab ? 'Loading...' : 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-semibold text-slate-400 mb-1">File Size</h4>
+                          <p className="text-white font-mono text-xs">
+                            {fullImageDetails?.fileSize 
+                              ? `${(fullImageDetails.fileSize / 1024).toFixed(2)} KB` 
+                              : loadingNerdsTab ? 'Loading...' : 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-semibold text-slate-400 mb-1">Dimensions</h4>
+                          <p className="text-white font-mono text-xs">
+                            {fullImageDetails?.width && fullImageDetails?.height
+                              ? `${fullImageDetails.width} × ${fullImageDetails.height}`
+                              : loadingNerdsTab ? 'Loading...' : 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-semibold text-slate-400 mb-1">Created</h4>
+                          <p className="text-white font-mono text-xs">
+                            {selectedImage.createdAt
+                              ? new Date(selectedImage.createdAt).toLocaleString('en-US', {
+                                  weekday: 'short',
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: 'numeric',
+                                  minute: '2-digit'
+                                })
+                              : 'N/A'}
+                          </p>
+                        </div>
+                      </div>
 
-                  {/* URLs Section */}
-                  <div className="space-y-3">
-                    <div>
-                      <h4 className="text-xs font-semibold text-slate-400 mb-1">Source Image URL</h4>
-                      <div className="bg-white/5 rounded p-2">
-                        <a
-                          href={selectedImage.sourceImageUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary-300 hover:text-primary-200 break-all font-mono text-xs"
-                        >
-                          {selectedImage.sourceImageUrl || 'N/A'}
-                        </a>
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-semibold text-slate-400 mb-1">Source Page URL</h4>
-                      <div className="bg-white/5 rounded p-2">
-                        <a
-                          href={selectedImage.sourcePageUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary-300 hover:text-primary-200 break-all font-mono text-xs"
-                        >
-                          {selectedImage.sourcePageUrl || 'N/A'}
-                        </a>
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-semibold text-slate-400 mb-1">Pixvid URL</h4>
-                      <div className="bg-white/5 rounded p-2">
-                        <a
-                          href={selectedImage.pixvidUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-300 hover:text-blue-200 break-all font-mono text-xs"
-                        >
-                          {selectedImage.pixvidUrl}
-                        </a>
-                      </div>
-                    </div>
-                    {selectedImage.imgbbUrl && (
-                      <div>
-                        <h4 className="text-xs font-semibold text-slate-400 mb-1">ImgBB URL</h4>
-                        <div className="bg-white/5 rounded p-2">
-                          <a
-                            href={selectedImage.imgbbUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-green-300 hover:text-green-200 break-all font-mono text-xs"
-                          >
-                            {selectedImage.imgbbUrl}
-                          </a>
+                      {/* URLs Section */}
+                      <div className="space-y-3">
+                        <div>
+                          <h4 className="text-xs font-semibold text-slate-400 mb-1">Source Image URL</h4>
+                          <div className="bg-white/5 rounded p-2">
+                            <a
+                              href={selectedImage.sourceImageUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary-300 hover:text-primary-200 break-all font-mono text-xs"
+                            >
+                              {selectedImage.sourceImageUrl || 'N/A'}
+                            </a>
+                          </div>
                         </div>
+                        <div>
+                          <h4 className="text-xs font-semibold text-slate-400 mb-1">Source Page URL</h4>
+                          <div className="bg-white/5 rounded p-2">
+                            <a
+                              href={selectedImage.sourcePageUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary-300 hover:text-primary-200 break-all font-mono text-xs"
+                            >
+                              {selectedImage.sourcePageUrl || 'N/A'}
+                            </a>
+                          </div>
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-semibold text-slate-400 mb-1">Pixvid URL</h4>
+                          <div className="bg-white/5 rounded p-2">
+                            <a
+                              href={selectedImage.pixvidUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-300 hover:text-blue-200 break-all font-mono text-xs"
+                            >
+                              {selectedImage.pixvidUrl}
+                            </a>
+                          </div>
+                        </div>
+                        {selectedImage.imgbbUrl && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-slate-400 mb-1">ImgBB URL</h4>
+                            <div className="bg-white/5 rounded p-2">
+                              <a
+                                href={selectedImage.imgbbUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-green-300 hover:text-green-200 break-all font-mono text-xs"
+                              >
+                                {selectedImage.imgbbUrl}
+                              </a>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
 
-                  {/* Hash Values */}
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-semibold text-slate-300">Hash Values</h4>
-                    <div className="space-y-2">
-                      <div>
-                        <h5 className="text-xs font-semibold text-slate-400 mb-1">SHA-256</h5>
-                        <div className="bg-white/5 rounded p-2">
-                          <p className="text-white font-mono text-xs break-all">
-                            {selectedImage.sha256 || 'N/A'}
-                          </p>
+                      {/* Hash Values */}
+                      <div className="space-y-3">
+                        <h4 className="text-sm font-semibold text-slate-300">Hash Values</h4>
+                        <div className="space-y-2">
+                          <div>
+                            <h5 className="text-xs font-semibold text-slate-400 mb-1">SHA-256</h5>
+                            <div className="bg-white/5 rounded p-2">
+                              <p className="text-white font-mono text-xs break-all">
+                                {fullImageDetails?.sha256 || (loadingNerdsTab ? 'Loading...' : 'N/A')}
+                              </p>
+                            </div>
+                          </div>
+                          <div>
+                            <h5 className="text-xs font-semibold text-slate-400 mb-1">pHash</h5>
+                            <div className="bg-white/5 rounded p-2">
+                              <p className="text-white font-mono text-xs break-all">
+                                {fullImageDetails?.pHash 
+                                  ? `${fullImageDetails.pHash.substring(0, 64)}...` 
+                                  : loadingNerdsTab ? 'Loading...' : 'N/A'}
+                              </p>
+                            </div>
+                          </div>
+                          <div>
+                            <h5 className="text-xs font-semibold text-slate-400 mb-1">aHash</h5>
+                            <div className="bg-white/5 rounded p-2">
+                              <p className="text-white font-mono text-xs break-all">
+                                {fullImageDetails?.aHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
+                              </p>
+                            </div>
+                          </div>
+                          <div>
+                            <h5 className="text-xs font-semibold text-slate-400 mb-1">dHash</h5>
+                            <div className="bg-white/5 rounded p-2">
+                              <p className="text-white font-mono text-xs break-all">
+                                {fullImageDetails?.dHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      <div>
-                        <h5 className="text-xs font-semibold text-slate-400 mb-1">pHash</h5>
-                        <div className="bg-white/5 rounded p-2">
-                          <p className="text-white font-mono text-xs break-all">
-                            {selectedImage.pHash || 'N/A'}
-                          </p>
-                        </div>
-                      </div>
-                      <div>
-                        <h5 className="text-xs font-semibold text-slate-400 mb-1">aHash</h5>
-                        <div className="bg-white/5 rounded p-2">
-                          <p className="text-white font-mono text-xs break-all">
-                            {selectedImage.aHash || 'N/A'}
-                          </p>
-                        </div>
-                      </div>
-                      <div>
-                        <h5 className="text-xs font-semibold text-slate-400 mb-1">dHash</h5>
-                        <div className="bg-white/5 rounded p-2">
-                          <p className="text-white font-mono text-xs break-all">
-                            {selectedImage.dHash || 'N/A'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                    </>
+                  )}
                 </div>
               )}
 
