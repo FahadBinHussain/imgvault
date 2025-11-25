@@ -225,64 +225,73 @@ export default function GalleryPage() {
   const groupedImages = groupImagesByDate(filteredImages);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="glass-card rounded-xl p-8 mb-8 backdrop-blur-xl bg-white/10 border border-white/20 shadow-2xl">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-xl blur-lg opacity-50"></div>
-                <img src="/icons/icon48.png" alt="ImgVault" className="w-12 h-12 relative z-10 rounded-xl shadow-lg" />
+        {/* Glassmorphism Navigation Bar - Apple-like */}
+        <div className="sticky top-0 z-40 mb-8">
+          {/* Frosted glass bar */}
+          <div className="backdrop-blur-2xl bg-white/5 border-b border-white/10 shadow-2xl">
+            <div className="px-8 py-6">
+              {/* Top Row: Logo + Actions */}
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-xl blur-lg opacity-50"></div>
+                    <img src="/icons/icon48.png" alt="ImgVault" className="w-12 h-12 relative z-10 rounded-xl shadow-lg" />
+                  </div>
+                  <div>
+                    <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent drop-shadow-lg">
+                      ImgVault Gallery
+                    </h1>
+                    <p className="text-sm text-slate-300 mt-1">
+                      <span className="font-semibold text-primary-300">{images.length}</span> images in your vault
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={reload}
+                    className="p-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
+                             backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
+                             shadow-lg hover:shadow-xl"
+                    title="Refresh"
+                  >
+                    <RefreshCw className="w-5 h-5 text-white" />
+                  </button>
+                  <button
+                    onClick={() => chrome.tabs.create({ url: 'popup.html' })}
+                    className="px-5 py-3 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
+                             text-white font-semibold shadow-lg hover:shadow-xl hover:scale-105 
+                             active:scale-95 transition-all duration-300 flex items-center gap-2"
+                  >
+                    <Upload className="w-5 h-5" />
+                    Upload
+                  </button>
+                </div>
               </div>
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent drop-shadow-lg">
-                  ImgVault Gallery
-                </h1>
-                <p className="text-sm text-slate-300 mt-1">
-                  <span className="font-semibold text-primary-300">{images.length}</span> images in your vault
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={reload}
-                className="p-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
-                         transition-all hover:scale-105 active:scale-95"
-                title="Refresh"
-              >
-                <RefreshCw className="w-5 h-5 text-white" />
-              </button>
-              <button
-                onClick={() => chrome.tabs.create({ url: 'popup.html' })}
-                className="px-5 py-3 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
-                         text-white font-semibold shadow-lg hover:shadow-xl hover:scale-105 
-                         active:scale-95 transition-all flex items-center gap-2"
-              >
-                <Upload className="w-5 h-5" />
-                Upload
-              </button>
-            </div>
-          </div>
 
-          {/* Search */}
-          <div className="relative group">
-            <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-xl blur opacity-0 group-hover:opacity-20 transition-opacity"></div>
-            <div className="relative flex items-center shadow-lg">
-              <Search className="absolute left-4 w-5 h-5 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by title, description, or tags..."
-                className="w-full pl-12 pr-4 py-4 rounded-xl bg-white/10 border border-white/20 
-                         text-white placeholder-slate-400 focus:outline-none focus:border-primary-300 
-                         focus:bg-white/15 focus:shadow-xl transition-all"
-              />
+              {/* Search Bar */}
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-xl blur opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
+                <div className="relative flex items-center shadow-lg">
+                  <Search className="absolute left-4 w-5 h-5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by title, description, or tags..."
+                    className="w-full pl-12 pr-4 py-4 rounded-xl bg-white/10 backdrop-blur-sm 
+                             border border-white/20 text-white placeholder-slate-400 
+                             focus:outline-none focus:border-primary-300 focus:bg-white/15 
+                             focus:shadow-xl transition-all duration-300"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
+        <div className="px-6">
         {/* Loading State */}
         {loading && (
           <div className="flex flex-col justify-center items-center py-32">
@@ -983,6 +992,7 @@ export default function GalleryPage() {
             onClose={() => setToast(null)}
           />
         )}
+        </div>
       </div>
     </div>
   );
