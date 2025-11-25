@@ -5,6 +5,7 @@
 
 import React from 'react';
 import clsx from 'clsx';
+import { X } from 'lucide-react';
 
 /**
  * Button component
@@ -206,7 +207,7 @@ export const Spinner = ({ size = 'md', className }) => {
 /**
  * Modal component
  */
-export const Modal = ({ isOpen, onClose, children, className }) => {
+export const Modal = ({ isOpen, onClose, title, children, className }) => {
   if (!isOpen) return null;
 
   return (
@@ -221,6 +222,17 @@ export const Modal = ({ isOpen, onClose, children, className }) => {
           className
         )}
       >
+        {title && (
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-white">{title}</h2>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        )}
         {children}
       </div>
     </div>

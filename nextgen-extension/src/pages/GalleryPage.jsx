@@ -120,7 +120,8 @@ export default function GalleryPage() {
       reload(); // Refresh gallery
     } catch (err) {
       console.error('Upload failed:', err);
-      showToast(`❌ ${err.message || 'Upload failed'}`, 'error', 4000);
+      const errorMessage = err?.message || String(err) || 'Upload failed';
+      showToast(`❌ ${errorMessage}`, 'error', 4000);
     }
   };
 
