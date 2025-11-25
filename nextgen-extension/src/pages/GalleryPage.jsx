@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { RefreshCw, Upload, Search, Trash2, Download, ExternalLink } from 'lucide-react';
+import { RefreshCw, Upload, Search, Trash2, Download } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
 import { useImages } from '../hooks/useChromeExtension';
 
@@ -370,15 +370,6 @@ export default function GalleryPage() {
                             )}
                           </div>
                         )}
-                      </div>
-                    </div>
-
-                    {/* Floating badge */}
-                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 
-                                  transition-all duration-300 transform group-hover:scale-100 scale-90">
-                      <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md 
-                                    flex items-center justify-center border border-white/30">
-                        <ExternalLink className="w-5 h-5 text-white" />
                       </div>
                     </div>
                   </div>
