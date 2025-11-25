@@ -109,98 +109,167 @@ export default function GalleryPage() {
   const groupedImages = groupImagesByDate(filteredImages);
 
   return (
-    <div className="min-h-screen bg-gradient-primary p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="glass-card rounded-xl p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <img src="/icons/icon48.png" alt="ImgVault" className="w-10 h-10" />
+        <div className="glass-card rounded-2xl p-8 mb-8 backdrop-blur-xl bg-white/10 border border-white/20 shadow-2xl">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-xl blur-lg opacity-50"></div>
+                <img src="/icons/icon48.png" alt="ImgVault" className="w-12 h-12 relative z-10" />
+              </div>
               <div>
-                <h1 className="text-2xl font-bold gradient-text">Gallery</h1>
-                <p className="text-sm text-slate-300">{images.length} images in vault</p>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent">
+                  ImgVault Gallery
+                </h1>
+                <p className="text-sm text-slate-300 mt-1">
+                  <span className="font-semibold text-primary-300">{images.length}</span> images in your vault
+                </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <IconButton icon={RefreshCw} title="Refresh" onClick={reload} />
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => chrome.tabs.create({ url: 'popup.html' })}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={reload}
+                className="p-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
+                         transition-all hover:scale-105 active:scale-95"
+                title="Refresh"
               >
-                <Upload className="w-4 h-4 mr-2" />
+                <RefreshCw className="w-5 h-5 text-white" />
+              </button>
+              <button
+                onClick={() => chrome.tabs.create({ url: 'popup.html' })}
+                className="px-5 py-3 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
+                         text-white font-semibold shadow-lg hover:shadow-xl hover:scale-105 
+                         active:scale-95 transition-all flex items-center gap-2"
+              >
+                <Upload className="w-5 h-5" />
                 Upload
-              </Button>
+              </button>
             </div>
           </div>
 
           {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by title, description, or tags..."
-              className="pl-10"
-            />
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-xl blur opacity-0 group-hover:opacity-20 transition-opacity"></div>
+            <div className="relative flex items-center">
+              <Search className="absolute left-4 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by title, description, or tags..."
+                className="w-full pl-12 pr-4 py-4 rounded-xl bg-white/10 border border-white/20 
+                         text-white placeholder-slate-400 focus:outline-none focus:border-primary-300 
+                         focus:bg-white/15 transition-all"
+              />
+            </div>
           </div>
         </div>
 
         {/* Loading State */}
         {loading && (
-          <div className="flex justify-center items-center py-20">
-            <Spinner size="lg" />
+          <div className="flex flex-col justify-center items-center py-32">
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-full blur-2xl opacity-50 animate-pulse"></div>
+              <Spinner size="lg" className="relative z-10" />
+            </div>
+            <p className="mt-6 text-white text-lg font-medium">Loading your vault...</p>
           </div>
         )}
 
         {/* Empty State */}
         {!loading && images.length === 0 && (
-          <Card className="text-center py-20">
-            <div className="text-6xl mb-4">🖼️</div>
-            <h3 className="text-xl font-bold text-white mb-2">No Images Yet</h3>
-            <p className="text-slate-300 mb-4">Start saving images to your vault</p>
-            <Button variant="primary" onClick={() => chrome.tabs.create({ url: 'popup.html' })}>
+          <div className="glass-card rounded-2xl backdrop-blur-xl bg-white/10 border border-white/20 
+                        shadow-2xl p-16 text-center">
+            <div className="relative inline-block mb-6">
+              <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-full blur-3xl opacity-30"></div>
+              <div className="text-8xl relative z-10">🖼️</div>
+            </div>
+            <h3 className="text-3xl font-bold text-white mb-3">Your Vault is Empty</h3>
+            <p className="text-slate-300 text-lg mb-8 max-w-md mx-auto">
+              Start building your collection by uploading your first image
+            </p>
+            <button
+              onClick={() => chrome.tabs.create({ url: 'popup.html' })}
+              className="px-8 py-4 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
+                       text-white font-semibold text-lg shadow-lg hover:shadow-2xl 
+                       hover:scale-105 active:scale-95 transition-all"
+            >
               Upload First Image
-            </Button>
-          </Card>
+            </button>
+          </div>
         )}
 
         {/* Gallery Grid */}
         {!loading && Object.keys(groupedImages).map(date => (
-          <div key={date} className="mb-8">
-            <h2 className="text-lg font-semibold text-white mb-4">{date}</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div key={date} className="mb-10">
+            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+              <span className="bg-gradient-to-r from-primary-500 to-secondary-500 w-1 h-8 rounded-full"></span>
+              {date}
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
               {groupedImages[date].map(img => (
                 <div
                   key={img.id}
-                  className="group relative aspect-square rounded-lg overflow-hidden cursor-pointer
-                           bg-white/5 border border-white/10 hover:border-white/30 transition-all"
-                  onClick={() => setSelectedImage(img)}
+                  className="group relative aspect-square rounded-2xl overflow-hidden cursor-pointer
+                           transform transition-all duration-300 hover:scale-105 hover:-translate-y-2"
+                  onClick={() => {
+                    setSelectedImage(img);
+                    setActiveTab('noobs');
+                    setFullImageDetails(null);
+                  }}
                 >
-                  <img
-                    src={img.imgbbUrl || img.pixvidUrl}
-                    alt={img.pageTitle}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent
-                                opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="absolute bottom-0 left-0 right-0 p-3">
-                      <p className="text-white text-sm font-medium truncate">
-                        {img.pageTitle || 'Untitled'}
-                      </p>
-                      {img.tags && img.tags.length > 0 && (
-                        <div className="flex gap-1 mt-1">
-                          {img.tags.slice(0, 2).map(tag => (
-                            <span
-                              key={tag}
-                              className="text-xs px-2 py-0.5 rounded bg-white/20 text-white"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                  {/* Glow effect */}
+                  <div className="absolute -inset-0.5 bg-gradient-to-r from-primary-500 to-secondary-500 
+                                rounded-2xl opacity-0 group-hover:opacity-75 blur transition-opacity"></div>
+                  
+                  {/* Card */}
+                  <div className="relative h-full bg-slate-800 border border-white/10 rounded-2xl overflow-hidden">
+                    <img
+                      src={img.imgbbUrl || img.pixvidUrl}
+                      alt={img.pageTitle}
+                      className="w-full h-full object-cover transition-transform duration-500 
+                               group-hover:scale-110"
+                      loading="lazy"
+                    />
+                    
+                    {/* Gradient Overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent 
+                                  opacity-0 group-hover:opacity-100 transition-all duration-300">
+                      <div className="absolute bottom-0 left-0 right-0 p-4 space-y-2">
+                        <p className="text-white text-sm font-semibold truncate drop-shadow-lg">
+                          {img.pageTitle || 'Untitled'}
+                        </p>
+                        {img.tags && img.tags.length > 0 && (
+                          <div className="flex gap-1.5 flex-wrap">
+                            {img.tags.slice(0, 2).map(tag => (
+                              <span
+                                key={tag}
+                                className="text-xs px-2.5 py-1 rounded-full bg-white/20 backdrop-blur-sm 
+                                         text-white border border-white/30 font-medium"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                            {img.tags.length > 2 && (
+                              <span className="text-xs px-2.5 py-1 rounded-full bg-white/20 backdrop-blur-sm 
+                                             text-white border border-white/30 font-medium">
+                                +{img.tags.length - 2}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Floating badge */}
+                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 
+                                  transition-all duration-300 transform group-hover:scale-100 scale-90">
+                      <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md 
+                                    flex items-center justify-center border border-white/30">
+                        <ExternalLink className="w-5 h-5 text-white" />
+                      </div>
                     </div>
                   </div>
                 </div>
