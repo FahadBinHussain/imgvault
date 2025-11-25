@@ -16,6 +16,8 @@ export default function GalleryPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [activeTab, setActiveTab] = useState('noobs'); // 'noobs' or 'nerds'
   const [loadingNerdsTab, setLoadingNerdsTab] = useState(false);
+  const [editingField, setEditingField] = useState(null); // Track which field is being edited
+  const [editValues, setEditValues] = useState({}); // Store temporary edit values
 
   const filteredImages = images.filter(img => {
     const query = searchQuery.toLowerCase();
@@ -81,6 +83,41 @@ export default function GalleryPage() {
     if (tabName === 'nerds' && selectedImage) {
       loadFullImageDetails(selectedImage.id);
     }
+  };
+
+  const startEditing = (field) => {
+    setEditingField(field);
+    if (field === 'tags') {
+      setEditValues({ ...editValues, [field]: selectedImage.tags?.join(', ') || '' });
+    } else {
+      setEditValues({ ...editValues, [field]: selectedImage[field] || '' });
+    }
+  };
+
+  const saveEdit = async (field) => {
+    try {
+      let value = editValues[field];
+      if (field === 'tags') {
+        value = value.split(',').map(t => t.trim()).filter(t => t);
+      }
+      
+      const updateData = { [field]: value };
+      await chrome.runtime.sendMessage({
+        action: 'updateImage',
+        data: { id: selectedImage.id, ...updateData }
+      });
+      
+      setSelectedImage({ ...selectedImage, [field]: value });
+      setEditingField(null);
+    } catch (error) {
+      console.error('Failed to update field:', error);
+      alert('Failed to update');
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingField(null);
+    setEditValues({});
   };
 
   const groupImagesByDate = (images) => {
@@ -289,7 +326,23 @@ export default function GalleryPage() {
           className="!max-w-7xl !w-full !h-[90vh] !p-0 !overflow-hidden"
         >
           {selectedImage && (
-            <div className="flex h-full">
+            <div className="flex h-full relative">
+              {/* Close Button - Animated X */}
+              <button
+                onClick={() => {
+                  setSelectedImage(null);
+                  setActiveTab('noobs');
+                  setFullImageDetails(null);
+                }}
+                className="absolute top-4 left-4 z-50 w-10 h-10 rounded-full bg-red-500/20 
+                         hover:bg-red-500/40 border border-red-500/50 hover:border-red-500 
+                         flex items-center justify-center transition-all duration-300 
+                         hover:scale-110 hover:rotate-90 group"
+                title="Close"
+              >
+                <span className="text-red-300 group-hover:text-red-100 text-xl font-bold">✕</span>
+              </button>
+
               {/* LEFT SIDE - IMAGE */}
               <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-8 relative">
                 {/* Radial glow effect */}
@@ -408,55 +461,198 @@ export default function GalleryPage() {
                     )}
 
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1">Source URL</div>
-                      <div className="bg-white/5 rounded p-2">
-                        <a
-                          href={selectedImage.sourceImageUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary-300 hover:text-primary-200 break-all text-sm"
-                        >
-                          {selectedImage.sourceImageUrl || 'N/A'}
-                        </a>
+                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                        <span>Source URL</span>
+                        {editingField !== 'sourceImageUrl' && (
+                          <button
+                            onClick={() => startEditing('sourceImageUrl')}
+                            className="text-primary-300 hover:text-primary-200 text-xs"
+                          >
+                            ✏️ Edit
+                          </button>
+                        )}
                       </div>
-                    </div>
-
-                    <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1">Page URL</div>
-                      <div className="bg-white/5 rounded p-2">
-                        <a
-                          href={selectedImage.sourcePageUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary-300 hover:text-primary-200 break-all text-sm"
-                        >
-                          {selectedImage.sourcePageUrl || 'N/A'}
-                        </a>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1">Description</div>
-                      <div className="text-slate-300 text-sm">
-                        {selectedImage.description || 'No description'}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1">Tags</div>
-                      {selectedImage.tags && selectedImage.tags.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {selectedImage.tags.map(tag => (
-                            <span
-                              key={tag}
-                              className="px-3 py-1 rounded-full bg-primary-500/20 text-primary-200 text-sm"
+                      {editingField === 'sourceImageUrl' ? (
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={editValues.sourceImageUrl || ''}
+                            onChange={(e) => setEditValues({ ...editValues, sourceImageUrl: e.target.value })}
+                            className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => saveEdit('sourceImageUrl')}
+                              className="px-3 py-1 rounded bg-green-500/20 text-green-300 text-xs hover:bg-green-500/30"
                             >
-                              {tag}
-                            </span>
-                          ))}
+                              ✓ Save
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              className="px-3 py-1 rounded bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30"
+                            >
+                              ✕ Cancel
+                            </button>
+                          </div>
                         </div>
                       ) : (
-                        <div className="text-slate-500 italic text-sm">No tags</div>
+                        <div className="bg-white/5 rounded p-2">
+                          <a
+                            href={selectedImage.sourceImageUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary-300 hover:text-primary-200 break-all text-sm"
+                          >
+                            {selectedImage.sourceImageUrl || 'N/A'}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                        <span>Page URL</span>
+                        {editingField !== 'sourcePageUrl' && (
+                          <button
+                            onClick={() => startEditing('sourcePageUrl')}
+                            className="text-primary-300 hover:text-primary-200 text-xs"
+                          >
+                            ✏️ Edit
+                          </button>
+                        )}
+                      </div>
+                      {editingField === 'sourcePageUrl' ? (
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={editValues.sourcePageUrl || ''}
+                            onChange={(e) => setEditValues({ ...editValues, sourcePageUrl: e.target.value })}
+                            className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => saveEdit('sourcePageUrl')}
+                              className="px-3 py-1 rounded bg-green-500/20 text-green-300 text-xs hover:bg-green-500/30"
+                            >
+                              ✓ Save
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              className="px-3 py-1 rounded bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30"
+                            >
+                              ✕ Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-white/5 rounded p-2">
+                          <a
+                            href={selectedImage.sourcePageUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary-300 hover:text-primary-200 break-all text-sm"
+                          >
+                            {selectedImage.sourcePageUrl || 'N/A'}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                        <span>Description</span>
+                        {editingField !== 'description' && (
+                          <button
+                            onClick={() => startEditing('description')}
+                            className="text-primary-300 hover:text-primary-200 text-xs"
+                          >
+                            ✏️ Edit
+                          </button>
+                        )}
+                      </div>
+                      {editingField === 'description' ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={editValues.description || ''}
+                            onChange={(e) => setEditValues({ ...editValues, description: e.target.value })}
+                            className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
+                            rows="3"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => saveEdit('description')}
+                              className="px-3 py-1 rounded bg-green-500/20 text-green-300 text-xs hover:bg-green-500/30"
+                            >
+                              ✓ Save
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              className="px-3 py-1 rounded bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30"
+                            >
+                              ✕ Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-slate-300 text-sm">
+                          {selectedImage.description || 'No description'}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                        <span>Tags</span>
+                        {editingField !== 'tags' && (
+                          <button
+                            onClick={() => startEditing('tags')}
+                            className="text-primary-300 hover:text-primary-200 text-xs"
+                          >
+                            ✏️ Edit
+                          </button>
+                        )}
+                      </div>
+                      {editingField === 'tags' ? (
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={editValues.tags || ''}
+                            onChange={(e) => setEditValues({ ...editValues, tags: e.target.value })}
+                            placeholder="Comma separated tags"
+                            className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => saveEdit('tags')}
+                              className="px-3 py-1 rounded bg-green-500/20 text-green-300 text-xs hover:bg-green-500/30"
+                            >
+                              ✓ Save
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              className="px-3 py-1 rounded bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30"
+                            >
+                              ✕ Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {selectedImage.tags && selectedImage.tags.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {selectedImage.tags.map(tag => (
+                                <span
+                                  key={tag}
+                                  className="px-3 py-1 rounded-full bg-primary-500/20 text-primary-200 text-sm"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-slate-500 italic text-sm">No tags</div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -504,7 +700,7 @@ export default function GalleryPage() {
                         <div>
                           <h4 className="text-xs font-semibold text-slate-400 mb-1">File Type</h4>
                           <p className="text-white font-mono text-xs">
-                            {fullImageDetails?.fileType || loadingNerdsTab ? 'Loading...' : 'N/A'}
+                            {fullImageDetails?.fileType || (loadingNerdsTab ? 'Loading...' : 'N/A')}
                           </p>
                         </div>
                         <div>
@@ -523,79 +719,6 @@ export default function GalleryPage() {
                               : loadingNerdsTab ? 'Loading...' : 'N/A'}
                           </p>
                         </div>
-                        <div>
-                          <h4 className="text-xs font-semibold text-slate-400 mb-1">Created</h4>
-                          <p className="text-white font-mono text-xs">
-                            {selectedImage.createdAt
-                              ? new Date(selectedImage.createdAt).toLocaleString('en-US', {
-                                  weekday: 'short',
-                                  year: 'numeric',
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: 'numeric',
-                                  minute: '2-digit'
-                                })
-                              : 'N/A'}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* URLs Section */}
-                      <div className="space-y-3">
-                        <div>
-                          <h4 className="text-xs font-semibold text-slate-400 mb-1">Source Image URL</h4>
-                          <div className="bg-white/5 rounded p-2">
-                            <a
-                              href={selectedImage.sourceImageUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary-300 hover:text-primary-200 break-all font-mono text-xs"
-                            >
-                              {selectedImage.sourceImageUrl || 'N/A'}
-                            </a>
-                          </div>
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-semibold text-slate-400 mb-1">Source Page URL</h4>
-                          <div className="bg-white/5 rounded p-2">
-                            <a
-                              href={selectedImage.sourcePageUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary-300 hover:text-primary-200 break-all font-mono text-xs"
-                            >
-                              {selectedImage.sourcePageUrl || 'N/A'}
-                            </a>
-                          </div>
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-semibold text-slate-400 mb-1">Pixvid URL</h4>
-                          <div className="bg-white/5 rounded p-2">
-                            <a
-                              href={selectedImage.pixvidUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-300 hover:text-blue-200 break-all font-mono text-xs"
-                            >
-                              {selectedImage.pixvidUrl}
-                            </a>
-                          </div>
-                        </div>
-                        {selectedImage.imgbbUrl && (
-                          <div>
-                            <h4 className="text-xs font-semibold text-slate-400 mb-1">ImgBB URL</h4>
-                            <div className="bg-white/5 rounded p-2">
-                              <a
-                                href={selectedImage.imgbbUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-green-300 hover:text-green-200 break-all font-mono text-xs"
-                              >
-                                {selectedImage.imgbbUrl}
-                              </a>
-                            </div>
-                          </div>
-                        )}
                       </div>
 
                       {/* Hash Values */}
@@ -645,14 +768,6 @@ export default function GalleryPage() {
 
                 {/* Action Buttons */}
                 <div className="flex gap-2 pt-4 border-t border-white/10 mt-6">
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    onClick={() => window.open(selectedImage.sourcePageUrl, '_blank')}
-                  >
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    Source Page
-                  </Button>
                   <div className="flex-1" />
                   <Button
                     variant="outline"
