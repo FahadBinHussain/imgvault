@@ -131,8 +131,19 @@ async function loadPendingImage() {
 
 function displayImageData(data) {
   previewImage.src = data.srcUrl;
-  sourceUrlDisplay.textContent = truncateUrl(data.srcUrl);
-  sourceUrlDisplay.title = data.srcUrl;
+  
+  // Extract filename from URL
+  let fileName = '';
+  try {
+    const urlPath = new URL(data.srcUrl).pathname;
+    fileName = urlPath.split('/').pop().split('?')[0] || data.srcUrl;
+  } catch (e) {
+    // If URL parsing fails, use the URL as is
+    fileName = data.srcUrl;
+  }
+  
+  sourceUrlDisplay.textContent = fileName;
+  sourceUrlDisplay.title = data.srcUrl; // Full URL as tooltip
   pageUrlInput.value = data.pageUrl || '';
   
   if (data.pageTitle) {
