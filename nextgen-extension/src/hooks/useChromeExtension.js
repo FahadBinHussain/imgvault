@@ -135,9 +135,11 @@ export function useImages() {
     setError(null);
 
     try {
-      const result = await sendMessage('getImages');
-      setImages(result || []);
+      const images = await sendMessage('getImages');
+      console.log('Loaded images from background:', images);
+      setImages(images || []);
     } catch (err) {
+      console.error('Error loading images:', err);
       setError(err);
       setImages([]);
     } finally {
