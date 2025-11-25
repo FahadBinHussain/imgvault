@@ -433,6 +433,11 @@ export default function GalleryPage() {
                 </button>
 
                 <div className="p-6 flex-1 pt-16">
+              {/* Details Header */}
+              <h2 className="text-2xl font-bold text-white mb-4 bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent">
+                Details
+              </h2>
+
               {/* Tab Navigation */}
               <div className="flex gap-2 mb-4 border-b border-white/10">
                 <button
