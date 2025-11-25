@@ -750,6 +750,12 @@ export default function GalleryPage() {
                           <p className="text-white font-mono text-xs break-all">{selectedImage.id || 'N/A'}</p>
                         </div>
                         <div>
+                          <h4 className="text-xs font-semibold text-slate-400 mb-1">File Name</h4>
+                          <p className="text-white font-mono text-xs break-all">
+                            {fullImageDetails?.fileName || (loadingNerdsTab ? 'Loading...' : 'N/A')}
+                          </p>
+                        </div>
+                        <div>
                           <h4 className="text-xs font-semibold text-slate-400 mb-1">File Type</h4>
                           <p className="text-white font-mono text-xs">
                             {fullImageDetails?.fileType || (loadingNerdsTab ? 'Loading...' : 'N/A')}
