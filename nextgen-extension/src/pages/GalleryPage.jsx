@@ -34,9 +34,22 @@ export default function GalleryPage() {
   const groupImagesByDate = (images) => {
     const groups = {};
     images.forEach(img => {
-      const date = new Date(img.createdAt).toLocaleDateString();
-      if (!groups[date]) groups[date] = [];
-      groups[date].push(img);
+      const date = new Date(img.createdAt);
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      let dateKey;
+      if (date.toDateString() === today.toDateString()) {
+        dateKey = 'Today';
+      } else if (date.toDateString() === yesterday.toDateString()) {
+        dateKey = 'Yesterday';
+      } else {
+        dateKey = date.toLocaleDateString();
+      }
+      
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(img);
     });
     return groups;
   };
