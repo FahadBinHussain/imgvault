@@ -1210,7 +1210,7 @@ export default function GalleryPage() {
                 {/* Error Message */}
                 {uploadError && (
                   <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
-                    {uploadError}
+                    {uploadError?.message || String(uploadError)}
                   </div>
                 )}
 
