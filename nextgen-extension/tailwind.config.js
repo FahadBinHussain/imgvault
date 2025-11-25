@@ -8,6 +8,18 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        inter: ['Inter', 'system-ui', 'sans-serif'],
+      },
+      spacing: {
+        '18': '4.5rem',
+        '22': '5.5rem',
+      },
+      letterSpacing: {
+        tighter: '-0.02em',
+        tight: '-0.01em',
+      },
       colors: {
         primary: {
           50: '#f0f5ff',
