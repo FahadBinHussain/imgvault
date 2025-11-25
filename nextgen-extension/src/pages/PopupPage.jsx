@@ -81,30 +81,53 @@ export default function PopupPage() {
   // No image view
   if (!imageData) {
     return (
-      <div className="w-[420px] min-h-[400px] bg-gradient-primary">
-        <div className="glass-card border-none">
-          {/* Header */}
-          <div className="p-6 border-b border-white/10">
+      <div className="w-[420px] min-h-[400px] bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+        <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl">
+          {/* Header with glassmorphism */}
+          <div className="p-6 border-b border-white/10 backdrop-blur-xl bg-white/5">
             <div className="flex items-center gap-3">
-              <img src="/icons/icon48.png" alt="ImgVault" className="w-8 h-8" />
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-lg blur-md opacity-50"></div>
+                <img src="/icons/icon48.png" alt="ImgVault" className="w-10 h-10 relative z-10 rounded-lg shadow-lg" />
+              </div>
               <div className="flex-1">
-                <h2 className="text-xl font-bold gradient-text">ImgVault</h2>
+                <h2 className="text-xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent">ImgVault</h2>
                 <p className="text-sm text-slate-300">Your personal image vault</p>
               </div>
-              <IconButton icon={ImageIcon} title="Gallery" onClick={openGallery} />
-              <IconButton icon={Settings} title="Settings" onClick={openSettings} />
+              <button
+                onClick={openGallery}
+                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 
+                         backdrop-blur-sm transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
+                title="Gallery"
+              >
+                <ImageIcon className="w-5 h-5 text-white" />
+              </button>
+              <button
+                onClick={openSettings}
+                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 
+                         backdrop-blur-sm transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
+                title="Settings"
+              >
+                <Settings className="w-5 h-5 text-white" />
+              </button>
             </div>
           </div>
 
-          {/* Empty State */}
+          {/* Empty State with soft shadows and animations */}
           <div className="p-8 text-center">
-            <div className="text-6xl mb-4">🖼️</div>
+            <div className="relative inline-block mb-6">
+              <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-full blur-2xl opacity-30 animate-pulse"></div>
+              <div className="relative text-7xl">🖼️</div>
+            </div>
             <h3 className="text-lg font-semibold text-white mb-2">No Image Selected</h3>
             <p className="text-slate-300 mb-4">
               Right-click any image on a webpage and select "Save to ImgVault"
             </p>
-            <p className="text-slate-400 mb-4">— or —</p>
-            <div>
+            <div className="relative inline-block my-4">
+              <div className="absolute left-0 right-0 top-1/2 h-px bg-gradient-to-r from-transparent via-slate-600 to-transparent"></div>
+              <span className="relative px-4 bg-slate-900 text-slate-400 text-sm">or</span>
+            </div>
+            <div className="mt-4">
               <input
                 type="file"
                 id="fileInput"
@@ -112,12 +135,15 @@ export default function PopupPage() {
                 onChange={handleFileUpload}
                 className="hidden"
               />
-              <Button
-                variant="primary"
+              <button
                 onClick={() => document.getElementById('fileInput').click()}
+                className="px-6 py-3 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
+                         text-white font-semibold shadow-xl hover:shadow-2xl hover:scale-105 
+                         active:scale-95 transition-all duration-300 flex items-center gap-2 mx-auto"
               >
-                📤 Upload from Computer
-              </Button>
+                <Upload className="w-5 h-5" />
+                Upload from Computer
+              </button>
             </div>
           </div>
         </div>
@@ -128,141 +154,208 @@ export default function PopupPage() {
   // Success view
   if (showSuccess) {
     return (
-      <div className="w-[420px] min-h-[400px] bg-gradient-primary flex items-center justify-center">
-        <Card className="text-center p-8">
-          <div className="text-6xl mb-4">✅</div>
-          <h3 className="text-xl font-bold text-white mb-2">Image Saved!</h3>
+      <div className="w-[420px] min-h-[400px] bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl rounded-2xl p-8 text-center">
+          <div className="relative inline-block mb-6">
+            <div className="absolute inset-0 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full blur-3xl opacity-50 animate-pulse"></div>
+            <div className="relative text-7xl">✅</div>
+          </div>
+          <h3 className="text-2xl font-bold bg-gradient-to-r from-green-300 to-emerald-300 bg-clip-text text-transparent mb-2">
+            Image Saved!
+          </h3>
           <p className="text-slate-300">Successfully uploaded to your vault</p>
-        </Card>
+        </div>
       </div>
     );
   }
 
   // Image upload view
   return (
-    <div className="w-[420px] bg-gradient-primary">
-      <div className="glass-card border-none">
-        {/* Header */}
-        <div className="p-6 border-b border-white/10">
+    <div className="w-[420px] bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl">
+        {/* Header with glassmorphism */}
+        <div className="p-6 border-b border-white/10 backdrop-blur-xl bg-white/5">
           <div className="flex items-center gap-3">
-            <img src="/icons/icon48.png" alt="ImgVault" className="w-8 h-8" />
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-lg blur-md opacity-50"></div>
+              <img src="/icons/icon48.png" alt="ImgVault" className="w-10 h-10 relative z-10 rounded-lg shadow-lg" />
+            </div>
             <div className="flex-1">
-              <h2 className="text-xl font-bold gradient-text">Save to Vault</h2>
+              <h2 className="text-xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent">Save to Vault</h2>
               <p className="text-sm text-slate-300">Preserve with context</p>
             </div>
-            <IconButton icon={Settings} title="Settings" onClick={openSettings} />
+            <button
+              onClick={openSettings}
+              className="p-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 
+                       backdrop-blur-sm transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
+              title="Settings"
+            >
+              <Settings className="w-5 h-5 text-white" />
+            </button>
           </div>
         </div>
 
-        {/* Image Preview */}
+        {/* Image Preview with soft shadows */}
         <div className="p-6 space-y-4">
-          <div className="relative rounded-lg overflow-hidden bg-black/20">
-            <img
-              src={imageData.srcUrl}
-              alt="Preview"
-              className="w-full h-auto max-h-64 object-contain"
-            />
-            <div className="absolute bottom-2 right-2">
-              <input
-                type="file"
-                id="replaceFile"
-                accept="image/*"
-                onChange={handleFileUpload}
-                className="hidden"
+          <div className="relative rounded-xl overflow-hidden bg-slate-800/50 border border-white/10 shadow-xl group">
+            <div className="absolute -inset-1 bg-gradient-to-r from-primary-500/40 to-secondary-500/40 
+                          rounded-xl opacity-0 group-hover:opacity-100 blur-xl transition-all duration-500"></div>
+            <div className="relative">
+              <img
+                src={imageData.srcUrl}
+                alt="Preview"
+                className="w-full h-auto max-h-64 object-contain transition-transform duration-500 group-hover:scale-105"
               />
-              <Button
-                size="sm"
-                variant="glass"
-                onClick={() => document.getElementById('replaceFile').click()}
-              >
-                📁 Replace
-              </Button>
+              <div className="absolute bottom-3 right-3">
+                <input
+                  type="file"
+                  id="replaceFile"
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => document.getElementById('replaceFile').click()}
+                  className="px-4 py-2 rounded-lg bg-slate-800/90 hover:bg-slate-700 border border-white/20 
+                           backdrop-blur-sm text-white text-sm font-medium shadow-lg hover:shadow-xl 
+                           transition-all duration-300 hover:scale-105 flex items-center gap-2"
+                >
+                  <Upload className="w-4 h-4" />
+                  Replace
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Google Drive tip */}
+          {/* Google Drive tip with animation */}
           {imageData.isGoogleDrive && (
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-              <span className="text-xl">💡</span>
-              <p className="text-sm text-yellow-200">
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-yellow-500/10 border-2 border-yellow-500/30 
+                          shadow-lg animate-pulse-slow">
+              <span className="text-2xl flex-shrink-0">💡</span>
+              <p className="text-sm text-yellow-200/90 leading-relaxed">
                 For maximum quality from Google Drive, download the file first then use "Replace" button
               </p>
             </div>
           )}
 
-          {/* Form Fields */}
+          {/* Form Fields with enhanced styling */}
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-200 mb-2">
-                🌐 Source Page URL
+              <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                <span className="text-lg">🌐</span>
+                Source Page URL
               </label>
               <div className="flex gap-2">
-                <Input
+                <input
+                  type="url"
                   value={pageUrl}
                   onChange={(e) => setPageUrl(e.target.value)}
                   readOnly={!isPageUrlEditable}
-                  className="flex-1"
+                  className="flex-1 px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                           text-white placeholder-slate-400 
+                           focus:outline-none focus:border-primary-500 focus:ring-2 
+                           focus:ring-primary-500/20 transition-all shadow-lg"
                 />
-                <IconButton
-                  icon={isPageUrlEditable ? X : Settings}
-                  title={isPageUrlEditable ? 'Lock' : 'Edit'}
+                <button
                   onClick={() => setIsPageUrlEditable(!isPageUrlEditable)}
-                />
+                  className="p-3 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 
+                           backdrop-blur-sm transition-all duration-300 hover:scale-105 shadow-lg"
+                  title={isPageUrlEditable ? 'Lock' : 'Edit'}
+                >
+                  {isPageUrlEditable ? <X className="w-5 h-5 text-white" /> : <Settings className="w-5 h-5 text-white" />}
+                </button>
               </div>
             </div>
 
-            <Textarea
-              label="📝 Description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={`From: ${imageData.pageTitle || 'Unknown'}`}
-              rows={3}
-            />
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                <span className="text-lg">📝</span>
+                Description
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={`From: ${imageData.pageTitle || 'Unknown'}`}
+                rows={3}
+                className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                         text-white placeholder-slate-400 
+                         focus:outline-none focus:border-primary-500 focus:ring-2 
+                         focus:ring-primary-500/20 transition-all resize-none shadow-lg"
+              />
+            </div>
 
-            <Input
-              label="🏷️ Tags"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="design, inspiration, reference"
-            />
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                <span className="text-lg">🏷️</span>
+                Tags
+              </label>
+              <input
+                type="text"
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                placeholder="design, inspiration, reference"
+                className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                         text-white placeholder-slate-400 
+                         focus:outline-none focus:border-primary-500 focus:ring-2 
+                         focus:ring-primary-500/20 transition-all shadow-lg"
+              />
+            </div>
           </div>
 
-          {/* Upload Progress */}
+          {/* Upload Progress with glow */}
           {progress && (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5">
-              {uploading && <Spinner size="sm" />}
-              <span className="text-sm text-slate-200">{progress}</span>
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-primary-500/10 border border-primary-500/30 shadow-xl">
+              {uploading && (
+                <div className="relative">
+                  <div className="absolute inset-0 bg-primary-400 rounded-full blur-lg opacity-50 animate-pulse"></div>
+                  <Spinner size="sm" className="relative z-10" />
+                </div>
+              )}
+              <span className="text-sm text-primary-200 font-medium">{progress}</span>
             </div>
           )}
 
-          {/* Error Message */}
+          {/* Error Message with animation */}
           {uploadError && (
-            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
-              <p className="text-sm text-red-200">{uploadError.message}</p>
+            <div className="p-4 rounded-xl bg-red-500/10 border-2 border-red-500/30 shadow-xl animate-shake">
+              <p className="text-sm text-red-300">{uploadError.message}</p>
             </div>
           )}
 
-          {/* Upload Button */}
-          <Button
-            variant="primary"
-            className="w-full"
+          {/* Upload Button with glow effect */}
+          <button
             onClick={handleUpload}
             disabled={uploading || !settings}
+            className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
+                     hover:from-primary-600 hover:to-secondary-600 text-white font-semibold text-lg
+                     shadow-2xl hover:shadow-[0_8px_30px_rgb(99,102,241,0.4)]
+                     transform transition-all duration-300 ease-out
+                     hover:scale-105 active:scale-95
+                     disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
+                     flex items-center justify-center gap-3"
           >
             {uploading ? (
-              <div className="flex items-center justify-center gap-2">
-                <Spinner size="sm" />
+              <>
+                <div className="relative">
+                  <div className="absolute inset-0 bg-white rounded-full blur-md opacity-50 animate-pulse"></div>
+                  <Spinner size="sm" className="relative z-10" />
+                </div>
                 <span>Uploading...</span>
-              </div>
+              </>
             ) : (
-              <span>💾 Save to Vault</span>
+              <>
+                <span className="text-2xl">💾</span>
+                <span>Save to Vault</span>
+              </>
             )}
-          </Button>
+          </button>
 
           {!settings && (
-            <p className="text-center text-sm text-yellow-300">
-              ⚠️ Please configure API keys in settings first
-            </p>
+            <div className="p-4 rounded-xl bg-yellow-500/10 border-2 border-yellow-500/30 text-center">
+              <p className="text-sm text-yellow-300 font-medium">
+                ⚠️ Please configure API keys in settings first
+              </p>
+            </div>
           )}
         </div>
       </div>
