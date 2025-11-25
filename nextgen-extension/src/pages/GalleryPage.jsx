@@ -1236,19 +1236,21 @@ export default function GalleryPage() {
                   <div className="space-y-4 p-5 rounded-xl bg-yellow-500/10 border-2 border-yellow-500/30">
                     <div className="flex items-start gap-3">
                       <div className="flex-shrink-0 text-yellow-400 text-2xl">⚠️</div>
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <h4 className="text-yellow-300 font-semibold text-lg mb-2">Duplicate Image Found!</h4>
                         <p className="text-yellow-200/80 text-sm mb-4">
                           This image already exists in your vault. Do you want to upload it anyway?
                         </p>
                         
                         {/* Show duplicate image */}
-                        <div className="rounded-lg overflow-hidden border border-yellow-500/30 bg-slate-800/50">
-                          <img
-                            src={duplicateData.imgbbUrl || duplicateData.pixvidUrl}
-                            alt="Duplicate"
-                            className="w-full h-auto max-h-64 object-contain"
-                          />
+                        <div className="rounded-lg overflow-hidden border border-yellow-500/30 bg-slate-800/50 max-w-full">
+                          <div className="w-full flex items-center justify-center bg-slate-900/30 p-2">
+                            <img
+                              src={duplicateData.imgbbUrl || duplicateData.pixvidUrl}
+                              alt="Duplicate"
+                              className="max-w-full max-h-48 object-contain rounded"
+                            />
+                          </div>
                           <div className="p-3 bg-slate-900/50">
                             <p className="text-slate-300 text-sm font-medium truncate">
                               {duplicateData.pageTitle || 'Untitled'}
