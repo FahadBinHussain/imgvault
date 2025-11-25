@@ -4,12 +4,13 @@
  */
 
 import React, { useState } from 'react';
-import { RefreshCw, Upload, Search, Trash2, Download } from 'lucide-react';
-import { Button, Input, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
-import { useImages } from '../hooks/useChromeExtension';
+import { RefreshCw, Upload, Search, Trash2, Download, X } from 'lucide-react';
+import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
+import { useImages, useImageUpload } from '../hooks/useChromeExtension';
 
 export default function GalleryPage() {
   const { images, loading, reload, deleteImage } = useImages();
+  const { uploadImage, uploading, progress, error: uploadError } = useImageUpload();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
   const [fullImageDetails, setFullImageDetails] = useState(null);
@@ -22,6 +23,13 @@ export default function GalleryPage() {
   const [isDeleting, setIsDeleting] = useState(false); // Track deletion progress
   const [loadedImages, setLoadedImages] = useState(new Set()); // Track loaded images for fade-in
   const [isModalAnimating, setIsModalAnimating] = useState(false); // Track modal animation state
+  
+  // Upload modal state
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadImageData, setUploadImageData] = useState(null);
+  const [uploadPageUrl, setUploadPageUrl] = useState('');
+  const [uploadDescription, setUploadDescription] = useState('');
+  const [uploadTags, setUploadTags] = useState('');
 
   // Handle image load for fade-in effect
   const handleImageLoad = (imageId) => {
@@ -62,6 +70,57 @@ export default function GalleryPage() {
       showToast(`❌ ${error.message || 'Failed to delete'}`, 'error', 4000);
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  // Upload modal handlers
+  const openUploadModal = () => {
+    setShowUploadModal(true);
+    setUploadImageData(null);
+    setUploadPageUrl('');
+    setUploadDescription('');
+    setUploadTags('');
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setUploadImageData({
+          srcUrl: reader.result,
+          pageTitle: file.name,
+          timestamp: Date.now()
+        });
+        setUploadPageUrl(window.location.href);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleUploadSubmit = async () => {
+    if (!uploadImageData) return;
+
+    try {
+      const tagsArray = uploadTags
+        .split(',')
+        .map(t => t.trim())
+        .filter(t => t.length > 0);
+
+      await uploadImage({
+        imageUrl: uploadImageData.srcUrl,
+        pageUrl: uploadPageUrl,
+        pageTitle: uploadImageData.pageTitle,
+        description: uploadDescription,
+        tags: tagsArray
+      });
+
+      showToast('✅ Image uploaded successfully!', 'success', 3000);
+      setShowUploadModal(false);
+      reload(); // Refresh gallery
+    } catch (err) {
+      console.error('Upload failed:', err);
+      showToast(`❌ ${err.message || 'Upload failed'}`, 'error', 4000);
     }
   };
 
@@ -260,7 +319,7 @@ export default function GalleryPage() {
                     <RefreshCw className="w-5 h-5 text-white" />
                   </button>
                   <button
-                    onClick={() => chrome.tabs.create({ url: 'popup.html' })}
+                    onClick={openUploadModal}
                     className="px-5 py-3 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
                              text-white font-semibold shadow-lg hover:shadow-xl hover:scale-105 
                              active:scale-95 transition-all duration-300 flex items-center gap-2"
@@ -317,7 +376,7 @@ export default function GalleryPage() {
               Start building your collection by uploading your first image
             </p>
             <button
-              onClick={() => chrome.tabs.create({ url: 'popup.html' })}
+              onClick={openUploadModal}
               className="px-8 py-4 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
                        text-white font-semibold text-lg shadow-xl hover:shadow-2xl 
                        hover:scale-105 active:scale-95 transition-all"
@@ -1001,7 +1060,7 @@ export default function GalleryPage() {
         {/* Floating Action Button (FAB) - Google Photos Style */}
         {!loading && images.length > 0 && (
           <button
-            onClick={() => chrome.tabs.create({ url: 'popup.html' })}
+            onClick={openUploadModal}
             className="fixed bottom-8 right-8 z-50 w-16 h-16 rounded-full 
                      bg-gradient-to-r from-primary-500 to-secondary-500
                      text-white shadow-2xl hover:shadow-[0_8px_30px_rgb(99,102,241,0.4)]
@@ -1019,6 +1078,167 @@ export default function GalleryPage() {
                              group-hover:rotate-12" />
           </button>
         )}
+
+        {/* Upload Modal */}
+        <Modal
+          isOpen={showUploadModal}
+          onClose={() => setShowUploadModal(false)}
+          title="Upload Image"
+        >
+          <div className="space-y-6">
+            {/* File Upload */}
+            {!uploadImageData ? (
+              <div className="space-y-4">
+                <label className="block">
+                  <div className="flex items-center justify-center w-full h-64 px-4 transition 
+                                bg-slate-800/50 border-2 border-dashed border-slate-600 rounded-xl 
+                                hover:border-primary-500 hover:bg-slate-700/50 cursor-pointer
+                                group">
+                    <div className="text-center">
+                      <Upload className="w-16 h-16 mx-auto text-slate-400 group-hover:text-primary-400 
+                                       transition-colors mb-4" />
+                      <p className="text-slate-300 text-lg font-medium mb-2">
+                        Click to select an image
+                      </p>
+                      <p className="text-slate-400 text-sm">
+                        or drag and drop
+                      </p>
+                      <p className="text-slate-500 text-xs mt-2">
+                        PNG, JPG, GIF up to 10MB
+                      </p>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                  </div>
+                </label>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Image Preview */}
+                <div className="relative rounded-xl overflow-hidden bg-slate-800/50 border border-slate-700">
+                  <img
+                    src={uploadImageData.srcUrl}
+                    alt="Preview"
+                    className="w-full h-auto max-h-96 object-contain"
+                  />
+                  <button
+                    onClick={() => setUploadImageData(null)}
+                    className="absolute top-4 right-4 p-2 rounded-lg bg-red-500/80 hover:bg-red-500 
+                             text-white transition-colors shadow-lg"
+                    title="Remove image"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Form Fields */}
+                <div className="space-y-4">
+                  {/* Page URL */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Page URL
+                    </label>
+                    <input
+                      type="url"
+                      value={uploadPageUrl}
+                      onChange={(e) => setUploadPageUrl(e.target.value)}
+                      placeholder="https://example.com/page"
+                      className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                               text-white placeholder-slate-400 
+                               focus:outline-none focus:border-primary-500 focus:ring-2 
+                               focus:ring-primary-500/20 transition-all"
+                    />
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Description
+                    </label>
+                    <Textarea
+                      value={uploadDescription}
+                      onChange={(e) => setUploadDescription(e.target.value)}
+                      placeholder="Add a description..."
+                      rows={3}
+                      className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                               text-white placeholder-slate-400 
+                               focus:outline-none focus:border-primary-500 focus:ring-2 
+                               focus:ring-primary-500/20 transition-all resize-none"
+                    />
+                  </div>
+
+                  {/* Tags */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Tags (comma-separated)
+                    </label>
+                    <input
+                      type="text"
+                      value={uploadTags}
+                      onChange={(e) => setUploadTags(e.target.value)}
+                      placeholder="nature, sunset, photography"
+                      className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                               text-white placeholder-slate-400 
+                               focus:outline-none focus:border-primary-500 focus:ring-2 
+                               focus:ring-primary-500/20 transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Upload Progress */}
+                {uploading && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm text-slate-300">
+                      <span>Uploading...</span>
+                      <span>{progress}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-primary-500 to-secondary-500 
+                                 transition-all duration-300 ease-out"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Error Message */}
+                {uploadError && (
+                  <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
+                    {uploadError}
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowUploadModal(false)}
+                    disabled={uploading}
+                    className="flex-1 px-6 py-3 rounded-lg bg-slate-700 hover:bg-slate-600 
+                             text-white font-medium transition-colors disabled:opacity-50 
+                             disabled:cursor-not-allowed"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleUploadSubmit}
+                    disabled={uploading || !uploadImageData}
+                    className="flex-1 px-6 py-3 rounded-lg bg-gradient-to-r from-primary-500 to-secondary-500 
+                             hover:from-primary-600 hover:to-secondary-600 text-white font-medium 
+                             transition-all disabled:opacity-50 disabled:cursor-not-allowed
+                             shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
+                  >
+                    {uploading ? 'Uploading...' : 'Upload'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal>
 
         {/* Toast Notifications */}
         {toast && (
