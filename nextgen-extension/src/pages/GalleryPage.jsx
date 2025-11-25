@@ -222,15 +222,15 @@ export default function GalleryPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="glass-card rounded-2xl p-8 mb-8 backdrop-blur-xl bg-white/10 border border-white/20 shadow-2xl">
+        <div className="glass-card rounded-xl p-8 mb-8 backdrop-blur-xl bg-white/10 border border-white/20 shadow-2xl">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-4">
               <div className="relative">
                 <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-xl blur-lg opacity-50"></div>
-                <img src="/icons/icon48.png" alt="ImgVault" className="w-12 h-12 relative z-10" />
+                <img src="/icons/icon48.png" alt="ImgVault" className="w-12 h-12 relative z-10 rounded-xl shadow-lg" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent">
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent drop-shadow-lg">
                   ImgVault Gallery
                 </h1>
                 <p className="text-sm text-slate-300 mt-1">
@@ -262,7 +262,7 @@ export default function GalleryPage() {
           {/* Search */}
           <div className="relative group">
             <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-xl blur opacity-0 group-hover:opacity-20 transition-opacity"></div>
-            <div className="relative flex items-center">
+            <div className="relative flex items-center shadow-lg">
               <Search className="absolute left-4 w-5 h-5 text-slate-400" />
               <input
                 type="text"
@@ -271,7 +271,7 @@ export default function GalleryPage() {
                 placeholder="Search by title, description, or tags..."
                 className="w-full pl-12 pr-4 py-4 rounded-xl bg-white/10 border border-white/20 
                          text-white placeholder-slate-400 focus:outline-none focus:border-primary-300 
-                         focus:bg-white/15 transition-all"
+                         focus:bg-white/15 focus:shadow-xl transition-all"
               />
             </div>
           </div>
@@ -290,20 +290,20 @@ export default function GalleryPage() {
 
         {/* Empty State */}
         {!loading && images.length === 0 && (
-          <div className="glass-card rounded-2xl backdrop-blur-xl bg-white/10 border border-white/20 
+          <div className="glass-card rounded-xl backdrop-blur-xl bg-white/10 border border-white/20 
                         shadow-2xl p-16 text-center">
             <div className="relative inline-block mb-6">
               <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-full blur-3xl opacity-30"></div>
-              <div className="text-8xl relative z-10">🖼️</div>
+              <div className="text-8xl relative z-10 drop-shadow-2xl">🖼️</div>
             </div>
-            <h3 className="text-3xl font-bold text-white mb-3">Your Vault is Empty</h3>
+            <h3 className="text-3xl font-bold text-white mb-3 drop-shadow-lg">Your Vault is Empty</h3>
             <p className="text-slate-300 text-lg mb-8 max-w-md mx-auto">
               Start building your collection by uploading your first image
             </p>
             <button
               onClick={() => chrome.tabs.create({ url: 'popup.html' })}
               className="px-8 py-4 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
-                       text-white font-semibold text-lg shadow-lg hover:shadow-2xl 
+                       text-white font-semibold text-lg shadow-xl hover:shadow-2xl 
                        hover:scale-105 active:scale-95 transition-all"
             >
               Upload First Image
@@ -331,12 +331,13 @@ export default function GalleryPage() {
                     setFullImageDetails(null);
                   }}
                 >
-                  {/* Glow effect */}
-                  <div className="absolute -inset-0.5 bg-gradient-to-r from-primary-500 to-secondary-500 
-                                rounded-2xl opacity-0 group-hover:opacity-75 blur transition-opacity"></div>
+                  {/* Soft glow effect on hover */}
+                  <div className="absolute -inset-1 bg-gradient-to-r from-primary-500/30 to-secondary-500/30 
+                                rounded-xl opacity-0 group-hover:opacity-100 blur-xl transition-all duration-500"></div>
                   
-                  {/* Card */}
-                  <div className="relative bg-slate-800 border border-white/10 rounded-2xl overflow-hidden
+                  {/* Card with soft shadows */}
+                  <div className="relative bg-slate-800/80 backdrop-blur-sm border border-white/10 
+                                rounded-xl overflow-hidden shadow-lg hover:shadow-2xl
                                 transform transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1">
                     <img
                       src={img.imgbbUrl || img.pixvidUrl}
@@ -350,7 +351,7 @@ export default function GalleryPage() {
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent 
                                   opacity-0 group-hover:opacity-100 transition-all duration-300">
                       <div className="absolute bottom-0 left-0 right-0 p-4 space-y-2">
-                        <p className="text-white text-sm font-semibold truncate drop-shadow-lg">
+                        <p className="text-white text-sm font-semibold truncate drop-shadow-xl">
                           {img.pageTitle || 'Untitled'}
                         </p>
                         {img.tags && img.tags.length > 0 && (
@@ -358,15 +359,15 @@ export default function GalleryPage() {
                             {img.tags.slice(0, 2).map(tag => (
                               <span
                                 key={tag}
-                                className="text-xs px-2.5 py-1 rounded-full bg-white/20 backdrop-blur-sm 
-                                         text-white border border-white/30 font-medium"
+                                className="text-xs px-2.5 py-1 rounded-lg bg-white/20 backdrop-blur-sm 
+                                         text-white border border-white/30 font-medium shadow-lg"
                               >
                                 {tag}
                               </span>
                             ))}
                             {img.tags.length > 2 && (
-                              <span className="text-xs px-2.5 py-1 rounded-full bg-white/20 backdrop-blur-sm 
-                                             text-white border border-white/30 font-medium">
+                              <span className="text-xs px-2.5 py-1 rounded-lg bg-white/20 backdrop-blur-sm 
+                                             text-white border border-white/30 font-medium shadow-lg">
                                 +{img.tags.length - 2}
                               </span>
                             )}
