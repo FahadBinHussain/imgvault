@@ -318,12 +318,13 @@ export default function GalleryPage() {
               <span className="bg-gradient-to-r from-primary-500 to-secondary-500 w-1 h-8 rounded-full"></span>
               {date}
             </h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+            
+            {/* Masonry Grid - 3 columns on mobile, 4 on tablet, 5 on desktop, 6 on large screens */}
+            <div className="columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-6 space-y-6">
               {groupedImages[date].map(img => (
                 <div
                   key={img.id}
-                  className="group relative aspect-square rounded-2xl overflow-hidden cursor-pointer
-                           transform transition-all duration-300 hover:scale-105 hover:-translate-y-2"
+                  className="group relative break-inside-avoid mb-6 cursor-pointer"
                   onClick={() => {
                     setSelectedImage(img);
                     setActiveTab('noobs');
@@ -335,11 +336,12 @@ export default function GalleryPage() {
                                 rounded-2xl opacity-0 group-hover:opacity-75 blur transition-opacity"></div>
                   
                   {/* Card */}
-                  <div className="relative h-full bg-slate-800 border border-white/10 rounded-2xl overflow-hidden">
+                  <div className="relative bg-slate-800 border border-white/10 rounded-2xl overflow-hidden
+                                transform transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1">
                     <img
                       src={img.imgbbUrl || img.pixvidUrl}
                       alt={img.pageTitle}
-                      className="w-full h-full object-cover transition-transform duration-500 
+                      className="w-full object-cover transition-transform duration-500 
                                group-hover:scale-110"
                       loading="lazy"
                     />
