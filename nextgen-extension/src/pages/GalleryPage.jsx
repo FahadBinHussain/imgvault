@@ -284,20 +284,32 @@ export default function GalleryPage() {
           onClose={() => {
             setSelectedImage(null);
             setActiveTab('noobs');
+            setFullImageDetails(null);
           }}
-          className="max-w-5xl"
+          className="!max-w-7xl !w-full !h-[90vh] !p-0 !overflow-hidden"
         >
           {selectedImage && (
-            <div>
-              {/* Image */}
-              <div className="mb-4">
+            <div className="flex h-full">
+              {/* LEFT SIDE - IMAGE */}
+              <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-8 relative">
+                {/* Radial glow effect */}
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
+                              w-4/5 h-4/5 bg-primary-500/10 rounded-full blur-3xl"></div>
+                
                 <img
                   src={selectedImage.imgbbUrl || selectedImage.pixvidUrl}
                   alt={selectedImage.pageTitle}
-                  className="w-full rounded-lg"
+                  className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl relative z-10
+                           transition-transform hover:scale-[1.02]"
                 />
               </div>
 
+              {/* RIGHT SIDE - DETAILS */}
+              <div className="w-[450px] flex-shrink-0 bg-slate-800/90 backdrop-blur-xl border-l border-white/10 
+                            overflow-y-auto flex flex-col"
+                   style={{ scrollbarWidth: 'thin', scrollbarColor: '#6366f1 #1e293b' }}
+              >
+                <div className="p-6 flex-1">
               {/* Tab Navigation */}
               <div className="flex gap-2 mb-4 border-b border-white/10">
                 <button
@@ -587,28 +599,30 @@ export default function GalleryPage() {
                 </div>
               )}
 
-              {/* Action Buttons */}
-              <div className="flex gap-2 pt-4 border-t border-white/10 mt-4">
-                <Button
-                  variant="glass"
-                  size="sm"
-                  onClick={() => window.open(selectedImage.sourcePageUrl, '_blank')}
-                >
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  Source Page
-                </Button>
-                <div className="flex-1" />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setShowDeleteConfirm(true);
-                  }}
-                  className="text-red-300 border-red-300/30 hover:border-red-300/50"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete
-                </Button>
+                {/* Action Buttons */}
+                <div className="flex gap-2 pt-4 border-t border-white/10 mt-6">
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    onClick={() => window.open(selectedImage.sourcePageUrl, '_blank')}
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Source Page
+                  </Button>
+                  <div className="flex-1" />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setShowDeleteConfirm(true);
+                    }}
+                    className="text-red-300 border-red-300/30 hover:border-red-300/50"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </Button>
+                </div>
+                </div>
               </div>
             </div>
           )}
