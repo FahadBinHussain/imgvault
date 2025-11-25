@@ -317,7 +317,7 @@ export default function GalleryPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <div className="max-w-7xl mx-auto">
+      <div className="w-full px-6">
         {/* Glassmorphism Navigation Bar - Apple-like */}
         <div className="sticky top-0 z-40 mb-8">
           {/* Frosted glass bar */}
