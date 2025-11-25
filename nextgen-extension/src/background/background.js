@@ -239,6 +239,15 @@ class ImgVaultServiceWorker {
       // Extract filename if not provided
       const fileName = this.extractFileName(data);
       
+      // Clean sourceImageUrl - don't save base64 data URLs to Firebase
+      let cleanSourceImageUrl = data.originalSourceUrl || data.imageUrl;
+      
+      // If it's a data URL (base64), it was uploaded via context menu - no real source URL
+      if (cleanSourceImageUrl && cleanSourceImageUrl.startsWith('data:')) {
+        console.log('⚠️ [SAVE] Source is base64 data URL (context menu upload), setting source URL to empty');
+        cleanSourceImageUrl = '';
+      }
+      
       // Save metadata to Firebase
       const imageMetadata = {
         pixvidUrl: pixvidResult.url,
@@ -246,7 +255,7 @@ class ImgVaultServiceWorker {
         imgbbUrl: imgbbResult && !imgbbResult.error ? imgbbResult.url : null,
         imgbbDeleteUrl: imgbbResult && !imgbbResult.error ? imgbbResult.deleteUrl : null,
         imgbbThumbUrl: imgbbResult && !imgbbResult.error ? imgbbResult.thumbUrl : null,
-        sourceImageUrl: data.originalSourceUrl || data.imageUrl,
+        sourceImageUrl: cleanSourceImageUrl,
         sourcePageUrl: data.pageUrl,
         pageTitle: data.pageTitle,
         fileName,
