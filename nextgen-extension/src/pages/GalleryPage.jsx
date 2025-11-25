@@ -21,6 +21,7 @@ export default function GalleryPage() {
   const [toast, setToast] = useState(null); // Toast notification state
   const [isDeleting, setIsDeleting] = useState(false); // Track deletion progress
   const [loadedImages, setLoadedImages] = useState(new Set()); // Track loaded images for fade-in
+  const [isModalAnimating, setIsModalAnimating] = useState(false); // Track modal animation state
 
   // Handle image load for fade-in effect
   const handleImageLoad = (imageId) => {
@@ -341,9 +342,11 @@ export default function GalleryPage() {
                   key={img.id}
                   className="group relative break-inside-avoid mb-6 cursor-pointer"
                   onClick={() => {
+                    setIsModalAnimating(true);
                     setSelectedImage(img);
                     setActiveTab('noobs');
                     setFullImageDetails(null);
+                    setTimeout(() => setIsModalAnimating(false), 300);
                   }}
                 >
                   {/* Soft glow effect on hover */}
@@ -411,7 +414,7 @@ export default function GalleryPage() {
           </div>
         ))}
 
-        {/* Image Detail Modal */}
+        {/* Animated Photo Viewer / Lightbox Modal */}
         <Modal
           isOpen={!!selectedImage}
           onClose={() => {
@@ -422,40 +425,51 @@ export default function GalleryPage() {
           className="!max-w-[95vw] !w-full !h-[95vh] !p-0 !overflow-hidden"
         >
           {selectedImage && (
-            <div className="flex h-full relative">
-              {/* Close Button - Animated X - MOVED to top right of details panel */}
+            <div className={`flex h-full relative transition-all duration-500 ease-out
+                          ${isModalAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
               
+              {/* Dark Overlay Background with Fade */}
+              <div className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-500
+                            ${isModalAnimating ? 'opacity-0' : 'opacity-100'}`} />
 
-              {/* LEFT SIDE - IMAGE */}
-              <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-8 relative">
+              {/* LEFT SIDE - IMAGE with Zoom Animation */}
+              <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-8 relative z-10">
                 {/* Radial glow effect */}
-                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
-                              w-4/5 h-4/5 bg-primary-500/10 rounded-full blur-3xl"></div>
+                <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
+                              w-4/5 h-4/5 bg-primary-500/10 rounded-full blur-3xl
+                              transition-all duration-700 ease-out
+                              ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}></div>
                 
+                {/* Image with smooth zoom-in transition */}
                 <img
                   src={selectedImage.imgbbUrl || selectedImage.pixvidUrl}
                   alt={selectedImage.pageTitle}
-                  className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl relative z-10
-                           transition-transform hover:scale-[1.02]"
+                  className={`max-w-full max-h-full object-contain rounded-2xl shadow-2xl relative z-10
+                           transition-all duration-700 ease-out
+                           hover:scale-[1.02] hover:shadow-[0_0_80px_rgba(99,102,241,0.3)]
+                           ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
                 />
               </div>
 
-              {/* RIGHT SIDE - DETAILS */}
-              <div className="w-[550px] flex-shrink-0 bg-slate-800/90 backdrop-blur-xl border-l border-white/10 
-                            overflow-y-auto flex flex-col relative"
+              {/* RIGHT SIDE - DETAILS with Slide-up Animation */}
+              <div className={`w-[550px] flex-shrink-0 bg-slate-800/90 backdrop-blur-xl border-l border-white/10 
+                            overflow-y-auto flex flex-col relative z-10
+                            transition-all duration-500 ease-out
+                            ${isModalAnimating ? 'translate-y-8 opacity-0' : 'translate-y-0 opacity-100'}`}
                    style={{ scrollbarWidth: 'thin', scrollbarColor: '#6366f1 #1e293b' }}
               >
-                {/* Close Button - NOW at top of details sidebar */}
+                {/* Close Button with Fade Animation */}
                 <button
                   onClick={() => {
                     setSelectedImage(null);
                     setActiveTab('noobs');
                     setFullImageDetails(null);
                   }}
-                  className="absolute top-4 right-4 z-50 w-11 h-11 rounded-full bg-red-500/20 
+                  className={`absolute top-4 right-4 z-50 w-11 h-11 rounded-full bg-red-500/20 
                            hover:bg-red-500/40 border border-red-500/50 hover:border-red-500 
                            flex items-center justify-center transition-all duration-300 
-                           hover:scale-110 hover:rotate-90 group shadow-xl"
+                           hover:scale-110 hover:rotate-90 group shadow-xl
+                           ${isModalAnimating ? 'opacity-0' : 'opacity-100'}`}
                   title="Close"
                 >
                   <span className="text-red-300 group-hover:text-red-100 text-2xl font-bold">✕</span>
