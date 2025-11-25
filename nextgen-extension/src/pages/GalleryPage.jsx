@@ -39,24 +39,39 @@ export default function GalleryPage() {
 
   // Lazy load full image details when nerds tab is clicked
   const loadFullImageDetails = async (imageId) => {
+    console.log('💾 [LAZY LOAD] loadFullImageDetails() called for ID:', imageId);
+    
     if (fullImageDetails?.id === imageId) {
-      console.log('✅ [CACHE HIT] Full details already loaded');
+      console.log('✅ [CACHE HIT] Full details already loaded for this image - SKIPPING fetch');
+      console.log('� [CACHE DATA] Cached details:', {
+        id: fullImageDetails.id,
+        fileName: fullImageDetails.fileName,
+        fileType: fullImageDetails.fileType,
+        fileSize: fullImageDetails.fileSize,
+        sha256: fullImageDetails.sha256 ? 'present' : 'missing',
+        pHash: fullImageDetails.pHash ? 'present' : 'missing'
+      });
       return;
     }
 
-    console.log('🔍 [NERD TAB CLICKED] User wants to see technical details');
-    console.log('💡 [LAZY LOAD TRIGGER] Full details not loaded yet - fetching now...');
+    console.log('⚠️  [CACHE MISS] No cached details found - FETCHING from backend...');
+    console.log('💡 [OPTIMIZATION] This data was NOT loaded with the gallery');
+    console.log('⏱️  [TIMING] Loading NOW on user demand (lazy loading)');
     
     setLoadingNerdsTab(true);
     
     try {
+      console.log('📡 [API CALL] Sending getImageById request to background script...');
       const response = await chrome.runtime.sendMessage({
         action: 'getImageById',
         data: { id: imageId }
       });
 
+      console.log('📨 [API RESPONSE] Received response:', response.success ? 'SUCCESS' : 'FAILED');
+
       if (response.success && response.data) {
-        console.log('✅ [LAZY LOAD] Full image details loaded successfully:', {
+        console.log('✅ [LAZY LOAD] Full image details loaded successfully!');
+        console.log('📊 [LOADED DATA]:', {
           fileName: response.data.fileName,
           fileType: response.data.fileType,
           fileSize: response.data.fileSize,
@@ -66,23 +81,35 @@ export default function GalleryPage() {
           aHash: response.data.aHash ? 'present' : 'missing',
           dHash: response.data.dHash ? 'present' : 'missing'
         });
+        console.log('💾 [CACHE UPDATE] Storing details in state for future use');
         setFullImageDetails(response.data);
+      } else {
+        console.error('❌ [API ERROR] Failed to load details - no data in response');
       }
     } catch (error) {
-      console.error('❌ Error loading full image details:', error);
+      console.error('❌ [ERROR] Exception while loading full image details:', error);
     } finally {
+      console.log('🏁 [DONE] Setting loadingNerdsTab to false');
       setLoadingNerdsTab(false);
     }
   };
 
   const handleTabSwitch = (tabName) => {
-    console.log('Tab clicked:', tabName);
+    console.log('═══════════════════════════════════════════');
+    console.log('🔄 [TAB SWITCH] User clicked:', tabName);
     setActiveTab(tabName);
     
     // Lazy load full details ONLY when "For Nerds" tab is clicked
     if (tabName === 'nerds' && selectedImage) {
+      console.log('🔍 [NERD TAB CLICKED] Checking if we need to load full details...');
+      console.log('📦 [CACHE CHECK] Current fullImageDetails:', fullImageDetails ? 'EXISTS' : 'NULL');
+      console.log('🆔 [CACHE CHECK] Selected image ID:', selectedImage.id);
+      console.log('🆔 [CACHE CHECK] Cached details ID:', fullImageDetails?.id || 'N/A');
       loadFullImageDetails(selectedImage.id);
+    } else if (tabName === 'noobs') {
+      console.log('👶 [NOOBS TAB] Switched to For Noobs tab - NO lazy loading needed');
     }
+    console.log('═══════════════════════════════════════════');
   };
 
   const startEditing = (field) => {
