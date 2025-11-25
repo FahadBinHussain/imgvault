@@ -111,23 +111,29 @@ export default function GalleryPage() {
         .map(t => t.trim())
         .filter(t => t.length > 0);
 
-      // Set ignore duplicates flag if needed
-      if (ignoreDuplicates) {
-        await chrome.storage.local.set({ ignoreDuplicates: true });
+      // Create upload data object with only serializable values
+      const uploadData = {
+        imageUrl: String(uploadImageData.srcUrl || ''),
+        pageUrl: String(uploadPageUrl || ''),
+        pageTitle: String(uploadImageData.pageTitle || 'Untitled'),
+        description: String(uploadDescription || ''),
+        tags: tagsArray.map(t => String(t)),
+        ignoreDuplicate: Boolean(ignoreDuplicates)
+      };
+
+      console.log('Uploading with data (keys):', Object.keys(uploadData));
+      console.log('Image URL length:', uploadData.imageUrl.length);
+      
+      // Try to JSON.stringify to check if it's serializable
+      try {
+        JSON.stringify(uploadData);
+        console.log('✓ Data is serializable');
+      } catch (e) {
+        console.error('✗ Data is NOT serializable:', e);
+        throw new Error('Upload data contains non-serializable values');
       }
 
-      await uploadImage({
-        imageUrl: uploadImageData.srcUrl,
-        pageUrl: uploadPageUrl,
-        pageTitle: uploadImageData.pageTitle,
-        description: uploadDescription,
-        tags: tagsArray
-      });
-
-      // Reset ignore duplicates flag
-      if (ignoreDuplicates) {
-        await chrome.storage.local.set({ ignoreDuplicates: false });
-      }
+      await uploadImage(uploadData);
 
       showToast('✅ Image uploaded successfully!', 'success', 3000);
       setShowUploadModal(false);
@@ -1307,7 +1313,7 @@ export default function GalleryPage() {
                     Cancel
                   </button>
                   <button
-                    onClick={handleUploadSubmit}
+                    onClick={() => handleUploadSubmit(false)}
                     disabled={uploading || !uploadImageData}
                     className="flex-1 px-6 py-3 rounded-lg bg-gradient-to-r from-primary-500 to-secondary-500 
                              hover:from-primary-600 hover:to-secondary-600 text-white font-medium 
