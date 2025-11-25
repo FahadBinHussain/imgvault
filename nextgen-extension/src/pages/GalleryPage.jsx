@@ -20,6 +20,12 @@ export default function GalleryPage() {
   const [editValues, setEditValues] = useState({}); // Store temporary edit values
   const [toast, setToast] = useState(null); // Toast notification state
   const [isDeleting, setIsDeleting] = useState(false); // Track deletion progress
+  const [loadedImages, setLoadedImages] = useState(new Set()); // Track loaded images for fade-in
+
+  // Handle image load for fade-in effect
+  const handleImageLoad = (imageId) => {
+    setLoadedImages(prev => new Set(prev).add(imageId));
+  };
 
   const filteredImages = images.filter(img => {
     const query = searchQuery.toLowerCase();
@@ -341,11 +347,21 @@ export default function GalleryPage() {
                                 rounded-xl overflow-hidden shadow-lg group-hover:shadow-2xl
                                 transform transition-all duration-500 ease-out 
                                 group-hover:scale-[1.04] group-hover:-translate-y-2">
+                    {/* Loading skeleton */}
+                    {!loadedImages.has(img.id) && (
+                      <div className="absolute inset-0 bg-gradient-to-r from-slate-700 via-slate-600 to-slate-700 
+                                    animate-pulse" />
+                    )}
+                    
                     <img
                       src={img.imgbbUrl || img.pixvidUrl}
                       alt={img.pageTitle}
-                      className="w-full object-cover transition-transform duration-700 ease-out
-                               group-hover:scale-110"
+                      onLoad={() => handleImageLoad(img.id)}
+                      className={`w-full object-cover transition-all duration-700 ease-out
+                               group-hover:scale-110
+                               ${loadedImages.has(img.id) 
+                                 ? 'opacity-100' 
+                                 : 'opacity-0'}`}
                       loading="lazy"
                     />
                     
