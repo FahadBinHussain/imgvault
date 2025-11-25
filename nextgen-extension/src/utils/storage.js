@@ -341,6 +341,71 @@ export class StorageManager {
     await this.ensureInitialized();
 
     try {
+      console.log('🗑️ [DELETE] Starting deletion process for image:', id);
+      
+      // First, get the full image details to access delete URLs
+      console.log('📋 [DELETE] Fetching image details to get host delete URLs...');
+      const imageData = await this.getImageById(id);
+      
+      if (!imageData) {
+        throw new Error('Image not found');
+      }
+      
+      // Delete from Pixvid if pixvidDeleteUrl exists
+      if (imageData.pixvidDeleteUrl) {
+        console.log('🌐 [DELETE] Deleting from Pixvid...');
+        try {
+          await fetch(imageData.pixvidDeleteUrl, {
+            method: 'GET',
+            redirect: 'follow'
+          });
+          console.log('✅ [DELETE] Successfully deleted from Pixvid');
+        } catch (pixvidError) {
+          console.warn('⚠️ [DELETE] Pixvid deletion failed:', pixvidError);
+          // Continue with other deletions even if Pixvid fails
+        }
+      }
+      
+      // Delete from ImgBB if imgbbDeleteUrl exists
+      if (imageData.imgbbDeleteUrl) {
+        console.log('🌐 [DELETE] Deleting from ImgBB...');
+        try {
+          const deleteUrl = new URL(imageData.imgbbDeleteUrl);
+          const pathParts = deleteUrl.pathname.split('/').filter(p => p);
+          
+          if (pathParts.length >= 2) {
+            const imageId = pathParts[0];
+            const imageHash = pathParts[1];
+            
+            const formData = new FormData();
+            formData.append('pathname', `/${imageId}/${imageHash}`);
+            formData.append('action', 'delete');
+            formData.append('delete', 'image');
+            formData.append('from', 'resource');
+            formData.append('deleting[id]', imageId);
+            formData.append('deleting[hash]', imageHash);
+            
+            const response = await fetch('https://ibb.co/json', {
+              method: 'POST',
+              body: formData
+            });
+            
+            if (response.ok) {
+              console.log('✅ [DELETE] Successfully deleted from ImgBB');
+            } else {
+              throw new Error(`ImgBB returned ${response.status}`);
+            }
+          } else {
+            throw new Error('Invalid ImgBB delete URL format');
+          }
+        } catch (imgbbError) {
+          console.warn('⚠️ [DELETE] ImgBB deletion failed:', imgbbError);
+          // Continue with Firebase deletion even if ImgBB fails
+        }
+      }
+      
+      // Delete from Firebase
+      console.log('🔥 [DELETE] Deleting from Firebase...');
       const url = this.buildUrl(`images/${id}`);
       
       const response = await fetch(url, {
@@ -348,10 +413,13 @@ export class StorageManager {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete image');
+        throw new Error('Failed to delete image from Firebase');
       }
+      
+      console.log('✅ [DELETE] Successfully deleted from Firebase');
+      console.log('🎉 [DELETE] Image deletion complete!');
     } catch (error) {
-      console.error('Error deleting image:', error);
+      console.error('❌ [DELETE] Error deleting image:', error);
       throw error;
     }
   }
