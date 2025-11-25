@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { RefreshCw, Upload, Search, Trash2, Download, ExternalLink } from 'lucide-react';
-import { Button, Input, IconButton, Card, Modal, Spinner } from '../components/UI';
+import { Button, Input, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
 import { useImages } from '../hooks/useChromeExtension';
 
 export default function GalleryPage() {
@@ -18,6 +18,8 @@ export default function GalleryPage() {
   const [loadingNerdsTab, setLoadingNerdsTab] = useState(false);
   const [editingField, setEditingField] = useState(null); // Track which field is being edited
   const [editValues, setEditValues] = useState({}); // Store temporary edit values
+  const [toast, setToast] = useState(null); // Toast notification state
+  const [isDeleting, setIsDeleting] = useState(false); // Track deletion progress
 
   const filteredImages = images.filter(img => {
     const query = searchQuery.toLowerCase();
@@ -28,12 +30,31 @@ export default function GalleryPage() {
     );
   });
 
+  const showToast = (message, type = 'info', duration = 3000) => {
+    setToast({ message, type });
+    if (duration > 0) {
+      setTimeout(() => setToast(null), duration);
+    }
+  };
+
   const handleDelete = async () => {
-    if (selectedImage) {
+    if (!selectedImage) return;
+    
+    setIsDeleting(true);
+    setShowDeleteConfirm(false);
+    
+    try {
+      showToast('🗑️ Deleting from hosts and Firebase...', 'info', 0);
       await deleteImage(selectedImage.id);
-      setShowDeleteConfirm(false);
+      
+      showToast('✅ Image deleted successfully!', 'success', 3000);
       setSelectedImage(null);
       setFullImageDetails(null);
+    } catch (error) {
+      console.error('Delete failed:', error);
+      showToast(`❌ ${error.message || 'Failed to delete'}`, 'error', 4000);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -846,27 +867,41 @@ export default function GalleryPage() {
         </Modal>
 
         {/* Delete Confirmation Modal */}
-        <Modal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)}>
+        <Modal isOpen={showDeleteConfirm} onClose={() => !isDeleting && setShowDeleteConfirm(false)}>
           <div className="text-center space-y-4">
             <div className="text-5xl">⚠️</div>
             <h3 className="text-xl font-bold text-white">Delete Image?</h3>
             <p className="text-slate-300">
-              This action cannot be undone. The image will be permanently removed from your vault.
+              This will permanently delete the image from both your vault and image hosts (Pixvid/ImgBB). This action cannot be undone.
             </p>
             <div className="flex gap-3 justify-center">
-              <Button variant="glass" onClick={() => setShowDeleteConfirm(false)}>
+              <Button 
+                variant="glass" 
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+              >
                 Cancel
               </Button>
               <Button
                 variant="outline"
                 onClick={handleDelete}
+                disabled={isDeleting}
                 className="text-red-300 border-red-300/30 hover:border-red-300/50"
               >
-                Delete
+                {isDeleting ? 'Deleting...' : 'Delete'}
               </Button>
             </div>
           </div>
         </Modal>
+
+        {/* Toast Notifications */}
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
       </div>
     </div>
   );
