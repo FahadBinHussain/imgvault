@@ -460,10 +460,11 @@ export default function GalleryPage() {
                                 rounded-xl overflow-hidden shadow-lg group-hover:shadow-2xl
                                 transform transition-all duration-500 ease-out 
                                 group-hover:scale-[1.04] group-hover:-translate-y-2">
-                    {/* Loading skeleton */}
+                    {/* Loading skeleton with shimmer */}
                     {!loadedImages.has(img.id) && (
-                      <div className="absolute inset-0 bg-gradient-to-r from-slate-700 via-slate-600 to-slate-700 
-                                    animate-pulse" />
+                      <div className="absolute inset-0 bg-slate-800 overflow-hidden">
+                        <div className="absolute inset-0 shimmer"></div>
+                      </div>
                     )}
                     
                     <img
