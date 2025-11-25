@@ -30,7 +30,7 @@ export default function GalleryPage() {
   const [uploadPageUrl, setUploadPageUrl] = useState('');
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploadTags, setUploadTags] = useState('');
-
+  const [duplicateData, setDuplicateData] = useState(null);
   // Handle image load for fade-in effect
   const handleImageLoad = (imageId) => {
     setLoadedImages(prev => new Set(prev).add(imageId));
@@ -80,6 +80,7 @@ export default function GalleryPage() {
     setUploadPageUrl('');
     setUploadDescription('');
     setUploadTags('');
+    setDuplicateData(null);
   };
 
   const handleFileUpload = (e) => {
@@ -98,14 +99,22 @@ export default function GalleryPage() {
     }
   };
 
-  const handleUploadSubmit = async () => {
+  const handleUploadSubmit = async (ignoreDuplicates = false) => {
     if (!uploadImageData) return;
+
+    // Clear previous duplicate data when starting new upload
+    setDuplicateData(null);
 
     try {
       const tagsArray = uploadTags
         .split(',')
         .map(t => t.trim())
         .filter(t => t.length > 0);
+
+      // Set ignore duplicates flag if needed
+      if (ignoreDuplicates) {
+        await chrome.storage.local.set({ ignoreDuplicates: true });
+      }
 
       await uploadImage({
         imageUrl: uploadImageData.srcUrl,
@@ -115,13 +124,28 @@ export default function GalleryPage() {
         tags: tagsArray
       });
 
+      // Reset ignore duplicates flag
+      if (ignoreDuplicates) {
+        await chrome.storage.local.set({ ignoreDuplicates: false });
+      }
+
       showToast('✅ Image uploaded successfully!', 'success', 3000);
       setShowUploadModal(false);
+      setDuplicateData(null);
       reload(); // Refresh gallery
     } catch (err) {
       console.error('Upload failed:', err);
+      
       const errorMessage = err?.message || String(err) || 'Upload failed';
-      showToast(`❌ ${errorMessage}`, 'error', 4000);
+      
+      // Check if error has duplicate data
+      if (err?.duplicate) {
+        console.log('Duplicate data found:', err.duplicate);
+        setDuplicateData(err.duplicate);
+      } else {
+        // For non-duplicate errors, show toast
+        showToast(`❌ ${errorMessage}`, 'error', 4000);
+      }
     }
   };
 
@@ -1207,8 +1231,63 @@ export default function GalleryPage() {
                   </div>
                 )}
 
+                {/* Duplicate Detection */}
+                {duplicateData && (
+                  <div className="space-y-4 p-5 rounded-xl bg-yellow-500/10 border-2 border-yellow-500/30">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 text-yellow-400 text-2xl">⚠️</div>
+                      <div className="flex-1">
+                        <h4 className="text-yellow-300 font-semibold text-lg mb-2">Duplicate Image Found!</h4>
+                        <p className="text-yellow-200/80 text-sm mb-4">
+                          This image already exists in your vault. Do you want to upload it anyway?
+                        </p>
+                        
+                        {/* Show duplicate image */}
+                        <div className="rounded-lg overflow-hidden border border-yellow-500/30 bg-slate-800/50">
+                          <img
+                            src={duplicateData.imgbbUrl || duplicateData.pixvidUrl}
+                            alt="Duplicate"
+                            className="w-full h-auto max-h-64 object-contain"
+                          />
+                          <div className="p-3 bg-slate-900/50">
+                            <p className="text-slate-300 text-sm font-medium truncate">
+                              {duplicateData.pageTitle || 'Untitled'}
+                            </p>
+                            {duplicateData.sourcePageUrl && (
+                              <p className="text-slate-400 text-xs truncate mt-1">
+                                {duplicateData.sourcePageUrl}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex gap-3 mt-4">
+                          <button
+                            onClick={() => setDuplicateData(null)}
+                            className="flex-1 px-4 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 
+                                     text-white font-medium transition-colors text-sm"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => handleUploadSubmit(true)}
+                            disabled={uploading}
+                            className="flex-1 px-4 py-2.5 rounded-lg bg-gradient-to-r from-yellow-500 to-orange-500 
+                                     hover:from-yellow-600 hover:to-orange-600 text-white font-medium 
+                                     transition-all disabled:opacity-50 disabled:cursor-not-allowed
+                                     shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 text-sm"
+                          >
+                            {uploading ? 'Uploading...' : 'Upload Anyway'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Error Message */}
-                {uploadError && (
+                {uploadError && !duplicateData && (
                   <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
                     {uploadError?.message || String(uploadError)}
                   </div>

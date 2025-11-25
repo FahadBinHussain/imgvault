@@ -59,7 +59,12 @@ export function useChromeMessage() {
           } else if (response?.success) {
             resolve(response.data);
           } else {
-            reject(new Error(response?.error || 'Unknown error'));
+            const error = new Error(response?.error || 'Unknown error');
+            // Attach duplicate data if present
+            if (response?.duplicate) {
+              error.duplicate = response.duplicate;
+            }
+            reject(error);
           }
         }
       );
