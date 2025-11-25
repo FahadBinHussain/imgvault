@@ -265,11 +265,37 @@ function setupEventListeners() {
     }
   });
   
-  // File input change listener
+  // File input change listener for replacing image
   document.addEventListener('change', (e) => {
     if (e.target.id === 'fileInput') {
-      console.log('File input changed via delegation');
-      handleFileUpload(e);
+      console.log('File input changed - replacing image');
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      // Reset input
+      e.target.value = '';
+      
+      // Load the replacement file
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        previewImage.src = event.target.result;
+        sourceUrlDisplay.textContent = file.name;
+        
+        // Update currentImageData with replacement file
+        currentImageData = {
+          srcUrl: event.target.result, // Base64 data URL
+          originalSrcUrl: currentImageData?.originalSrcUrl || currentImageData?.srcUrl || '',
+          pageUrl: currentImageData?.pageUrl || '',
+          pageTitle: currentImageData?.pageTitle || file.name,
+          isUploadedFile: true,
+          fileName: file.name
+        };
+        
+        // Show replacement banner
+        document.getElementById('replacedBanner').style.display = 'flex';
+        document.getElementById('gdriveTip').style.display = 'none';
+      };
+      reader.readAsDataURL(file);
     }
   });
   
