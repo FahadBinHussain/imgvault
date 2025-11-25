@@ -337,63 +337,54 @@ export default function GalleryPage() {
               {/* For Noobs Tab */}
               {activeTab === 'noobs' && (
                 <div className="space-y-4">
-                  {/* Title and Description */}
-                  <div>
-                    <h3 className="text-2xl font-bold text-white mb-2">
-                      {selectedImage.pageTitle || 'Untitled'}
-                    </h3>
-                    {selectedImage.description && (
-                      <p className="text-slate-300">{selectedImage.description}</p>
-                    )}
-                    {!selectedImage.description && (
-                      <p className="text-slate-500 italic">No description</p>
-                    )}
-                  </div>
-
-                  {/* Tags */}
-                  {selectedImage.tags && selectedImage.tags.length > 0 && (
-                    <div>
-                      <h4 className="text-sm font-semibold text-slate-300 mb-2">Tags</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedImage.tags.map(tag => (
-                          <span
-                            key={tag}
-                            className="px-3 py-1 rounded-full bg-primary-500/20 text-primary-200 text-sm"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Source Display */}
-                  <div>
-                    <h4 className="text-sm font-semibold text-slate-300 mb-2">Displaying from</h4>
-                    <div className="flex items-center gap-2">
-                      {selectedImage.imgbbUrl && (
-                        <span className="px-3 py-1 rounded bg-green-500/20 text-green-300 font-semibold">
-                          ImgBB
-                        </span>
-                      )}
-                      {!selectedImage.imgbbUrl && (
-                        <span className="px-3 py-1 rounded bg-blue-500/20 text-blue-300 font-semibold">
-                          Pixvid
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Image URLs */}
+                  {/* Details Grid */}
                   <div className="space-y-3">
                     <div>
-                      <h4 className="text-sm font-semibold text-slate-300 mb-2">Pixvid URL</h4>
-                      <div className="bg-white/5 rounded p-3">
+                      <div className="text-xs font-semibold text-slate-400 mb-1">Title</div>
+                      <div className="text-white font-medium">
+                        {selectedImage.pageTitle || 'Untitled'}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-slate-400 mb-1">Created At</div>
+                      <div className="text-white">
+                        {selectedImage.createdAt
+                          ? new Date(selectedImage.createdAt).toLocaleString('en-US', {
+                              weekday: 'short',
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit'
+                            })
+                          : 'N/A'}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-slate-400 mb-1">Display Source</div>
+                      <div className="flex items-center gap-2">
+                        {selectedImage.imgbbUrl ? (
+                          <span className="px-3 py-1 rounded bg-green-500/20 text-green-300 font-semibold text-sm">
+                            ImgBB ⚡
+                          </span>
+                        ) : (
+                          <span className="px-3 py-1 rounded bg-blue-500/20 text-blue-300 font-semibold text-sm">
+                            Pixvid ⚡
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-slate-400 mb-1">Pixvid URL</div>
+                      <div className="bg-white/5 rounded p-2">
                         <a
                           href={selectedImage.pixvidUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-blue-300 hover:text-blue-200 break-all font-mono text-xs"
+                          className="text-blue-300 hover:text-blue-200 break-all text-sm"
                         >
                           {selectedImage.pixvidUrl}
                         </a>
@@ -402,23 +393,76 @@ export default function GalleryPage() {
 
                     {selectedImage.imgbbUrl && (
                       <div>
-                        <h4 className="text-sm font-semibold text-slate-300 mb-2">ImgBB URL</h4>
-                        <div className="bg-white/5 rounded p-3">
+                        <div className="text-xs font-semibold text-slate-400 mb-1">ImgBB URL</div>
+                        <div className="bg-white/5 rounded p-2">
                           <a
                             href={selectedImage.imgbbUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-green-300 hover:text-green-200 break-all font-mono text-xs"
+                            className="text-green-300 hover:text-green-200 break-all text-sm"
                           >
                             {selectedImage.imgbbUrl}
                           </a>
                         </div>
                       </div>
                     )}
+
+                    <div>
+                      <div className="text-xs font-semibold text-slate-400 mb-1">Source URL</div>
+                      <div className="bg-white/5 rounded p-2">
+                        <a
+                          href={selectedImage.sourceImageUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary-300 hover:text-primary-200 break-all text-sm"
+                        >
+                          {selectedImage.sourceImageUrl || 'N/A'}
+                        </a>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-slate-400 mb-1">Page URL</div>
+                      <div className="bg-white/5 rounded p-2">
+                        <a
+                          href={selectedImage.sourcePageUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary-300 hover:text-primary-200 break-all text-sm"
+                        >
+                          {selectedImage.sourcePageUrl || 'N/A'}
+                        </a>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-slate-400 mb-1">Description</div>
+                      <div className="text-slate-300 text-sm">
+                        {selectedImage.description || 'No description'}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-slate-400 mb-1">Tags</div>
+                      {selectedImage.tags && selectedImage.tags.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {selectedImage.tags.map(tag => (
+                            <span
+                              key={tag}
+                              className="px-3 py-1 rounded-full bg-primary-500/20 text-primary-200 text-sm"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-slate-500 italic text-sm">No tags</div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Download Buttons */}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 pt-4 border-t border-white/10">
                     <Button
                       variant="glass"
                       size="sm"
