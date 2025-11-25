@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, Upload, Search, Trash2, Download, X } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
 import { useImages, useImageUpload } from '../hooks/useChromeExtension';
@@ -406,14 +407,16 @@ export default function GalleryPage() {
             <p className="text-slate-300 text-lg mb-8 max-w-md mx-auto">
               Start building your collection by uploading your first image
             </p>
-            <button
+            <motion.button
               onClick={openUploadModal}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 400, damping: 17 }}
               className="px-8 py-4 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
-                       text-white font-semibold text-lg shadow-xl hover:shadow-2xl 
-                       hover:scale-105 active:scale-95 transition-all"
+                       text-white font-semibold text-lg shadow-xl hover:shadow-2xl transition-shadow"
             >
               Upload First Image
-            </button>
+            </motion.button>
           </div>
         )}
 
@@ -427,9 +430,17 @@ export default function GalleryPage() {
             
             {/* Masonry Grid - 3 columns on mobile, 4 on tablet, 5 on desktop, 6 on large screens */}
             <div className="columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-6 space-y-6">
-              {groupedImages[date].map(img => (
-                <div
+              {groupedImages[date].map((img, index) => (
+                <motion.div
                   key={img.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: 0.5,
+                    delay: index * 0.05,
+                    ease: [0.25, 0.46, 0.45, 0.94]
+                  }}
+                  whileHover={{ scale: 1.02, y: -4 }}
                   className="group relative break-inside-avoid mb-6 cursor-pointer"
                   onClick={() => {
                     setIsModalAnimating(true);
@@ -498,7 +509,7 @@ export default function GalleryPage() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           </div>
