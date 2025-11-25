@@ -332,25 +332,29 @@ export default function GalleryPage() {
                   }}
                 >
                   {/* Soft glow effect on hover */}
-                  <div className="absolute -inset-1 bg-gradient-to-r from-primary-500/30 to-secondary-500/30 
-                                rounded-xl opacity-0 group-hover:opacity-100 blur-xl transition-all duration-500"></div>
+                  <div className="absolute -inset-1 bg-gradient-to-r from-primary-500/40 to-secondary-500/40 
+                                rounded-xl opacity-0 group-hover:opacity-100 blur-xl 
+                                transition-all duration-700 ease-out"></div>
                   
-                  {/* Card with soft shadows */}
+                  {/* Card with soft shadows and smooth animations */}
                   <div className="relative bg-slate-800/80 backdrop-blur-sm border border-white/10 
-                                rounded-xl overflow-hidden shadow-lg hover:shadow-2xl
-                                transform transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1">
+                                rounded-xl overflow-hidden shadow-lg group-hover:shadow-2xl
+                                transform transition-all duration-500 ease-out 
+                                group-hover:scale-[1.04] group-hover:-translate-y-2">
                     <img
                       src={img.imgbbUrl || img.pixvidUrl}
                       alt={img.pageTitle}
-                      className="w-full object-cover transition-transform duration-500 
+                      className="w-full object-cover transition-transform duration-700 ease-out
                                group-hover:scale-110"
                       loading="lazy"
                     />
                     
                     {/* Gradient Overlay */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent 
-                                  opacity-0 group-hover:opacity-100 transition-all duration-300">
-                      <div className="absolute bottom-0 left-0 right-0 p-4 space-y-2">
+                                  opacity-0 group-hover:opacity-100 transition-all duration-500 ease-out">
+                      <div className="absolute bottom-0 left-0 right-0 p-4 space-y-2 
+                                    transform translate-y-2 group-hover:translate-y-0 
+                                    transition-transform duration-500 ease-out">
                         <p className="text-white text-sm font-semibold truncate drop-shadow-xl">
                           {img.pageTitle || 'Untitled'}
                         </p>
