@@ -3,11 +3,12 @@
  * @version 2.0.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, Undo2, Trash2, AlertTriangle } from 'lucide-react';
 import { Button, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
 import { useTrash } from '../hooks/useChromeExtension';
+import TimelineScrollbar from '../components/TimelineScrollbar';
 
 export default function TrashPage() {
   const { trashedImages, loading, reload, restoreFromTrash, permanentlyDelete, emptyTrash } = useTrash();
@@ -21,6 +22,11 @@ export default function TrashPage() {
   const [activeTab, setActiveTab] = useState('noobs'); // 'noobs' or 'nerds'
   const [fullImageDetails, setFullImageDetails] = useState(null);
   const [loadingNerdsTab, setLoadingNerdsTab] = useState(false);
+
+  // Timeline scrollbar refs
+  const pageContainerRef = useRef(null);
+  const dateGroupRefs = useRef({});
+  const [timelineData, setTimelineData] = useState([]);
 
   // Lazy load full image details when nerds tab is clicked
   const loadFullImageDetails = async (imageId) => {
@@ -195,8 +201,22 @@ export default function TrashPage() {
 
   const groupedImages = groupImagesByDate(trashedImages);
 
+  // Build timeline data for scrollbar
+  useEffect(() => {
+    const dateKeys = Object.keys(groupedImages);
+    const timeline = dateKeys.map(dateKey => ({
+      date: dateKey,
+      label: dateKey,
+      element: dateGroupRefs.current[dateKey]
+    }));
+    setTimelineData(timeline);
+  }, [groupedImages]);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div ref={pageContainerRef} className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-y-auto">
+      {/* Timeline Scrollbar */}
+      <TimelineScrollbar dateGroups={timelineData} containerRef={pageContainerRef} />
+      
       <div className="w-full px-6">
         {/* Glassmorphism Navigation Bar - Apple-like */}
         <div className="sticky top-0 z-40 mb-8">
@@ -304,7 +324,7 @@ export default function TrashPage() {
 
         {/* Gallery Grid */}
         {!loading && Object.keys(groupedImages).map(date => (
-          <div key={date} className="mb-10">
+          <div key={date} className="mb-10" ref={el => dateGroupRefs.current[date] = el}>
             <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
               <span className="bg-gradient-to-r from-red-500 to-pink-500 w-1 h-8 rounded-full"></span>
               {date}
