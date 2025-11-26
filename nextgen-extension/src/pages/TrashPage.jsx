@@ -97,129 +97,233 @@ export default function TrashPage() {
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
   };
 
+  const groupImagesByDate = (images) => {
+    const groups = {};
+    images.forEach(img => {
+      const date = new Date(img.deletedAt);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      let dateKey;
+      if (date.toDateString() === today.toDateString()) {
+        dateKey = 'Today';
+      } else if (date.toDateString() === yesterday.toDateString()) {
+        dateKey = 'Yesterday';
+      } else {
+        dateKey = date.toLocaleDateString();
+      }
+      
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(img);
+    });
+    return groups;
+  };
+
+  const groupedImages = groupImagesByDate(trashedImages);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => window.location.href = 'gallery.html'}
-              className="p-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
-                       backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
-                       shadow-lg hover:shadow-xl text-white"
-              title="Back to Gallery"
-            >
-              ← Back
-            </button>
-            <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-red-400 to-pink-600 bg-clip-text text-transparent">
-                🗑️ Trash
-              </h1>
-              <p className="text-gray-400 mt-2">
-                {trashedImages.length} item{trashedImages.length !== 1 ? 's' : ''} in trash
-              </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      <div className="w-full px-6">
+        {/* Glassmorphism Navigation Bar - Apple-like */}
+        <div className="sticky top-0 z-40 mb-8">
+          {/* Frosted glass bar */}
+          <div className="backdrop-blur-2xl bg-white/5 border-b border-white/10 shadow-2xl">
+            <div className="px-8 py-6">
+              {/* Top Row: Logo + Actions */}
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => window.location.href = 'gallery.html'}
+                    className="p-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
+                             backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
+                             shadow-lg hover:shadow-xl text-white"
+                    title="Back to Gallery"
+                  >
+                    ← Back
+                  </button>
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-pink-500 rounded-xl blur-lg opacity-50"></div>
+                    <div className="w-12 h-12 relative z-10 rounded-xl shadow-lg bg-gradient-to-r from-red-500 to-pink-500 flex items-center justify-center text-2xl">
+                      🗑️
+                    </div>
+                  </div>
+                  <div>
+                    <h1 className="text-3xl font-bold bg-gradient-to-r from-red-300 to-pink-300 bg-clip-text text-transparent drop-shadow-lg">
+                      ImgVault Trash
+                    </h1>
+                    <p className="text-sm text-slate-300 mt-1">
+                      <span className="font-semibold text-red-300">{trashedImages.length}</span> item{trashedImages.length !== 1 ? 's' : ''} in trash
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={reload}
+                    className="p-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
+                             backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
+                             shadow-lg hover:shadow-xl"
+                    title="Refresh"
+                  >
+                    <RefreshCw className={`w-5 h-5 text-white ${loading ? 'animate-spin' : ''}`} />
+                  </button>
+                  {trashedImages.length > 0 && (
+                    <button
+                      onClick={() => setShowEmptyTrashConfirm(true)}
+                      disabled={isProcessing}
+                      className="px-5 py-3 rounded-xl bg-gradient-to-r from-red-500 to-pink-500 
+                               text-white font-semibold shadow-lg hover:shadow-xl hover:scale-105 
+                               active:scale-95 transition-all duration-300 flex items-center gap-2
+                               disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                      Empty Trash
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-          
-          <div className="flex gap-3">
-            <IconButton onClick={reload} disabled={loading} variant="secondary">
-              <RefreshCw className={loading ? 'animate-spin' : ''} size={20} />
-            </IconButton>
-            
-            {trashedImages.length > 0 && (
-              <Button 
-                onClick={() => setShowEmptyTrashConfirm(true)}
-                variant="danger"
-                disabled={isProcessing}
-              >
-                <Trash2 size={18} />
-                Empty Trash
-              </Button>
-            )}
           </div>
         </div>
 
         {/* Warning Message */}
         {trashedImages.length > 0 && (
-          <div className="mb-6 p-4 bg-yellow-900/30 border border-yellow-600/50 rounded-lg flex items-start gap-3">
-            <AlertTriangle className="text-yellow-500 mt-1 flex-shrink-0" size={20} />
-            <div className="text-sm">
-              <p className="font-medium text-yellow-300">Images in trash are still hosted</p>
-              <p className="text-yellow-400/80 mt-1">
-                Trashed images remain accessible via their URLs. To completely remove them from hosts, 
-                use "Permanently Delete" or "Empty Trash".
-              </p>
+          <div className="px-6 mb-6">
+            <div className="p-4 bg-yellow-900/30 border border-yellow-600/50 rounded-xl backdrop-blur-sm flex items-start gap-3">
+              <AlertTriangle className="text-yellow-500 mt-1 flex-shrink-0" size={20} />
+              <div className="text-sm">
+                <p className="font-medium text-yellow-300">Images in trash are still hosted</p>
+                <p className="text-yellow-400/80 mt-1">
+                  Trashed images remain accessible via their URLs. To completely remove them from hosts, 
+                  use "Permanently Delete" or "Empty Trash".
+                </p>
+              </div>
             </div>
           </div>
         )}
 
+        <div className="px-6">
         {/* Loading State */}
         {loading && (
-          <div className="flex justify-center items-center py-20">
-            <Spinner size="lg" />
+          <div className="flex flex-col justify-center items-center py-32">
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur-2xl opacity-50 animate-pulse"></div>
+              <Spinner size="lg" className="relative z-10" />
+            </div>
+            <p className="mt-6 text-white text-lg font-medium">Loading trash...</p>
           </div>
         )}
 
         {/* Empty State */}
         {!loading && trashedImages.length === 0 && (
-          <div className="text-center py-20">
-            <div className="text-6xl mb-4">🗑️</div>
-            <h2 className="text-2xl font-semibold mb-2">Trash is empty</h2>
-            <p className="text-gray-400">
-              Deleted images will appear here
+          <div className="glass-card rounded-xl backdrop-blur-xl bg-white/10 border border-white/20 
+                        shadow-2xl p-16 text-center">
+            <div className="relative inline-block mb-6">
+              <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur-3xl opacity-30"></div>
+              <div className="text-8xl relative z-10 drop-shadow-2xl">🗑️</div>
+            </div>
+            <h3 className="text-3xl font-bold text-white mb-3 drop-shadow-lg">Trash is Empty</h3>
+            <p className="text-slate-300 text-lg max-w-md mx-auto">
+              Deleted images will appear here. You can restore them or delete them permanently.
             </p>
           </div>
         )}
 
-        {/* Images Grid */}
-        {!loading && trashedImages.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            <AnimatePresence>
-              {trashedImages.map((image) => (
+        {/* Gallery Grid */}
+        {!loading && Object.keys(groupedImages).map(date => (
+          <div key={date} className="mb-10">
+            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+              <span className="bg-gradient-to-r from-red-500 to-pink-500 w-1 h-8 rounded-full"></span>
+              {date}
+            </h2>
+            
+            {/* Masonry Grid - 3 columns on mobile, 4 on tablet, 5 on desktop, 6 on large screens */}
+            <div className="columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-6 space-y-6">
+              {groupedImages[date].map((image, index) => (
                 <motion.div
                   key={image.id}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.2 }}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: 0.5,
+                    delay: index * 0.05,
+                    ease: [0.25, 0.46, 0.45, 0.94]
+                  }}
+                  whileHover={{ scale: 1.02, y: -4 }}
+                  className="group relative break-inside-avoid mb-6 cursor-pointer"
+                  onClick={() => setSelectedImage(image)}
                 >
-                  <Card 
-                    className="group cursor-pointer hover:ring-2 hover:ring-red-500 transition-all overflow-hidden"
-                    onClick={() => setSelectedImage(image)}
-                  >
-                    <div className="aspect-square relative bg-gray-800">
-                      <motion.img
-                        src={getImageUrl(image)}
-                        alt={image.pageTitle || 'Trashed image'}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: loadedImages.has(image.id) ? 1 : 0 }}
-                        transition={{ duration: 0.3 }}
-                        onLoad={() => handleImageLoad(image.id)}
-                      />
-                      
-                      {/* Overlay with actions */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div className="absolute bottom-0 left-0 right-0 p-3 flex justify-between items-end">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs text-white/90 font-medium truncate">
-                              {image.pageTitle || 'Untitled'}
-                            </p>
-                            <p className="text-xs text-white/60 mt-1">
-                              Deleted: {formatDate(image.deletedAt)}
-                            </p>
+                  {/* Soft glow effect on hover */}
+                  <div className="absolute -inset-1 bg-gradient-to-r from-red-500/40 to-pink-500/40 
+                                rounded-xl opacity-0 group-hover:opacity-100 blur-xl 
+                                transition-all duration-700 ease-out"></div>
+                  
+                  {/* Card with soft shadows and smooth animations */}
+                  <div className="relative bg-slate-800/80 backdrop-blur-sm border border-white/10 
+                                rounded-xl overflow-hidden shadow-lg group-hover:shadow-2xl
+                                transform transition-all duration-500 ease-out 
+                                group-hover:scale-[1.04] group-hover:-translate-y-2">
+                    {/* Loading skeleton with shimmer */}
+                    {!loadedImages.has(image.id) && (
+                      <div className="absolute inset-0 bg-slate-800 overflow-hidden">
+                        <div className="absolute inset-0 shimmer"></div>
+                      </div>
+                    )}
+                    
+                    <img
+                      src={getImageUrl(image)}
+                      alt={image.pageTitle || 'Trashed image'}
+                      onLoad={() => handleImageLoad(image.id)}
+                      className={`w-full object-cover transition-all duration-700 ease-out
+                               group-hover:scale-110
+                               ${loadedImages.has(image.id) 
+                                 ? 'opacity-100' 
+                                 : 'opacity-0'}`}
+                      loading="lazy"
+                    />
+                    
+                    {/* Gradient Overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent 
+                                  opacity-0 group-hover:opacity-100 transition-all duration-500 ease-out">
+                      <div className="absolute bottom-0 left-0 right-0 p-4 space-y-2 
+                                    transform translate-y-2 group-hover:translate-y-0 
+                                    transition-transform duration-500 ease-out">
+                        <p className="text-white text-sm font-semibold truncate drop-shadow-xl">
+                          {image.pageTitle || 'Untitled'}
+                        </p>
+                        <p className="text-white/70 text-xs">
+                          Deleted: {formatDate(image.deletedAt)}
+                        </p>
+                        {image.tags && image.tags.length > 0 && (
+                          <div className="flex gap-1.5 flex-wrap">
+                            {image.tags.slice(0, 2).map(tag => (
+                              <span
+                                key={tag}
+                                className="text-xs px-2.5 py-1 rounded-lg bg-white/20 backdrop-blur-sm 
+                                         text-white border border-white/30 font-medium shadow-lg"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                            {image.tags.length > 2 && (
+                              <span className="text-xs px-2.5 py-1 rounded-lg bg-white/20 backdrop-blur-sm 
+                                             text-white border border-white/30 font-medium shadow-lg">
+                                +{image.tags.length - 2}
+                              </span>
+                            )}
                           </div>
-                        </div>
+                        )}
                       </div>
                     </div>
-                  </Card>
+                  </div>
                 </motion.div>
               ))}
-            </AnimatePresence>
+            </div>
           </div>
-        )}
+        ))}
+        </div>
       </div>
 
       {/* Image Detail Modal */}
