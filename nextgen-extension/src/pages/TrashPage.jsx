@@ -18,6 +18,73 @@ export default function TrashPage() {
   const [toast, setToast] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [loadedImages, setLoadedImages] = useState(new Set());
+  const [activeTab, setActiveTab] = useState('noobs'); // 'noobs' or 'nerds'
+  const [fullImageDetails, setFullImageDetails] = useState(null);
+  const [loadingNerdsTab, setLoadingNerdsTab] = useState(false);
+
+  // Lazy load full image details when nerds tab is clicked
+  const loadFullImageDetails = async (imageId) => {
+    console.log('[TRASH] loadFullImageDetails called for ID:', imageId);
+    
+    if (fullImageDetails?.id === imageId) {
+      console.log('[TRASH] Cache hit - details already loaded');
+      return;
+    }
+
+    console.log('[TRASH] Cache miss - fetching details from backend');
+    setLoadingNerdsTab(true);
+    
+    try {
+      console.log('[TRASH] Sending getTrashedImageById request...');
+      const response = await chrome.runtime.sendMessage({
+        action: 'getTrashedImageById',
+        data: { id: imageId }
+      });
+
+      console.log('[TRASH] Response received:', response.success ? 'SUCCESS' : 'FAILED');
+      console.log('[TRASH] Response data:', response.data);
+      console.log('[TRASH] Full response:', response);
+
+      if (response.success && response.data) {
+        console.log('[TRASH] Full image details loaded:', {
+          id: response.data.id,
+          fileName: response.data.fileName,
+          fileType: response.data.fileType,
+          fileSize: response.data.fileSize,
+          width: response.data.width,
+          height: response.data.height,
+          sha256: response.data.sha256 ? 'present' : 'missing',
+          pHash: response.data.pHash ? 'present' : 'missing',
+          aHash: response.data.aHash ? 'present' : 'missing',
+          dHash: response.data.dHash ? 'present' : 'missing'
+        });
+        setFullImageDetails(response.data);
+      } else {
+        console.error('[TRASH] Failed to load details - response:', response);
+      }
+    } catch (error) {
+      console.error('[TRASH] Exception while loading full image details:', error);
+    } finally {
+      setLoadingNerdsTab(false);
+    }
+  };
+
+  const handleTabSwitch = (tabName) => {
+    console.log('[TRASH TAB SWITCH] Switching to:', tabName);
+    console.log('[TRASH TAB SWITCH] Selected image:', selectedImage?.id);
+    console.log('[TRASH TAB SWITCH] Current fullImageDetails:', fullImageDetails?.id);
+    
+    setActiveTab(tabName);
+    
+    // Lazy load full details ONLY when "For Nerds" tab is clicked
+    if (tabName === 'nerds' && selectedImage) {
+      console.log('[TRASH TAB SWITCH] Nerds tab clicked - loading full details');
+      // Force immediate load
+      setTimeout(() => loadFullImageDetails(selectedImage.id), 0);
+    } else if (tabName === 'noobs') {
+      console.log('[TRASH TAB SWITCH] Noobs tab clicked - no loading needed');
+    }
+  };
 
   const handleImageLoad = (imageId) => {
     setLoadedImages(prev => new Set(prev).add(imageId));
@@ -253,7 +320,11 @@ export default function TrashPage() {
                   }}
                   whileHover={{ scale: 1.02, y: -4 }}
                   className="group relative break-inside-avoid mb-6 cursor-pointer"
-                  onClick={() => setSelectedImage(image)}
+                  onClick={() => {
+                    setSelectedImage(image);
+                    setActiveTab('noobs');
+                    setFullImageDetails(null);
+                  }}
                 >
                   {/* Soft glow effect on hover */}
                   <div className="absolute -inset-1 bg-gradient-to-r from-red-500/40 to-pink-500/40 
@@ -327,206 +398,637 @@ export default function TrashPage() {
       </div>
 
       {/* Image Detail Modal */}
-      <AnimatePresence>
+      <Modal 
+        isOpen={!!selectedImage}
+        onClose={() => setSelectedImage(null)}
+        className="!max-w-[95vw] !w-full !h-[95vh] !p-0 !overflow-hidden"
+      >
         {selectedImage && (
-          <Modal onClose={() => setSelectedImage(null)}>
-            <div className="flex flex-col h-full">
-              {/* Image Preview */}
-              <div className="flex-shrink-0 bg-black/50 p-4 flex items-center justify-center max-h-96">
+          <div className="flex h-full relative">
+              
+              {/* Dark Overlay Background */}
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+              {/* LEFT SIDE - IMAGE with Zoom Animation */}
+              <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-8 relative z-10">
+                {/* Radial glow effect */}
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
+                              w-4/5 h-4/5 bg-red-500/10 rounded-full blur-3xl"></div>
+                
+                {/* Image */}
                 <img
                   src={getImageUrl(selectedImage)}
                   alt={selectedImage.pageTitle}
-                  className="max-w-full max-h-80 object-contain rounded"
+                  className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl relative z-10
+                           hover:scale-[1.02] hover:shadow-[0_0_80px_rgba(239,68,68,0.3)]
+                           transition-all duration-700"
                 />
               </div>
 
-              {/* Details */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                <div>
-                  <h3 className="text-xl font-bold mb-2">{selectedImage.pageTitle || 'Untitled'}</h3>
-                  <p className="text-sm text-gray-400">
-                    Deleted: {formatDate(selectedImage.deletedAt)}
-                  </p>
-                  {selectedImage.description && (
-                    <p className="text-sm text-gray-300 mt-2">{selectedImage.description}</p>
-                  )}
-                </div>
+              {/* RIGHT SIDE - DETAILS */}
+              <div className="w-[550px] flex-shrink-0 bg-slate-800/90 backdrop-blur-xl border-l border-white/10 
+                            overflow-y-auto flex flex-col relative z-10"
+                   style={{ scrollbarWidth: 'thin', scrollbarColor: '#ef4444 #1e293b' }}
+              >
+                {/* Close Button */}
+                <button
+                  onClick={() => setSelectedImage(null)}
+                  className="absolute top-4 right-4 z-50 w-11 h-11 rounded-full bg-red-500/20 
+                           hover:bg-red-500/40 border border-red-500/50 hover:border-red-500 
+                           flex items-center justify-center transition-all duration-300 
+                           hover:scale-110 hover:rotate-90 group shadow-xl"
+                  title="Close"
+                >
+                  <span className="text-red-300 group-hover:text-red-100 text-2xl font-bold">✕</span>
+                </button>
 
-                {selectedImage.tags && selectedImage.tags.length > 0 && (
-                  <div>
-                    <p className="text-sm font-medium mb-2">Tags</p>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedImage.tags.map((tag, idx) => (
-                        <span 
-                          key={idx}
-                          className="px-2 py-1 bg-purple-600/30 rounded text-xs"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <div className="p-6 flex-1 pt-16">
+                  {/* Details Header */}
+                  <h2 className="text-2xl font-bold text-white mb-4 bg-gradient-to-r from-red-300 to-pink-300 bg-clip-text text-transparent">
+                    Details
+                  </h2>
 
-                <div className="space-y-2 text-sm">
-                  <div>
-                    <span className="text-gray-400">Source Page: </span>
-                    <a 
-                      href={selectedImage.sourcePageUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-400 hover:underline"
+                  {/* Tab Navigation */}
+                  <div className="flex gap-2 mb-4 border-b border-white/10">
+                    <button
+                      onClick={() => handleTabSwitch('noobs')}
+                      className={`px-4 py-2 font-semibold transition-all ${
+                        activeTab === 'noobs'
+                          ? 'text-red-300 border-b-2 border-red-300'
+                          : 'text-slate-400 hover:text-slate-300'
+                      }`}
                     >
-                      {selectedImage.sourcePageUrl}
-                    </a>
+                      For Noobs 👶
+                    </button>
+                    <button
+                      onClick={() => handleTabSwitch('nerds')}
+                      className={`px-4 py-2 font-semibold transition-all ${
+                        activeTab === 'nerds'
+                          ? 'text-green-300 border-b-2 border-green-300'
+                          : 'text-slate-400 hover:text-slate-300'
+                      }`}
+                    >
+                      For Nerds 🤓
+                    </button>
+                  </div>
+
+                  {/* For Noobs Tab */}
+                  {activeTab === 'noobs' && (
+                    <div className="space-y-4">
+                      {/* Details Grid */}
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1">Title</div>
+                          <div className="text-white font-medium">
+                            {selectedImage.pageTitle || 'Untitled'}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1">Deleted At</div>
+                          <div className="text-white">
+                            {selectedImage.deletedAt
+                              ? new Date(selectedImage.deletedAt).toLocaleString('en-US', {
+                                  weekday: 'short',
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: 'numeric',
+                                  minute: '2-digit'
+                                })
+                              : 'N/A'}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1">Created At</div>
+                          <div className="text-white">
+                            {selectedImage.createdAt
+                              ? new Date(selectedImage.createdAt).toLocaleString('en-US', {
+                                  weekday: 'short',
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: 'numeric',
+                                  minute: '2-digit'
+                                })
+                              : 'N/A'}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1">Display Source</div>
+                          <div className="flex items-center gap-2">
+                            {selectedImage.imgbbUrl ? (
+                              <span className="px-3 py-1 rounded bg-green-500/20 text-green-300 font-semibold text-sm">
+                                ImgBB ⚡
+                              </span>
+                            ) : selectedImage.pixvidUrl ? (
+                              <span className="px-3 py-1 rounded bg-blue-500/20 text-blue-300 font-semibold text-sm">
+                                Pixvid ⚡
+                              </span>
+                            ) : (
+                              <span className="px-3 py-1 rounded bg-gray-500/20 text-gray-300 font-semibold text-sm">
+                                Original ⚡
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {selectedImage.pixvidUrl && (
+                          <div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1">Pixvid URL</div>
+                            <div className="bg-white/5 rounded p-2">
+                              <a
+                                href={selectedImage.pixvidUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-300 hover:text-blue-200 break-all text-sm"
+                              >
+                                {selectedImage.pixvidUrl}
+                              </a>
+                            </div>
+                          </div>
+                        )}
+
+                        {selectedImage.imgbbUrl && (
+                          <div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1">ImgBB URL</div>
+                            <div className="bg-white/5 rounded p-2">
+                              <a
+                                href={selectedImage.imgbbUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-green-300 hover:text-green-200 break-all text-sm"
+                              >
+                                {selectedImage.imgbbUrl}
+                              </a>
+                            </div>
+                          </div>
+                        )}
+
+                        <div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1">Source URL</div>
+                          <div className="bg-white/5 rounded p-2">
+                            <a
+                              href={selectedImage.sourceImageUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-red-300 hover:text-red-200 break-all text-sm"
+                            >
+                              {selectedImage.sourceImageUrl || 'N/A'}
+                            </a>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1">Page URL</div>
+                          <div className="bg-white/5 rounded p-2">
+                            <a
+                              href={selectedImage.sourcePageUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-red-300 hover:text-red-200 break-all text-sm"
+                            >
+                              {selectedImage.sourcePageUrl || 'N/A'}
+                            </a>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1">Description</div>
+                          <div className="text-slate-300 text-sm">
+                            {selectedImage.description || 'No description'}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1">Tags</div>
+                          {selectedImage.tags && selectedImage.tags.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {selectedImage.tags.map(tag => (
+                                <span
+                                  key={tag}
+                                  className="px-3 py-1 rounded-full bg-red-500/20 text-red-200 text-sm"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-slate-500 italic text-sm">No tags</div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Warning Box */}
+                      <div className="mt-4 p-4 bg-yellow-900/30 border border-yellow-600/50 rounded-xl">
+                        <div className="flex items-start gap-3">
+                          <AlertTriangle className="text-yellow-500 mt-0.5 flex-shrink-0" size={18} />
+                          <div className="text-sm">
+                            <p className="font-medium text-yellow-300">Image Still Hosted</p>
+                            <p className="text-yellow-400/80 mt-1">
+                              This image remains accessible via its URLs. Use "Delete Permanently" to remove it from all hosts.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* For Nerds Tab */}
+                  {activeTab === 'nerds' && selectedImage && (
+                    <div className="space-y-4">
+                      {loadingNerdsTab && !fullImageDetails ? (
+                        <div className="flex justify-center items-center py-10">
+                          <Spinner size="md" />
+                          <span className="ml-3 text-slate-300">Loading technical details...</span>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Technical Details Grid */}
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <h4 className="text-xs font-semibold text-slate-400 mb-1">Document ID</h4>
+                              <p className="text-white font-mono text-xs break-all">{selectedImage.id || 'N/A'}</p>
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-semibold text-slate-400 mb-1">File Name</h4>
+                              <p className="text-white font-mono text-xs break-all">
+                                {fullImageDetails?.fileName || 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-semibold text-slate-400 mb-1">File Type</h4>
+                              <p className="text-white font-mono text-xs">
+                                {fullImageDetails?.fileType || 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-semibold text-slate-400 mb-1">File Size</h4>
+                              <p className="text-white font-mono text-xs">
+                                {fullImageDetails?.fileSize 
+                                  ? `${(fullImageDetails.fileSize / 1024).toFixed(2)} KB` 
+                                  : 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-semibold text-slate-400 mb-1">Dimensions</h4>
+                              <p className="text-white font-mono text-xs">
+                                {fullImageDetails?.width && fullImageDetails?.height
+                                  ? `${fullImageDetails.width} × ${fullImageDetails.height}`
+                                  : 'N/A'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Hash Values */}
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-semibold text-slate-300">Hash Values</h4>
+                            <div className="space-y-2">
+                              <div>
+                                <h5 className="text-xs font-semibold text-slate-400 mb-1">SHA-256</h5>
+                                <div className="bg-white/5 rounded p-2">
+                                  <p className="text-white font-mono text-xs break-all">
+                                    {fullImageDetails?.sha256 || 'N/A'}
+                                  </p>
+                                </div>
+                              </div>
+                              <div>
+                                <h5 className="text-xs font-semibold text-slate-400 mb-1">pHash</h5>
+                                <div className="bg-white/5 rounded p-2">
+                                  <p className="text-white font-mono text-xs break-all">
+                                    {fullImageDetails?.pHash 
+                                      ? `${fullImageDetails.pHash.substring(0, 64)}...` 
+                                      : 'N/A'}
+                                  </p>
+                                </div>
+                              </div>
+                              <div>
+                                <h5 className="text-xs font-semibold text-slate-400 mb-1">aHash</h5>
+                                <div className="bg-white/5 rounded p-2">
+                                  <p className="text-white font-mono text-xs break-all">
+                                    {fullImageDetails?.aHash || 'N/A'}
+                                  </p>
+                                </div>
+                              </div>
+                              <div>
+                                <h5 className="text-xs font-semibold text-slate-400 mb-1">dHash</h5>
+                                <div className="bg-white/5 rounded p-2">
+                                  <p className="text-white font-mono text-xs break-all">
+                                    {fullImageDetails?.dHash || 'N/A'}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-2 pt-6 border-t border-white/10 mt-6">
+                    <button
+                      onClick={() => setShowRestoreConfirm(true)}
+                      disabled={isProcessing}
+                      className="group relative flex-1 px-6 py-2.5 rounded-xl overflow-hidden
+                               bg-gradient-to-r from-green-500 to-emerald-600
+                               border border-green-400/30 
+                               transform transition-all duration-300
+                               hover:scale-110 hover:shadow-2xl hover:shadow-green-500/50
+                               active:scale-95
+                               disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                    >
+                      {/* Animated background glow */}
+                      <div className="absolute inset-0 bg-gradient-to-r from-green-400 to-emerald-500 opacity-0 
+                                    group-hover:opacity-100 blur-xl transition-opacity duration-300" />
+                      
+                      {/* Shimmer effect */}
+                      <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
+                                    bg-gradient-to-r from-transparent via-white/20 to-transparent 
+                                    transition-transform duration-700" />
+                      
+                      {/* Button content */}
+                      <div className="relative flex items-center justify-center gap-2 text-white font-semibold">
+                        <Undo2 className="w-5 h-5 group-hover:-rotate-12 transition-transform duration-300" />
+                        <span>Restore</span>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      disabled={isProcessing}
+                      className="group relative flex-1 px-6 py-2.5 rounded-xl overflow-hidden
+                               bg-gradient-to-r from-red-500 to-rose-600
+                               border border-red-400/30 
+                               transform transition-all duration-300
+                               hover:scale-110 hover:shadow-2xl hover:shadow-red-500/50
+                               active:scale-95
+                               disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                    >
+                      {/* Animated background glow */}
+                      <div className="absolute inset-0 bg-gradient-to-r from-red-400 to-rose-500 opacity-0 
+                                    group-hover:opacity-100 blur-xl transition-opacity duration-300" />
+                      
+                      {/* Shimmer effect */}
+                      <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
+                                    bg-gradient-to-r from-transparent via-white/20 to-transparent 
+                                    transition-transform duration-700" />
+                      
+                      {/* Button content */}
+                      <div className="relative flex items-center justify-center gap-2 text-white font-semibold">
+                        <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
+                        <span>Delete Forever</span>
+                      </div>
+                    </button>
                   </div>
                 </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex-shrink-0 p-6 border-t border-gray-700 flex gap-3">
-                <Button
-                  onClick={() => setShowRestoreConfirm(true)}
-                  variant="primary"
-                  className="flex-1"
-                  disabled={isProcessing}
-                >
-                  <Undo2 size={18} />
-                  Restore
-                </Button>
-                <Button
-                  onClick={() => setShowDeleteConfirm(true)}
-                  variant="danger"
-                  className="flex-1"
-                  disabled={isProcessing}
-                >
-                  <Trash2 size={18} />
-                  Delete Permanently
-                </Button>
               </div>
             </div>
-          </Modal>
         )}
-      </AnimatePresence>
+      </Modal>
 
       {/* Restore Confirmation Modal */}
-      <AnimatePresence>
-        {showRestoreConfirm && (
-          <Modal onClose={() => setShowRestoreConfirm(false)} size="sm">
-            <div className="p-6">
-              <h3 className="text-xl font-bold mb-4">Restore Image?</h3>
-              <p className="text-gray-300 mb-6">
-                This will restore the image back to your gallery.
-              </p>
-              <div className="flex gap-3">
-                <Button
-                  onClick={() => setShowRestoreConfirm(false)}
-                  variant="secondary"
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleRestore}
-                  variant="primary"
-                  className="flex-1"
-                  disabled={isProcessing}
-                >
-                  {isProcessing ? <Spinner size="sm" /> : 'Restore'}
-                </Button>
+      <Modal isOpen={showRestoreConfirm} onClose={() => setShowRestoreConfirm(false)}>
+        <div className="text-center space-y-6">
+          {/* Animated icon */}
+          <div className="text-7xl animate-bounce">♻️</div>
+          
+          <h3 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-emerald-500 
+                       bg-clip-text text-transparent">
+            Restore Image?
+          </h3>
+          
+          <p className="text-slate-300 text-lg leading-relaxed">
+            This will restore the image back to your gallery.
+            <br />
+            <span className="font-semibold text-green-400">You can access it normally again.</span>
+          </p>
+          
+          <div className="flex gap-4 justify-center pt-4">
+            <button
+              onClick={() => setShowRestoreConfirm(false)}
+              disabled={isProcessing}
+              className="px-6 py-3 rounded-xl bg-white/10 border border-white/20
+                       text-white font-medium
+                       hover:bg-white/20 hover:scale-105
+                       active:scale-95
+                       transition-all duration-200
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+            
+            <button
+              onClick={handleRestore}
+              disabled={isProcessing}
+              className="group relative px-8 py-3 rounded-xl overflow-hidden
+                       bg-gradient-to-r from-green-600 to-emerald-700
+                       border border-green-400/50
+                       transform transition-all duration-300
+                       hover:scale-105 hover:shadow-2xl hover:shadow-green-500/50
+                       active:scale-95
+                       disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {/* Animated pulse effect when restoring */}
+              {isProcessing && (
+                <div className="absolute inset-0 bg-green-400 animate-ping opacity-25" />
+              )}
+              
+              {/* Shimmer effect */}
+              <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
+                            bg-gradient-to-r from-transparent via-white/20 to-transparent 
+                            transition-transform duration-700" />
+              
+              {/* Button content */}
+              <div className="relative flex items-center gap-2 text-white font-bold text-lg">
+                {isProcessing ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Restoring...</span>
+                  </>
+                ) : (
+                  <>
+                    <Undo2 className="w-5 h-5 group-hover:-rotate-12 transition-transform duration-300" />
+                    <span>Restore</span>
+                  </>
+                )}
               </div>
-            </div>
-          </Modal>
-        )}
-      </AnimatePresence>
-
+            </button>
+          </div>
+        </div>
+      </Modal>
+      
       {/* Permanent Delete Confirmation Modal */}
-      <AnimatePresence>
-        {showDeleteConfirm && (
-          <Modal onClose={() => setShowDeleteConfirm(false)} size="sm">
-            <div className="p-6">
-              <h3 className="text-xl font-bold mb-4 text-red-400">Permanently Delete?</h3>
-              <p className="text-gray-300 mb-4">
-                This will permanently delete the image from:
-              </p>
-              <ul className="list-disc list-inside text-gray-300 mb-6 space-y-1">
-                <li>ImgBB hosting</li>
-                <li>Pixvid hosting</li>
-                <li>Your trash</li>
-              </ul>
-              <p className="text-yellow-400 text-sm mb-6">
-                ⚠️ This action cannot be undone!
-              </p>
-              <div className="flex gap-3">
-                <Button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  variant="secondary"
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handlePermanentDelete}
-                  variant="danger"
-                  className="flex-1"
-                  disabled={isProcessing}
-                >
-                  {isProcessing ? <Spinner size="sm" /> : 'Delete Permanently'}
-                </Button>
+      <Modal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)}>
+        <div className="text-center space-y-6">
+          {/* Animated warning icon */}
+          <div className="text-7xl animate-bounce">🔥</div>
+          
+          <h3 className="text-2xl font-bold bg-gradient-to-r from-red-400 to-rose-500 
+                       bg-clip-text text-transparent">
+            Permanently Delete?
+          </h3>
+          
+          <div className="text-left bg-red-900/20 border border-red-500/30 rounded-xl p-4 space-y-2">
+            <p className="text-slate-300 leading-relaxed">
+              This will permanently delete the image from:
+            </p>
+            <ul className="list-disc list-inside text-slate-300 space-y-1 ml-2">
+              <li>ImgBB hosting (if uploaded)</li>
+              <li>Pixvid hosting (if uploaded)</li>
+              <li>Your trash bin</li>
+            </ul>
+          </div>
+          
+          <p className="text-yellow-400 font-semibold text-lg flex items-center justify-center gap-2">
+            <AlertTriangle size={20} />
+            This action cannot be undone!
+          </p>
+          
+          <div className="flex gap-4 justify-center pt-4">
+            <button
+              onClick={() => setShowDeleteConfirm(false)}
+              disabled={isProcessing}
+              className="px-6 py-3 rounded-xl bg-white/10 border border-white/20
+                       text-white font-medium
+                       hover:bg-white/20 hover:scale-105
+                       active:scale-95
+                       transition-all duration-200
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+            
+            <button
+              onClick={handlePermanentDelete}
+              disabled={isProcessing}
+              className="group relative px-8 py-3 rounded-xl overflow-hidden
+                       bg-gradient-to-r from-red-600 to-rose-700
+                       border border-red-400/50
+                       transform transition-all duration-300
+                       hover:scale-105 hover:shadow-2xl hover:shadow-red-500/50
+                       active:scale-95
+                       disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {/* Animated pulse effect when deleting */}
+              {isProcessing && (
+                <div className="absolute inset-0 bg-red-400 animate-ping opacity-25" />
+              )}
+              
+              {/* Shimmer effect */}
+              <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
+                            bg-gradient-to-r from-transparent via-white/20 to-transparent 
+                            transition-transform duration-700" />
+              
+              {/* Button content */}
+              <div className="relative flex items-center gap-2 text-white font-bold text-lg">
+                {isProcessing ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
+                    <span>Delete Forever</span>
+                  </>
+                )}
               </div>
-            </div>
-          </Modal>
-        )}
-      </AnimatePresence>
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Empty Trash Confirmation Modal */}
-      <AnimatePresence>
-        {showEmptyTrashConfirm && (
-          <Modal onClose={() => setShowEmptyTrashConfirm(false)} size="sm">
-            <div className="p-6">
-              <h3 className="text-xl font-bold mb-4 text-red-400">Empty Trash?</h3>
-              <p className="text-gray-300 mb-4">
-                This will permanently delete all {trashedImages.length} images from:
-              </p>
-              <ul className="list-disc list-inside text-gray-300 mb-6 space-y-1">
-                <li>All hosting providers (ImgBB, Pixvid)</li>
-                <li>Your trash</li>
-              </ul>
-              <p className="text-yellow-400 text-sm mb-6">
-                ⚠️ This action cannot be undone!
-              </p>
-              <div className="flex gap-3">
-                <Button
-                  onClick={() => setShowEmptyTrashConfirm(false)}
-                  variant="secondary"
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleEmptyTrash}
-                  variant="danger"
-                  className="flex-1"
-                  disabled={isProcessing}
-                >
-                  {isProcessing ? <Spinner size="sm" /> : 'Empty Trash'}
-                </Button>
+      <Modal isOpen={showEmptyTrashConfirm} onClose={() => setShowEmptyTrashConfirm(false)}>
+        <div className="text-center space-y-6">
+          {/* Animated warning icon */}
+          <div className="text-7xl animate-bounce">💥</div>
+          
+          <h3 className="text-2xl font-bold bg-gradient-to-r from-red-400 to-rose-500 
+                       bg-clip-text text-transparent">
+            Empty Entire Trash?
+          </h3>
+          
+          <div className="text-left bg-red-900/20 border border-red-500/30 rounded-xl p-4 space-y-2">
+            <p className="text-slate-300 leading-relaxed">
+              This will permanently delete <span className="font-bold text-red-300">{trashedImages.length} image{trashedImages.length !== 1 ? 's' : ''}</span> from:
+            </p>
+            <ul className="list-disc list-inside text-slate-300 space-y-1 ml-2">
+              <li>All hosting providers (ImgBB, Pixvid)</li>
+              <li>Your trash bin</li>
+            </ul>
+          </div>
+          
+          <p className="text-yellow-400 font-semibold text-lg flex items-center justify-center gap-2">
+            <AlertTriangle size={20} />
+            This action cannot be undone!
+          </p>
+          
+          <div className="flex gap-4 justify-center pt-4">
+            <button
+              onClick={() => setShowEmptyTrashConfirm(false)}
+              disabled={isProcessing}
+              className="px-6 py-3 rounded-xl bg-white/10 border border-white/20
+                       text-white font-medium
+                       hover:bg-white/20 hover:scale-105
+                       active:scale-95
+                       transition-all duration-200
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+            
+            <button
+              onClick={handleEmptyTrash}
+              disabled={isProcessing}
+              className="group relative px-8 py-3 rounded-xl overflow-hidden
+                       bg-gradient-to-r from-red-600 to-rose-700
+                       border border-red-400/50
+                       transform transition-all duration-300
+                       hover:scale-105 hover:shadow-2xl hover:shadow-red-500/50
+                       active:scale-95
+                       disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {/* Animated pulse effect when deleting */}
+              {isProcessing && (
+                <div className="absolute inset-0 bg-red-400 animate-ping opacity-25" />
+              )}
+              
+              {/* Shimmer effect */}
+              <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
+                            bg-gradient-to-r from-transparent via-white/20 to-transparent 
+                            transition-transform duration-700" />
+              
+              {/* Button content */}
+              <div className="relative flex items-center gap-2 text-white font-bold text-lg">
+                {isProcessing ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Emptying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
+                    <span>Empty Trash</span>
+                  </>
+                )}
               </div>
-            </div>
-          </Modal>
-        )}
-      </AnimatePresence>
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Toast Notification */}
-      <AnimatePresence>
-        {toast && (
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => setToast(null)}
-          />
-        )}
-      </AnimatePresence>
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 }

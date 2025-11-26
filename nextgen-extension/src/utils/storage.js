@@ -467,6 +467,65 @@ export class StorageManager {
   }
 
   /**
+   * Get single trashed image by ID with full details including hashes
+   * @param {string} id - Trash document ID
+   * @returns {Promise<Object|null>} Trashed image data with all fields
+   */
+  async getTrashedImageById(id) {
+    await this.ensureInitialized();
+
+    try {
+      console.log(`🔍 [TRASH] Fetching full details for trashed image: ${id}`);
+      const startTime = performance.now();
+      
+      const url = this.buildUrl(`trash/${id}`);
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        console.log(`⚠️ [TRASH] Image not found in trash: ${id}`);
+        return null;
+      }
+
+      const doc = await response.json();
+      const fields = doc.fields;
+      
+      const trashedImage = {
+        id,
+        originalId: fields.originalId?.stringValue || '',
+        pixvidUrl: fields.pixvidUrl?.stringValue || '',
+        pixvidDeleteUrl: fields.pixvidDeleteUrl?.stringValue || '',
+        imgbbUrl: fields.imgbbUrl?.stringValue || '',
+        imgbbDeleteUrl: fields.imgbbDeleteUrl?.stringValue || '',
+        imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
+        sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
+        sourcePageUrl: fields.sourcePageUrl?.stringValue || '',
+        pageTitle: fields.pageTitle?.stringValue || '',
+        fileName: fields.fileName?.stringValue || '',
+        fileType: fields.fileType?.stringValue || '',
+        fileSize: parseInt(fields.fileSize?.integerValue || '0'),
+        width: parseInt(fields.width?.integerValue || '0'),
+        height: parseInt(fields.height?.integerValue || '0'),
+        sha256: fields.sha256?.stringValue || '',
+        pHash: fields.pHash?.stringValue || '',
+        aHash: fields.aHash?.stringValue || '',
+        dHash: fields.dHash?.stringValue || '',
+        tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
+        description: fields.description?.stringValue || '',
+        createdAt: fields.createdAt?.timestampValue || '',
+        deletedAt: fields.deletedAt?.timestampValue || ''
+      };
+      
+      const endTime = performance.now();
+      console.log(`✅ [TRASH] Full trashed image details loaded in ${(endTime - startTime).toFixed(2)}ms`);
+      
+      return trashedImage;
+    } catch (error) {
+      console.error('❌ [TRASH] Error getting trashed image:', error);
+      return null;
+    }
+  }
+
+  /**
    * Restore image from trash
    * @param {string} trashId - Trash document ID
    * @returns {Promise<void>}

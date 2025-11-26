@@ -130,6 +130,12 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'getTrashedImageById':
+        this.storage.getTrashedImageById(request.data.id)
+          .then(image => sendResponse({ success: true, data: image }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'restoreFromTrash':
         this.storage.restoreFromTrash(request.data.id)
           .then(() => sendResponse({ success: true }))
