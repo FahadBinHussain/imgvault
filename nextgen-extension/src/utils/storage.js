@@ -241,29 +241,63 @@ export class StorageManager {
     await this.ensureInitialized();
 
     try {
-      console.log('🔍 [DUPLICATE CHECK] Fetching ALL image data (including hashes)...');
+      console.log('🔍 [DUPLICATE CHECK] Fetching ALL image data (including hashes from active AND trash)...');
       const startTime = performance.now();
       
-      const url = this.buildUrl('images', { orderBy: 'createdAt desc' });
-      const response = await fetch(url);
+      // Fetch active images
+      const imagesUrl = this.buildUrl('images', { orderBy: 'createdAt desc' });
+      const imagesResponse = await fetch(imagesUrl);
       
-      if (!response.ok) {
-        throw new Error('Failed to fetch images');
+      if (!imagesResponse.ok) {
+        throw new Error('Failed to fetch active images');
       }
 
-      const result = await response.json();
+      const imagesResult = await imagesResponse.json();
+      const activeImages = imagesResult.documents 
+        ? imagesResult.documents.map(doc => this.fromFirestoreDoc(doc))
+        : [];
+
+      console.log(`🔍 [DUPLICATE CHECK] Found ${activeImages.length} active images`);
+
+      // Fetch trashed images
+      const trashUrl = this.buildUrl('trash', { orderBy: 'deletedAt desc' });
+      const trashResponse = await fetch(trashUrl);
+      
+      let trashedImages = [];
+      if (trashResponse.ok) {
+        const trashResult = await trashResponse.json();
+        if (trashResult.documents) {
+          trashedImages = trashResult.documents.map(doc => {
+            const id = doc.name.split('/').pop();
+            const fields = doc.fields;
+            
+            return {
+              id,
+              pixvidUrl: fields.pixvidUrl?.stringValue || '',
+              imgbbUrl: fields.imgbbUrl?.stringValue || '',
+              imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
+              sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
+              sha256: fields.sha256?.stringValue || '',
+              pHash: fields.pHash?.stringValue || '',
+              aHash: fields.aHash?.stringValue || '',
+              dHash: fields.dHash?.stringValue || '',
+              createdAt: fields.createdAt?.timestampValue || fields.createdAt?.stringValue || '',
+              deletedAt: fields.deletedAt?.timestampValue || fields.deletedAt?.stringValue || '',
+              _isTrash: true  // Mark as trashed for duplicate error message
+            };
+          });
+        }
+      }
+
+      console.log(`🔍 [DUPLICATE CHECK] Found ${trashedImages.length} trashed images`);
+
+      // Combine both active and trashed images
+      const allImages = [...activeImages, ...trashedImages];
+      
       const endTime = performance.now();
+      console.log(`✅ [DUPLICATE CHECK] Loaded ${allImages.length} total images (${activeImages.length} active + ${trashedImages.length} trash) with full hash data in ${(endTime - startTime).toFixed(2)}ms`);
       
-      if (!result.documents) {
-        console.log('🔍 [DUPLICATE CHECK] No existing images found');
-        return [];
-      }
-
-      const images = result.documents.map(doc => this.fromFirestoreDoc(doc));
-      
-      console.log(`✅ [DUPLICATE CHECK] Loaded ${images.length} images with full hash data in ${(endTime - startTime).toFixed(2)}ms`);
-      
-      return images;
+      return allImages;
     } catch (error) {
       console.error('Error getting images for duplicate check:', error);
       return [];
