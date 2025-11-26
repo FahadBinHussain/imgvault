@@ -323,14 +323,39 @@ export default function GalleryPage() {
 
   const groupedImages = groupImagesByDate(filteredImages);
 
-  // Build timeline data for scrollbar
+  // Build timeline data for scrollbar (grouped by month/year)
   useEffect(() => {
     const dateKeys = Object.keys(groupedImages);
-    const timeline = dateKeys.map(dateKey => ({
-      date: dateKey,
-      label: dateKey,
-      element: dateGroupRefs.current[dateKey]
-    }));
+    const monthGroups = {};
+    
+    // Group dates by month/year
+    dateKeys.forEach(dateKey => {
+      // Get the first image from this date group to extract the actual date
+      const firstImage = groupedImages[dateKey][0];
+      if (firstImage && firstImage.createdAt) {
+        const date = new Date(firstImage.createdAt);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const monthLabel = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+        
+        if (!monthGroups[monthKey]) {
+          monthGroups[monthKey] = {
+            label: monthLabel,
+            element: dateGroupRefs.current[dateKey], // Use first date group in month as anchor
+            sortDate: date
+          };
+        }
+      }
+    });
+    
+    // Convert to array and sort by date (newest first)
+    const timeline = Object.values(monthGroups)
+      .sort((a, b) => b.sortDate - a.sortDate)
+      .map(group => ({
+        date: group.label,
+        label: group.label,
+        element: group.element
+      }));
+    
     setTimelineData(timeline);
   }, [groupedImages]);
 
