@@ -370,6 +370,7 @@ export class StorageManager {
       const trashDoc = this.toFirestoreDoc({
         ...imageData,
         originalId: id,
+        createdAt: imageData.createdAt ? new Date(imageData.createdAt) : new Date(),
         deletedAt: new Date()
       });
 
@@ -453,8 +454,8 @@ export class StorageManager {
           dHash: fields.dHash?.stringValue || '',
           tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
           description: fields.description?.stringValue || '',
-          createdAt: fields.createdAt?.timestampValue || '',
-          deletedAt: fields.deletedAt?.timestampValue || ''
+          createdAt: fields.createdAt?.timestampValue || fields.createdAt?.stringValue || '',
+          deletedAt: fields.deletedAt?.timestampValue || fields.deletedAt?.stringValue || ''
         };
       });
       
@@ -511,8 +512,8 @@ export class StorageManager {
         dHash: fields.dHash?.stringValue || '',
         tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
         description: fields.description?.stringValue || '',
-        createdAt: fields.createdAt?.timestampValue || '',
-        deletedAt: fields.deletedAt?.timestampValue || ''
+        createdAt: fields.createdAt?.timestampValue || fields.createdAt?.stringValue || '',
+        deletedAt: fields.deletedAt?.timestampValue || fields.deletedAt?.stringValue || ''
       };
       
       const endTime = performance.now();
@@ -568,7 +569,11 @@ export class StorageManager {
         dHash: fields.dHash?.stringValue || '',
         tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
         description: fields.description?.stringValue || '',
-        createdAt: fields.createdAt?.timestampValue ? new Date(fields.createdAt.timestampValue) : new Date()
+        createdAt: fields.createdAt?.timestampValue 
+          ? new Date(fields.createdAt.timestampValue) 
+          : fields.createdAt?.stringValue 
+            ? new Date(fields.createdAt.stringValue)
+            : new Date()
       };
 
       // Add back to images collection

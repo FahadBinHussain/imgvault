@@ -321,6 +321,9 @@ export default function TrashPage() {
                   whileHover={{ scale: 1.02, y: -4 }}
                   className="group relative break-inside-avoid mb-6 cursor-pointer"
                   onClick={() => {
+                    console.log('[TRASH] Image clicked:', image.id);
+                    console.log('[TRASH] Image data:', image);
+                    console.log('[TRASH] createdAt:', image.createdAt);
                     setSelectedImage(image);
                     setActiveTab('noobs');
                     setFullImageDetails(null);
@@ -512,7 +515,16 @@ export default function TrashPage() {
                                   hour: 'numeric',
                                   minute: '2-digit'
                                 })
-                              : 'N/A'}
+                              : fullImageDetails?.createdAt
+                                ? new Date(fullImageDetails.createdAt).toLocaleString('en-US', {
+                                    weekday: 'short',
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: 'numeric',
+                                    minute: '2-digit'
+                                  })
+                                : 'Unknown'}
                           </div>
                         </div>
 
