@@ -180,6 +180,79 @@ export function useImages() {
 }
 
 /**
+ * Hook for managing trashed images
+ * @returns {Object} Trashed images state and functions
+ */
+export function useTrash() {
+  const [trashedImages, setTrashedImages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const sendMessage = useChromeMessage();
+
+  const loadTrashedImages = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const images = await sendMessage('getTrashedImages');
+      console.log('Loaded trashed images from background:', images);
+      setTrashedImages(images || []);
+    } catch (err) {
+      console.error('Error loading trashed images:', err);
+      setError(err);
+      setTrashedImages([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [sendMessage]);
+
+  const restoreFromTrash = useCallback(async (id) => {
+    try {
+      await sendMessage('restoreFromTrash', { id });
+      setTrashedImages(prev => prev.filter(img => img.id !== id));
+    } catch (err) {
+      setError(err);
+      throw err;
+    }
+  }, [sendMessage]);
+
+  const permanentlyDelete = useCallback(async (id) => {
+    try {
+      await sendMessage('permanentlyDelete', { id });
+      setTrashedImages(prev => prev.filter(img => img.id !== id));
+    } catch (err) {
+      setError(err);
+      throw err;
+    }
+  }, [sendMessage]);
+
+  const emptyTrash = useCallback(async () => {
+    try {
+      const deletedCount = await sendMessage('emptyTrash');
+      setTrashedImages([]);
+      return deletedCount;
+    } catch (err) {
+      setError(err);
+      throw err;
+    }
+  }, [sendMessage]);
+
+  useEffect(() => {
+    loadTrashedImages();
+  }, [loadTrashedImages]);
+
+  return {
+    trashedImages,
+    loading,
+    error,
+    reload: loadTrashedImages,
+    restoreFromTrash,
+    permanentlyDelete,
+    emptyTrash
+  };
+}
+
+/**
  * Hook for pending image data
  * @returns {[Object|null, Function]} [pendingImage, clearPending]
  */

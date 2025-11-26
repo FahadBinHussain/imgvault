@@ -119,8 +119,32 @@ class ImgVaultServiceWorker {
         return true;
 
       case 'deleteImage':
-        this.storage.deleteImage(request.data?.id || request.id)
+        this.storage.moveToTrash(request.data?.id || request.id)
           .then(() => sendResponse({ success: true, data: null }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'getTrashedImages':
+        this.storage.getTrashedImages()
+          .then(images => sendResponse({ success: true, data: images }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'restoreFromTrash':
+        this.storage.restoreFromTrash(request.data.id)
+          .then(() => sendResponse({ success: true }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'permanentlyDelete':
+        this.storage.permanentlyDelete(request.data.id)
+          .then(() => sendResponse({ success: true }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'emptyTrash':
+        this.storage.emptyTrash()
+          .then(count => sendResponse({ success: true, data: count }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 

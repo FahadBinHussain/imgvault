@@ -12,6 +12,7 @@ export default defineConfig({
         popup: resolve(__dirname, 'popup.html'),
         gallery: resolve(__dirname, 'gallery.html'),
         settings: resolve(__dirname, 'settings.html'),
+        trash: resolve(__dirname, 'trash.html'),
         background: resolve(__dirname, 'src/background/background.js'),
         content: resolve(__dirname, 'src/content/content.js'),
       },

@@ -349,44 +349,244 @@ export class StorageManager {
   }
 
   /**
-   * Delete image by ID
+   * Move image to trash (soft delete)
    * @param {string} id - Image document ID
    * @returns {Promise<void>}
    */
-  async deleteImage(id) {
+  async moveToTrash(id) {
     await this.ensureInitialized();
 
     try {
-      console.log('🗑️ [DELETE] Starting deletion process for image:', id);
+      console.log('🗑️ [TRASH] Moving image to trash:', id);
       
-      // First, get the full image details to access delete URLs
-      console.log('📋 [DELETE] Fetching image details to get host delete URLs...');
+      // Get the image data from images collection
       const imageData = await this.getImageById(id);
       
       if (!imageData) {
         throw new Error('Image not found');
       }
       
+      // Create trash document with all image data plus deletedAt timestamp
+      const trashDoc = this.toFirestoreDoc({
+        ...imageData,
+        originalId: id,
+        deletedAt: new Date()
+      });
+
+      // Save to trash collection
+      const trashUrl = this.buildUrl('trash');
+      const trashResponse = await fetch(trashUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(trashDoc)
+      });
+
+      if (!trashResponse.ok) {
+        const error = await trashResponse.json();
+        throw new Error(error.error?.message || 'Failed to move to trash');
+      }
+
+      // Delete from images collection (but NOT from hosts)
+      const deleteUrl = this.buildUrl(`images/${id}`);
+      const deleteResponse = await fetch(deleteUrl, {
+        method: 'DELETE'
+      });
+
+      if (!deleteResponse.ok) {
+        throw new Error('Failed to remove from images collection');
+      }
+      
+      console.log('✅ [TRASH] Successfully moved to trash (hosts preserved)');
+    } catch (error) {
+      console.error('❌ [TRASH] Error moving to trash:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all trashed images
+   * @returns {Promise<Array>} Array of trashed images
+   */
+  async getTrashedImages() {
+    await this.ensureInitialized();
+
+    try {
+      console.log('🗑️ [TRASH] Fetching trashed images...');
+      
+      const url = this.buildUrl('trash', { orderBy: 'deletedAt desc' });
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch trashed images');
+      }
+
+      const result = await response.json();
+      
+      if (!result.documents) {
+        console.log('🗑️ [TRASH] No trashed images found');
+        return [];
+      }
+
+      const trashedImages = result.documents.map(doc => {
+        const id = doc.name.split('/').pop();
+        const fields = doc.fields;
+        
+        return {
+          id,
+          originalId: fields.originalId?.stringValue || '',
+          pixvidUrl: fields.pixvidUrl?.stringValue || '',
+          pixvidDeleteUrl: fields.pixvidDeleteUrl?.stringValue || '',
+          imgbbUrl: fields.imgbbUrl?.stringValue || '',
+          imgbbDeleteUrl: fields.imgbbDeleteUrl?.stringValue || '',
+          imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
+          sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
+          sourcePageUrl: fields.sourcePageUrl?.stringValue || '',
+          pageTitle: fields.pageTitle?.stringValue || '',
+          fileName: fields.fileName?.stringValue || '',
+          fileType: fields.fileType?.stringValue || '',
+          fileSize: parseInt(fields.fileSize?.integerValue || '0'),
+          width: parseInt(fields.width?.integerValue || '0'),
+          height: parseInt(fields.height?.integerValue || '0'),
+          sha256: fields.sha256?.stringValue || '',
+          pHash: fields.pHash?.stringValue || '',
+          aHash: fields.aHash?.stringValue || '',
+          dHash: fields.dHash?.stringValue || '',
+          tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
+          description: fields.description?.stringValue || '',
+          createdAt: fields.createdAt?.timestampValue || '',
+          deletedAt: fields.deletedAt?.timestampValue || ''
+        };
+      });
+      
+      console.log(`✅ [TRASH] Found ${trashedImages.length} trashed images`);
+      return trashedImages;
+    } catch (error) {
+      console.error('❌ [TRASH] Error fetching trashed images:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Restore image from trash
+   * @param {string} trashId - Trash document ID
+   * @returns {Promise<void>}
+   */
+  async restoreFromTrash(trashId) {
+    await this.ensureInitialized();
+
+    try {
+      console.log('♻️ [RESTORE] Restoring image from trash:', trashId);
+      
+      // Get the trashed image data
+      const trashUrl = this.buildUrl(`trash/${trashId}`);
+      const trashResponse = await fetch(trashUrl);
+      
+      if (!trashResponse.ok) {
+        throw new Error('Trashed image not found');
+      }
+
+      const trashDoc = await trashResponse.json();
+      const fields = trashDoc.fields;
+      
+      // Prepare image data (remove trash-specific fields)
+      const imageData = {
+        pixvidUrl: fields.pixvidUrl?.stringValue || '',
+        pixvidDeleteUrl: fields.pixvidDeleteUrl?.stringValue || '',
+        imgbbUrl: fields.imgbbUrl?.stringValue || '',
+        imgbbDeleteUrl: fields.imgbbDeleteUrl?.stringValue || '',
+        imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
+        sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
+        sourcePageUrl: fields.sourcePageUrl?.stringValue || '',
+        pageTitle: fields.pageTitle?.stringValue || '',
+        fileName: fields.fileName?.stringValue || '',
+        fileType: fields.fileType?.stringValue || '',
+        fileSize: parseInt(fields.fileSize?.integerValue || '0'),
+        width: parseInt(fields.width?.integerValue || '0'),
+        height: parseInt(fields.height?.integerValue || '0'),
+        sha256: fields.sha256?.stringValue || '',
+        pHash: fields.pHash?.stringValue || '',
+        aHash: fields.aHash?.stringValue || '',
+        dHash: fields.dHash?.stringValue || '',
+        tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
+        description: fields.description?.stringValue || '',
+        createdAt: fields.createdAt?.timestampValue ? new Date(fields.createdAt.timestampValue) : new Date()
+      };
+
+      // Add back to images collection
+      const restoreDoc = this.toFirestoreDoc(imageData);
+      const imagesUrl = this.buildUrl('images');
+      
+      const restoreResponse = await fetch(imagesUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(restoreDoc)
+      });
+
+      if (!restoreResponse.ok) {
+        const error = await restoreResponse.json();
+        throw new Error(error.error?.message || 'Failed to restore image');
+      }
+
+      // Delete from trash collection
+      const deleteResponse = await fetch(trashUrl, {
+        method: 'DELETE'
+      });
+
+      if (!deleteResponse.ok) {
+        console.warn('⚠️ [RESTORE] Failed to remove from trash collection');
+      }
+      
+      console.log('✅ [RESTORE] Successfully restored from trash');
+    } catch (error) {
+      console.error('❌ [RESTORE] Error restoring from trash:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Permanently delete image from trash (including from hosts)
+   * @param {string} trashId - Trash document ID
+   * @returns {Promise<void>}
+   */
+  async permanentlyDelete(trashId) {
+    await this.ensureInitialized();
+
+    try {
+      console.log('🔥 [PERMANENT DELETE] Starting permanent deletion for:', trashId);
+      
+      // Get the trashed image data
+      const trashUrl = this.buildUrl(`trash/${trashId}`);
+      const trashResponse = await fetch(trashUrl);
+      
+      if (!trashResponse.ok) {
+        throw new Error('Trashed image not found');
+      }
+
+      const trashDoc = await trashResponse.json();
+      const fields = trashDoc.fields;
+      
+      const pixvidDeleteUrl = fields.pixvidDeleteUrl?.stringValue;
+      const imgbbDeleteUrl = fields.imgbbDeleteUrl?.stringValue;
+      
       // Delete from Pixvid if pixvidDeleteUrl exists
-      if (imageData.pixvidDeleteUrl) {
-        console.log('🌐 [DELETE] Deleting from Pixvid...');
+      if (pixvidDeleteUrl) {
+        console.log('🌐 [PERMANENT DELETE] Deleting from Pixvid...');
         try {
-          await fetch(imageData.pixvidDeleteUrl, {
+          await fetch(pixvidDeleteUrl, {
             method: 'GET',
             redirect: 'follow'
           });
-          console.log('✅ [DELETE] Successfully deleted from Pixvid');
+          console.log('✅ [PERMANENT DELETE] Successfully deleted from Pixvid');
         } catch (pixvidError) {
-          console.warn('⚠️ [DELETE] Pixvid deletion failed:', pixvidError);
-          // Continue with other deletions even if Pixvid fails
+          console.warn('⚠️ [PERMANENT DELETE] Pixvid deletion failed:', pixvidError);
         }
       }
       
       // Delete from ImgBB if imgbbDeleteUrl exists
-      if (imageData.imgbbDeleteUrl) {
-        console.log('🌐 [DELETE] Deleting from ImgBB...');
+      if (imgbbDeleteUrl) {
+        console.log('🌐 [PERMANENT DELETE] Deleting from ImgBB...');
         try {
-          const deleteUrl = new URL(imageData.imgbbDeleteUrl);
+          const deleteUrl = new URL(imgbbDeleteUrl);
           const pathParts = deleteUrl.pathname.split('/').filter(p => p);
           
           if (pathParts.length >= 2) {
@@ -407,7 +607,7 @@ export class StorageManager {
             });
             
             if (response.ok) {
-              console.log('✅ [DELETE] Successfully deleted from ImgBB');
+              console.log('✅ [PERMANENT DELETE] Successfully deleted from ImgBB');
             } else {
               throw new Error(`ImgBB returned ${response.status}`);
             }
@@ -415,27 +615,65 @@ export class StorageManager {
             throw new Error('Invalid ImgBB delete URL format');
           }
         } catch (imgbbError) {
-          console.warn('⚠️ [DELETE] ImgBB deletion failed:', imgbbError);
-          // Continue with Firebase deletion even if ImgBB fails
+          console.warn('⚠️ [PERMANENT DELETE] ImgBB deletion failed:', imgbbError);
         }
       }
       
-      // Delete from Firebase
-      console.log('🔥 [DELETE] Deleting from Firebase...');
-      const url = this.buildUrl(`images/${id}`);
-      
-      const response = await fetch(url, {
+      // Delete from trash collection
+      const deleteResponse = await fetch(trashUrl, {
         method: 'DELETE'
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to delete image from Firebase');
+      if (!deleteResponse.ok) {
+        throw new Error('Failed to delete from trash collection');
       }
       
-      console.log('✅ [DELETE] Successfully deleted from Firebase');
-      console.log('🎉 [DELETE] Image deletion complete!');
+      console.log('✅ [PERMANENT DELETE] Successfully deleted permanently');
     } catch (error) {
-      console.error('❌ [DELETE] Error deleting image:', error);
+      console.error('❌ [PERMANENT DELETE] Error during permanent deletion:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Empty entire trash (permanently delete all trashed items)
+   * @returns {Promise<number>} Number of items deleted
+   */
+  async emptyTrash() {
+    await this.ensureInitialized();
+
+    try {
+      console.log('🔥 [EMPTY TRASH] Emptying all trash...');
+      
+      const trashedImages = await this.getTrashedImages();
+      
+      if (trashedImages.length === 0) {
+        console.log('✅ [EMPTY TRASH] Trash is already empty');
+        return 0;
+      }
+
+      let deletedCount = 0;
+      const errors = [];
+
+      for (const item of trashedImages) {
+        try {
+          await this.permanentlyDelete(item.id);
+          deletedCount++;
+        } catch (error) {
+          console.error(`Failed to delete ${item.id}:`, error);
+          errors.push({ id: item.id, error: error.message });
+        }
+      }
+
+      console.log(`✅ [EMPTY TRASH] Deleted ${deletedCount}/${trashedImages.length} items`);
+      
+      if (errors.length > 0) {
+        console.warn('⚠️ [EMPTY TRASH] Some deletions failed:', errors);
+      }
+
+      return deletedCount;
+    } catch (error) {
+      console.error('❌ [EMPTY TRASH] Error emptying trash:', error);
       throw error;
     }
   }

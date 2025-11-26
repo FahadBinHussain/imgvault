@@ -7,10 +7,11 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, Upload, Search, Trash2, Download, X } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
-import { useImages, useImageUpload } from '../hooks/useChromeExtension';
+import { useImages, useImageUpload, useTrash } from '../hooks/useChromeExtension';
 
 export default function GalleryPage() {
   const { images, loading, reload, deleteImage } = useImages();
+  const { trashedImages, loading: trashLoading } = useTrash();
   const { uploadImage, uploading, progress, error: uploadError } = useImageUpload();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
@@ -60,15 +61,15 @@ export default function GalleryPage() {
     setShowDeleteConfirm(false);
     
     try {
-      showToast('🗑️ Deleting from hosts and Firebase...', 'info', 0);
+      showToast('🗑️ Moving to trash...', 'info', 0);
       await deleteImage(selectedImage.id);
       
-      showToast('✅ Image deleted successfully!', 'success', 3000);
+      showToast('✅ Image moved to trash! (Hosts preserved)', 'success', 3000);
       setSelectedImage(null);
       setFullImageDetails(null);
     } catch (error) {
       console.error('Delete failed:', error);
-      showToast(`❌ ${error.message || 'Failed to delete'}`, 'error', 4000);
+      showToast(`❌ ${error.message || 'Failed to move to trash'}`, 'error', 4000);
     } finally {
       setIsDeleting(false);
     }
@@ -349,6 +350,23 @@ export default function GalleryPage() {
                     title="Refresh"
                   >
                     <RefreshCw className="w-5 h-5 text-white" />
+                  </button>
+                  <button
+                    onClick={() => window.location.href = 'trash.html'}
+                    className="relative px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
+                             backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
+                             shadow-lg hover:shadow-xl flex items-center gap-2 text-white"
+                    title="Trash"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                    Trash
+                    {!trashLoading && trashedImages.length > 0 && (
+                      <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold 
+                                     rounded-full w-6 h-6 flex items-center justify-center 
+                                     animate-pulse shadow-lg">
+                        {trashedImages.length}
+                      </span>
+                    )}
                   </button>
                   <button
                     onClick={openUploadModal}
@@ -1033,17 +1051,17 @@ export default function GalleryPage() {
         <Modal isOpen={showDeleteConfirm} onClose={() => !isDeleting && setShowDeleteConfirm(false)}>
           <div className="text-center space-y-6">
             {/* Animated warning icon */}
-            <div className="text-7xl animate-bounce">⚠️</div>
+            <div className="text-7xl animate-bounce">🗑️</div>
             
-            <h3 className="text-2xl font-bold bg-gradient-to-r from-red-400 to-rose-500 
+            <h3 className="text-2xl font-bold bg-gradient-to-r from-yellow-400 to-orange-500 
                          bg-clip-text text-transparent">
-              Delete Image?
+              Move to Trash?
             </h3>
             
             <p className="text-slate-300 text-lg leading-relaxed">
-              This will permanently delete the image from both your vault and image hosts (Pixvid/ImgBB). 
+              This will move the image to trash. The image will remain accessible on hosting providers.
               <br />
-              <span className="font-semibold text-red-400">This action cannot be undone.</span>
+              <span className="font-semibold text-yellow-400">You can restore it later from the trash.</span>
             </p>
             
             <div className="flex gap-4 justify-center pt-4">
@@ -1064,16 +1082,16 @@ export default function GalleryPage() {
                 onClick={handleDelete}
                 disabled={isDeleting}
                 className="group relative px-8 py-3 rounded-xl overflow-hidden
-                         bg-gradient-to-r from-red-600 to-rose-700
-                         border border-red-400/50
+                         bg-gradient-to-r from-orange-600 to-yellow-700
+                         border border-orange-400/50
                          transform transition-all duration-300
-                         hover:scale-105 hover:shadow-2xl hover:shadow-red-500/50
+                         hover:scale-105 hover:shadow-2xl hover:shadow-orange-500/50
                          active:scale-95
                          disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
               >
                 {/* Animated pulse effect when deleting */}
                 {isDeleting && (
-                  <div className="absolute inset-0 bg-red-400 animate-ping opacity-25" />
+                  <div className="absolute inset-0 bg-orange-400 animate-ping opacity-25" />
                 )}
                 
                 {/* Shimmer effect */}
@@ -1086,12 +1104,12 @@ export default function GalleryPage() {
                   {isDeleting ? (
                     <>
                       <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Deleting...</span>
+                      <span>Moving...</span>
                     </>
                   ) : (
                     <>
                       <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
-                      <span>Delete Forever</span>
+                      <span>Move to Trash</span>
                     </>
                   )}
                 </div>

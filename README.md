@@ -18,6 +18,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /images/{imageId} { allow read, write: if true; }
+    match /trash/{imageId} { allow read, write: if true; }
     match /userSettings/{document} { allow read, write: if true; }
   }
 }
@@ -36,6 +37,8 @@ service cloud.firestore {
 ## Usage
 - Right-click image → "Save to ImgVault"
 - View saved images in Gallery
+- Delete images (moves to trash, hosts preserved)
+- Access trash to restore or permanently delete images
 
 ## Tech Stack
 - Vanilla JS + Chrome Extension MV3
