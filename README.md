@@ -28,6 +28,15 @@ service cloud.firestore {
 - **Pixvid**: [pixvid.org/settings/api](https://pixvid.org/settings/api)
 - **ImgBB**: [api.imgbb.com](https://api.imgbb.com/)
 
+### 3. Build Extension
+1. Clone repo
+2. Run `pnpm install` to install dependencies
+3. cd nextgen-extension
+4. Run `pnpm run build` to build extension
+5. `Copy-Item -Path "icons" -Destination "dist/icons" -Recurse -Force`
+6. `Copy-Item -Path "manifest.json" -Destination "dist/manifest.json" -Force`
+
+
 ### 3. Install Extension
 1. Open `chrome://extensions/`
 2. Enable Developer mode
