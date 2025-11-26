@@ -154,7 +154,11 @@ export default function TrashPage() {
     }
   };
 
-  const getImageUrl = (image) => {
+  const getImageUrl = (image, useFullSize = false) => {
+    // For modal/detail view, use full size. For grid thumbnails, use thumb
+    if (useFullSize) {
+      return image.imgbbUrl || image.pixvidUrl || image.sourceImageUrl;
+    }
     return image.imgbbThumbUrl || image.imgbbUrl || image.pixvidUrl || image.sourceImageUrl;
   };
 
@@ -420,7 +424,7 @@ export default function TrashPage() {
                 
                 {/* Image */}
                 <img
-                  src={getImageUrl(selectedImage)}
+                  src={getImageUrl(selectedImage, true)}
                   alt={selectedImage.pageTitle}
                   className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl relative z-10
                            hover:scale-[1.02] hover:shadow-[0_0_80px_rgba(239,68,68,0.3)]
