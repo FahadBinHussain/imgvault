@@ -1578,10 +1578,23 @@ export default function GalleryPage() {
                      style={{ scrollbarGutter: 'stable' }}>
                   {/* Form Fields */}
                   <div className="space-y-4">
+                  {/* Source Image URL (Read-only) */}
+                  {uploadImageData && (
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">
+                        Source Image URL
+                      </label>
+                      <div className="w-full px-4 py-3 rounded-lg bg-slate-700/50 border border-slate-600 
+                                    text-slate-300 font-mono text-xs break-all">
+                        {uploadImageData.srcUrl}
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* Page URL */}
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Page URL
+                      Page URL (where you found it)
                     </label>
                     <input
                       type="url"
