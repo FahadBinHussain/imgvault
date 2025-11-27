@@ -177,7 +177,7 @@ export class StorageManager {
       dHash: fields.dHash?.stringValue || '',
       tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
       description: fields.description?.stringValue || '',
-      createdAt: fields.createdAt?.timestampValue || ''
+      internalAddedTimestamp: fields.internalAddedTimestamp?.timestampValue || ''
     };
   }
 
@@ -206,7 +206,7 @@ export class StorageManager {
       
       const doc = this.toFirestoreDoc({
         ...imageData,
-        createdAt: new Date()
+        internalAddedTimestamp: new Date()
       });
 
       const url = this.buildUrl('images');
@@ -245,7 +245,7 @@ export class StorageManager {
       const startTime = performance.now();
       
       // Fetch active images
-      const imagesUrl = this.buildUrl('images', { orderBy: 'createdAt desc' });
+      const imagesUrl = this.buildUrl('images', { orderBy: 'internalAddedTimestamp desc' });
       const imagesResponse = await fetch(imagesUrl);
       
       if (!imagesResponse.ok) {
@@ -281,7 +281,7 @@ export class StorageManager {
               pHash: fields.pHash?.stringValue || '',
               aHash: fields.aHash?.stringValue || '',
               dHash: fields.dHash?.stringValue || '',
-              createdAt: fields.createdAt?.timestampValue || fields.createdAt?.stringValue || '',
+              internalAddedTimestamp: fields.internalAddedTimestamp?.timestampValue || fields.internalAddedTimestamp?.stringValue || '',
               deletedAt: fields.deletedAt?.timestampValue || fields.deletedAt?.stringValue || '',
               _isTrash: true  // Mark as trashed for duplicate error message
             };
@@ -318,11 +318,11 @@ export class StorageManager {
       // Only fetch essential fields for gallery view
       const maskFields = [
         'pixvidUrl', 'imgbbUrl', 'imgbbThumbUrl', 'sourceImageUrl',
-        'sourcePageUrl', 'pageTitle', 'tags', 'description', 'createdAt'
+        'sourcePageUrl', 'pageTitle', 'tags', 'description', 'internalAddedTimestamp'
       ];
       
       const url = this.buildUrl('images', {
-        orderBy: 'createdAt desc',
+        orderBy: 'internalAddedTimestamp desc',
         'mask.fieldPaths': maskFields
       });
       
@@ -404,7 +404,7 @@ export class StorageManager {
       const trashDoc = this.toFirestoreDoc({
         ...imageData,
         originalId: id,
-        createdAt: imageData.createdAt ? new Date(imageData.createdAt) : new Date(),
+        internalAddedTimestamp: imageData.internalAddedTimestamp ? new Date(imageData.internalAddedTimestamp) : new Date(),
         deletedAt: new Date()
       });
 
@@ -488,7 +488,7 @@ export class StorageManager {
           dHash: fields.dHash?.stringValue || '',
           tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
           description: fields.description?.stringValue || '',
-          createdAt: fields.createdAt?.timestampValue || fields.createdAt?.stringValue || '',
+          internalAddedTimestamp: fields.internalAddedTimestamp?.timestampValue || fields.internalAddedTimestamp?.stringValue || '',
           deletedAt: fields.deletedAt?.timestampValue || fields.deletedAt?.stringValue || ''
         };
       });
@@ -546,7 +546,7 @@ export class StorageManager {
         dHash: fields.dHash?.stringValue || '',
         tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
         description: fields.description?.stringValue || '',
-        createdAt: fields.createdAt?.timestampValue || fields.createdAt?.stringValue || '',
+        internalAddedTimestamp: fields.internalAddedTimestamp?.timestampValue || fields.internalAddedTimestamp?.stringValue || '',
         deletedAt: fields.deletedAt?.timestampValue || fields.deletedAt?.stringValue || ''
       };
       
@@ -603,10 +603,10 @@ export class StorageManager {
         dHash: fields.dHash?.stringValue || '',
         tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
         description: fields.description?.stringValue || '',
-        createdAt: fields.createdAt?.timestampValue 
-          ? new Date(fields.createdAt.timestampValue) 
-          : fields.createdAt?.stringValue 
-            ? new Date(fields.createdAt.stringValue)
+        internalAddedTimestamp: fields.internalAddedTimestamp?.timestampValue 
+          ? new Date(fields.internalAddedTimestamp.timestampValue) 
+          : fields.internalAddedTimestamp?.stringValue 
+            ? new Date(fields.internalAddedTimestamp.stringValue)
             : new Date()
       };
 

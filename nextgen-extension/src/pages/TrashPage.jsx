@@ -372,7 +372,7 @@ export default function TrashPage() {
                   onClick={() => {
                     console.log('[TRASH] Image clicked:', image.id);
                     console.log('[TRASH] Image data:', image);
-                    console.log('[TRASH] createdAt:', image.createdAt);
+                    console.log('[TRASH] internalAddedTimestamp:', image.internalAddedTimestamp);
                     setSelectedImage(image);
                     setActiveTab('noobs');
                     setFullImageDetails(null);
@@ -553,10 +553,10 @@ export default function TrashPage() {
                         </div>
 
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">Created At</div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1">Added To Vault</div>
                           <div className="text-white">
-                            {selectedImage.createdAt
-                              ? new Date(selectedImage.createdAt).toLocaleString('en-US', {
+                            {selectedImage.internalAddedTimestamp
+                              ? new Date(selectedImage.internalAddedTimestamp).toLocaleString('en-US', {
                                   weekday: 'short',
                                   year: 'numeric',
                                   month: 'short',
@@ -564,8 +564,8 @@ export default function TrashPage() {
                                   hour: 'numeric',
                                   minute: '2-digit'
                                 })
-                              : fullImageDetails?.createdAt
-                                ? new Date(fullImageDetails.createdAt).toLocaleString('en-US', {
+                              : fullImageDetails?.internalAddedTimestamp
+                                ? new Date(fullImageDetails.internalAddedTimestamp).toLocaleString('en-US', {
                                     weekday: 'short',
                                     year: 'numeric',
                                     month: 'short',
