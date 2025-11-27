@@ -1354,20 +1354,24 @@ export default function GalleryPage() {
                         'dHash': uploadMetadata.dHash || 'N/A',
                         ...(uploadMetadata.exifMetadata || {})
                       };
-                      const totalFields = Object.keys(allFields).length + 4; // +4 for tags, description, pageUrl, pageTitle
+                      const metadataFieldsCount = Object.keys(allFields).length;
+                      const totalFields = metadataFieldsCount + 4 + 4 + 2; // +4 form, +4 imgbb, +2 pixvid
+                      
                       return (
-                        <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/30">
+                        <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/30 space-y-3">
                           <div className="flex items-center justify-between">
                             <span className="text-green-300 font-semibold text-sm">
-                              📊 Total Metadata Fields
+                              📊 Total Firestore Fields
                             </span>
-                            <span className="text-green-200 font-bold text-2xl">
+                            <span className="text-green-200 font-bold text-3xl">
                               {totalFields}
                             </span>
                           </div>
-                          <p className="text-green-200/70 text-xs mt-2">
-                            This is how many fields will be saved to Firestore
-                          </p>
+                          <div className="text-xs text-green-200/70 border-t border-green-500/20 pt-3 space-y-1">
+                            <div>This includes:</div>
+                            <div>• 4 ImgBB URLs</div>
+                            <div>• 2 Pixvid URLs</div>
+                          </div>
                         </div>
                       );
                     })()}
