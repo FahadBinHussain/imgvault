@@ -179,58 +179,89 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-primary p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
-        <div className="glass-card rounded-xl p-6 mb-6">
-          <div className="flex items-center gap-3">
-            <img src="/icons/icon48.png" alt="ImgVault" className="w-10 h-10" />
-            <div>
-              <h1 className="text-2xl font-bold gradient-text">Settings</h1>
-              <p className="text-sm text-slate-300">Configure your ImgVault extension</p>
+        <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl rounded-2xl p-6 mb-6">
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-xl blur-md opacity-50"></div>
+              <img src="/icons/icon48.png" alt="ImgVault" className="w-12 h-12 relative z-10 rounded-xl shadow-lg" />
+            </div>
+            <div className="flex-1">
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent">Settings</h1>
+              <p className="text-sm text-slate-300 mt-1">Configure your ImgVault extension</p>
             </div>
           </div>
         </div>
 
         {/* Settings Form */}
-        <Card className="space-y-6">
+        <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl rounded-2xl p-8 space-y-8">
           {/* API Keys Section */}
           <div>
-            <h2 className="text-lg font-semibold text-white mb-4">API Keys</h2>
-            <div className="space-y-4">
-              <Input
-                label="Pixvid API Key (Required)"
-                type="password"
-                value={localPixvid}
-                onChange={(e) => setLocalPixvid(e.target.value)}
-                placeholder="Enter your Pixvid API key"
-              />
-              <Input
-                label="ImgBB API Key (Optional)"
-                type="password"
-                value={localImgbb}
-                onChange={(e) => setLocalImgbb(e.target.value)}
-                placeholder="Enter your ImgBB API key"
-              />
+            <h2 className="text-xl font-semibold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent mb-6 flex items-center gap-2">
+              <span className="text-2xl">🔑</span>
+              API Keys
+            </h2>
+            <div className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-slate-200 mb-2 flex items-center gap-2">
+                  <span className="text-lg">⚡</span>
+                  Pixvid API Key (Required)
+                </label>
+                <input
+                  type="password"
+                  value={localPixvid}
+                  onChange={(e) => setLocalPixvid(e.target.value)}
+                  placeholder="Enter your Pixvid API key"
+                  className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                           text-white placeholder-slate-400 
+                           focus:outline-none focus:border-primary-500 focus:ring-2 
+                           focus:ring-primary-500/20 transition-all shadow-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-200 mb-2 flex items-center gap-2">
+                  <span className="text-lg">🖼️</span>
+                  ImgBB API Key (Optional)
+                </label>
+                <input
+                  type="password"
+                  value={localImgbb}
+                  onChange={(e) => setLocalImgbb(e.target.value)}
+                  placeholder="Enter your ImgBB API key"
+                  className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                           text-white placeholder-slate-400 
+                           focus:outline-none focus:border-primary-500 focus:ring-2 
+                           focus:ring-primary-500/20 transition-all shadow-lg"
+                />
+              </div>
             </div>
           </div>
 
           {/* Firebase Configuration */}
           <div>
-            <h2 className="text-lg font-semibold text-white mb-4">Firebase Configuration</h2>
+            <h2 className="text-xl font-semibold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent mb-6 flex items-center gap-2">
+              <span className="text-2xl">☁️</span>
+              Firebase Configuration
+            </h2>
             
             {/* Firebase Status */}
             {firebaseStatus && (
-              <div className="mb-4 p-3 rounded-lg bg-white/5 border border-white/10">
-                <p className="text-sm text-slate-200">{firebaseStatus}</p>
+              <div className="mb-5 p-4 rounded-xl bg-gradient-to-r from-primary-500/10 to-secondary-500/10 border border-primary-500/30 shadow-lg">
+                <p className="text-sm text-slate-200 font-medium">{firebaseStatus}</p>
               </div>
             )}
             
-            <Textarea
-              label="Firebase Config (Paste from Firebase Console)"
-              value={localFirebase}
-              onChange={(e) => setLocalFirebase(e.target.value)}
-              placeholder={`{
+            <div>
+              <label className="block text-sm font-medium text-slate-200 mb-2 flex items-center gap-2">
+                <span className="text-lg">📝</span>
+                Firebase Config (Paste from Firebase Console)
+              </label>
+              <textarea
+                value={localFirebase}
+                onChange={(e) => setLocalFirebase(e.target.value)}
+                placeholder={`{
   "apiKey": "your-api-key",
   "authDomain": "your-project.firebaseapp.com",
   "projectId": "your-project-id",
@@ -238,97 +269,125 @@ export default function SettingsPage() {
   "messagingSenderId": "123456789",
   "appId": "your-app-id"
 }`}
-              rows={8}
-              className="font-mono text-sm"
-            />
-            <p className="mt-2 text-xs text-slate-400">
-              Get your Firebase config from the Firebase Console → Project Settings → General → Your apps
-            </p>
+                rows={8}
+                className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                         text-white placeholder-slate-400 font-mono text-sm
+                         focus:outline-none focus:border-primary-500 focus:ring-2 
+                         focus:ring-primary-500/20 transition-all resize-none shadow-lg"
+              />
+              <p className="mt-3 text-xs text-slate-400 flex items-start gap-2">
+                <span className="text-base">💡</span>
+                <span>Get your Firebase config from the Firebase Console → Project Settings → General → Your apps</span>
+              </p>
+            </div>
           </div>
 
           {/* Gallery Preferences */}
           <div>
-            <h2 className="text-lg font-semibold text-white mb-4">Gallery Preferences</h2>
+            <h2 className="text-xl font-semibold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent mb-6 flex items-center gap-2">
+              <span className="text-2xl">🎨</span>
+              Gallery Preferences
+            </h2>
             <div>
-              <label className="block text-sm font-medium text-slate-200 mb-2">
+              <label className="block text-sm font-medium text-slate-200 mb-2 flex items-center gap-2">
+                <span className="text-lg">🌟</span>
                 Default Image Source
               </label>
               <select
                 value={localGallerySource}
                 onChange={(e) => setLocalGallerySource(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white
-                         focus:outline-none focus:ring-2 focus:ring-primary-400"
+                className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                         text-white cursor-pointer
+                         focus:outline-none focus:border-primary-500 focus:ring-2 
+                         focus:ring-primary-500/20 transition-all shadow-lg"
               >
                 <option value="imgbb">ImgBB (Original Quality)</option>
                 <option value="pixvid">Pixvid (Compressed Quality)</option>
               </select>
-              <p className="mt-2 text-xs text-slate-400">
-                Choose which service to display images from in the gallery
+              <p className="mt-3 text-xs text-slate-400 flex items-start gap-2">
+                <span className="text-base">💡</span>
+                <span>Choose which service to display images from in the gallery</span>
               </p>
             </div>
           </div>
 
           {/* Save Button */}
           <div className="pt-4">
-            <Button
-              variant="primary"
-              className="w-full"
+            <button
               onClick={handleSave}
+              className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
+                       hover:from-primary-600 hover:to-secondary-600 text-white font-semibold text-lg
+                       shadow-2xl hover:shadow-[0_8px_30px_rgb(99,102,241,0.4)]
+                       transform transition-all duration-300 ease-out
+                       hover:scale-105 active:scale-95
+                       flex items-center justify-center gap-3"
             >
               {saved ? (
-                <div className="flex items-center justify-center gap-2">
-                  <Check className="w-5 h-5" />
-                  <span>Saved!</span>
-                </div>
+                <>
+                  <Check className="w-6 h-6" />
+                  <span>Saved Successfully!</span>
+                </>
               ) : (
-                <div className="flex items-center justify-center gap-2">
-                  <Save className="w-5 h-5" />
+                <>
+                  <Save className="w-6 h-6" />
                   <span>Save Settings</span>
-                </div>
+                </>
               )}
-            </Button>
+            </button>
           </div>
-        </Card>
+        </div>
 
         {/* Help Section */}
-        <Card className="mt-6">
-          <h2 className="text-lg font-semibold text-white mb-3">Need Help?</h2>
-          <div className="space-y-2 text-sm text-slate-300">
-            <p>
-              <strong className="text-white">Pixvid API Key:</strong> Get it from{' '}
-              <a
-                href="https://pixvid.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary-300 hover:text-primary-200 underline"
-              >
-                pixvid.org
-              </a>
-            </p>
-            <p>
-              <strong className="text-white">ImgBB API Key:</strong> Get it from{' '}
-              <a
-                href="https://api.imgbb.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary-300 hover:text-primary-200 underline"
-              >
-                api.imgbb.com
-              </a>
-            </p>
-            <p>
-              <strong className="text-white">Firebase:</strong> Create a project at{' '}
-              <a
-                href="https://console.firebase.google.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary-300 hover:text-primary-200 underline"
-              >
-                Firebase Console
-              </a>
-            </p>
+        <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl rounded-2xl p-6 mt-6">
+          <h2 className="text-lg font-semibold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent mb-4 flex items-center gap-2">
+            <span className="text-xl">❓</span>
+            Need Help?
+          </h2>
+          <div className="space-y-3 text-sm text-slate-300">
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
+              <span className="text-lg flex-shrink-0">⚡</span>
+              <div>
+                <strong className="text-white">Pixvid API Key:</strong> Get it from{' '}
+                <a
+                  href="https://pixvid.org"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary-300 hover:text-primary-200 underline font-medium"
+                >
+                  pixvid.org
+                </a>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
+              <span className="text-lg flex-shrink-0">🖼️</span>
+              <div>
+                <strong className="text-white">ImgBB API Key:</strong> Get it from{' '}
+                <a
+                  href="https://api.imgbb.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary-300 hover:text-primary-200 underline font-medium"
+                >
+                  api.imgbb.com
+                </a>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
+              <span className="text-lg flex-shrink-0">☁️</span>
+              <div>
+                <strong className="text-white">Firebase:</strong> Create a project at{' '}
+                <a
+                  href="https://console.firebase.google.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary-300 hover:text-primary-200 underline font-medium"
+                >
+                  Firebase Console
+                </a>
+              </div>
+            </div>
           </div>
-        </Card>
+        </div>
       </div>
     </div>
   );
