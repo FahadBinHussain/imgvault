@@ -789,7 +789,7 @@ export default function TrashPage() {
                             // Define known non-EXIF fields to exclude
                             const knownFields = new Set([
                               'id', 'pixvidUrl', 'pixvidDeleteUrl', 'imgbbUrl', 'imgbbDeleteUrl', 'imgbbThumbUrl',
-                              'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'tags', 'description',
+                              'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize', 'tags', 'description',
                               'internalAddedTimestamp', 'sha256', 'pHash', 'aHash', 'dHash'
                             ]);
                             

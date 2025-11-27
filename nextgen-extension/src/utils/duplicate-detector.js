@@ -251,7 +251,7 @@ export class DuplicateDetector {
       dHash,
       width: dimensions.width,
       height: dimensions.height,
-      size: blob.size,
+      fileSize: blob.size, // Changed from 'size' to 'fileSize'
       sourceUrl,
       pageUrl,
       exifMetadata: exifMetadata || null

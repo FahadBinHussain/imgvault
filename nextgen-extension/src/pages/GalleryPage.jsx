@@ -1092,7 +1092,7 @@ export default function GalleryPage() {
                         // Define known non-EXIF fields to exclude
                         const knownFields = new Set([
                           'id', 'pixvidUrl', 'pixvidDeleteUrl', 'imgbbUrl', 'imgbbDeleteUrl', 'imgbbThumbUrl',
-                          'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'tags', 'description',
+                          'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize', 'tags', 'description',
                           'internalAddedTimestamp', 'sha256', 'pHash', 'aHash', 'dHash'
                         ]);
                         
@@ -1367,25 +1367,45 @@ export default function GalleryPage() {
                     />
                   </div>
 
-                  {/* Extracted EXIF Metadata */}
-                  {uploadMetadata?.exifMetadata && (
-                    <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30">
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="text-green-300 text-lg">📸</span>
-                        <h4 className="text-green-300 font-semibold">Extracted EXIF Metadata</h4>
+                  {/* Extracted Metadata */}
+                  {uploadMetadata && (() => {
+                    // Get upload file data
+                    const fileMetadata = {
+                      'File Name': uploadImageData?.fileName || 'N/A',
+                      'File Size': uploadMetadata.fileSize 
+                        ? `${(uploadMetadata.fileSize / 1024).toFixed(2)} KB (${uploadMetadata.fileSize} bytes)` 
+                        : 'N/A',
+                      'Dimensions': uploadMetadata.width && uploadMetadata.height 
+                        ? `${uploadMetadata.width} × ${uploadMetadata.height}` 
+                        : 'N/A'
+                    };
+                    
+                    // Combine with EXIF metadata
+                    const allMetadata = uploadMetadata.exifMetadata 
+                      ? { ...fileMetadata, ...uploadMetadata.exifMetadata }
+                      : fileMetadata;
+                    
+                    return (
+                      <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="text-green-300 text-lg">📸</span>
+                          <h4 className="text-green-300 font-semibold">
+                            Extracted Metadata ({Object.keys(allMetadata).length} fields)
+                          </h4>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto space-y-2 text-sm">
+                          {Object.entries(allMetadata).map(([key, value]) => (
+                            <div key={key} className="flex justify-between gap-4 py-1.5 border-b border-green-500/10">
+                              <span className="text-green-200/70 font-medium">{key}:</span>
+                              <span className="text-green-100 text-right break-all">
+                                {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <div className="max-h-64 overflow-y-auto space-y-2 text-sm">
-                        {Object.entries(uploadMetadata.exifMetadata).map(([key, value]) => (
-                          <div key={key} className="flex justify-between gap-4 py-1.5 border-b border-green-500/10">
-                            <span className="text-green-200/70 font-medium">{key}:</span>
-                            <span className="text-green-100 text-right break-all">
-                              {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
 
                 {/* Upload Progress */}

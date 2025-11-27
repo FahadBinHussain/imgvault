@@ -295,6 +295,7 @@ class ImgVaultServiceWorker {
         sourcePageUrl: data.pageUrl,
         pageTitle: data.pageTitle,
         fileName,
+        fileSize: imageBlob.size, // Always include file size from blob
         sha256: metadata.sha256,
         pHash: metadata.pHash,
         aHash: metadata.aHash,
