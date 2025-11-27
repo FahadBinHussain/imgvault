@@ -98,7 +98,8 @@ export default function GalleryPage() {
       reader.onloadend = () => {
         setUploadImageData({
           srcUrl: reader.result,
-          pageTitle: file.name,
+          fileName: file.name,
+          pageTitle: '',
           timestamp: Date.now()
         });
         setUploadPageUrl('');
@@ -123,7 +124,8 @@ export default function GalleryPage() {
       const uploadData = {
         imageUrl: String(uploadImageData.srcUrl || ''),
         pageUrl: String(uploadPageUrl || ''),
-        pageTitle: String(uploadImageData.pageTitle || 'Untitled'),
+        pageTitle: String(uploadImageData.pageTitle || ''),
+        fileName: String(uploadImageData.fileName || ''),
         description: String(uploadDescription || ''),
         tags: tagsArray.map(t => String(t)),
         ignoreDuplicate: Boolean(ignoreDuplicates)
