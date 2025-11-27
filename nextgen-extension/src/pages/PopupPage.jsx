@@ -331,32 +331,31 @@ export default function PopupPage() {
               />
             </div>
 
-            {/* Extracted Metadata - Show all fields individually */}
+            {/* Display ALL metadata fields that will be saved */}
             {uploadMetadata && (() => {
-              // Get upload file data
-              const fileMetadata = {
+              const allFields = {
                 'File Name': imageData?.srcUrl?.split('/').pop() || 'N/A',
                 'File Size': uploadMetadata.fileSize 
-                  ? `${(uploadMetadata.fileSize / 1024).toFixed(2)} KB (${uploadMetadata.fileSize} bytes)` 
+                  ? `${(uploadMetadata.fileSize / 1024).toFixed(2)} KB` 
                   : 'N/A',
                 'Dimensions': uploadMetadata.width && uploadMetadata.height 
                   ? `${uploadMetadata.width} × ${uploadMetadata.height}` 
-                  : 'N/A'
+                  : 'N/A',
+                'SHA-256': uploadMetadata.sha256 || 'N/A',
+                'pHash': uploadMetadata.pHash || 'N/A',
+                'aHash': uploadMetadata.aHash || 'N/A',
+                'dHash': uploadMetadata.dHash || 'N/A',
+                ...(uploadMetadata.exifMetadata || {})
               };
               
-              // Combine with EXIF metadata
-              const allMetadata = uploadMetadata.exifMetadata 
-                ? { ...fileMetadata, ...uploadMetadata.exifMetadata }
-                : fileMetadata;
-              
               return (
-                <div className="space-y-3">
-                  {Object.entries(allMetadata).map(([key, value]) => (
+                <div className="space-y-2">
+                  {Object.entries(allFields).map(([key, value]) => (
                     <div key={key}>
-                      <label className="block text-sm font-medium text-slate-300 mb-2">
+                      <label className="block text-xs font-medium text-slate-400 mb-1">
                         {key}
                       </label>
-                      <div className="px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 text-white text-sm break-all">
+                      <div className="px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-600 text-white text-xs break-all font-mono">
                         {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                       </div>
                     </div>
