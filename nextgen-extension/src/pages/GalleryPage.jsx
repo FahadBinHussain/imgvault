@@ -1432,6 +1432,28 @@ export default function GalleryPage() {
                         </div>
                       </div>
                     )}
+                    
+                    {/* Upload Progress */}
+                    {uploading && (
+                      <div className="p-4 rounded-xl bg-primary-500/10 border border-primary-500/30 space-y-3">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl animate-pulse">☁️</span>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between text-sm text-primary-200 mb-2">
+                              <span>Uploading to Pixvid and ImgBB...</span>
+                              <span className="font-bold">{progress}%</span>
+                            </div>
+                            <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-primary-500 to-secondary-500 
+                                         transition-all duration-300 ease-out"
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1524,23 +1546,6 @@ export default function GalleryPage() {
                     );
                   })()}
                 </div>
-
-                {/* Upload Progress */}
-                {uploading && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm text-slate-300">
-                      <span>Uploading...</span>
-                      <span>{progress}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-primary-500 to-secondary-500 
-                                 transition-all duration-300 ease-out"
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
 
                 {/* Error Message */}
                 {uploadError && !duplicateData && (
