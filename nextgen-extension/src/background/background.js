@@ -388,13 +388,26 @@ class ImgVaultServiceWorker {
       // Compute MIME type (prefer File object, verify against EXIF if present)
       const exifMimeType = metadata.exifMetadata?.MIMEType || metadata.exifMetadata?.FileType;
       let mimeType = fileMimeType || imageBlob.type;
-      let mimeTypeSource = 'File object';
+      let mimeTypeSource = '';
       
-      if (exifMimeType && exifMimeType !== mimeType) {
-        console.warn(`⚠️ MIME type mismatch! File: ${mimeType}, EXIF: ${exifMimeType}`);
-        mimeTypeSource = `File object (verified with EXIF: ${exifMimeType})`;
-      } else if (exifMimeType) {
-        mimeTypeSource = 'File object (verified with EXIF ✓)';
+      if (!fileMimeType && !exifMimeType) {
+        // No File object, no EXIF - use blob type (web image)
+        mimeTypeSource = 'Blob type (web image)';
+      } else if (!fileMimeType && exifMimeType) {
+        // No File object but EXIF available - use EXIF (web image with metadata)
+        mimeType = exifMimeType;
+        mimeTypeSource = 'EXIF (web image)';
+      } else if (fileMimeType && !exifMimeType) {
+        // File object but no EXIF
+        mimeTypeSource = 'File object';
+      } else {
+        // Both File object and EXIF available
+        if (exifMimeType !== mimeType) {
+          console.warn(`⚠️ MIME type mismatch! File: ${mimeType}, EXIF: ${exifMimeType}`);
+          mimeTypeSource = `File object (verified with EXIF: ${exifMimeType})`;
+        } else {
+          mimeTypeSource = 'File object (verified with EXIF ✓)';
+        }
       }
       
       // Compute creation date (prefer EXIF, fallback to OS lastModified)
@@ -410,6 +423,10 @@ class ImgVaultServiceWorker {
       } else if (fileLastModified) {
         creationDate = new Date(fileLastModified).toISOString();
         creationDateSource = 'OS lastModified (fallback)';
+      } else {
+        // No EXIF date, no file date - use current timestamp
+        creationDate = new Date().toISOString();
+        creationDateSource = 'Current timestamp (no metadata available)';
       }
       
       console.log('✅ Metadata extracted:', metadata);
