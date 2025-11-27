@@ -214,13 +214,23 @@ export class DuplicateDetector {
   async extractMetadata(blob, sourceUrl, pageUrl) {
     console.log('🔍 Extracting metadata with EXIF support...');
     
-    // Extract EXIF metadata using exifr (combined: true for all possible metadata)
+    // Extract EXIF metadata using exifr with ALL possible options enabled
     let exifMetadata = null;
     try {
-      exifMetadata = await exifr.parse(blob, { combined: true });
+      exifMetadata = await exifr.parse(blob, {
+        exif: true,
+        iptc: true,
+        xmp: true,
+        jfif: true,
+        icc: true,
+        tiff: true,
+        skip: false,
+        reviveValues: true
+      });
       console.log('📸 EXIF metadata extracted:', exifMetadata ? 'YES' : 'NO');
       if (exifMetadata) {
         console.log('📊 EXIF fields found:', Object.keys(exifMetadata).length);
+        console.log('📋 EXIF data sample:', Object.keys(exifMetadata).slice(0, 10));
       }
     } catch (error) {
       console.warn('⚠️ EXIF extraction failed (may be normal for some images):', error.message);
