@@ -123,6 +123,31 @@ export class StorageManager {
     for (const [key, value] of Object.entries(data)) {
       if (value === null || value === undefined) continue;
       
+      // Special handling for exifMetadata - flatten it into individual fields
+      if (key === 'exifMetadata' && typeof value === 'object' && !Array.isArray(value)) {
+        for (const [exifKey, exifValue] of Object.entries(value)) {
+          if (exifValue === null || exifValue === undefined) continue;
+          
+          if (typeof exifValue === 'string') {
+            fields[exifKey] = { stringValue: exifValue };
+          } else if (typeof exifValue === 'number') {
+            if (Number.isInteger(exifValue)) {
+              fields[exifKey] = { integerValue: exifValue };
+            } else {
+              fields[exifKey] = { doubleValue: exifValue };
+            }
+          } else if (typeof exifValue === 'boolean') {
+            fields[exifKey] = { booleanValue: exifValue };
+          } else if (exifValue instanceof Date) {
+            fields[exifKey] = { timestampValue: exifValue.toISOString() };
+          } else if (typeof exifValue === 'object' || Array.isArray(exifValue)) {
+            // Complex nested objects - store as JSON string
+            fields[exifKey] = { stringValue: JSON.stringify(exifValue) };
+          }
+        }
+        continue; // Skip the exifMetadata field itself
+      }
+      
       if (typeof value === 'string') {
         fields[key] = { stringValue: value };
       } else if (typeof value === 'number') {
@@ -142,7 +167,7 @@ export class StorageManager {
       } else if (value instanceof Date) {
         fields[key] = { timestampValue: value.toISOString() };
       } else if (typeof value === 'object') {
-        // Handle nested objects (like exifMetadata)
+        // Handle other nested objects
         fields[key] = { stringValue: JSON.stringify(value) };
       }
     }
@@ -160,40 +185,35 @@ export class StorageManager {
     const id = doc.name.split('/').pop();
     const fields = doc.fields;
     
-    // Parse exifMetadata if it exists
-    let exifMetadata = null;
-    if (fields.exifMetadata?.stringValue) {
-      try {
-        exifMetadata = JSON.parse(fields.exifMetadata.stringValue);
-      } catch (e) {
-        console.warn('Failed to parse exifMetadata:', e);
+    // Build result object dynamically from all fields
+    const result = { id };
+    
+    for (const [key, value] of Object.entries(fields)) {
+      if (value.stringValue !== undefined) {
+        result[key] = value.stringValue;
+      } else if (value.integerValue !== undefined) {
+        result[key] = parseInt(value.integerValue);
+      } else if (value.doubleValue !== undefined) {
+        result[key] = parseFloat(value.doubleValue);
+      } else if (value.booleanValue !== undefined) {
+        result[key] = value.booleanValue;
+      } else if (value.timestampValue !== undefined) {
+        result[key] = value.timestampValue;
+      } else if (value.arrayValue !== undefined) {
+        result[key] = value.arrayValue.values?.map(v => v.stringValue) || [];
       }
     }
     
-    return {
-      id,
-      pixvidUrl: fields.pixvidUrl?.stringValue || '',
-      pixvidDeleteUrl: fields.pixvidDeleteUrl?.stringValue || '',
-      imgbbUrl: fields.imgbbUrl?.stringValue || '',
-      imgbbDeleteUrl: fields.imgbbDeleteUrl?.stringValue || '',
-      imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
-      sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
-      sourcePageUrl: fields.sourcePageUrl?.stringValue || '',
-      pageTitle: fields.pageTitle?.stringValue || '',
-      fileName: fields.fileName?.stringValue || '',
-      fileType: fields.fileType?.stringValue || '',
-      fileSize: parseInt(fields.fileSize?.integerValue || '0'),
-      width: parseInt(fields.width?.integerValue || '0'),
-      height: parseInt(fields.height?.integerValue || '0'),
-      sha256: fields.sha256?.stringValue || '',
-      pHash: fields.pHash?.stringValue || '',
-      aHash: fields.aHash?.stringValue || '',
-      dHash: fields.dHash?.stringValue || '',
-      tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
-      description: fields.description?.stringValue || '',
-      internalAddedTimestamp: fields.internalAddedTimestamp?.timestampValue || '',
-      exifMetadata: exifMetadata
-    };
+    // Ensure required fields have defaults
+    if (!result.tags) result.tags = [];
+    if (!result.description) result.description = '';
+    if (!result.pixvidUrl) result.pixvidUrl = '';
+    if (!result.sourceImageUrl) result.sourceImageUrl = '';
+    if (!result.sourcePageUrl) result.sourcePageUrl = '';
+    if (!result.pageTitle) result.pageTitle = '';
+    if (!result.fileName) result.fileName = '';
+    
+    return result;
   }
 
   /**
