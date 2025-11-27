@@ -19,6 +19,7 @@ export default function PopupPage() {
   const [tags, setTags] = useState('');
   const [isPageUrlEditable, setIsPageUrlEditable] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [duplicateData, setDuplicateData] = useState(null);
 
   useEffect(() => {
     if (pendingImage) {
@@ -44,8 +45,11 @@ export default function PopupPage() {
     }
   };
 
-  const handleUpload = async () => {
+  const handleUpload = async (ignoreDuplicate = false) => {
     if (!imageData) return;
+
+    // Clear previous duplicate data when starting new upload
+    setDuplicateData(null);
 
     try {
       const tagsArray = tags
@@ -58,7 +62,8 @@ export default function PopupPage() {
         pageUrl: pageUrl,
         pageTitle: imageData.pageTitle,
         description,
-        tags: tagsArray
+        tags: tagsArray,
+        ignoreDuplicate: ignoreDuplicate
       });
 
       setShowSuccess(true);
@@ -67,6 +72,13 @@ export default function PopupPage() {
       }, 2000);
     } catch (err) {
       console.error('Upload failed:', err);
+      
+      // Check if error has duplicate data
+      if (err?.duplicate) {
+        console.log('Duplicate data found:', err.duplicate);
+        setDuplicateData(err.duplicate);
+      }
+      // For non-duplicate errors, the error will be shown by uploadError state
     }
   };
 
@@ -315,40 +327,99 @@ export default function PopupPage() {
             </div>
           )}
 
+          {/* Duplicate Detection */}
+          {duplicateData && (
+            <div className="space-y-4 p-4 rounded-xl bg-yellow-500/10 border-2 border-yellow-500/30">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 text-yellow-400 text-2xl">⚠️</div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-yellow-300 font-semibold text-base mb-2">Duplicate Image Found!</h4>
+                  <p className="text-yellow-200/80 text-sm mb-3">
+                    This image already exists in your vault. Do you want to upload it anyway?
+                  </p>
+                  
+                  {/* Show duplicate image */}
+                  <div className="rounded-lg overflow-hidden border border-yellow-500/30 bg-slate-800/50 max-w-full mb-3">
+                    <div className="w-full flex items-center justify-center bg-slate-900/30 p-2">
+                      <img
+                        src={duplicateData.imgbbUrl || duplicateData.pixvidUrl}
+                        alt="Duplicate"
+                        className="max-w-full max-h-32 object-contain rounded"
+                      />
+                    </div>
+                    <div className="p-2 bg-slate-900/50">
+                      <p className="text-slate-300 text-xs font-medium truncate">
+                        {duplicateData.pageTitle || 'Untitled'}
+                      </p>
+                      {duplicateData.sourcePageUrl && (
+                        <p className="text-slate-400 text-xs truncate mt-0.5">
+                          {duplicateData.sourcePageUrl}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setDuplicateData(null)}
+                      className="flex-1 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 
+                               text-white font-medium transition-colors text-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => handleUpload(true)}
+                      disabled={uploading}
+                      className="flex-1 px-3 py-2 rounded-lg bg-gradient-to-r from-yellow-500 to-orange-500 
+                               hover:from-yellow-600 hover:to-orange-600 text-white font-medium 
+                               transition-all disabled:opacity-50 disabled:cursor-not-allowed
+                               shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 text-sm"
+                    >
+                      {uploading ? 'Uploading...' : 'Upload Anyway'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Error Message with animation */}
-          {uploadError && (
+          {uploadError && !duplicateData && (
             <div className="p-4 rounded-xl bg-red-500/10 border-2 border-red-500/30 shadow-xl animate-shake">
               <p className="text-sm text-red-300">{uploadError.message}</p>
             </div>
           )}
 
           {/* Upload Button with glow effect */}
-          <button
-            onClick={handleUpload}
-            disabled={uploading || !settings}
-            className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
-                     hover:from-primary-600 hover:to-secondary-600 text-white font-semibold text-lg
-                     shadow-2xl hover:shadow-[0_8px_30px_rgb(99,102,241,0.4)]
-                     transform transition-all duration-300 ease-out
-                     hover:scale-105 active:scale-95
-                     disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
-                     flex items-center justify-center gap-3"
-          >
-            {uploading ? (
-              <>
-                <div className="relative">
-                  <div className="absolute inset-0 bg-white rounded-full blur-md opacity-50 animate-pulse"></div>
-                  <Spinner size="sm" className="relative z-10" />
-                </div>
-                <span>Uploading...</span>
-              </>
-            ) : (
-              <>
-                <span className="text-2xl">💾</span>
-                <span>Save to Vault</span>
-              </>
-            )}
-          </button>
+          {!duplicateData && (
+            <button
+              onClick={() => handleUpload(false)}
+              disabled={uploading || !settings}
+              className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
+                       hover:from-primary-600 hover:to-secondary-600 text-white font-semibold text-lg
+                       shadow-2xl hover:shadow-[0_8px_30px_rgb(99,102,241,0.4)]
+                       transform transition-all duration-300 ease-out
+                       hover:scale-105 active:scale-95
+                       disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
+                       flex items-center justify-center gap-3"
+            >
+              {uploading ? (
+                <>
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-white rounded-full blur-md opacity-50 animate-pulse"></div>
+                    <Spinner size="sm" className="relative z-10" />
+                  </div>
+                  <span>Uploading...</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-2xl">💾</span>
+                  <span>Save to Vault</span>
+                </>
+              )}
+            </button>
+          )}
 
           {!settings && (
             <div className="p-4 rounded-xl bg-yellow-500/10 border-2 border-yellow-500/30 text-center">
