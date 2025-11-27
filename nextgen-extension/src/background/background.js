@@ -155,7 +155,7 @@ class ImgVaultServiceWorker {
         return true;
 
       case 'extractMetadata':
-        this.extractMetadataOnly(request.imageUrl, request.pageUrl, request.fileName)
+        this.extractMetadataOnly(request.imageUrl, request.pageUrl, request.fileName, request.fileMimeType, request.fileLastModified)
           .then(metadata => sendResponse({ success: true, metadata }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
@@ -364,9 +364,11 @@ class ImgVaultServiceWorker {
    * @param {string} imageUrl - Image data URL
    * @param {string} pageUrl - Page URL
    * @param {string} fileName - File name
+   * @param {string} fileMimeType - MIME type from File object
+   * @param {number} fileLastModified - lastModified timestamp from File object
    * @returns {Promise<Object>} Metadata object
    */
-  async extractMetadataOnly(imageUrl, pageUrl, fileName) {
+  async extractMetadataOnly(imageUrl, pageUrl, fileName, fileMimeType, fileLastModified) {
     try {
       console.log('🔍 Extracting metadata only...');
       
@@ -381,8 +383,44 @@ class ImgVaultServiceWorker {
         pageUrl
       );
       
+      // Compute MIME type (prefer File object, verify against EXIF if present)
+      const exifMimeType = metadata.exifMetadata?.MIMEType || metadata.exifMetadata?.FileType;
+      let mimeType = fileMimeType || imageBlob.type;
+      let mimeTypeSource = 'File object';
+      
+      if (exifMimeType && exifMimeType !== mimeType) {
+        console.warn(`⚠️ MIME type mismatch! File: ${mimeType}, EXIF: ${exifMimeType}`);
+        mimeTypeSource = `File object (verified with EXIF: ${exifMimeType})`;
+      } else if (exifMimeType) {
+        mimeTypeSource = 'File object (verified with EXIF ✓)';
+      }
+      
+      // Compute creation date (prefer EXIF, fallback to OS lastModified)
+      const exifDate = metadata.exifMetadata?.DateTimeOriginal || 
+                       metadata.exifMetadata?.DateTime || 
+                       metadata.exifMetadata?.CreateDate;
+      let creationDate = null;
+      let creationDateSource = '';
+      
+      if (exifDate) {
+        creationDate = new Date(exifDate).toISOString();
+        creationDateSource = 'EXIF (DateTimeOriginal)';
+      } else if (fileLastModified) {
+        creationDate = new Date(fileLastModified).toISOString();
+        creationDateSource = 'OS lastModified (fallback)';
+      }
+      
       console.log('✅ Metadata extracted:', metadata);
-      return metadata;
+      console.log('📋 MIME Type:', mimeType, '(', mimeTypeSource, ')');
+      console.log('📅 Creation Date:', creationDate, '(', creationDateSource, ')');
+      
+      return {
+        ...metadata,
+        mimeType,
+        mimeTypeSource,
+        creationDate,
+        creationDateSource
+      };
     } catch (error) {
       console.error('❌ Metadata extraction failed:', error);
       throw error;

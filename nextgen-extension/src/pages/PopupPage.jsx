@@ -335,6 +335,24 @@ export default function PopupPage() {
             {uploadMetadata && (() => {
               const allFields = {
                 'File Name': imageData?.srcUrl?.split('/').pop() || 'N/A',
+                
+                // MIME Type Computation Details
+                '📋 MIME Type (File Object)': 'N/A (right-click upload)',
+                '📋 MIME Type (EXIF)': uploadMetadata.exifMetadata?.MIMEType || uploadMetadata.exifMetadata?.FileType || 'Not present',
+                '✅ MIME Type (Final)': uploadMetadata.mimeType 
+                  ? `${uploadMetadata.mimeType} — Logic: ${uploadMetadata.mimeTypeSource || 'File object as primary source'}`
+                  : 'N/A',
+                
+                // Creation Date Computation Details
+                '📅 Creation Date (File Object)': 'N/A (right-click upload)',
+                '📅 Creation Date (EXIF)': uploadMetadata.exifMetadata?.DateTimeOriginal || 
+                                           uploadMetadata.exifMetadata?.DateTime || 
+                                           uploadMetadata.exifMetadata?.CreateDate || 
+                                           'Not present',
+                '✅ Creation Date (Final)': uploadMetadata.creationDate 
+                  ? `${new Date(uploadMetadata.creationDate).toLocaleString()} — Logic: ${uploadMetadata.creationDateSource || 'Unknown source'}`
+                  : 'N/A',
+                
                 'File Size': uploadMetadata.fileSize 
                   ? `${(uploadMetadata.fileSize / 1024).toFixed(2)} KB` 
                   : 'N/A',
