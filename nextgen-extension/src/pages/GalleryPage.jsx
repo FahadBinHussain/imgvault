@@ -101,7 +101,7 @@ export default function GalleryPage() {
           pageTitle: file.name,
           timestamp: Date.now()
         });
-        setUploadPageUrl(window.location.href);
+        setUploadPageUrl('');
       };
       reader.readAsDataURL(file);
     }
