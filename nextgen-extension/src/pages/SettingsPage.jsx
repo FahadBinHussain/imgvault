@@ -259,8 +259,8 @@ export default function SettingsPage() {
                 className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white
                          focus:outline-none focus:ring-2 focus:ring-primary-400"
               >
-                <option value="imgbb">ImgBB (faster loading)</option>
-                <option value="pixvid">Pixvid</option>
+                <option value="imgbb">ImgBB (Original Quality)</option>
+                <option value="pixvid">Pixvid (Compressed Quality)</option>
               </select>
               <p className="mt-2 text-xs text-slate-400">
                 Choose which service to display images from in the gallery
