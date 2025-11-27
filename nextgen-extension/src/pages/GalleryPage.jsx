@@ -384,6 +384,54 @@ export default function GalleryPage() {
     setTimelineData(timeline);
   }, [groupedImages]);
 
+  // Check for pending image from right-click context menu
+  useEffect(() => {
+    const checkPendingImage = async () => {
+      try {
+        const { pendingImage } = await chrome.storage.local.get('pendingImage');
+        if (pendingImage && pendingImage.srcUrl) {
+          // Clear the pending image
+          await chrome.storage.local.remove('pendingImage');
+          
+          // Populate the upload modal
+          setUploadImageData({
+            srcUrl: pendingImage.srcUrl,
+            fileName: pendingImage.srcUrl.split('/').pop().split('?')[0] || 'image.jpg'
+          });
+          setUploadPageUrl(pendingImage.pageUrl || '');
+          
+          // Open the upload modal
+          setShowUploadModal(true);
+          
+          // Extract metadata
+          try {
+            const response = await chrome.runtime.sendMessage({
+              action: 'extractMetadata',
+              imageUrl: pendingImage.srcUrl,
+              pageUrl: pendingImage.pageUrl,
+              fileName: pendingImage.srcUrl.split('/').pop().split('?')[0]
+            });
+
+            if (response.success) {
+              setUploadMetadata(response.metadata);
+              
+              // Check for duplicates
+              if (response.metadata.duplicateImage) {
+                setDuplicateData(response.metadata.duplicateImage);
+              }
+            }
+          } catch (error) {
+            console.error('Failed to extract metadata:', error);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check pending image:', error);
+      }
+    };
+    
+    checkPendingImage();
+  }, []);
+
   return (
     <div ref={pageContainerRef} className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-y-auto">
       {/* Timeline Scrollbar */}
