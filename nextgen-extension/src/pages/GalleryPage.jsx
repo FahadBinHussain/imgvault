@@ -1262,7 +1262,33 @@ export default function GalleryPage() {
         <Modal
           isOpen={showUploadModal}
           onClose={() => setShowUploadModal(false)}
-          title="Upload Image"
+          fullscreen={true}
+          title={
+            <div className="flex items-center justify-between w-full">
+              <span>Upload Image</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowUploadModal(false)}
+                  disabled={uploading}
+                  className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 
+                           text-white text-sm font-medium transition-colors disabled:opacity-50 
+                           disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleUploadSubmit(false)}
+                  disabled={uploading || !uploadImageData}
+                  className="px-4 py-2 rounded-lg bg-gradient-to-r from-primary-500 to-secondary-500 
+                           hover:from-primary-600 hover:to-secondary-600 text-white text-sm font-medium 
+                           transition-all disabled:opacity-50 disabled:cursor-not-allowed
+                           shadow-lg hover:shadow-xl"
+                >
+                  {uploading ? 'Uploading...' : 'Upload'}
+                </button>
+              </div>
+            </div>
+          }
         >
           <div className="space-y-6">
             {/* File Upload */}
@@ -1296,26 +1322,33 @@ export default function GalleryPage() {
                 </label>
               </div>
             ) : (
-              <div className="space-y-6">
-                {/* Image Preview */}
-                <div className="relative rounded-xl overflow-hidden bg-slate-800/50 border border-slate-700">
-                  <img
-                    src={uploadImageData.srcUrl}
-                    alt="Preview"
-                    className="w-full h-auto max-h-96 object-contain"
-                  />
-                  <button
-                    onClick={() => setUploadImageData(null)}
-                    className="absolute top-4 right-4 p-2 rounded-lg bg-red-500/80 hover:bg-red-500 
-                             text-white transition-colors shadow-lg"
-                    title="Remove image"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+              <div className="flex gap-6">
+                {/* Left Column - Sticky Image Preview */}
+                <div className="w-1/3 flex-shrink-0">
+                  <div className="sticky top-0">
+                    <div className="relative rounded-xl overflow-hidden bg-slate-800/50 border border-slate-700">
+                      <img
+                        src={uploadImageData.srcUrl}
+                        alt="Preview"
+                        className="w-full h-auto max-h-96 object-contain"
+                      />
+                      <button
+                        onClick={() => setUploadImageData(null)}
+                        className="absolute top-4 right-4 p-2 rounded-lg bg-red-500/80 hover:bg-red-500 
+                                 text-white transition-colors shadow-lg"
+                        title="Remove image"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Form Fields */}
-                <div className="space-y-4">
+                {/* Right Column - Scrollable Form Fields */}
+                <div className="flex-1 space-y-4 max-h-[70vh] overflow-y-auto pr-2"
+                     style={{ scrollbarGutter: 'stable' }}>
+                  {/* Form Fields */}
+                  <div className="space-y-4">
                   {/* Page URL */}
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -1367,32 +1400,31 @@ export default function GalleryPage() {
                     />
                   </div>
 
-                  {/* Extracted Metadata - Show all fields individually */}
+                  {/* Display ALL metadata fields that will be saved */}
                   {uploadMetadata && (() => {
-                    // Get upload file data
-                    const fileMetadata = {
+                    const allFields = {
                       'File Name': uploadImageData?.fileName || 'N/A',
                       'File Size': uploadMetadata.fileSize 
-                        ? `${(uploadMetadata.fileSize / 1024).toFixed(2)} KB (${uploadMetadata.fileSize} bytes)` 
+                        ? `${(uploadMetadata.fileSize / 1024).toFixed(2)} KB` 
                         : 'N/A',
                       'Dimensions': uploadMetadata.width && uploadMetadata.height 
                         ? `${uploadMetadata.width} × ${uploadMetadata.height}` 
-                        : 'N/A'
+                        : 'N/A',
+                      'SHA-256': uploadMetadata.sha256 || 'N/A',
+                      'pHash': uploadMetadata.pHash || 'N/A',
+                      'aHash': uploadMetadata.aHash || 'N/A',
+                      'dHash': uploadMetadata.dHash || 'N/A',
+                      ...(uploadMetadata.exifMetadata || {})
                     };
-                    
-                    // Combine with EXIF metadata
-                    const allMetadata = uploadMetadata.exifMetadata 
-                      ? { ...fileMetadata, ...uploadMetadata.exifMetadata }
-                      : fileMetadata;
                     
                     return (
                       <div className="space-y-3">
-                        {Object.entries(allMetadata).map(([key, value]) => (
+                        {Object.entries(allFields).map(([key, value]) => (
                           <div key={key}>
-                            <label className="block text-sm font-medium text-slate-300 mb-2">
+                            <label className="block text-xs font-medium text-slate-400 mb-1">
                               {key}
                             </label>
-                            <div className="px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 text-white text-sm break-all">
+                            <div className="px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-600 text-white text-xs break-all font-mono">
                               {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                             </div>
                           </div>
@@ -1482,28 +1514,6 @@ export default function GalleryPage() {
                     {uploadError?.message || String(uploadError)}
                   </div>
                 )}
-
-                {/* Action Buttons */}
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setShowUploadModal(false)}
-                    disabled={uploading}
-                    className="flex-1 px-6 py-3 rounded-lg bg-slate-700 hover:bg-slate-600 
-                             text-white font-medium transition-colors disabled:opacity-50 
-                             disabled:cursor-not-allowed"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => handleUploadSubmit(false)}
-                    disabled={uploading || !uploadImageData}
-                    className="flex-1 px-6 py-3 rounded-lg bg-gradient-to-r from-primary-500 to-secondary-500 
-                             hover:from-primary-600 hover:to-secondary-600 text-white font-medium 
-                             transition-all disabled:opacity-50 disabled:cursor-not-allowed
-                             shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
-                  >
-                    {uploading ? 'Uploading...' : 'Upload'}
-                  </button>
                 </div>
               </div>
             )}

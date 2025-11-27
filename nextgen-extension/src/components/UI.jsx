@@ -207,7 +207,7 @@ export const Spinner = ({ size = 'md', className }) => {
 /**
  * Modal component
  */
-export const Modal = ({ isOpen, onClose, title, children, className }) => {
+export const Modal = ({ isOpen, onClose, title, children, className, fullscreen = false }) => {
   if (!isOpen) return null;
 
   return (
@@ -218,19 +218,28 @@ export const Modal = ({ isOpen, onClose, title, children, className }) => {
       />
       <div
         className={clsx(
-          'relative z-10 glass-card rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto',
+          'relative z-10 glass-card rounded-2xl p-6 w-full overflow-y-auto',
+          fullscreen 
+            ? 'max-w-7xl max-h-[95vh] h-full' 
+            : 'max-w-lg max-h-[90vh]',
           className
         )}
       >
         {title && (
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-white">{title}</h2>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {typeof title === 'string' ? (
+              <h2 className="text-2xl font-bold text-white">{title}</h2>
+            ) : (
+              title
+            )}
+            {!fullscreen && (
+              <button
+                onClick={onClose}
+                className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
         )}
         {children}
