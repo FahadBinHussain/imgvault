@@ -396,7 +396,7 @@ export default function TrashPage() {
                     )}
                     
                     <img
-                      src={getImageUrl(image)}
+                      src={image.imgbbUrl || image.pixvidUrl}
                       alt={image.pageTitle || 'Trashed image'}
                       onLoad={() => handleImageLoad(image.id)}
                       className={`w-full object-cover transition-all duration-700 ease-out
