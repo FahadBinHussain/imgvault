@@ -301,7 +301,7 @@ export default function GalleryPage() {
   const groupImagesByDate = (images) => {
     const groups = {};
     images.forEach(img => {
-      const date = new Date(img.createdAt);
+      const date = new Date(img.internalAddedTimestamp);
       const today = new Date();
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
@@ -332,8 +332,8 @@ export default function GalleryPage() {
     dateKeys.forEach(dateKey => {
       // Get the first image from this date group to extract the actual date
       const firstImage = groupedImages[dateKey][0];
-      if (firstImage && firstImage.createdAt) {
-        const date = new Date(firstImage.createdAt);
+      if (firstImage && firstImage.internalAddedTimestamp) {
+        const date = new Date(firstImage.internalAddedTimestamp);
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         const monthLabel = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
         
@@ -683,10 +683,10 @@ export default function GalleryPage() {
                     </div>
 
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1">Created At</div>
+                      <div className="text-xs font-semibold text-slate-400 mb-1">Added To Vault</div>
                       <div className="text-white">
-                        {selectedImage.createdAt
-                          ? new Date(selectedImage.createdAt).toLocaleString('en-US', {
+                        {selectedImage.internalAddedTimestamp
+                          ? new Date(selectedImage.internalAddedTimestamp).toLocaleString('en-US', {
                               weekday: 'short',
                               year: 'numeric',
                               month: 'short',
