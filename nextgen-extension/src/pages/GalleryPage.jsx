@@ -5,15 +5,16 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Upload, Search, Trash2, Download, X } from 'lucide-react';
+import { RefreshCw, Upload, Search, Trash2, Download, X, Settings } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
-import { useImages, useImageUpload, useTrash } from '../hooks/useChromeExtension';
+import { useImages, useImageUpload, useTrash, useChromeStorage } from '../hooks/useChromeExtension';
 import TimelineScrollbar from '../components/TimelineScrollbar';
 
 export default function GalleryPage() {
   const { images, loading, reload, deleteImage } = useImages();
   const { trashedImages, loading: trashLoading } = useTrash();
   const { uploadImage, uploading, progress, error: uploadError } = useImageUpload();
+  const [defaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
   const [fullImageDetails, setFullImageDetails] = useState(null);
@@ -385,6 +386,11 @@ export default function GalleryPage() {
                     </h1>
                     <p className="text-sm text-slate-300 mt-1">
                       <span className="font-semibold text-primary-300">{images.length}</span> images in your vault
+                      <span className="mx-2 text-slate-500">•</span>
+                      <span className="text-slate-400">Source: </span>
+                      <span className="font-medium text-white">
+                        {defaultGallerySource === 'imgbb' ? 'ImgBB (Original Quality)' : 'Pixvid (Compressed Quality)'}
+                      </span>
                     </p>
                   </div>
                 </div>
@@ -397,6 +403,15 @@ export default function GalleryPage() {
                     title="Refresh"
                   >
                     <RefreshCw className="w-5 h-5 text-white" />
+                  </button>
+                  <button
+                    onClick={() => window.location.href = 'settings.html'}
+                    className="p-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
+                             backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
+                             shadow-lg hover:shadow-xl"
+                    title="Settings"
+                  >
+                    <Settings className="w-5 h-5 text-white" />
                   </button>
                   <button
                     onClick={() => window.location.href = 'trash.html'}
