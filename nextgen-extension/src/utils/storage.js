@@ -36,6 +36,7 @@
  * @property {string} [dHash] - Difference hash
  * @property {string[]} [tags] - Image tags
  * @property {string} [description] - Image description
+ * @property {Object} [exifMetadata] - Complete EXIF metadata from exifr
  */
 
 /**
@@ -140,6 +141,9 @@ export class StorageManager {
         };
       } else if (value instanceof Date) {
         fields[key] = { timestampValue: value.toISOString() };
+      } else if (typeof value === 'object') {
+        // Handle nested objects (like exifMetadata)
+        fields[key] = { stringValue: JSON.stringify(value) };
       }
     }
     
@@ -155,6 +159,16 @@ export class StorageManager {
   fromFirestoreDoc(doc) {
     const id = doc.name.split('/').pop();
     const fields = doc.fields;
+    
+    // Parse exifMetadata if it exists
+    let exifMetadata = null;
+    if (fields.exifMetadata?.stringValue) {
+      try {
+        exifMetadata = JSON.parse(fields.exifMetadata.stringValue);
+      } catch (e) {
+        console.warn('Failed to parse exifMetadata:', e);
+      }
+    }
     
     return {
       id,
@@ -177,7 +191,8 @@ export class StorageManager {
       dHash: fields.dHash?.stringValue || '',
       tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
       description: fields.description?.stringValue || '',
-      internalAddedTimestamp: fields.internalAddedTimestamp?.timestampValue || ''
+      internalAddedTimestamp: fields.internalAddedTimestamp?.timestampValue || '',
+      exifMetadata: exifMetadata
     };
   }
 

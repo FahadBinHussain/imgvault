@@ -39,6 +39,7 @@ export default function GalleryPage() {
   const [uploadPageUrl, setUploadPageUrl] = useState('');
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploadTags, setUploadTags] = useState('');
+  const [uploadMetadata, setUploadMetadata] = useState(null);
   const [duplicateData, setDuplicateData] = useState(null);
   // Handle image load for fade-in effect
   const handleImageLoad = (imageId) => {
@@ -89,14 +90,15 @@ export default function GalleryPage() {
     setUploadPageUrl('');
     setUploadDescription('');
     setUploadTags('');
+    setUploadMetadata(null);
     setDuplicateData(null);
   };
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         setUploadImageData({
           srcUrl: reader.result,
           fileName: file.name,
@@ -104,6 +106,23 @@ export default function GalleryPage() {
           timestamp: Date.now()
         });
         setUploadPageUrl('');
+        
+        // Extract metadata from the image
+        try {
+          const response = await chrome.runtime.sendMessage({
+            action: 'extractMetadata',
+            imageUrl: reader.result,
+            pageUrl: '',
+            fileName: file.name
+          });
+          
+          if (response.success && response.metadata) {
+            setUploadMetadata(response.metadata);
+            console.log('📸 Extracted metadata:', response.metadata);
+          }
+        } catch (error) {
+          console.error('Failed to extract metadata:', error);
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -1067,6 +1086,27 @@ export default function GalleryPage() {
                           </div>
                         </div>
                       </div>
+
+                      {/* EXIF Metadata */}
+                      {fullImageDetails?.exifMetadata && (
+                        <div className="space-y-3">
+                          <h4 className="text-sm font-semibold text-slate-300">EXIF Metadata</h4>
+                          <div className="bg-white/5 rounded-lg p-4 max-h-96 overflow-y-auto">
+                            <div className="space-y-2">
+                              {Object.entries(fullImageDetails.exifMetadata).map(([key, value]) => (
+                                <div key={key} className="flex items-start gap-3 py-1 border-b border-white/5 last:border-0">
+                                  <span className="text-xs font-semibold text-slate-400 min-w-[140px] flex-shrink-0">
+                                    {key}
+                                  </span>
+                                  <span className="text-xs text-white font-mono break-all">
+                                    {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -1310,6 +1350,26 @@ export default function GalleryPage() {
                                focus:ring-primary-500/20 transition-all"
                     />
                   </div>
+
+                  {/* Extracted EXIF Metadata */}
+                  {uploadMetadata?.exifMetadata && (
+                    <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-green-300 text-lg">📸</span>
+                        <h4 className="text-green-300 font-semibold">Extracted EXIF Metadata</h4>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto space-y-2 text-sm">
+                        {Object.entries(uploadMetadata.exifMetadata).map(([key, value]) => (
+                          <div key={key} className="flex justify-between gap-4 py-1.5 border-b border-green-500/10">
+                            <span className="text-green-200/70 font-medium">{key}:</span>
+                            <span className="text-green-100 text-right break-all">
+                              {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Upload Progress */}

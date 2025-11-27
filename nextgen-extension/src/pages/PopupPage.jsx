@@ -17,6 +17,7 @@ export default function PopupPage() {
   const [pageUrl, setPageUrl] = useState('');
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
+  const [uploadMetadata, setUploadMetadata] = useState(null);
   const [isPageUrlEditable, setIsPageUrlEditable] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [duplicateData, setDuplicateData] = useState(null);
@@ -29,17 +30,34 @@ export default function PopupPage() {
     }
   }, [pendingImage, clearPending]);
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         setImageData({
           srcUrl: reader.result,
           pageUrl: window.location.href,
           pageTitle: 'Uploaded from computer',
           timestamp: Date.now()
         });
+        
+        // Extract metadata from the image
+        try {
+          const response = await chrome.runtime.sendMessage({
+            action: 'extractMetadata',
+            imageUrl: reader.result,
+            pageUrl: window.location.href,
+            fileName: file.name
+          });
+          
+          if (response.success && response.metadata) {
+            setUploadMetadata(response.metadata);
+            console.log('📸 Extracted metadata:', response.metadata);
+          }
+        } catch (error) {
+          console.error('Failed to extract metadata:', error);
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -312,6 +330,26 @@ export default function PopupPage() {
                          focus:ring-primary-500/20 transition-all shadow-lg"
               />
             </div>
+
+            {/* Extracted EXIF Metadata */}
+            {uploadMetadata?.exifMetadata && (
+              <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-green-300 text-lg">📸</span>
+                  <h4 className="text-green-300 font-semibold text-sm">Extracted EXIF Metadata</h4>
+                </div>
+                <div className="max-h-48 overflow-y-auto space-y-2 text-xs">
+                  {Object.entries(uploadMetadata.exifMetadata).map(([key, value]) => (
+                    <div key={key} className="flex justify-between gap-4 py-1.5 border-b border-green-500/10">
+                      <span className="text-green-200/70 font-medium">{key}:</span>
+                      <span className="text-green-100 text-right break-all">
+                        {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Upload Progress with glow */}

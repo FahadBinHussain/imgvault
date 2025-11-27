@@ -13,6 +13,7 @@
  */
 
 import { URLNormalizer } from './url-normalizer.js';
+import exifr from 'exifr';
 
 /**
  * @typedef {Object} ImageMetadata
@@ -25,6 +26,7 @@ import { URLNormalizer } from './url-normalizer.js';
  * @property {number} size - File size
  * @property {string} sourceUrl - Source image URL
  * @property {string} pageUrl - Source page URL
+ * @property {Object} [exifMetadata] - Complete EXIF metadata from exifr
  */
 
 /**
@@ -203,13 +205,27 @@ export class DuplicateDetector {
   }
 
   /**
-   * Extract complete metadata from image blob
+   * Extract complete metadata from image blob including EXIF
    * @param {Blob} blob - Image blob
    * @param {string} sourceUrl - Source image URL
    * @param {string} pageUrl - Source page URL
    * @returns {Promise<ImageMetadata>} Complete metadata
    */
   async extractMetadata(blob, sourceUrl, pageUrl) {
+    console.log('🔍 Extracting metadata with EXIF support...');
+    
+    // Extract EXIF metadata using exifr (combined: true for all possible metadata)
+    let exifMetadata = null;
+    try {
+      exifMetadata = await exifr.parse(blob, { combined: true });
+      console.log('📸 EXIF metadata extracted:', exifMetadata ? 'YES' : 'NO');
+      if (exifMetadata) {
+        console.log('📊 EXIF fields found:', Object.keys(exifMetadata).length);
+      }
+    } catch (error) {
+      console.warn('⚠️ EXIF extraction failed (may be normal for some images):', error.message);
+    }
+    
     const [sha256, pHash, aHash, dHash, dimensions] = await Promise.all([
       this.generateSHA256(blob),
       this.generatePHash(blob),
@@ -227,7 +243,8 @@ export class DuplicateDetector {
       height: dimensions.height,
       size: blob.size,
       sourceUrl,
-      pageUrl
+      pageUrl,
+      exifMetadata: exifMetadata || null
     };
   }
 

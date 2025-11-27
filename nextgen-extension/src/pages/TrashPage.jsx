@@ -783,6 +783,27 @@ export default function TrashPage() {
                               </div>
                             </div>
                           </div>
+
+                          {/* EXIF Metadata */}
+                          {fullImageDetails?.exifMetadata && (
+                            <div className="space-y-3">
+                              <h4 className="text-sm font-semibold text-slate-300">EXIF Metadata</h4>
+                              <div className="bg-white/5 rounded-lg p-4 max-h-96 overflow-y-auto">
+                                <div className="space-y-2">
+                                  {Object.entries(fullImageDetails.exifMetadata).map(([key, value]) => (
+                                    <div key={key} className="flex items-start gap-3 py-1 border-b border-white/5 last:border-0">
+                                      <span className="text-xs font-semibold text-slate-400 min-w-[140px] flex-shrink-0">
+                                        {key}
+                                      </span>
+                                      <span className="text-xs text-white font-mono break-all">
+                                        {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </>
                       )}
                     </div>

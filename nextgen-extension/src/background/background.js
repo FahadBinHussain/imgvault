@@ -154,6 +154,12 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'extractMetadata':
+        this.extractMetadataOnly(request.imageUrl, request.pageUrl, request.fileName)
+          .then(metadata => sendResponse({ success: true, metadata }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       default:
         console.warn('Unknown action:', action);
         return false;
@@ -289,16 +295,13 @@ class ImgVaultServiceWorker {
         sourcePageUrl: data.pageUrl,
         pageTitle: data.pageTitle,
         fileName,
-        fileType: imageBlob.type,
-        fileSize: imageBlob.size,
-        width: metadata.width,
-        height: metadata.height,
         sha256: metadata.sha256,
         pHash: metadata.pHash,
         aHash: metadata.aHash,
         dHash: metadata.dHash,
         tags: data.tags || [],
-        description: data.description || ''
+        description: data.description || '',
+        exifMetadata: metadata.exifMetadata || null
       };
       
       const savedId = await this.storage.saveImage(imageMetadata);
@@ -353,6 +356,36 @@ class ImgVaultServiceWorker {
     }
     
     return fileName;
+  }
+
+  /**
+   * Extract metadata only without uploading
+   * @param {string} imageUrl - Image data URL
+   * @param {string} pageUrl - Page URL
+   * @param {string} fileName - File name
+   * @returns {Promise<Object>} Metadata object
+   */
+  async extractMetadataOnly(imageUrl, pageUrl, fileName) {
+    try {
+      console.log('🔍 Extracting metadata only...');
+      
+      // Fetch image
+      const response = await fetch(imageUrl);
+      const imageBlob = await response.blob();
+      
+      // Extract metadata using duplicate detector
+      const metadata = await this.duplicateDetector.extractMetadata(
+        imageBlob,
+        imageUrl,
+        pageUrl
+      );
+      
+      console.log('✅ Metadata extracted:', metadata);
+      return metadata;
+    } catch (error) {
+      console.error('❌ Metadata extraction failed:', error);
+      throw error;
+    }
   }
 
   /**
