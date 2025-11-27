@@ -1379,6 +1379,71 @@ export default function GalleryPage() {
                       );
                     })()}
                     
+                    {/* Metadata Computation Details */}
+                    {uploadMetadata && (
+                      <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/30 space-y-3">
+                        <h4 className="text-blue-300 font-semibold text-sm flex items-center gap-2">
+                          <span>🔍</span>
+                          Metadata Computation
+                        </h4>
+                        
+                        {/* MIME Type */}
+                        <div className="space-y-2">
+                          <div className="text-xs font-medium text-blue-200/70">MIME Type:</div>
+                          <div className="space-y-1.5 text-xs">
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-400">File Object:</span>
+                              <span className="text-slate-200 font-mono bg-slate-800/50 px-2 py-0.5 rounded">
+                                {uploadImageData?.file?.type || 'N/A'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-400">EXIF:</span>
+                              <span className="text-slate-200 font-mono bg-slate-800/50 px-2 py-0.5 rounded">
+                                {uploadMetadata.exifMetadata?.MIMEType || uploadMetadata.exifMetadata?.FileType || 'Not present'}
+                              </span>
+                            </div>
+                            <div className="pt-1 border-t border-blue-500/20">
+                              <div className="text-blue-300 font-medium">Logic:</div>
+                              <div className="text-blue-200/80 mt-1">
+                                Use File object, verify against EXIF if present
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Creation Date */}
+                        <div className="space-y-2 pt-2 border-t border-blue-500/20">
+                          <div className="text-xs font-medium text-blue-200/70">Creation Date:</div>
+                          <div className="space-y-1.5 text-xs">
+                            <div className="flex justify-between items-start gap-2">
+                              <span className="text-slate-400 flex-shrink-0">File Object:</span>
+                              <span className="text-slate-200 font-mono bg-slate-800/50 px-2 py-0.5 rounded text-right">
+                                {uploadImageData?.file?.lastModified 
+                                  ? new Date(uploadImageData.file.lastModified).toLocaleString()
+                                  : 'N/A'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-start gap-2">
+                              <span className="text-slate-400 flex-shrink-0">EXIF:</span>
+                              <span className="text-slate-200 font-mono bg-slate-800/50 px-2 py-0.5 rounded text-right">
+                                {uploadMetadata.exifMetadata?.DateTimeOriginal || 
+                                 uploadMetadata.exifMetadata?.DateTime || 
+                                 uploadMetadata.exifMetadata?.CreateDate || 
+                                 'Not present'}
+                              </span>
+                            </div>
+                            <div className="pt-1 border-t border-blue-500/20">
+                              <div className="text-blue-300 font-medium">Logic:</div>
+                              <div className="text-blue-200/80 mt-1">
+                                Prefer EXIF if exists, fallback to OS lastModified
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
                     {/* Duplicate Detection */}
                     {duplicateData && (
                       <div className="space-y-4 p-5 rounded-xl bg-yellow-500/10 border-2 border-yellow-500/30">
@@ -1520,26 +1585,10 @@ export default function GalleryPage() {
                   {uploadMetadata && (() => {
                     const allFields = {
                       'File Name': uploadImageData?.fileName || 'N/A',
-                      
-                      // MIME Type Computation Details
-                      '📋 MIME Type (File Object)': uploadImageData?.file?.type || 'N/A',
-                      '📋 MIME Type (EXIF)': uploadMetadata.exifMetadata?.MIMEType || uploadMetadata.exifMetadata?.FileType || 'Not present',
-                      '✅ MIME Type (Final)': uploadMetadata.mimeType 
-                        ? `${uploadMetadata.mimeType} — Logic: ${uploadMetadata.mimeTypeSource || 'File object as primary source'}`
+                      'MIME Type': uploadMetadata.mimeType || 'N/A',
+                      'Creation Date': uploadMetadata.creationDate 
+                        ? new Date(uploadMetadata.creationDate).toLocaleString()
                         : 'N/A',
-                      
-                      // Creation Date Computation Details
-                      '📅 Creation Date (File Object)': uploadImageData?.file?.lastModified 
-                        ? new Date(uploadImageData.file.lastModified).toLocaleString()
-                        : 'N/A',
-                      '📅 Creation Date (EXIF)': uploadMetadata.exifMetadata?.DateTimeOriginal || 
-                                                 uploadMetadata.exifMetadata?.DateTime || 
-                                                 uploadMetadata.exifMetadata?.CreateDate || 
-                                                 'Not present',
-                      '✅ Creation Date (Final)': uploadMetadata.creationDate 
-                        ? `${new Date(uploadMetadata.creationDate).toLocaleString()} — Logic: ${uploadMetadata.creationDateSource || 'Unknown source'}`
-                        : 'N/A',
-                      
                       'File Size': uploadMetadata.fileSize 
                         ? `${(uploadMetadata.fileSize / 1024).toFixed(2)} KB` 
                         : 'N/A',
