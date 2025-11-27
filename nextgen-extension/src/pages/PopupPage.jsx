@@ -331,7 +331,7 @@ export default function PopupPage() {
               />
             </div>
 
-            {/* Extracted Metadata */}
+            {/* Extracted Metadata - Show all fields individually */}
             {uploadMetadata && (() => {
               // Get upload file data
               const fileMetadata = {
@@ -350,23 +350,17 @@ export default function PopupPage() {
                 : fileMetadata;
               
               return (
-                <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-green-300 text-lg">📸</span>
-                    <h4 className="text-green-300 font-semibold text-sm">
-                      Extracted Metadata ({Object.keys(allMetadata).length} fields)
-                    </h4>
-                  </div>
-                  <div className="max-h-48 overflow-y-auto space-y-2 text-xs">
-                    {Object.entries(allMetadata).map(([key, value]) => (
-                      <div key={key} className="flex justify-between gap-4 py-1.5 border-b border-green-500/10">
-                        <span className="text-green-200/70 font-medium">{key}:</span>
-                        <span className="text-green-100 text-right break-all">
-                          {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                        </span>
+                <div className="space-y-3">
+                  {Object.entries(allMetadata).map(([key, value]) => (
+                    <div key={key}>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">
+                        {key}
+                      </label>
+                      <div className="px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 text-white text-sm break-all">
+                        {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
                 </div>
               );
             })()}
