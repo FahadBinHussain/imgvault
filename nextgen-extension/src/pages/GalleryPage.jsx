@@ -1325,7 +1325,7 @@ export default function GalleryPage() {
               <div className="flex gap-6">
                 {/* Left Column - Sticky Image Preview */}
                 <div className="w-1/3 flex-shrink-0">
-                  <div className="sticky top-0">
+                  <div className="sticky top-0 space-y-3">
                     <div className="relative rounded-xl overflow-hidden bg-slate-800/50 border border-slate-700">
                       <img
                         src={uploadImageData.srcUrl}
@@ -1341,6 +1341,36 @@ export default function GalleryPage() {
                         <X className="w-5 h-5" />
                       </button>
                     </div>
+                    
+                    {/* Metadata field count */}
+                    {uploadMetadata && (() => {
+                      const allFields = {
+                        'File Name': uploadImageData?.fileName || 'N/A',
+                        'File Size': uploadMetadata.fileSize ? `${(uploadMetadata.fileSize / 1024).toFixed(2)} KB` : 'N/A',
+                        'Dimensions': uploadMetadata.width && uploadMetadata.height ? `${uploadMetadata.width} × ${uploadMetadata.height}` : 'N/A',
+                        'SHA-256': uploadMetadata.sha256 || 'N/A',
+                        'pHash': uploadMetadata.pHash || 'N/A',
+                        'aHash': uploadMetadata.aHash || 'N/A',
+                        'dHash': uploadMetadata.dHash || 'N/A',
+                        ...(uploadMetadata.exifMetadata || {})
+                      };
+                      const totalFields = Object.keys(allFields).length + 4; // +4 for tags, description, pageUrl, pageTitle
+                      return (
+                        <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/30">
+                          <div className="flex items-center justify-between">
+                            <span className="text-green-300 font-semibold text-sm">
+                              📊 Total Metadata Fields
+                            </span>
+                            <span className="text-green-200 font-bold text-2xl">
+                              {totalFields}
+                            </span>
+                          </div>
+                          <p className="text-green-200/70 text-xs mt-2">
+                            This is how many fields will be saved to Firestore
+                          </p>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
