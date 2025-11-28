@@ -1247,119 +1247,152 @@ export default function GalleryPage() {
                     </div>
                   ) : (
                     <>
-                      {/* Technical Details Grid */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <h4 className="text-xs font-semibold text-slate-400 mb-1">Document ID</h4>
-                          <p className="text-white font-mono text-xs break-all">{selectedImage.id || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-semibold text-slate-400 mb-1">File Name</h4>
-                          <p className="text-white font-mono text-xs break-all">
-                            {fullImageDetails?.fileName || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                          </p>
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-semibold text-slate-400 mb-1">File Type</h4>
-                          <p className="text-white font-mono text-xs">
-                            {fullImageDetails?.fileType || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                          </p>
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-semibold text-slate-400 mb-1">File Size</h4>
-                          <p className="text-white font-mono text-xs">
-                            {fullImageDetails?.fileSize 
-                              ? `${(fullImageDetails.fileSize / 1024).toFixed(2)} KB` 
-                              : loadingNerdsTab ? 'Loading...' : 'N/A'}
-                          </p>
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-semibold text-slate-400 mb-1">Dimensions</h4>
-                          <p className="text-white font-mono text-xs">
-                            {fullImageDetails?.width && fullImageDetails?.height
-                              ? `${fullImageDetails.width} × ${fullImageDetails.height}`
-                              : loadingNerdsTab ? 'Loading...' : 'N/A'}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Hash Values */}
-                      <div className="space-y-3">
-                        <h4 className="text-sm font-semibold text-slate-300">Hash Values</h4>
+                      {/* All Fields in Uniform Style */}
+                      <div className="bg-white/5 rounded-lg p-4 max-h-[60vh] overflow-y-auto">
                         <div className="space-y-2">
-                          <div>
-                            <h5 className="text-xs font-semibold text-slate-400 mb-1">SHA-256</h5>
-                            <div className="bg-white/5 rounded p-2">
-                              <p className="text-white font-mono text-xs break-all">
-                                {fullImageDetails?.sha256 || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                              </p>
-                            </div>
+                          {/* Document ID */}
+                          <div className="flex items-start gap-3 py-2 border-b border-white/5">
+                            <span className="text-xs font-semibold text-slate-400 min-w-[160px] flex-shrink-0">
+                              Document ID
+                            </span>
+                            <span className="text-xs text-white font-mono break-all">
+                              {selectedImage.id || 'N/A'}
+                            </span>
                           </div>
-                          <div>
-                            <h5 className="text-xs font-semibold text-slate-400 mb-1">pHash</h5>
-                            <div className="bg-white/5 rounded p-2">
-                              <p className="text-white font-mono text-xs break-all">
-                                {fullImageDetails?.pHash 
-                                  ? `${fullImageDetails.pHash.substring(0, 64)}...` 
-                                  : loadingNerdsTab ? 'Loading...' : 'N/A'}
-                              </p>
-                            </div>
+
+                          {/* File Name */}
+                          <div className="flex items-start gap-3 py-2 border-b border-white/5">
+                            <span className="text-xs font-semibold text-slate-400 min-w-[160px] flex-shrink-0">
+                              File Name
+                            </span>
+                            <span className="text-xs text-white font-mono break-all">
+                              {fullImageDetails?.fileName || (loadingNerdsTab ? 'Loading...' : 'N/A')}
+                            </span>
                           </div>
-                          <div>
-                            <h5 className="text-xs font-semibold text-slate-400 mb-1">aHash</h5>
-                            <div className="bg-white/5 rounded p-2">
-                              <p className="text-white font-mono text-xs break-all">
-                                {fullImageDetails?.aHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                              </p>
-                            </div>
+
+                          {/* File Type */}
+                          <div className="flex items-start gap-3 py-2 border-b border-white/5">
+                            <span className="text-xs font-semibold text-slate-400 min-w-[160px] flex-shrink-0">
+                              File Type
+                            </span>
+                            <span className="text-xs text-white font-mono break-all">
+                              {fullImageDetails?.fileType || (loadingNerdsTab ? 'Loading...' : 'N/A')}
+                            </span>
                           </div>
-                          <div>
-                            <h5 className="text-xs font-semibold text-slate-400 mb-1">dHash</h5>
-                            <div className="bg-white/5 rounded p-2">
-                              <p className="text-white font-mono text-xs break-all">
-                                {fullImageDetails?.dHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                              </p>
-                            </div>
+
+                          {/* File Size */}
+                          <div className="flex items-start gap-3 py-2 border-b border-white/5">
+                            <span className="text-xs font-semibold text-slate-400 min-w-[160px] flex-shrink-0">
+                              File Size
+                            </span>
+                            <span className="text-xs text-white font-mono break-all">
+                              {fullImageDetails?.fileSize 
+                                ? `${(fullImageDetails.fileSize / 1024).toFixed(2)} KB` 
+                                : loadingNerdsTab ? 'Loading...' : 'N/A'}
+                            </span>
                           </div>
+
+                          {/* Dimensions */}
+                          <div className="flex items-start gap-3 py-2 border-b border-white/5">
+                            <span className="text-xs font-semibold text-slate-400 min-w-[160px] flex-shrink-0">
+                              Dimensions
+                            </span>
+                            <span className="text-xs text-white font-mono break-all">
+                              {fullImageDetails?.width && fullImageDetails?.height
+                                ? `${fullImageDetails.width} × ${fullImageDetails.height}`
+                                : loadingNerdsTab ? 'Loading...' : 'N/A'}
+                            </span>
+                          </div>
+
+                          {/* Width */}
+                          {fullImageDetails?.width && (
+                            <div className="flex items-start gap-3 py-2 border-b border-white/5">
+                              <span className="text-xs font-semibold text-slate-400 min-w-[160px] flex-shrink-0">
+                                Width
+                              </span>
+                              <span className="text-xs text-white font-mono break-all">
+                                {fullImageDetails.width}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Height */}
+                          {fullImageDetails?.height && (
+                            <div className="flex items-start gap-3 py-2 border-b border-white/5">
+                              <span className="text-xs font-semibold text-slate-400 min-w-[160px] flex-shrink-0">
+                                Height
+                              </span>
+                              <span className="text-xs text-white font-mono break-all">
+                                {fullImageDetails.height}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* SHA-256 */}
+                          <div className="flex items-start gap-3 py-2 border-b border-white/5">
+                            <span className="text-xs font-semibold text-slate-400 min-w-[160px] flex-shrink-0">
+                              SHA-256
+                            </span>
+                            <span className="text-xs text-white font-mono break-all">
+                              {fullImageDetails?.sha256 || (loadingNerdsTab ? 'Loading...' : 'N/A')}
+                            </span>
+                          </div>
+
+                          {/* pHash */}
+                          <div className="flex items-start gap-3 py-2 border-b border-white/5">
+                            <span className="text-xs font-semibold text-slate-400 min-w-[160px] flex-shrink-0">
+                              pHash
+                            </span>
+                            <span className="text-xs text-white font-mono break-all">
+                              {fullImageDetails?.pHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
+                            </span>
+                          </div>
+
+                          {/* aHash */}
+                          <div className="flex items-start gap-3 py-2 border-b border-white/5">
+                            <span className="text-xs font-semibold text-slate-400 min-w-[160px] flex-shrink-0">
+                              aHash
+                            </span>
+                            <span className="text-xs text-white font-mono break-all">
+                              {fullImageDetails?.aHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
+                            </span>
+                          </div>
+
+                          {/* dHash */}
+                          <div className="flex items-start gap-3 py-2 border-b border-white/5">
+                            <span className="text-xs font-semibold text-slate-400 min-w-[160px] flex-shrink-0">
+                              dHash
+                            </span>
+                            <span className="text-xs text-white font-mono break-all">
+                              {fullImageDetails?.dHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
+                            </span>
+                          </div>
+
+                          {/* All other EXIF fields in the same style */}
+                          {fullImageDetails && (() => {
+                            // Define known fields to exclude
+                            const knownFields = new Set([
+                              'id', 'pixvidUrl', 'pixvidDeleteUrl', 'imgbbUrl', 'imgbbDeleteUrl', 'imgbbThumbUrl',
+                              'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize', 'tags', 'description',
+                              'internalAddedTimestamp', 'sha256', 'pHash', 'aHash', 'dHash', 'width', 'height', 'fileType'
+                            ]);
+                            
+                            // Get all EXIF fields (everything that's not in knownFields)
+                            const exifFields = Object.entries(fullImageDetails).filter(([key]) => !knownFields.has(key));
+                            
+                            return exifFields.map(([key, value]) => (
+                              <div key={key} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
+                                <span className="text-xs font-semibold text-slate-400 min-w-[160px] flex-shrink-0">
+                                  {key}
+                                </span>
+                                <span className="text-xs text-white font-mono break-all">
+                                  {typeof value === 'object' ? JSON.stringify(value) : String(value || 'N/A')}
+                                </span>
+                              </div>
+                            ));
+                          })()}
                         </div>
                       </div>
-
-                      {/* EXIF Metadata - Show all extracted fields */}
-                      {fullImageDetails && (() => {
-                        // Define known non-EXIF fields to exclude
-                        const knownFields = new Set([
-                          'id', 'pixvidUrl', 'pixvidDeleteUrl', 'imgbbUrl', 'imgbbDeleteUrl', 'imgbbThumbUrl',
-                          'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize', 'tags', 'description',
-                          'internalAddedTimestamp', 'sha256', 'pHash', 'aHash', 'dHash'
-                        ]);
-                        
-                        // Get all EXIF fields (everything that's not in knownFields)
-                        const exifFields = Object.entries(fullImageDetails).filter(([key]) => !knownFields.has(key));
-                        
-                        if (exifFields.length === 0) return null;
-                        
-                        return (
-                          <div className="space-y-3">
-                            <h4 className="text-sm font-semibold text-slate-300">
-                              EXIF Metadata ({exifFields.length} fields)
-                            </h4>
-                            <div className="bg-white/5 rounded-lg p-4 max-h-96 overflow-y-auto">
-                              <div className="space-y-2">
-                                {exifFields.map(([key, value]) => (
-                                  <div key={key} className="flex items-start gap-3 py-1 border-b border-white/5 last:border-0">
-                                    <span className="text-xs font-semibold text-slate-400 min-w-[140px] flex-shrink-0">
-                                      {key}
-                                    </span>
-                                    <span className="text-xs text-white font-mono break-all">
-                                      {typeof value === 'object' ? JSON.stringify(value) : String(value || 'N/A')}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })()}
                     </>
                   )}
                 </div>
