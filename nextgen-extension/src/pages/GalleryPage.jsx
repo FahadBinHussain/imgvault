@@ -41,6 +41,10 @@ export default function GalleryPage() {
   const [uploadTags, setUploadTags] = useState('');
   const [uploadMetadata, setUploadMetadata] = useState(null);
   const [duplicateData, setDuplicateData] = useState(null);
+  
+  // Drag & drop state
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
   // Handle image load for fade-in effect
   const handleImageLoad = (imageId) => {
     setLoadedImages(prev => new Set(prev).add(imageId));
@@ -97,39 +101,106 @@ export default function GalleryPage() {
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        setUploadImageData({
-          srcUrl: reader.result,
-          fileName: file.name,
-          pageTitle: '',
-          timestamp: Date.now(),
-          file: file // Store the original file object for MIME and date extraction
-        });
-        setUploadPageUrl('');
-        
-        // Extract metadata from the image
-        try {
-          const response = await chrome.runtime.sendMessage({
-            action: 'extractMetadata',
-            imageUrl: reader.result,
-            pageUrl: '',
-            fileName: file.name,
-            fileMimeType: file.type,
-            fileLastModified: file.lastModified
-          });
-          
-          if (response.success && response.metadata) {
-            setUploadMetadata(response.metadata);
-            console.log('📸 Extracted metadata:', response.metadata);
-          }
-        } catch (error) {
-          console.error('Failed to extract metadata:', error);
-        }
-      };
-      reader.readAsDataURL(file);
+      await processImageFile(file);
     }
   };
+
+  const processImageFile = async (file) => {
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      setUploadImageData({
+        srcUrl: reader.result,
+        fileName: file.name,
+        pageTitle: '',
+        timestamp: Date.now(),
+        file: file // Store the original file object for MIME and date extraction
+      });
+      setUploadPageUrl('');
+      
+      // Extract metadata from the image
+      try {
+        const response = await chrome.runtime.sendMessage({
+          action: 'extractMetadata',
+          imageUrl: reader.result,
+          pageUrl: '',
+          fileName: file.name,
+          fileMimeType: file.type,
+          fileLastModified: file.lastModified
+        });
+        
+        if (response.success && response.metadata) {
+          setUploadMetadata(response.metadata);
+          console.log('📸 Extracted metadata:', response.metadata);
+        }
+      } catch (error) {
+        console.error('Failed to extract metadata:', error);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Drag & Drop handlers
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current++;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounter.current = 0;
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      // Check if it's an image
+      if (file.type.startsWith('image/')) {
+        await processImageFile(file);
+        setShowUploadModal(true);
+      } else {
+        showToast('❌ Please drop an image file', 'error', 3000);
+      }
+    }
+  };
+
+  // Add drag & drop event listeners
+  useEffect(() => {
+    const handleWindowDragEnter = (e) => handleDragEnter(e);
+    const handleWindowDragLeave = (e) => handleDragLeave(e);
+    const handleWindowDragOver = (e) => handleDragOver(e);
+    const handleWindowDrop = (e) => handleDrop(e);
+
+    window.addEventListener('dragenter', handleWindowDragEnter);
+    window.addEventListener('dragleave', handleWindowDragLeave);
+    window.addEventListener('dragover', handleWindowDragOver);
+    window.addEventListener('drop', handleWindowDrop);
+
+    return () => {
+      window.removeEventListener('dragenter', handleWindowDragEnter);
+      window.removeEventListener('dragleave', handleWindowDragLeave);
+      window.removeEventListener('dragover', handleWindowDragOver);
+      window.removeEventListener('drop', handleWindowDrop);
+    };
+  }, []);
 
   const handleUploadSubmit = async (ignoreDuplicates = false) => {
     if (!uploadImageData) return;
@@ -434,6 +505,121 @@ export default function GalleryPage() {
 
   return (
     <div ref={pageContainerRef} className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-y-auto">
+      {/* Drag & Drop Overlay with Animated Highlights */}
+      <AnimatePresence>
+        {isDragging && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 pointer-events-none"
+          >
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 via-secondary-500/20 to-primary-500/20 backdrop-blur-sm" />
+            
+            {/* Animated border glow */}
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="absolute inset-8"
+            >
+              {/* Pulsing border */}
+              <motion.div
+                animate={{
+                  boxShadow: [
+                    '0 0 0 4px rgba(139, 92, 246, 0.3), 0 0 40px rgba(139, 92, 246, 0.4)',
+                    '0 0 0 4px rgba(236, 72, 153, 0.3), 0 0 60px rgba(236, 72, 153, 0.4)',
+                    '0 0 0 4px rgba(139, 92, 246, 0.3), 0 0 40px rgba(139, 92, 246, 0.4)',
+                  ],
+                }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+                className="w-full h-full rounded-3xl border-4 border-dashed border-white/40"
+              />
+              
+              {/* Center content */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <motion.div
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ 
+                    type: "spring",
+                    stiffness: 200,
+                    damping: 15,
+                    delay: 0.1
+                  }}
+                  className="relative mb-6"
+                >
+                  {/* Glowing background */}
+                  <motion.div
+                    animate={{
+                      scale: [1, 1.2, 1],
+                      opacity: [0.5, 0.8, 0.5],
+                    }}
+                    transition={{
+                      duration: 2,
+                      repeat: Infinity,
+                      ease: "easeInOut"
+                    }}
+                    className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-full blur-3xl"
+                  />
+                  
+                  {/* Upload icon */}
+                  <div className="relative z-10 bg-white rounded-full p-8 shadow-2xl">
+                    <Upload className="w-20 h-20 text-primary-600" />
+                  </div>
+                </motion.div>
+                
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                  className="text-center"
+                >
+                  <h3 className="text-4xl font-bold text-white mb-3 drop-shadow-2xl">
+                    Drop your image here
+                  </h3>
+                  <p className="text-xl text-white/80 drop-shadow-lg">
+                    Release to upload to ImgVault
+                  </p>
+                </motion.div>
+                
+                {/* Floating particles */}
+                {[...Array(8)].map((_, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, scale: 0 }}
+                    animate={{
+                      opacity: [0, 1, 0],
+                      scale: [0, 1, 0],
+                      x: [0, Math.random() * 200 - 100],
+                      y: [0, Math.random() * 200 - 100],
+                    }}
+                    transition={{
+                      duration: 2,
+                      repeat: Infinity,
+                      delay: i * 0.2,
+                      ease: "easeOut"
+                    }}
+                    className="absolute w-3 h-3 bg-white/60 rounded-full blur-sm"
+                    style={{
+                      left: '50%',
+                      top: '50%',
+                    }}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Timeline Scrollbar */}
       <TimelineScrollbar dateGroups={timelineData} containerRef={pageContainerRef} />
       
