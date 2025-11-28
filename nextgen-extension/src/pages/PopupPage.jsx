@@ -403,16 +403,15 @@ export default function PopupPage() {
             {uploadMetadata && (() => {
               const allFields = {
                 'File Name': imageData?.srcUrl?.split('/').pop() || 'N/A',
-                'MIME Type': uploadMetadata.mimeType || 'N/A',
+                'File Type': uploadMetadata.fileType || 'N/A',
                 'Creation Date': uploadMetadata.creationDate 
                   ? new Date(uploadMetadata.creationDate).toLocaleString()
                   : 'N/A',
                 'File Size': uploadMetadata.fileSize 
                   ? `${(uploadMetadata.fileSize / 1024).toFixed(2)} KB` 
                   : 'N/A',
-                'Dimensions': uploadMetadata.width && uploadMetadata.height 
-                  ? `${uploadMetadata.width} × ${uploadMetadata.height}` 
-                  : 'N/A',
+                'Width': uploadMetadata.width || 'N/A',
+                'Height': uploadMetadata.height || 'N/A',
                 'SHA-256': uploadMetadata.sha256 || 'N/A',
                 'pHash': uploadMetadata.pHash || 'N/A',
                 'aHash': uploadMetadata.aHash || 'N/A',

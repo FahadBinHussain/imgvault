@@ -206,28 +206,28 @@ class ImgVaultServiceWorker {
         data.pageUrl
       );
       
-      // Compute MIME type (prefer File object from data, verify against EXIF if present)
-      const exifMimeType = metadata.exifMetadata?.MIMEType || metadata.exifMetadata?.FileType;
-      let mimeType = data.fileMimeType || imageBlob.type;
-      let mimeTypeSource = '';
+      // Compute file type (prefer File object from data, verify against EXIF if present)
+      const exifFileType = metadata.exifMetadata?.MIMEType || metadata.exifMetadata?.FileType;
+      let fileType = data.fileMimeType || imageBlob.type;
+      let fileTypeSource = '';
       
-      if (!data.fileMimeType && !exifMimeType) {
+      if (!data.fileMimeType && !exifFileType) {
         // No File object, no EXIF - use blob type (web image)
-        mimeTypeSource = 'Blob type (web image)';
-      } else if (!data.fileMimeType && exifMimeType) {
+        fileTypeSource = 'Blob type (web image)';
+      } else if (!data.fileMimeType && exifFileType) {
         // No File object but EXIF available - use EXIF (web image with metadata)
-        mimeType = exifMimeType;
-        mimeTypeSource = 'EXIF (web image)';
-      } else if (data.fileMimeType && !exifMimeType) {
+        fileType = exifFileType;
+        fileTypeSource = 'EXIF (web image)';
+      } else if (data.fileMimeType && !exifFileType) {
         // File object but no EXIF
-        mimeTypeSource = 'File object';
+        fileTypeSource = 'File object';
       } else {
         // Both File object and EXIF available
-        if (exifMimeType !== mimeType) {
-          console.warn(`⚠️ MIME type mismatch! File: ${mimeType}, EXIF: ${exifMimeType}`);
-          mimeTypeSource = `File object (verified with EXIF: ${exifMimeType})`;
+        if (exifFileType !== fileType) {
+          console.warn(`⚠️ File type mismatch! File: ${fileType}, EXIF: ${exifFileType}`);
+          fileTypeSource = `File object (verified with EXIF: ${exifFileType})`;
         } else {
-          mimeTypeSource = 'File object (verified with EXIF ✓)';
+          fileTypeSource = 'File object (verified with EXIF ✓)';
         }
       }
       
@@ -256,8 +256,8 @@ class ImgVaultServiceWorker {
         width: metadata.width,
         height: metadata.height,
         size: metadata.size,
-        mimeType,
-        mimeTypeSource,
+        fileType,
+        fileTypeSource,
         creationDate,
         creationDateSource
       });
@@ -346,12 +346,14 @@ class ImgVaultServiceWorker {
         pageTitle: data.pageTitle,
         fileName,
         fileSize: imageBlob.size, // Always include file size from blob
+        width: metadata.width, // Image width
+        height: metadata.height, // Image height
         sha256: metadata.sha256,
         pHash: metadata.pHash,
         aHash: metadata.aHash,
         dHash: metadata.dHash,
-        mimeType, // MIME type from File object or EXIF
-        mimeTypeSource, // Source of MIME type (for debugging)
+        fileType, // File type from File object or EXIF
+        fileTypeSource, // Source of file type (for debugging)
         creationDate, // Creation date from EXIF or file metadata
         creationDateSource, // Source of creation date (for debugging)
         tags: data.tags || [],
@@ -437,28 +439,28 @@ class ImgVaultServiceWorker {
         pageUrl
       );
       
-      // Compute MIME type (prefer File object, verify against EXIF if present)
-      const exifMimeType = metadata.exifMetadata?.MIMEType || metadata.exifMetadata?.FileType;
-      let mimeType = fileMimeType || imageBlob.type;
-      let mimeTypeSource = '';
+      // Compute file type (prefer File object, verify against EXIF if present)
+      const exifFileType = metadata.exifMetadata?.MIMEType || metadata.exifMetadata?.FileType;
+      let fileType = fileMimeType || imageBlob.type;
+      let fileTypeSource = '';
       
-      if (!fileMimeType && !exifMimeType) {
+      if (!fileMimeType && !exifFileType) {
         // No File object, no EXIF - use blob type (web image)
-        mimeTypeSource = 'Blob type (web image)';
-      } else if (!fileMimeType && exifMimeType) {
+        fileTypeSource = 'Blob type (web image)';
+      } else if (!fileMimeType && exifFileType) {
         // No File object but EXIF available - use EXIF (web image with metadata)
-        mimeType = exifMimeType;
-        mimeTypeSource = 'EXIF (web image)';
-      } else if (fileMimeType && !exifMimeType) {
+        fileType = exifFileType;
+        fileTypeSource = 'EXIF (web image)';
+      } else if (fileMimeType && !exifFileType) {
         // File object but no EXIF
-        mimeTypeSource = 'File object';
+        fileTypeSource = 'File object';
       } else {
         // Both File object and EXIF available
-        if (exifMimeType !== mimeType) {
-          console.warn(`⚠️ MIME type mismatch! File: ${mimeType}, EXIF: ${exifMimeType}`);
-          mimeTypeSource = `File object (verified with EXIF: ${exifMimeType})`;
+        if (exifFileType !== fileType) {
+          console.warn(`⚠️ File type mismatch! File: ${fileType}, EXIF: ${exifFileType}`);
+          fileTypeSource = `File object (verified with EXIF: ${exifFileType})`;
         } else {
-          mimeTypeSource = 'File object (verified with EXIF ✓)';
+          fileTypeSource = 'File object (verified with EXIF ✓)';
         }
       }
       
@@ -482,13 +484,13 @@ class ImgVaultServiceWorker {
       }
       
       console.log('✅ Metadata extracted:', metadata);
-      console.log('📋 MIME Type:', mimeType, '(', mimeTypeSource, ')');
+      console.log('📋 File Type:', fileType, '(', fileTypeSource, ')');
       console.log('📅 Creation Date:', creationDate, '(', creationDateSource, ')');
       
       return {
         ...metadata,
-        mimeType,
-        mimeTypeSource,
+        fileType,
+        fileTypeSource,
         creationDate,
         creationDateSource
       };
