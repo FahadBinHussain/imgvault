@@ -2071,6 +2071,33 @@ export default function GalleryPage() {
                                focus:outline-none focus:border-primary-500 focus:ring-2 
                                focus:ring-primary-500/20 transition-all"
                     />
+                    
+                    {/* Quality Tip for specific sites */}
+                    {(() => {
+                      const pageUrl = uploadPageUrl?.toLowerCase() || '';
+                      const shouldShowTip = pageUrl.includes('drive.google.com') || pageUrl.includes('unsplash.com');
+                      
+                      if (!shouldShowTip) return null;
+                      
+                      return (
+                        <div className="mt-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
+                          <div className="flex items-start gap-2">
+                            <div className="flex-shrink-0 text-blue-400 text-lg mt-0.5">💡</div>
+                            <div className="flex-1">
+                              <p className="text-blue-300 font-medium text-sm mb-1">
+                                Quality Tip
+                              </p>
+                              <p className="text-blue-200/80 text-xs">
+                                For best quality, download the image first from{' '}
+                                {pageUrl.includes('drive.google.com') && 'Google Drive'}
+                                {pageUrl.includes('unsplash.com') && 'Unsplash'}
+                                {' '}instead of saving directly from the page. This ensures you get the highest quality version.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* tags */}
