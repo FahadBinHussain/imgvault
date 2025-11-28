@@ -1551,7 +1551,7 @@ export default function GalleryPage() {
             {!uploadImageData ? (
               <div className="space-y-4">
                 <label className="block">
-                  <div className="flex items-center justify-center w-full h-64 px-4 transition 
+                  <div className="flex items-center justify-center w-full min-h-[calc(100vh-16rem)] px-4 transition 
                                 bg-slate-800/50 border-2 border-dashed border-slate-600 rounded-xl 
                                 hover:border-primary-500 hover:bg-slate-700/50 cursor-pointer
                                 group">
