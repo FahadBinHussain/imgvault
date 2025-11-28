@@ -474,7 +474,8 @@ export default function GalleryPage() {
           // Populate the upload modal
           setUploadImageData({
             srcUrl: pendingImage.srcUrl,
-            fileName: pendingImage.srcUrl.split('/').pop().split('?')[0] || 'image.jpg'
+            fileName: pendingImage.srcUrl.split('/').pop().split('?')[0] || 'image.jpg',
+            pageTitle: pendingImage.pageTitle || ''
           });
           setUploadPageUrl(pendingImage.pageUrl || '');
           
