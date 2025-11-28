@@ -553,5 +553,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return serviceWorker.handleMessage(request, sender, sendResponse);
 });
 
+// Handle extension icon click - open gallery
+chrome.action.onClicked.addListener(() => {
+  chrome.tabs.create({
+    url: chrome.runtime.getURL('gallery.html')
+  });
+});
+
 // Export for testing
 export default serviceWorker;

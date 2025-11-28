@@ -1,15 +1,7 @@
 /**
- * @fileoverview Popup Entry Point
+ * @fileoverview Popup Entry Point (Removed)
  * @version 2.0.0
+ * @description Popup removed - clicking extension icon opens gallery directly
  */
 
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import PopupPage from './pages/PopupPage';
-import './index.css';
-
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <PopupPage />
-  </React.StrictMode>
-);
+// No popup needed - extension icon opens gallery directly
