@@ -736,27 +736,131 @@ export default function GalleryPage() {
 
         {/* Empty State */}
         {!loading && images.length === 0 && (
-          <div className="glass-card rounded-xl backdrop-blur-xl bg-white/10 border border-white/20 
-                        shadow-2xl p-16 text-center">
-            <div className="relative inline-block mb-6">
-              <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-full blur-3xl opacity-30"></div>
-              <div className="text-8xl relative z-10 drop-shadow-2xl">🖼️</div>
-            </div>
-            <h3 className="text-3xl font-bold text-white mb-3 drop-shadow-lg">Your Vault is Empty</h3>
-            <p className="text-slate-300 text-lg mb-8 max-w-md mx-auto">
-              Start building your collection by uploading your first image
-            </p>
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+            className="glass-card rounded-3xl backdrop-blur-xl bg-white/5 border border-white/10 
+                      shadow-2xl p-16 text-center relative overflow-hidden"
+            style={{ willChange: 'transform, opacity' }}
+          >
+            {/* Animated background gradient */}
+            <motion.div
+              className="absolute inset-0 opacity-20"
+              style={{ willChange: 'background' }}
+              animate={{
+                background: [
+                  'radial-gradient(circle at 20% 50%, rgba(139, 92, 246, 0.3) 0%, transparent 50%)',
+                  'radial-gradient(circle at 80% 50%, rgba(236, 72, 153, 0.3) 0%, transparent 50%)',
+                  'radial-gradient(circle at 50% 80%, rgba(139, 92, 246, 0.3) 0%, transparent 50%)',
+                  'radial-gradient(circle at 50% 20%, rgba(236, 72, 153, 0.3) 0%, transparent 50%)',
+                  'radial-gradient(circle at 20% 50%, rgba(139, 92, 246, 0.3) 0%, transparent 50%)',
+                ],
+              }}
+              transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+            />
+            
+            {/* Icon with pulse animation */}
+            <motion.div 
+              className="relative inline-block mb-8"
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.1, type: "spring", stiffness: 300, damping: 20 }}
+              style={{ willChange: 'transform' }}
+            >
+              <motion.div 
+                className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-full blur-3xl"
+                style={{ willChange: 'transform, opacity' }}
+                animate={{ 
+                  scale: [1, 1.2, 1],
+                  opacity: [0.3, 0.5, 0.3]
+                }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <motion.div 
+                className="text-9xl relative z-10 drop-shadow-2xl"
+                style={{ willChange: 'transform' }}
+                animate={{ 
+                  y: [0, -10, 0],
+                }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+              >
+                🖼️
+              </motion.div>
+            </motion.div>
+            
+            {/* Text with stagger animation */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15, duration: 0.3 }}
+              style={{ willChange: 'transform, opacity' }}
+            >
+              <h3 className="text-4xl font-bold text-white mb-4 drop-shadow-lg bg-gradient-to-r from-white to-slate-200 bg-clip-text text-transparent">
+                Your Vault is Empty
+              </h3>
+              <p className="text-slate-300 text-lg mb-10 max-w-md mx-auto leading-relaxed">
+                Start building your collection by uploading your first image
+              </p>
+            </motion.div>
+            
+            {/* CTA Button with hover effects */}
             <motion.button
               onClick={openUploadModal}
-              whileHover={{ scale: 1.05 }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25, duration: 0.3 }}
+              whileHover={{ scale: 1.05, y: -2 }}
               whileTap={{ scale: 0.95 }}
-              transition={{ type: "spring", stiffness: 400, damping: 17 }}
-              className="px-8 py-4 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
-                       text-white font-semibold text-lg shadow-xl hover:shadow-2xl transition-shadow"
+              style={{ willChange: 'transform' }}
+              className="group relative px-10 py-5 rounded-2xl bg-gradient-to-r from-primary-500 to-secondary-500 
+                       text-white font-bold text-lg shadow-2xl overflow-hidden
+                       transition-all duration-150"
             >
-              Upload First Image
+              {/* Button shine effect */}
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                initial={{ x: '-100%' }}
+                whileHover={{ x: '100%' }}
+                transition={{ duration: 0.4 }}
+                style={{ willChange: 'transform' }}
+              />
+              
+              <span className="relative z-10 flex items-center gap-3">
+                <Upload className="w-6 h-6" />
+                Upload First Image
+              </span>
+              
+              {/* Glow effect on hover */}
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-r from-primary-400 to-secondary-400 blur-xl opacity-0 group-hover:opacity-50 transition-opacity duration-150"
+                style={{ zIndex: -1 }}
+              />
             </motion.button>
-          </div>
+            
+            {/* Floating particles */}
+            {[...Array(6)].map((_, i) => (
+              <motion.div
+                key={i}
+                className="absolute w-2 h-2 bg-white/20 rounded-full"
+                style={{
+                  left: `${20 + i * 12}%`,
+                  top: `${30 + (i % 3) * 20}%`,
+                  willChange: 'transform, opacity'
+                }}
+                animate={{
+                  y: [0, -20, 0],
+                  opacity: [0.2, 0.5, 0.2],
+                }}
+                transition={{
+                  duration: 2 + i * 0.3,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                  delay: i * 0.15,
+                }}
+              />
+            ))}
+          </motion.div>
         )}
 
         {/* Gallery Grid */}
