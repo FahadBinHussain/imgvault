@@ -1880,9 +1880,14 @@ export default function GalleryPage() {
                       ...(uploadMetadata.exifMetadata || {})
                     };
                     
+                    // Sort fields alphabetically
+                    const sortedFields = Object.entries(allFields).sort(([keyA], [keyB]) => 
+                      keyA.localeCompare(keyB)
+                    );
+                    
                     return (
                       <div className="space-y-3">
-                        {Object.entries(allFields).map(([key, value]) => (
+                        {sortedFields.map(([key, value]) => (
                           <div key={key}>
                             <label className="block text-xs font-medium text-slate-400 mb-1">
                               {key}
