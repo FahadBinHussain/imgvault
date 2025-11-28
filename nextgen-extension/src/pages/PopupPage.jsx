@@ -39,7 +39,8 @@ export default function PopupPage() {
           srcUrl: reader.result,
           pageUrl: window.location.href,
           pageTitle: 'Uploaded from computer',
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          file: file // Store the original file object for MIME and date extraction
         });
         
         // Extract metadata from the image
@@ -48,7 +49,9 @@ export default function PopupPage() {
             action: 'extractMetadata',
             imageUrl: reader.result,
             pageUrl: window.location.href,
-            fileName: file.name
+            fileName: file.name,
+            fileMimeType: file.type,
+            fileLastModified: file.lastModified
           });
           
           if (response.success && response.metadata) {
@@ -81,7 +84,9 @@ export default function PopupPage() {
         pageTitle: imageData.pageTitle,
         description,
         tags: tagsArray,
-        ignoreDuplicate: ignoreDuplicate
+        ignoreDuplicate: ignoreDuplicate,
+        fileMimeType: imageData.file?.type || null,
+        fileLastModified: imageData.file?.lastModified || null
       });
 
       setShowSuccess(true);

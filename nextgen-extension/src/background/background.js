@@ -206,12 +206,60 @@ class ImgVaultServiceWorker {
         data.pageUrl
       );
       
+      // Compute MIME type (prefer File object from data, verify against EXIF if present)
+      const exifMimeType = metadata.exifMetadata?.MIMEType || metadata.exifMetadata?.FileType;
+      let mimeType = data.fileMimeType || imageBlob.type;
+      let mimeTypeSource = '';
+      
+      if (!data.fileMimeType && !exifMimeType) {
+        // No File object, no EXIF - use blob type (web image)
+        mimeTypeSource = 'Blob type (web image)';
+      } else if (!data.fileMimeType && exifMimeType) {
+        // No File object but EXIF available - use EXIF (web image with metadata)
+        mimeType = exifMimeType;
+        mimeTypeSource = 'EXIF (web image)';
+      } else if (data.fileMimeType && !exifMimeType) {
+        // File object but no EXIF
+        mimeTypeSource = 'File object';
+      } else {
+        // Both File object and EXIF available
+        if (exifMimeType !== mimeType) {
+          console.warn(`⚠️ MIME type mismatch! File: ${mimeType}, EXIF: ${exifMimeType}`);
+          mimeTypeSource = `File object (verified with EXIF: ${exifMimeType})`;
+        } else {
+          mimeTypeSource = 'File object (verified with EXIF ✓)';
+        }
+      }
+      
+      // Compute creation date (prefer EXIF, fallback to OS lastModified)
+      const exifDate = metadata.exifMetadata?.DateTimeOriginal || 
+                       metadata.exifMetadata?.DateTime || 
+                       metadata.exifMetadata?.CreateDate;
+      let creationDate = null;
+      let creationDateSource = '';
+      
+      if (exifDate) {
+        creationDate = new Date(exifDate).toISOString();
+        creationDateSource = 'EXIF (DateTimeOriginal)';
+      } else if (data.fileLastModified) {
+        creationDate = new Date(data.fileLastModified).toISOString();
+        creationDateSource = 'OS lastModified (fallback)';
+      } else {
+        // No EXIF date, no file date - use current timestamp
+        creationDate = new Date().toISOString();
+        creationDateSource = 'Current timestamp (no metadata available)';
+      }
+      
       console.log('Extracted metadata:', {
         sha256: metadata.sha256.substring(0, 16) + '...',
         pHash: metadata.pHash.substring(0, 32) + '...',
         width: metadata.width,
         height: metadata.height,
-        size: metadata.size
+        size: metadata.size,
+        mimeType,
+        mimeTypeSource,
+        creationDate,
+        creationDateSource
       });
       
       // Check for duplicates unless user wants to ignore
@@ -302,6 +350,10 @@ class ImgVaultServiceWorker {
         pHash: metadata.pHash,
         aHash: metadata.aHash,
         dHash: metadata.dHash,
+        mimeType, // MIME type from File object or EXIF
+        mimeTypeSource, // Source of MIME type (for debugging)
+        creationDate, // Creation date from EXIF or file metadata
+        creationDateSource, // Source of creation date (for debugging)
         tags: data.tags || [],
         description: data.description || '',
         exifMetadata: metadata.exifMetadata || null

@@ -222,7 +222,9 @@ export default function GalleryPage() {
         fileName: String(uploadImageData.fileName || ''),
         description: String(uploadDescription || ''),
         tags: tagsArray.map(t => String(t)),
-        ignoreDuplicate: Boolean(ignoreDuplicates)
+        ignoreDuplicate: Boolean(ignoreDuplicates),
+        fileMimeType: uploadImageData.file?.type || null,
+        fileLastModified: uploadImageData.file?.lastModified || null
       };
 
       console.log('Uploading with data (keys):', Object.keys(uploadData));
