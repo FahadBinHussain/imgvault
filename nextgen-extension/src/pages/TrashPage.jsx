@@ -734,11 +734,15 @@ export default function TrashPage() {
                               </p>
                             </div>
                             <div>
-                              <h4 className="text-xs font-semibold text-slate-400 mb-1">Dimensions</h4>
+                              <h4 className="text-xs font-semibold text-slate-400 mb-1">Width</h4>
                               <p className="text-white font-mono text-xs">
-                                {fullImageDetails?.width && fullImageDetails?.height
-                                  ? `${fullImageDetails.width} × ${fullImageDetails.height}`
-                                  : 'N/A'}
+                                {fullImageDetails?.width || 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-semibold text-slate-400 mb-1">Height</h4>
+                              <p className="text-white font-mono text-xs">
+                                {fullImageDetails?.height || 'N/A'}
                               </p>
                             </div>
                           </div>

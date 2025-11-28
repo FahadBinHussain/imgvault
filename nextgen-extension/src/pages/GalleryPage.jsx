@@ -1291,18 +1291,6 @@ export default function GalleryPage() {
                         </div>
                       </div>
 
-                      {/* Dimensions */}
-                      <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1">Dimensions</div>
-                        <div className="bg-white/5 rounded p-2">
-                          <p className="text-white font-mono text-sm">
-                            {fullImageDetails?.width && fullImageDetails?.height
-                              ? `${fullImageDetails.width} × ${fullImageDetails.height}`
-                              : loadingNerdsTab ? 'Loading...' : 'N/A'}
-                          </p>
-                        </div>
-                      </div>
-
                       {/* Width */}
                       {fullImageDetails?.width && (
                         <div>
@@ -1614,7 +1602,8 @@ export default function GalleryPage() {
                       const allFields = {
                         'File Name': uploadImageData?.fileName || 'N/A',
                         'File Size': uploadMetadata.fileSize ? `${(uploadMetadata.fileSize / 1024).toFixed(2)} KB` : 'N/A',
-                        'Dimensions': uploadMetadata.width && uploadMetadata.height ? `${uploadMetadata.width} × ${uploadMetadata.height}` : 'N/A',
+                        'Width': uploadMetadata.width || 'N/A',
+                        'Height': uploadMetadata.height || 'N/A',
                         'SHA-256': uploadMetadata.sha256 || 'N/A',
                         'pHash': uploadMetadata.pHash || 'N/A',
                         'aHash': uploadMetadata.aHash || 'N/A',
@@ -1872,9 +1861,8 @@ export default function GalleryPage() {
                       'File Size': uploadMetadata.fileSize 
                         ? `${(uploadMetadata.fileSize / 1024).toFixed(2)} KB` 
                         : 'N/A',
-                      'Dimensions': uploadMetadata.width && uploadMetadata.height 
-                        ? `${uploadMetadata.width} × ${uploadMetadata.height}` 
-                        : 'N/A',
+                      'Width': uploadMetadata.width || 'N/A',
+                      'Height': uploadMetadata.height || 'N/A',
                       'SHA-256': uploadMetadata.sha256 || 'N/A',
                       'pHash': uploadMetadata.pHash || 'N/A',
                       'aHash': uploadMetadata.aHash || 'N/A',
