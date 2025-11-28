@@ -111,18 +111,18 @@ export default function GalleryPage() {
       setUploadImageData({
         srcUrl: reader.result,
         fileName: file.name,
-        pageTitle: '',
+        pageTitle: file.name, // Use filename as title for drag & drop
         timestamp: Date.now(),
         file: file // Store the original file object for MIME and date extraction
       });
-      setUploadPageUrl('');
+      setUploadPageUrl('Uploaded manually'); // Set source as "Uploaded manually" for local files
       
       // Extract metadata from the image
       try {
         const response = await chrome.runtime.sendMessage({
           action: 'extractMetadata',
           imageUrl: reader.result,
-          pageUrl: '',
+          pageUrl: 'Uploaded manually', // Set page URL as "Uploaded manually" for local files
           fileName: file.name,
           fileMimeType: file.type,
           fileLastModified: file.lastModified
@@ -1772,7 +1772,9 @@ export default function GalleryPage() {
                       </label>
                       <div className="w-full px-4 py-3 rounded-lg bg-slate-700/50 border border-slate-600 
                                     text-slate-300 font-mono text-xs break-all">
-                        {uploadImageData.srcUrl}
+                        {uploadPageUrl === 'Uploaded manually' 
+                          ? 'Uploaded manually' 
+                          : uploadImageData.srcUrl}
                       </div>
                     </div>
                   )}
