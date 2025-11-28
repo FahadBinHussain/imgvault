@@ -1095,32 +1095,107 @@ export default function GalleryPage() {
                   {/* Details Grid */}
                   <div className="space-y-3">
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
-                        <FileText className="w-3.5 h-3.5" />
-                        Title
+                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <FileText className="w-3.5 h-3.5" />
+                          Title
+                        </span>
+                        {editingField !== 'pageTitle' && (
+                          <button
+                            onClick={() => startEditing('pageTitle')}
+                            className="text-primary-300 hover:text-primary-200 text-xs"
+                          >
+                            ✏️ Edit
+                          </button>
+                        )}
                       </div>
-                      <div className="text-white font-medium">
-                        {selectedImage.pageTitle || 'Untitled'}
-                      </div>
+                      {editingField === 'pageTitle' ? (
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={editValues.pageTitle || ''}
+                            onChange={(e) => setEditValues({ ...editValues, pageTitle: e.target.value })}
+                            className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => saveEdit('pageTitle')}
+                              className="px-3 py-1 rounded bg-green-500/20 text-green-300 text-xs hover:bg-green-500/30"
+                            >
+                              ✓ Save
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              className="px-3 py-1 rounded bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30"
+                            >
+                              ✕ Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-white font-medium">
+                          {selectedImage.pageTitle || 'Untitled'}
+                        </div>
+                      )}
                     </div>
 
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
-                        <Calendar className="w-3.5 h-3.5" />
-                        Added To Vault
+                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <Calendar className="w-3.5 h-3.5" />
+                          Added To Vault
+                        </span>
+                        {editingField !== 'internalAddedTimestamp' && (
+                          <button
+                            onClick={() => startEditing('internalAddedTimestamp')}
+                            className="text-primary-300 hover:text-primary-200 text-xs"
+                          >
+                            ✏️ Edit
+                          </button>
+                        )}
                       </div>
-                      <div className="text-white">
-                        {selectedImage.internalAddedTimestamp
-                          ? new Date(selectedImage.internalAddedTimestamp).toLocaleString('en-US', {
-                              weekday: 'short',
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                              hour: 'numeric',
-                              minute: '2-digit'
-                            })
-                          : 'N/A'}
-                      </div>
+                      {editingField === 'internalAddedTimestamp' ? (
+                        <div className="space-y-2">
+                          <input
+                            type="datetime-local"
+                            value={editValues.internalAddedTimestamp 
+                              ? new Date(editValues.internalAddedTimestamp).toISOString().slice(0, 16)
+                              : ''}
+                            onChange={(e) => setEditValues({ 
+                              ...editValues, 
+                              internalAddedTimestamp: new Date(e.target.value).toISOString()
+                            })}
+                            className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => saveEdit('internalAddedTimestamp')}
+                              className="px-3 py-1 rounded bg-green-500/20 text-green-300 text-xs hover:bg-green-500/30"
+                            >
+                              ✓ Save
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              className="px-3 py-1 rounded bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30"
+                            >
+                              ✕ Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-white">
+                          {selectedImage.internalAddedTimestamp
+                            ? new Date(selectedImage.internalAddedTimestamp).toLocaleString('en-US', {
+                                weekday: 'short',
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: 'numeric',
+                                minute: '2-digit'
+                              })
+                            : 'N/A'}
+                        </div>
+                      )}
                     </div>
 
                     <div>
