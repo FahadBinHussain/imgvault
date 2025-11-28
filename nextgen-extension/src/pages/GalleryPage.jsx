@@ -1790,41 +1790,10 @@ export default function GalleryPage() {
                 {/* Right Column - Scrollable Form Fields */}
                 <div className="flex-1 space-y-4 max-h-[70vh] overflow-y-auto pr-2"
                      style={{ scrollbarGutter: 'stable' }}>
-                  {/* Form Fields */}
+                  {/* Form Fields - Alphabetically ordered */}
                   <div className="space-y-4">
-                  {/* Source Image URL (Read-only) */}
-                  {uploadImageData && (
-                    <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-2">
-                        sourceImageUrl
-                      </label>
-                      <div className="w-full px-4 py-3 rounded-lg bg-slate-700/50 border border-slate-600 
-                                    text-slate-300 font-mono text-xs break-all">
-                        {uploadPageUrl === 'Uploaded manually' 
-                          ? 'Uploaded manually' 
-                          : uploadImageData.srcUrl}
-                      </div>
-                    </div>
-                  )}
                   
-                  {/* Page URL */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
-                      sourcePageUrl
-                    </label>
-                    <input
-                      type="url"
-                      value={uploadPageUrl}
-                      onChange={(e) => setUploadPageUrl(e.target.value)}
-                      placeholder="https://example.com/page"
-                      className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
-                               text-white placeholder-slate-400 
-                               focus:outline-none focus:border-primary-500 focus:ring-2 
-                               focus:ring-primary-500/20 transition-all"
-                    />
-                  </div>
-
-                  {/* Description */}
+                  {/* description */}
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-2">
                       description
@@ -1841,7 +1810,39 @@ export default function GalleryPage() {
                     />
                   </div>
 
-                  {/* Tags */}
+                  {/* sourceImageUrl (Read-only) */}
+                  {uploadImageData && (
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">
+                        sourceImageUrl
+                      </label>
+                      <div className="w-full px-4 py-3 rounded-lg bg-slate-700/50 border border-slate-600 
+                                    text-slate-300 font-mono text-xs break-all">
+                        {uploadPageUrl === 'Uploaded manually' 
+                          ? 'Uploaded manually' 
+                          : uploadImageData.srcUrl}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* sourcePageUrl */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      sourcePageUrl
+                    </label>
+                    <input
+                      type="url"
+                      value={uploadPageUrl}
+                      onChange={(e) => setUploadPageUrl(e.target.value)}
+                      placeholder="https://example.com/page"
+                      className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                               text-white placeholder-slate-400 
+                               focus:outline-none focus:border-primary-500 focus:ring-2 
+                               focus:ring-primary-500/20 transition-all"
+                    />
+                  </div>
+
+                  {/* tags */}
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-2">
                       tags
