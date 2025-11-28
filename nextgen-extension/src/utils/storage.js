@@ -428,12 +428,15 @@ export class StorageManager {
     try {
       console.log('🗑️ [TRASH] Moving image to trash:', id);
       
-      // Get the image data from images collection
+      // Get the image data from images collection with ALL fields
       const imageData = await this.getImageById(id);
       
       if (!imageData) {
         throw new Error('Image not found');
       }
+      
+      console.log('📋 [TRASH] Preserving all fields:', Object.keys(imageData));
+      console.log('📋 [TRASH] Total fields count:', Object.keys(imageData).length);
       
       // Create trash document with all image data plus deletedAt timestamp
       const trashDoc = this.toFirestoreDoc({
@@ -466,7 +469,7 @@ export class StorageManager {
         throw new Error('Failed to remove from images collection');
       }
       
-      console.log('✅ [TRASH] Successfully moved to trash (hosts preserved)');
+      console.log('✅ [TRASH] Successfully moved to trash with 100% field preservation (hosts preserved)');
     } catch (error) {
       console.error('❌ [TRASH] Error moving to trash:', error);
       throw error;
@@ -615,37 +618,22 @@ export class StorageManager {
       }
 
       const trashDoc = await trashResponse.json();
-      const fields = trashDoc.fields;
       
-      // Prepare image data (remove trash-specific fields)
-      const imageData = {
-        pixvidUrl: fields.pixvidUrl?.stringValue || '',
-        pixvidDeleteUrl: fields.pixvidDeleteUrl?.stringValue || '',
-        imgbbUrl: fields.imgbbUrl?.stringValue || '',
-        imgbbDeleteUrl: fields.imgbbDeleteUrl?.stringValue || '',
-        imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
-        sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
-        sourcePageUrl: fields.sourcePageUrl?.stringValue || '',
-        pageTitle: fields.pageTitle?.stringValue || '',
-        fileName: fields.fileName?.stringValue || '',
-        fileType: fields.fileType?.stringValue || '',
-        fileSize: parseInt(fields.fileSize?.integerValue || '0'),
-        width: parseInt(fields.width?.integerValue || '0'),
-        height: parseInt(fields.height?.integerValue || '0'),
-        sha256: fields.sha256?.stringValue || '',
-        pHash: fields.pHash?.stringValue || '',
-        aHash: fields.aHash?.stringValue || '',
-        dHash: fields.dHash?.stringValue || '',
-        tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
-        description: fields.description?.stringValue || '',
-        internalAddedTimestamp: fields.internalAddedTimestamp?.timestampValue 
-          ? new Date(fields.internalAddedTimestamp.timestampValue) 
-          : fields.internalAddedTimestamp?.stringValue 
-            ? new Date(fields.internalAddedTimestamp.stringValue)
-            : new Date()
-      };
+      // Use fromFirestoreDoc to extract ALL fields automatically (100% field preservation)
+      const trashedData = this.fromFirestoreDoc(trashDoc);
+      
+      // Remove trash-specific fields (id, originalId, deletedAt)
+      const { id, originalId, deletedAt, _isTrash, ...imageData } = trashedData;
+      
+      console.log('📋 [RESTORE] Preserving all fields:', Object.keys(imageData));
+      console.log('📋 [RESTORE] Total fields count:', Object.keys(imageData).length);
+      
+      // Convert internalAddedTimestamp back to Date object if it's a string
+      if (imageData.internalAddedTimestamp && typeof imageData.internalAddedTimestamp === 'string') {
+        imageData.internalAddedTimestamp = new Date(imageData.internalAddedTimestamp);
+      }
 
-      // Add back to images collection
+      // Add back to images collection with ALL original fields preserved
       const restoreDoc = this.toFirestoreDoc(imageData);
       const imagesUrl = this.buildUrl('images');
       
@@ -669,7 +657,7 @@ export class StorageManager {
         console.warn('⚠️ [RESTORE] Failed to remove from trash collection');
       }
       
-      console.log('✅ [RESTORE] Successfully restored from trash');
+      console.log('✅ [RESTORE] Successfully restored from trash with 100% field preservation');
     } catch (error) {
       console.error('❌ [RESTORE] Error restoring from trash:', error);
       throw error;
