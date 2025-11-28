@@ -5,7 +5,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Upload, Search, Trash2, Download, X, Settings } from 'lucide-react';
+import { 
+  RefreshCw, Upload, Search, Trash2, Download, X, Settings,
+  FileText, Calendar, Cloud, Link2, Globe, AlignLeft, Tag,
+  File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint
+} from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
 import { useImages, useImageUpload, useTrash, useChromeStorage } from '../hooks/useChromeExtension';
 import TimelineScrollbar from '../components/TimelineScrollbar';
@@ -1056,14 +1060,20 @@ export default function GalleryPage() {
                   {/* Details Grid */}
                   <div className="space-y-3">
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1">Title</div>
+                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                        <FileText className="w-3.5 h-3.5" />
+                        Title
+                      </div>
                       <div className="text-white font-medium">
                         {selectedImage.pageTitle || 'Untitled'}
                       </div>
                     </div>
 
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1">Added To Vault</div>
+                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                        <Calendar className="w-3.5 h-3.5" />
+                        Added To Vault
+                      </div>
                       <div className="text-white">
                         {selectedImage.internalAddedTimestamp
                           ? new Date(selectedImage.internalAddedTimestamp).toLocaleString('en-US', {
@@ -1079,7 +1089,10 @@ export default function GalleryPage() {
                     </div>
 
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1">Display Source</div>
+                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                        <Cloud className="w-3.5 h-3.5" />
+                        Display Source
+                      </div>
                       <div className="flex items-center gap-2">
                         {selectedImage.imgbbUrl ? (
                           <span className="px-3 py-1 rounded bg-green-500/20 text-green-300 font-semibold text-sm">
@@ -1094,7 +1107,10 @@ export default function GalleryPage() {
                     </div>
 
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1">Pixvid URL</div>
+                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                        <Link2 className="w-3.5 h-3.5" />
+                        Pixvid URL
+                      </div>
                       <div className="bg-white/5 rounded p-2">
                         <a
                           href={selectedImage.pixvidUrl}
@@ -1109,7 +1125,10 @@ export default function GalleryPage() {
 
                     {selectedImage.imgbbUrl && (
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1">ImgBB URL</div>
+                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                          <Link2 className="w-3.5 h-3.5" />
+                          ImgBB URL
+                        </div>
                         <div className="bg-white/5 rounded p-2">
                           <a
                             href={selectedImage.imgbbUrl}
@@ -1125,7 +1144,10 @@ export default function GalleryPage() {
 
                     <div>
                       <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
-                        <span>Source URL</span>
+                        <span className="flex items-center gap-2">
+                          <ImageIcon className="w-3.5 h-3.5" />
+                          Source URL
+                        </span>
                         {editingField !== 'sourceImageUrl' && (
                           <button
                             onClick={() => startEditing('sourceImageUrl')}
@@ -1174,7 +1196,10 @@ export default function GalleryPage() {
 
                     <div>
                       <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
-                        <span>Page URL</span>
+                        <span className="flex items-center gap-2">
+                          <Globe className="w-3.5 h-3.5" />
+                          Page URL
+                        </span>
                         {editingField !== 'sourcePageUrl' && (
                           <button
                             onClick={() => startEditing('sourcePageUrl')}
@@ -1223,7 +1248,10 @@ export default function GalleryPage() {
 
                     <div>
                       <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
-                        <span>Description</span>
+                        <span className="flex items-center gap-2">
+                          <AlignLeft className="w-3.5 h-3.5" />
+                          Description
+                        </span>
                         {editingField !== 'description' && (
                           <button
                             onClick={() => startEditing('description')}
@@ -1265,7 +1293,10 @@ export default function GalleryPage() {
 
                     <div>
                       <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
-                        <span>Tags</span>
+                        <span className="flex items-center gap-2">
+                          <Tag className="w-3.5 h-3.5" />
+                          Tags
+                        </span>
                         {editingField !== 'tags' && (
                           <button
                             onClick={() => startEditing('tags')}
@@ -1356,7 +1387,10 @@ export default function GalleryPage() {
                     <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                       {/* Document ID */}
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1">Document ID</div>
+                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                          <Database className="w-3.5 h-3.5" />
+                          Document ID
+                        </div>
                         <div className="bg-white/5 rounded p-2">
                           <p className="text-white font-mono text-sm break-all">
                             {selectedImage.id || 'N/A'}
@@ -1366,7 +1400,10 @@ export default function GalleryPage() {
 
                       {/* File Name */}
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1">File Name</div>
+                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                          <File className="w-3.5 h-3.5" />
+                          File Name
+                        </div>
                         <div className="bg-white/5 rounded p-2">
                           <p className="text-white font-mono text-sm break-all">
                             {fullImageDetails?.fileName || (loadingNerdsTab ? 'Loading...' : 'N/A')}
@@ -1376,7 +1413,10 @@ export default function GalleryPage() {
 
                       {/* File Type */}
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1">File Type</div>
+                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                          <FileText className="w-3.5 h-3.5" />
+                          File Type
+                        </div>
                         <div className="bg-white/5 rounded p-2">
                           <p className="text-white font-mono text-sm">
                             {fullImageDetails?.fileType || (loadingNerdsTab ? 'Loading...' : 'N/A')}
@@ -1386,7 +1426,10 @@ export default function GalleryPage() {
 
                       {/* File Size */}
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1">File Size</div>
+                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                          <Database className="w-3.5 h-3.5" />
+                          File Size
+                        </div>
                         <div className="bg-white/5 rounded p-2">
                           <p className="text-white font-mono text-sm">
                             {fullImageDetails?.fileSize 
@@ -1399,7 +1442,10 @@ export default function GalleryPage() {
                       {/* Width */}
                       {fullImageDetails?.width && (
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">Width</div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                            <Ruler className="w-3.5 h-3.5" />
+                            Width
+                          </div>
                           <div className="bg-white/5 rounded p-2">
                             <p className="text-white font-mono text-sm">
                               {fullImageDetails.width}
@@ -1411,7 +1457,10 @@ export default function GalleryPage() {
                       {/* Height */}
                       {fullImageDetails?.height && (
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">Height</div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                            <Ruler className="w-3.5 h-3.5" />
+                            Height
+                          </div>
                           <div className="bg-white/5 rounded p-2">
                             <p className="text-white font-mono text-sm">
                               {fullImageDetails.height}
@@ -1422,7 +1471,10 @@ export default function GalleryPage() {
 
                       {/* SHA-256 */}
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1">SHA-256</div>
+                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                          <Fingerprint className="w-3.5 h-3.5" />
+                          SHA-256
+                        </div>
                         <div className="bg-white/5 rounded p-2">
                           <p className="text-white font-mono text-sm break-all">
                             {fullImageDetails?.sha256 || (loadingNerdsTab ? 'Loading...' : 'N/A')}
@@ -1432,7 +1484,10 @@ export default function GalleryPage() {
 
                       {/* pHash */}
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1">pHash</div>
+                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                          <Hash className="w-3.5 h-3.5" />
+                          pHash
+                        </div>
                         <div className="bg-white/5 rounded p-2">
                           <p className="text-white font-mono text-sm break-all">
                             {fullImageDetails?.pHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
@@ -1442,7 +1497,10 @@ export default function GalleryPage() {
 
                       {/* aHash */}
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1">aHash</div>
+                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                          <Hash className="w-3.5 h-3.5" />
+                          aHash
+                        </div>
                         <div className="bg-white/5 rounded p-2">
                           <p className="text-white font-mono text-sm break-all">
                             {fullImageDetails?.aHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
@@ -1452,7 +1510,10 @@ export default function GalleryPage() {
 
                       {/* dHash */}
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1">dHash</div>
+                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                          <Hash className="w-3.5 h-3.5" />
+                          dHash
+                        </div>
                         <div className="bg-white/5 rounded p-2">
                           <p className="text-white font-mono text-sm break-all">
                             {fullImageDetails?.dHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
@@ -1474,7 +1535,10 @@ export default function GalleryPage() {
                         
                         return exifFields.map(([key, value]) => (
                           <div key={key}>
-                            <div className="text-xs font-semibold text-slate-400 mb-1">{key}</div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                              <FileText className="w-3.5 h-3.5" />
+                              {key}
+                            </div>
                             <div className="bg-white/5 rounded p-2">
                               <p className="text-white font-mono text-sm break-all">
                                 {typeof value === 'object' ? JSON.stringify(value) : String(value || 'N/A')}
