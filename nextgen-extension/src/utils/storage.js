@@ -560,36 +560,13 @@ export class StorageManager {
       }
 
       const doc = await response.json();
-      const fields = doc.fields;
       
-      const trashedImage = {
-        id,
-        originalId: fields.originalId?.stringValue || '',
-        pixvidUrl: fields.pixvidUrl?.stringValue || '',
-        pixvidDeleteUrl: fields.pixvidDeleteUrl?.stringValue || '',
-        imgbbUrl: fields.imgbbUrl?.stringValue || '',
-        imgbbDeleteUrl: fields.imgbbDeleteUrl?.stringValue || '',
-        imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
-        sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
-        sourcePageUrl: fields.sourcePageUrl?.stringValue || '',
-        pageTitle: fields.pageTitle?.stringValue || '',
-        fileName: fields.fileName?.stringValue || '',
-        fileType: fields.fileType?.stringValue || '',
-        fileSize: parseInt(fields.fileSize?.integerValue || '0'),
-        width: parseInt(fields.width?.integerValue || '0'),
-        height: parseInt(fields.height?.integerValue || '0'),
-        sha256: fields.sha256?.stringValue || '',
-        pHash: fields.pHash?.stringValue || '',
-        aHash: fields.aHash?.stringValue || '',
-        dHash: fields.dHash?.stringValue || '',
-        tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
-        description: fields.description?.stringValue || '',
-        internalAddedTimestamp: fields.internalAddedTimestamp?.timestampValue || fields.internalAddedTimestamp?.stringValue || '',
-        deletedAt: fields.deletedAt?.timestampValue || fields.deletedAt?.stringValue || ''
-      };
+      // Use fromFirestoreDoc to extract ALL fields automatically (100% field preservation)
+      const trashedImage = this.fromFirestoreDoc(doc);
       
       const endTime = performance.now();
-      console.log(`✅ [TRASH] Full trashed image details loaded in ${(endTime - startTime).toFixed(2)}ms`);
+      console.log(`✅ [TRASH] Full trashed image details loaded with ${Object.keys(trashedImage).length} fields in ${(endTime - startTime).toFixed(2)}ms`);
+      console.log(`📋 [TRASH] Fields present:`, Object.keys(trashedImage));
       
       return trashedImage;
     } catch (error) {

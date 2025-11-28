@@ -5,7 +5,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Undo2, Trash2, AlertTriangle } from 'lucide-react';
+import { 
+  RefreshCw, Undo2, Trash2, AlertTriangle,
+  FileText, Calendar, Cloud, Link2, Globe, AlignLeft, Tag,
+  File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint
+} from 'lucide-react';
 import { Button, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
 import { useTrash } from '../hooks/useChromeExtension';
 import TimelineScrollbar from '../components/TimelineScrollbar';
@@ -504,23 +508,61 @@ export default function TrashPage() {
                   <div className="flex gap-2 mb-4 border-b border-white/10">
                     <button
                       onClick={() => handleTabSwitch('noobs')}
-                      className={`px-4 py-2 font-semibold transition-all ${
+                      className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${
                         activeTab === 'noobs'
                           ? 'text-red-300 border-b-2 border-red-300'
                           : 'text-slate-400 hover:text-slate-300'
                       }`}
                     >
-                      For Noobs 👶
+                      <span>For Noobs 👶</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        activeTab === 'noobs' 
+                          ? 'bg-red-500/20 text-red-200' 
+                          : 'bg-slate-500/20 text-slate-400'
+                      }`}>
+                        {/* Count: Title, Deleted At, Added To Vault, Display Source, Pixvid URL, ImgBB URL (if present), Source URL, Page URL, Description, Tags = 10 or 9 */}
+                        {selectedImage?.imgbbUrl ? 10 : 9}
+                      </span>
                     </button>
                     <button
                       onClick={() => handleTabSwitch('nerds')}
-                      className={`px-4 py-2 font-semibold transition-all ${
+                      className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${
                         activeTab === 'nerds'
                           ? 'text-green-300 border-b-2 border-green-300'
                           : 'text-slate-400 hover:text-slate-300'
                       }`}
                     >
-                      For Nerds 🤓
+                      <span>For Nerds 🤓</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        activeTab === 'nerds' 
+                          ? 'bg-green-500/20 text-green-200' 
+                          : 'bg-slate-500/20 text-slate-400'
+                      }`}>
+                        {fullImageDetails ? (() => {
+                          // Count base technical fields
+                          let count = 9; // Document ID, File Name, File Type, File Size, SHA-256, pHash, aHash, dHash
+                          
+                          // Add optional visible fields if present
+                          if (fullImageDetails.fileTypeSource) count++;
+                          if (fullImageDetails.creationDate) count++;
+                          if (fullImageDetails.creationDateSource) count++;
+                          if (fullImageDetails.width) count++;
+                          if (fullImageDetails.height) count++;
+                          
+                          // Count EXIF fields (everything that's not in knownFields)
+                          const knownFields = new Set([
+                            'id', 'pixvidUrl', 'pixvidDeleteUrl', 'imgbbUrl', 'imgbbDeleteUrl', 'imgbbThumbUrl',
+                            'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize', 'tags', 'description',
+                            'internalAddedTimestamp', 'sha256', 'pHash', 'aHash', 'dHash', 'width', 'height', 'fileType',
+                            'originalId', 'deletedAt', 'fileTypeSource', 'creationDate', 'creationDateSource'
+                          ]);
+                          
+                          const exifFields = Object.keys(fullImageDetails).filter(key => !knownFields.has(key));
+                          count += exifFields.length;
+                          
+                          return count;
+                        })() : '...'}
+                      </span>
                     </button>
                   </div>
 
@@ -706,125 +748,216 @@ export default function TrashPage() {
                           <span className="ml-3 text-slate-300">Loading technical details...</span>
                         </div>
                       ) : (
-                        <>
-                          {/* Technical Details Grid */}
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <h4 className="text-xs font-semibold text-slate-400 mb-1">Document ID</h4>
-                              <p className="text-white font-mono text-xs break-all">{selectedImage.id || 'N/A'}</p>
+                        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                          {/* Document ID */}
+                          <div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                              <Database className="w-3.5 h-3.5" />
+                              Document ID
                             </div>
-                            <div>
-                              <h4 className="text-xs font-semibold text-slate-400 mb-1">File Name</h4>
-                              <p className="text-white font-mono text-xs break-all">
-                                {fullImageDetails?.fileName || 'N/A'}
+                            <div className="bg-white/5 rounded p-2">
+                              <p className="text-white font-mono text-sm break-all">
+                                {selectedImage.id || 'N/A'}
                               </p>
                             </div>
-                            <div>
-                              <h4 className="text-xs font-semibold text-slate-400 mb-1">File Type</h4>
-                              <p className="text-white font-mono text-xs">
-                                {fullImageDetails?.fileType || 'N/A'}
+                          </div>
+
+                          {/* File Name */}
+                          <div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                              <File className="w-3.5 h-3.5" />
+                              File Name
+                            </div>
+                            <div className="bg-white/5 rounded p-2">
+                              <p className="text-white font-mono text-sm break-all">
+                                {fullImageDetails?.fileName || (loadingNerdsTab ? 'Loading...' : 'N/A')}
                               </p>
                             </div>
+                          </div>
+
+                          {/* File Type */}
+                          <div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                              <FileText className="w-3.5 h-3.5" />
+                              File Type
+                            </div>
+                            <div className="bg-white/5 rounded p-2">
+                              <p className="text-white font-mono text-sm">
+                                {fullImageDetails?.fileType || (loadingNerdsTab ? 'Loading...' : 'N/A')}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* File Type Source */}
+                          {fullImageDetails?.fileTypeSource && (
                             <div>
-                              <h4 className="text-xs font-semibold text-slate-400 mb-1">File Size</h4>
-                              <p className="text-white font-mono text-xs">
+                              <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                                <FileText className="w-3.5 h-3.5" />
+                                File Type Source
+                              </div>
+                              <div className="bg-white/5 rounded p-2">
+                                <p className="text-white font-mono text-sm">
+                                  {fullImageDetails.fileTypeSource}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* File Size */}
+                          <div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                              <Database className="w-3.5 h-3.5" />
+                              File Size
+                            </div>
+                            <div className="bg-white/5 rounded p-2">
+                              <p className="text-white font-mono text-sm">
                                 {fullImageDetails?.fileSize 
                                   ? `${(fullImageDetails.fileSize / 1024).toFixed(2)} KB` 
-                                  : 'N/A'}
-                              </p>
-                            </div>
-                            <div>
-                              <h4 className="text-xs font-semibold text-slate-400 mb-1">Width</h4>
-                              <p className="text-white font-mono text-xs">
-                                {fullImageDetails?.width || 'N/A'}
-                              </p>
-                            </div>
-                            <div>
-                              <h4 className="text-xs font-semibold text-slate-400 mb-1">Height</h4>
-                              <p className="text-white font-mono text-xs">
-                                {fullImageDetails?.height || 'N/A'}
+                                  : loadingNerdsTab ? 'Loading...' : 'N/A'}
                               </p>
                             </div>
                           </div>
 
-                          {/* Hash Values */}
-                          <div className="space-y-3">
-                            <h4 className="text-sm font-semibold text-slate-300">Hash Values</h4>
-                            <div className="space-y-2">
-                              <div>
-                                <h5 className="text-xs font-semibold text-slate-400 mb-1">SHA-256</h5>
-                                <div className="bg-white/5 rounded p-2">
-                                  <p className="text-white font-mono text-xs break-all">
-                                    {fullImageDetails?.sha256 || 'N/A'}
-                                  </p>
-                                </div>
+                          {/* Creation Date */}
+                          {fullImageDetails?.creationDate && (
+                            <div>
+                              <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                                <Calendar className="w-3.5 h-3.5" />
+                                Creation Date
                               </div>
-                              <div>
-                                <h5 className="text-xs font-semibold text-slate-400 mb-1">pHash</h5>
-                                <div className="bg-white/5 rounded p-2">
-                                  <p className="text-white font-mono text-xs break-all">
-                                    {fullImageDetails?.pHash 
-                                      ? `${fullImageDetails.pHash.substring(0, 64)}...` 
-                                      : 'N/A'}
-                                  </p>
-                                </div>
+                              <div className="bg-white/5 rounded p-2">
+                                <p className="text-white font-mono text-sm">
+                                  {new Date(fullImageDetails.creationDate).toLocaleString()}
+                                </p>
                               </div>
-                              <div>
-                                <h5 className="text-xs font-semibold text-slate-400 mb-1">aHash</h5>
-                                <div className="bg-white/5 rounded p-2">
-                                  <p className="text-white font-mono text-xs break-all">
-                                    {fullImageDetails?.aHash || 'N/A'}
-                                  </p>
-                                </div>
+                            </div>
+                          )}
+
+                          {/* Creation Date Source */}
+                          {fullImageDetails?.creationDateSource && (
+                            <div>
+                              <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                                <Calendar className="w-3.5 h-3.5" />
+                                Creation Date Source
                               </div>
-                              <div>
-                                <h5 className="text-xs font-semibold text-slate-400 mb-1">dHash</h5>
-                                <div className="bg-white/5 rounded p-2">
-                                  <p className="text-white font-mono text-xs break-all">
-                                    {fullImageDetails?.dHash || 'N/A'}
-                                  </p>
-                                </div>
+                              <div className="bg-white/5 rounded p-2">
+                                <p className="text-white font-mono text-sm">
+                                  {fullImageDetails.creationDateSource}
+                                </p>
                               </div>
+                            </div>
+                          )}
+
+                          {/* Width */}
+                          {fullImageDetails?.width && (
+                            <div>
+                              <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                                <Ruler className="w-3.5 h-3.5" />
+                                Width
+                              </div>
+                              <div className="bg-white/5 rounded p-2">
+                                <p className="text-white font-mono text-sm">
+                                  {fullImageDetails.width}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Height */}
+                          {fullImageDetails?.height && (
+                            <div>
+                              <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                                <Ruler className="w-3.5 h-3.5" />
+                                Height
+                              </div>
+                              <div className="bg-white/5 rounded p-2">
+                                <p className="text-white font-mono text-sm">
+                                  {fullImageDetails.height}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* SHA-256 */}
+                          <div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                              <Fingerprint className="w-3.5 h-3.5" />
+                              SHA-256
+                            </div>
+                            <div className="bg-white/5 rounded p-2">
+                              <p className="text-white font-mono text-sm break-all">
+                                {fullImageDetails?.sha256 || (loadingNerdsTab ? 'Loading...' : 'N/A')}
+                              </p>
                             </div>
                           </div>
 
-                          {/* EXIF Metadata - Show all extracted fields */}
+                          {/* pHash */}
+                          <div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                              <Hash className="w-3.5 h-3.5" />
+                              pHash
+                            </div>
+                            <div className="bg-white/5 rounded p-2">
+                              <p className="text-white font-mono text-sm break-all">
+                                {fullImageDetails?.pHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* aHash */}
+                          <div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                              <Hash className="w-3.5 h-3.5" />
+                              aHash
+                            </div>
+                            <div className="bg-white/5 rounded p-2">
+                              <p className="text-white font-mono text-sm break-all">
+                                {fullImageDetails?.aHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* dHash */}
+                          <div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                              <Hash className="w-3.5 h-3.5" />
+                              dHash
+                            </div>
+                            <div className="bg-white/5 rounded p-2">
+                              <p className="text-white font-mono text-sm break-all">
+                                {fullImageDetails?.dHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* All other EXIF fields in the same style */}
                           {fullImageDetails && (() => {
-                            // Define known non-EXIF fields to exclude
+                            // Define known fields to exclude
                             const knownFields = new Set([
                               'id', 'pixvidUrl', 'pixvidDeleteUrl', 'imgbbUrl', 'imgbbDeleteUrl', 'imgbbThumbUrl',
                               'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize', 'tags', 'description',
-                              'internalAddedTimestamp', 'sha256', 'pHash', 'aHash', 'dHash'
+                              'internalAddedTimestamp', 'sha256', 'pHash', 'aHash', 'dHash', 'width', 'height', 'fileType',
+                              'originalId', 'deletedAt', 'fileTypeSource', 'creationDate', 'creationDateSource'
                             ]);
                             
                             // Get all EXIF fields (everything that's not in knownFields)
                             const exifFields = Object.entries(fullImageDetails).filter(([key]) => !knownFields.has(key));
                             
-                            if (exifFields.length === 0) return null;
-                            
-                            return (
-                              <div className="space-y-3">
-                                <h4 className="text-sm font-semibold text-slate-300">
-                                  EXIF Metadata ({exifFields.length} fields)
-                                </h4>
-                                <div className="bg-white/5 rounded-lg p-4 max-h-96 overflow-y-auto">
-                                  <div className="space-y-2">
-                                    {exifFields.map(([key, value]) => (
-                                      <div key={key} className="flex items-start gap-3 py-1 border-b border-white/5 last:border-0">
-                                        <span className="text-xs font-semibold text-slate-400 min-w-[140px] flex-shrink-0">
-                                          {key}
-                                        </span>
-                                        <span className="text-xs text-white font-mono break-all">
-                                          {typeof value === 'object' ? JSON.stringify(value) : String(value || 'N/A')}
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
+                            return exifFields.map(([key, value]) => (
+                              <div key={key}>
+                                <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                                  <FileText className="w-3.5 h-3.5" />
+                                  {key}
+                                </div>
+                                <div className="bg-white/5 rounded p-2">
+                                  <p className="text-white font-mono text-sm break-all">
+                                    {typeof value === 'object' ? JSON.stringify(value) : String(value || 'N/A')}
+                                  </p>
                                 </div>
                               </div>
-                            );
+                            ));
                           })()}
-                        </>
+                        </div>
                       )}
                     </div>
                   )}
