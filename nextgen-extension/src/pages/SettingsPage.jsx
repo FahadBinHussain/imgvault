@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Save, Check } from 'lucide-react';
+import { Save, Check, ArrowLeft } from 'lucide-react';
 import { Button, Input, Textarea, Card } from '../components/UI';
 import { useChromeStorage } from '../hooks/useChromeExtension';
 
@@ -20,6 +20,10 @@ export default function SettingsPage() {
   const [localGallerySource, setLocalGallerySource] = useState('imgbb');
   const [saved, setSaved] = useState(false);
   const [firebaseStatus, setFirebaseStatus] = useState('');
+
+  const handleBack = () => {
+    window.location.href = 'gallery.html';
+  };
 
   useEffect(() => {
     setLocalPixvid(pixvidApiKey || '');
@@ -184,6 +188,14 @@ export default function SettingsPage() {
         {/* Header */}
         <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl rounded-2xl p-6 mb-6">
           <div className="flex items-center gap-4">
+            <Button
+              onClick={handleBack}
+              variant="secondary"
+              className="!p-2 flex items-center justify-center"
+              title="Back to Gallery"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
             <div className="relative">
               <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-xl blur-md opacity-50"></div>
               <img src="/icons/icon48.png" alt="ImgVault" className="w-12 h-12 relative z-10 rounded-xl shadow-lg" />
