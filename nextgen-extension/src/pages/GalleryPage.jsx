@@ -217,6 +217,7 @@ export default function GalleryPage() {
       // Create upload data object with only serializable values
       const uploadData = {
         imageUrl: String(uploadImageData.srcUrl || ''),
+        originalSourceUrl: uploadPageUrl === 'Uploaded manually' ? 'Uploaded manually' : String(uploadPageUrl || ''),
         pageUrl: String(uploadPageUrl || ''),
         pageTitle: String(uploadImageData.pageTitle || ''),
         fileName: String(uploadImageData.fileName || ''),
