@@ -111,7 +111,7 @@ export default function GalleryPage() {
       setUploadImageData({
         srcUrl: reader.result,
         fileName: file.name,
-        pageTitle: file.name, // Use filename as title for drag & drop
+        pageTitle: 'Uploaded manually', // Use "Uploaded manually" as title for local uploads
         timestamp: Date.now(),
         file: file // Store the original file object for MIME and date extraction
       });
