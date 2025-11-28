@@ -1599,19 +1599,33 @@ export default function GalleryPage() {
                     
                     {/* Metadata field count */}
                     {uploadMetadata && (() => {
-                      const allFields = {
-                        'File Name': uploadImageData?.fileName || 'N/A',
-                        'File Size': uploadMetadata.fileSize ? `${(uploadMetadata.fileSize / 1024).toFixed(2)} KB` : 'N/A',
-                        'Width': uploadMetadata.width || 'N/A',
-                        'Height': uploadMetadata.height || 'N/A',
-                        'SHA-256': uploadMetadata.sha256 || 'N/A',
-                        'pHash': uploadMetadata.pHash || 'N/A',
-                        'aHash': uploadMetadata.aHash || 'N/A',
-                        'dHash': uploadMetadata.dHash || 'N/A',
-                        ...(uploadMetadata.exifMetadata || {})
-                      };
-                      const metadataFieldsCount = Object.keys(allFields).length;
-                      const totalFields = metadataFieldsCount + 4 + 4 + 2; // +4 form, +4 imgbb, +2 pixvid
+                      // Form fields
+                      const formFields = ['sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'description', 'tags'];
+                      
+                      // Core metadata fields
+                      const coreMetadataFields = ['fileName', 'fileSize', 'fileType', 'fileTypeSource', 'width', 'height'];
+                      
+                      // Hash fields
+                      const hashFields = ['sha256', 'pHash', 'aHash', 'dHash'];
+                      
+                      // Date fields
+                      const dateFields = ['creationDate', 'creationDateSource'];
+                      
+                      // EXIF metadata fields
+                      const exifFieldsCount = uploadMetadata.exifMetadata ? Object.keys(uploadMetadata.exifMetadata).length : 0;
+                      
+                      // ImgBB URLs (3 total)
+                      const imgbbUrls = ['imgbbUrl', 'imgbbDeleteUrl', 'imgbbThumbUrl'];
+                      
+                      // Pixvid URLs (2 total)
+                      const pixvidUrls = ['pixvidUrl', 'pixvidDeleteUrl'];
+                      
+                      // Internal timestamp (1 field)
+                      const internalFields = ['internalAddedTimestamp'];
+                      
+                      const totalFields = formFields.length + coreMetadataFields.length + hashFields.length + 
+                                         dateFields.length + exifFieldsCount + imgbbUrls.length + 
+                                         pixvidUrls.length + internalFields.length;
                       
                       return (
                         <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/30 space-y-3">
@@ -1625,8 +1639,14 @@ export default function GalleryPage() {
                           </div>
                           <div className="text-xs text-green-200/70 border-t border-green-500/20 pt-3 space-y-1">
                             <div>This includes:</div>
-                            <div>• 4 ImgBB URLs</div>
-                            <div>• 2 Pixvid URLs</div>
+                            <div>• {formFields.length} form fields</div>
+                            <div>• {coreMetadataFields.length} core metadata fields</div>
+                            <div>• {hashFields.length} hash fields</div>
+                            <div>• {dateFields.length} date fields</div>
+                            <div>• {exifFieldsCount} EXIF metadata fields</div>
+                            <div>• {imgbbUrls.length} ImgBB URLs</div>
+                            <div>• {pixvidUrls.length} Pixvid URLs</div>
+                            <div>• {internalFields.length} internal timestamp</div>
                           </div>
                         </div>
                       );
@@ -1801,6 +1821,23 @@ export default function GalleryPage() {
                     />
                   </div>
 
+                  {/* pageTitle */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      pageTitle
+                    </label>
+                    <input
+                      type="text"
+                      value={uploadImageData?.pageTitle || ''}
+                      onChange={(e) => setUploadImageData(prev => ({ ...prev, pageTitle: e.target.value }))}
+                      placeholder="Page title"
+                      className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                               text-white placeholder-slate-400 
+                               focus:outline-none focus:border-primary-500 focus:ring-2 
+                               focus:ring-primary-500/20 transition-all"
+                    />
+                  </div>
+
                   {/* sourceImageUrl (Read-only) */}
                   {uploadImageData && (
                     <div>
@@ -1853,20 +1890,22 @@ export default function GalleryPage() {
                   {/* Display ALL metadata fields that will be saved */}
                   {uploadMetadata && (() => {
                     const allFields = {
-                      'File Name': uploadImageData?.fileName || 'N/A',
-                      'MIME Type': uploadMetadata.mimeType || 'N/A',
+                      'aHash': uploadMetadata.aHash || 'N/A',
                       'Creation Date': uploadMetadata.creationDate 
                         ? new Date(uploadMetadata.creationDate).toLocaleString()
                         : 'N/A',
+                      'creationDateSource': uploadMetadata.creationDateSource || 'N/A',
+                      'dHash': uploadMetadata.dHash || 'N/A',
+                      'File Name': uploadImageData?.fileName || 'N/A',
                       'File Size': uploadMetadata.fileSize 
                         ? `${(uploadMetadata.fileSize / 1024).toFixed(2)} KB` 
                         : 'N/A',
-                      'Width': uploadMetadata.width || 'N/A',
+                      'fileTypeSource': uploadMetadata.fileTypeSource || 'N/A',
                       'Height': uploadMetadata.height || 'N/A',
-                      'SHA-256': uploadMetadata.sha256 || 'N/A',
+                      'MIME Type': uploadMetadata.mimeType || uploadMetadata.fileType || 'N/A',
                       'pHash': uploadMetadata.pHash || 'N/A',
-                      'aHash': uploadMetadata.aHash || 'N/A',
-                      'dHash': uploadMetadata.dHash || 'N/A',
+                      'SHA-256': uploadMetadata.sha256 || 'N/A',
+                      'Width': uploadMetadata.width || 'N/A',
                       ...(uploadMetadata.exifMetadata || {})
                     };
                     
