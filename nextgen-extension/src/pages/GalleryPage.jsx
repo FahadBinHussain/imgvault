@@ -1034,23 +1034,57 @@ export default function GalleryPage() {
               <div className="flex gap-2 mb-4 border-b border-white/10">
                 <button
                   onClick={() => handleTabSwitch('noobs')}
-                  className={`px-4 py-2 font-semibold transition-all ${
+                  className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${
                     activeTab === 'noobs'
                       ? 'text-primary-300 border-b-2 border-primary-300'
                       : 'text-slate-400 hover:text-slate-300'
                   }`}
                 >
-                  For Noobs 👶
+                  <span>For Noobs 👶</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    activeTab === 'noobs' 
+                      ? 'bg-primary-500/20 text-primary-200' 
+                      : 'bg-slate-500/20 text-slate-400'
+                  }`}>
+                    {/* Count: Title, Added To Vault, Display Source, Pixvid URL, ImgBB URL (if present), Source URL, Page URL, Description, Tags = 9 or 8 */}
+                    {selectedImage?.imgbbUrl ? 9 : 8}
+                  </span>
                 </button>
                 <button
                   onClick={() => handleTabSwitch('nerds')}
-                  className={`px-4 py-2 font-semibold transition-all ${
+                  className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${
                     activeTab === 'nerds'
                       ? 'text-green-300 border-b-2 border-green-300'
                       : 'text-slate-400 hover:text-slate-300'
                   }`}
                 >
-                  For Nerds 🤓
+                  <span>For Nerds 🤓</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    activeTab === 'nerds' 
+                      ? 'bg-green-500/20 text-green-200' 
+                      : 'bg-slate-500/20 text-slate-400'
+                  }`}>
+                    {fullImageDetails ? (() => {
+                      // Count base technical fields
+                      let count = 9; // Document ID, File Name, File Type, File Size, SHA-256, pHash, aHash, dHash
+                      
+                      // Add width and height if present
+                      if (fullImageDetails.width) count++;
+                      if (fullImageDetails.height) count++;
+                      
+                      // Count EXIF fields (everything that's not in knownFields)
+                      const knownFields = new Set([
+                        'id', 'pixvidUrl', 'pixvidDeleteUrl', 'imgbbUrl', 'imgbbDeleteUrl', 'imgbbThumbUrl',
+                        'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize', 'tags', 'description',
+                        'internalAddedTimestamp', 'sha256', 'pHash', 'aHash', 'dHash', 'width', 'height', 'fileType'
+                      ]);
+                      
+                      const exifFields = Object.keys(fullImageDetails).filter(key => !knownFields.has(key));
+                      count += exifFields.length;
+                      
+                      return count;
+                    })() : '...'}
+                  </span>
                 </button>
               </div>
 
