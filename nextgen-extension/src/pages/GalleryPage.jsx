@@ -385,6 +385,76 @@ export default function GalleryPage() {
         value = value.split(',').map(t => t.trim()).filter(t => t);
       }
       
+      // Handle collectionId change specially - need to update counts
+      if (field === 'collectionId') {
+        const oldCollectionId = selectedImage.collectionId;
+        const newCollectionId = value || null;
+        
+        console.log('📝 [Collection Edit]', { oldCollectionId, newCollectionId });
+        
+        // Update the image's collectionId
+        const updateData = { collectionId: newCollectionId };
+        const updateResult = await chrome.runtime.sendMessage({
+          action: 'updateImage',
+          data: { id: selectedImage.id, ...updateData }
+        });
+        
+        if (!updateResult.success) {
+          throw new Error(updateResult.error || 'Failed to update image');
+        }
+        
+        // Update collection counts
+        try {
+          if (oldCollectionId) {
+            console.log('➖ Decrementing old collection:', oldCollectionId);
+            const oldCollection = collections.find(c => c.id === oldCollectionId);
+            if (oldCollection) {
+              const decrementResult = await chrome.runtime.sendMessage({
+                action: 'updateCollection',
+                data: {
+                  id: oldCollectionId,
+                  updates: {
+                    imageCount: Math.max(0, (oldCollection.imageCount || 1) - 1)
+                  }
+                }
+              });
+              if (!decrementResult.success) {
+                console.error('Failed to decrement old collection count:', decrementResult.error);
+              }
+            }
+          }
+          
+          if (newCollectionId) {
+            console.log('➕ Incrementing new collection:', newCollectionId);
+            const newCollection = collections.find(c => c.id === newCollectionId);
+            if (newCollection) {
+              const incrementResult = await chrome.runtime.sendMessage({
+                action: 'updateCollection',
+                data: {
+                  id: newCollectionId,
+                  updates: {
+                    imageCount: (newCollection.imageCount || 0) + 1
+                  }
+                }
+              });
+              if (!incrementResult.success) {
+                console.error('Failed to increment new collection count:', incrementResult.error);
+              }
+            }
+          }
+        } catch (countError) {
+          console.error('Error updating collection counts:', countError);
+          // Don't fail the whole operation if count update fails
+        }
+        
+        setSelectedImage({ ...selectedImage, collectionId: newCollectionId });
+        setEditingField(null);
+        
+        // Reload images to reflect the change
+        reload();
+        return;
+      }
+      
       const updateData = { [field]: value };
       await chrome.runtime.sendMessage({
         action: 'updateImage',
@@ -1075,8 +1145,8 @@ export default function GalleryPage() {
                       ? 'bg-primary-500/20 text-primary-200' 
                       : 'bg-slate-500/20 text-slate-400'
                   }`}>
-                    {/* Count: Title, Added To Vault, Display Source, Pixvid URL, ImgBB URL (if present), Source URL, Page URL, Description, Tags = 9 or 8 */}
-                    {selectedImage?.imgbbUrl ? 9 : 8}
+                    {/* Count: Title, Added To Vault, Collection, Display Source, Pixvid URL, ImgBB URL (if present), Source URL, Page URL, Description, Tags */}
+                    {9 + (selectedImage?.imgbbUrl ? 1 : 0)}
                   </span>
                 </button>
                 <button
@@ -1222,6 +1292,81 @@ export default function GalleryPage() {
                                 minute: '2-digit'
                               })
                             : 'N/A'}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Collection */}
+                    <div>
+                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                          </svg>
+                          Collection
+                        </span>
+                        {editingField !== 'collectionId' && (
+                          <button
+                            onClick={() => startEditing('collectionId')}
+                            className="text-primary-300 hover:text-primary-200 text-xs"
+                          >
+                            ✏️ Edit
+                          </button>
+                        )}
+                      </div>
+                      
+                      {editingField === 'collectionId' ? (
+                        <div className="space-y-2">
+                          <select
+                            value={editValues.collectionId || ''}
+                            onChange={(e) => setEditValues({ ...editValues, collectionId: e.target.value || null })}
+                            className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
+                          >
+                            <option value="">No Collection</option>
+                            {collections.map(col => (
+                              <option key={col.id} value={col.id}>{col.name}</option>
+                            ))}
+                          </select>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => saveEdit('collectionId')}
+                              className="px-3 py-1 rounded bg-green-500/20 text-green-300 text-xs hover:bg-green-500/30"
+                            >
+                              ✓ Save
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              className="px-3 py-1 rounded bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30"
+                            >
+                              ✕ Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : selectedImage.collectionId ? (() => {
+                        const collection = collections.find(c => c.id === selectedImage.collectionId);
+                        return collection ? (
+                          <div className="flex items-center gap-2">
+                            <div 
+                              className="px-3 py-1.5 rounded-lg font-semibold text-sm flex items-center gap-2 shadow-md"
+                              style={{
+                                backgroundColor: `${collection.color || '#6366f1'}20`,
+                                borderColor: `${collection.color || '#6366f1'}50`,
+                                borderWidth: '1px',
+                                color: collection.color || '#a5b4fc'
+                              }}
+                            >
+                              <span>{collection.name}</span>
+                              <span className="text-xs opacity-70">({collection.imageCount || 0})</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-red-400">
+                            Collection not found (ID: {selectedImage.collectionId})
+                          </div>
+                        );
+                      })() : (
+                        <div className="text-white/50 text-sm italic">
+                          Not in any collection
                         </div>
                       )}
                     </div>

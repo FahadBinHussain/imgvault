@@ -148,7 +148,9 @@ export class StorageManager {
         continue; // Skip the exifMetadata field itself
       }
       
-      if (typeof value === 'string') {
+      if (value === null) {
+        fields[key] = { nullValue: null };
+      } else if (typeof value === 'string') {
         fields[key] = { stringValue: value };
       } else if (typeof value === 'number') {
         if (Number.isInteger(value)) {
@@ -201,6 +203,8 @@ export class StorageManager {
         result[key] = value.timestampValue;
       } else if (value.arrayValue !== undefined) {
         result[key] = value.arrayValue.values?.map(v => v.stringValue) || [];
+      } else if (value.nullValue !== undefined) {
+        result[key] = null; // Handle null values explicitly
       }
     }
     
@@ -364,7 +368,8 @@ export class StorageManager {
       // Only fetch essential fields for gallery view
       const maskFields = [
         'pixvidUrl', 'imgbbUrl', 'imgbbThumbUrl', 'sourceImageUrl',
-        'sourcePageUrl', 'pageTitle', 'tags', 'description', 'internalAddedTimestamp'
+        'sourcePageUrl', 'pageTitle', 'tags', 'description', 'internalAddedTimestamp',
+        'collectionId' // Include collectionId for filtering and display
       ];
       
       const url = this.buildUrl('images', {
