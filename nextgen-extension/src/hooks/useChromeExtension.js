@@ -145,7 +145,8 @@ export function useImages() {
 
     try {
       const images = await sendMessage('getImages');
-      console.log('Loaded images from background:', images);
+      console.log('✅ Loaded images from background:', images);
+      console.log('🔍 First image collectionId check:', images[0]?.collectionId, 'Type:', typeof images[0]?.collectionId);
       setImages(images || []);
     } catch (err) {
       console.error('Error loading images:', err);
