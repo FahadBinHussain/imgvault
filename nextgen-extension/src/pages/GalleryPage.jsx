@@ -274,10 +274,13 @@ export default function GalleryPage() {
 
       await uploadImage(uploadData);
 
-      showToast('✅ Image uploaded successfully!', 'success', 3000);
+      // Close modal first for better UX
       setShowUploadModal(false);
       setDuplicateData(null);
-      reload(); // Refresh gallery
+      
+      // Then reload and show toast
+      await reload(); // Refresh gallery
+      showToast('✅ Image uploaded successfully!', 'success', 3000);
     } catch (err) {
       console.error('Upload failed:', err);
       
