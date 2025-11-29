@@ -7,7 +7,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  RefreshCw, Upload, Search, Trash2, Download, X, Settings,
+  RefreshCw, Upload, Search, Trash2, Download, X, Settings, FolderOpen,
   FileText, Calendar, Cloud, Link2, Globe, AlignLeft, Tag,
   File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint
 } from 'lucide-react';
@@ -770,6 +770,21 @@ export default function GalleryPage() {
                     title="Refresh"
                   >
                     <RefreshCw className="w-5 h-5 text-white" />
+                  </button>
+                  <button
+                    onClick={() => navigate('/collections')}
+                    className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
+                             backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
+                             shadow-lg hover:shadow-xl flex items-center gap-2 text-white"
+                    title="Collections"
+                  >
+                    <FolderOpen className="w-5 h-5" />
+                    Collections
+                    {!collectionsLoading && collections.length > 0 && (
+                      <span className="ml-1 text-xs text-white/60">
+                        {collections.length}
+                      </span>
+                    )}
                   </button>
                   <button
                     onClick={() => navigate('/settings')}

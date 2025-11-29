@@ -10,6 +10,7 @@ import GalleryPage from './pages/GalleryPage';
 import SettingsPage from './pages/SettingsPage';
 import TrashPage from './pages/TrashPage';
 import PopupPage from './pages/PopupPage';
+import CollectionsPage from './pages/CollectionsPage';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -18,6 +19,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <Routes>
         <Route path="/" element={<Navigate to="/gallery" replace />} />
         <Route path="/gallery" element={<GalleryPage />} />
+        <Route path="/collections" element={<CollectionsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/trash" element={<TrashPage />} />
         <Route path="/popup" element={<PopupPage />} />
