@@ -4,11 +4,13 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Settings, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { Button, Input, Textarea, Card, IconButton, Spinner } from '../components/UI';
 import { usePendingImage, useImageUpload, useChromeStorage, useCollections } from '../hooks/useChromeExtension';
 
 export default function PopupPage() {
+  const navigate = useNavigate();
   const [pendingImage, clearPending] = usePendingImage();
   const [settings] = useChromeStorage('pixvidApiKey', null, 'sync');
   const { uploadImage, uploading, progress, error: uploadError } = useImageUpload();
@@ -133,11 +135,11 @@ export default function PopupPage() {
   };
 
   const openSettings = () => {
-    chrome.tabs.create({ url: chrome.runtime.getURL('settings.html') });
+    navigate('/settings');
   };
 
   const openGallery = () => {
-    chrome.tabs.create({ url: chrome.runtime.getURL('gallery.html') });
+    navigate('/gallery');
   };
 
   // No image view
