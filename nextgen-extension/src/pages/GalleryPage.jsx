@@ -45,6 +45,7 @@ export default function GalleryPage() {
   const [uploadTags, setUploadTags] = useState('');
   const [uploadMetadata, setUploadMetadata] = useState(null);
   const [duplicateData, setDuplicateData] = useState(null);
+  const [isLocalUpload, setIsLocalUpload] = useState(false); // Track if current image is from local file
   
   // Drag & drop state
   const [isDragging, setIsDragging] = useState(false);
@@ -100,6 +101,7 @@ export default function GalleryPage() {
     setUploadTags('');
     setUploadMetadata(null);
     setDuplicateData(null);
+    setIsLocalUpload(false);
   };
 
   const handleFileUpload = async (e) => {
@@ -110,6 +112,9 @@ export default function GalleryPage() {
       const savedPageTitle = uploadImageData?.pageTitle;
       
       await processImageFile(file, savedPageUrl, savedPageTitle);
+      
+      // Mark this as a local upload
+      setIsLocalUpload(true);
     }
   };
 
@@ -233,7 +238,7 @@ export default function GalleryPage() {
       // Create upload data object with only serializable values
       const uploadData = {
         imageUrl: String(uploadImageData.srcUrl || ''),
-        originalSourceUrl: uploadPageUrl === 'Uploaded manually' ? 'Uploaded manually' : String(uploadPageUrl || ''),
+        originalSourceUrl: (isLocalUpload || uploadPageUrl === 'Uploaded manually') ? 'Uploaded manually' : String(uploadPageUrl || ''),
         pageUrl: String(uploadPageUrl || ''),
         pageTitle: String(uploadImageData.pageTitle || ''),
         fileName: String(uploadImageData.fileName || ''),
@@ -2137,7 +2142,7 @@ export default function GalleryPage() {
                       </label>
                       <div className="w-full px-4 py-3 rounded-lg bg-slate-700/50 border border-slate-600 
                                     text-slate-300 font-mono text-xs break-all">
-                        {uploadPageUrl === 'Uploaded manually' 
+                        {isLocalUpload || uploadPageUrl === 'Uploaded manually' 
                           ? 'Uploaded manually' 
                           : uploadImageData.srcUrl}
                       </div>
