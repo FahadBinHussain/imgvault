@@ -923,8 +923,10 @@ export default function TrashPage() {
                               'originalId', 'deletedAt', 'fileTypeSource', 'creationDate', 'creationDateSource'
                             ]);
                             
-                            // Get all EXIF fields (everything that's not in knownFields)
-                            const exifFields = Object.entries(fullImageDetails).filter(([key]) => !knownFields.has(key));
+                            // Get all EXIF fields (everything that's not in knownFields) and sort alphabetically
+                            const exifFields = Object.entries(fullImageDetails)
+                              .filter(([key]) => !knownFields.has(key))
+                              .sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
                             
                             return exifFields.map(([key, value]) => (
                               <div key={key}>
