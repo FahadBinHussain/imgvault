@@ -1203,8 +1203,8 @@ export default function GalleryPage() {
                       ? 'bg-primary-500/20 text-primary-200' 
                       : 'bg-slate-500/20 text-slate-400'
                   }`}>
-                    {/* Count: Title, Added To Vault, Collection, Display Source, Pixvid URL, ImgBB URL (if present), Source URL, Page URL, Description, Tags */}
-                    {9 + (selectedImage?.imgbbUrl ? 1 : 0)}
+                    {/* Count: Title, Added To Vault, Collection, Pixvid URL, Source URL, Page URL, Description, Tags = 8 base + ImgBB URL (conditional) = 9 total */}
+                    9
                   </span>
                 </button>
                 <button
@@ -1427,24 +1427,6 @@ export default function GalleryPage() {
                           Not in any collection
                         </div>
                       )}
-                    </div>
-
-                    <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
-                        <Cloud className="w-3.5 h-3.5" />
-                        Display Source
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {selectedImage.imgbbUrl ? (
-                          <span className="px-3 py-1 rounded bg-green-500/20 text-green-300 font-semibold text-sm">
-                            ImgBB ⚡
-                          </span>
-                        ) : (
-                          <span className="px-3 py-1 rounded bg-blue-500/20 text-blue-300 font-semibold text-sm">
-                            Pixvid ⚡
-                          </span>
-                        )}
-                      </div>
                     </div>
 
                     <div>

@@ -522,8 +522,8 @@ export default function TrashPage() {
                           ? 'bg-red-500/20 text-red-200' 
                           : 'bg-slate-500/20 text-slate-400'
                       }`}>
-                        {/* Count: Title, Deleted At, Added To Vault, Display Source, Pixvid URL, ImgBB URL (if present), Source URL, Page URL, Description, Tags = 10 or 9 */}
-                        {selectedImage?.imgbbUrl ? 10 : 9}
+                        {/* Count: Title, Deleted At, Added To Vault, Pixvid URL, Source URL, Page URL, Description, Tags = 8 base + ImgBB URL (conditional) = 9 total + Deleted At = 10 */}
+                        10
                       </span>
                     </button>
                     <button
@@ -618,25 +618,6 @@ export default function TrashPage() {
                                     minute: '2-digit'
                                   })
                                 : 'Unknown'}
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">Display Source</div>
-                          <div className="flex items-center gap-2">
-                            {selectedImage.imgbbUrl ? (
-                              <span className="px-3 py-1 rounded bg-green-500/20 text-green-300 font-semibold text-sm">
-                                ImgBB ⚡
-                              </span>
-                            ) : selectedImage.pixvidUrl ? (
-                              <span className="px-3 py-1 rounded bg-blue-500/20 text-blue-300 font-semibold text-sm">
-                                Pixvid ⚡
-                              </span>
-                            ) : (
-                              <span className="px-3 py-1 rounded bg-gray-500/20 text-gray-300 font-semibold text-sm">
-                                Original ⚡
-                              </span>
-                            )}
                           </div>
                         </div>
 
