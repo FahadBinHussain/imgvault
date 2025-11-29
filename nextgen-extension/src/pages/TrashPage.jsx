@@ -29,6 +29,12 @@ export default function TrashPage() {
   const [fullImageDetails, setFullImageDetails] = useState(null);
   const [loadingNerdsTab, setLoadingNerdsTab] = useState(false);
 
+  // Selection mode state
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedImages, setSelectedImages] = useState(new Set());
+  const [showBulkRestoreConfirm, setShowBulkRestoreConfirm] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+
   // Timeline scrollbar refs
   const pageContainerRef = useRef(null);
   const dateGroupRefs = useRef({});
@@ -100,6 +106,83 @@ export default function TrashPage() {
 
   const handleImageLoad = (imageId) => {
     setLoadedImages(prev => new Set(prev).add(imageId));
+  };
+
+  // Toggle selection mode
+  const toggleSelectionMode = () => {
+    setSelectionMode(!selectionMode);
+    setSelectedImages(new Set()); // Clear selections when toggling
+  };
+
+  // Toggle image selection
+  const toggleImageSelection = (imageId, e) => {
+    e.stopPropagation();
+    const newSelected = new Set(selectedImages);
+    if (newSelected.has(imageId)) {
+      newSelected.delete(imageId);
+    } else {
+      newSelected.add(imageId);
+    }
+    setSelectedImages(newSelected);
+  };
+
+  // Select all images
+  const selectAll = () => {
+    const allIds = new Set(trashedImages.map(img => img.id));
+    setSelectedImages(allIds);
+  };
+
+  // Deselect all
+  const deselectAll = () => {
+    setSelectedImages(new Set());
+  };
+
+  // Bulk restore selected images
+  const handleBulkRestore = async () => {
+    if (selectedImages.size === 0) return;
+    
+    setShowBulkRestoreConfirm(false);
+    setIsProcessing(true);
+    
+    try {
+      showToast(`♻️ Restoring ${selectedImages.size} image${selectedImages.size > 1 ? 's' : ''}...`, 'info', 0);
+      
+      const restorePromises = Array.from(selectedImages).map(id => restoreFromTrash(id));
+      await Promise.all(restorePromises);
+      
+      showToast(`✅ ${selectedImages.size} image${selectedImages.size > 1 ? 's' : ''} restored successfully!`, 'success', 3000);
+      setSelectedImages(new Set());
+      setSelectionMode(false);
+    } catch (error) {
+      console.error('Bulk restore failed:', error);
+      showToast(`❌ ${error.message || 'Failed to restore some images'}`, 'error', 4000);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Bulk delete selected images permanently
+  const handleBulkDelete = async () => {
+    if (selectedImages.size === 0) return;
+    
+    setShowBulkDeleteConfirm(false);
+    setIsProcessing(true);
+    
+    try {
+      showToast(`🔥 Permanently deleting ${selectedImages.size} image${selectedImages.size > 1 ? 's' : ''}...`, 'info', 0);
+      
+      const deletePromises = Array.from(selectedImages).map(id => permanentlyDelete(id));
+      await Promise.all(deletePromises);
+      
+      showToast(`✅ ${selectedImages.size} image${selectedImages.size > 1 ? 's' : ''} permanently deleted!`, 'success', 3000);
+      setSelectedImages(new Set());
+      setSelectionMode(false);
+    } catch (error) {
+      console.error('Bulk delete failed:', error);
+      showToast(`❌ ${error.message || 'Failed to delete some images'}`, 'error', 4000);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const showToast = (message, type = 'info', duration = 3000) => {
@@ -293,6 +376,20 @@ export default function TrashPage() {
                   </button>
                   {trashedImages.length > 0 && (
                     <button
+                      onClick={toggleSelectionMode}
+                      className={`px-4 py-3 rounded-xl border transition-all duration-300 hover:scale-105 active:scale-95
+                               shadow-lg hover:shadow-xl flex items-center gap-2 font-medium ${
+                        selectionMode 
+                          ? 'bg-red-500 border-red-400 text-white hover:bg-red-600'
+                          : 'bg-white/10 hover:bg-white/20 border-white/20 backdrop-blur-sm text-white'
+                      }`}
+                      title={selectionMode ? "Exit Selection Mode" : "Enter Selection Mode"}
+                    >
+                      {selectionMode ? '✓ Selection Mode' : '☑ Select'}
+                    </button>
+                  )}
+                  {trashedImages.length > 0 && (
+                    <button
                       onClick={() => setShowEmptyTrashConfirm(true)}
                       disabled={isProcessing}
                       className="px-5 py-3 rounded-xl bg-gradient-to-r from-red-500 to-pink-500 
@@ -311,7 +408,7 @@ export default function TrashPage() {
         </div>
 
         {/* Warning Message */}
-        {trashedImages.length > 0 && (
+        {trashedImages.length > 0 && !selectionMode && (
           <div className="px-6 mb-6">
             <div className="p-4 bg-yellow-900/30 border border-yellow-600/50 rounded-xl backdrop-blur-sm flex items-start gap-3">
               <AlertTriangle className="text-yellow-500 mt-1 flex-shrink-0" size={20} />
@@ -323,6 +420,68 @@ export default function TrashPage() {
                 </p>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Bulk Actions Bar - Shown when in selection mode */}
+        {selectionMode && trashedImages.length > 0 && (
+          <div className="px-6 mb-6">
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="p-4 rounded-xl bg-red-500/20 border border-red-400/50 backdrop-blur-sm"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-white font-semibold">
+                    {selectedImages.size} selected
+                  </span>
+                  <button
+                    onClick={selectAll}
+                    className="px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 
+                             text-white transition-all duration-200"
+                  >
+                    Select All ({trashedImages.length})
+                  </button>
+                  {selectedImages.size > 0 && (
+                    <button
+                      onClick={deselectAll}
+                      className="px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 
+                               text-white transition-all duration-200"
+                    >
+                      Deselect All
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {selectedImages.size > 0 && (
+                    <>
+                      <button
+                        onClick={() => setShowBulkRestoreConfirm(true)}
+                        disabled={isProcessing}
+                        className="px-4 py-2 rounded-lg bg-green-500 hover:bg-green-600 
+                                 text-white font-medium flex items-center gap-2
+                                 transition-all duration-200 disabled:opacity-50"
+                      >
+                        <Undo2 className="w-4 h-4" />
+                        Restore Selected
+                      </button>
+                      <button
+                        onClick={() => setShowBulkDeleteConfirm(true)}
+                        disabled={isProcessing}
+                        className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 
+                                 text-white font-medium flex items-center gap-2
+                                 transition-all duration-200 disabled:opacity-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete Permanently
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </motion.div>
           </div>
         )}
 
@@ -375,13 +534,17 @@ export default function TrashPage() {
                   }}
                   whileHover={{ scale: 1.02, y: -4 }}
                   className="group relative break-inside-avoid mb-6 cursor-pointer"
-                  onClick={() => {
-                    console.log('[TRASH] Image clicked:', image.id);
-                    console.log('[TRASH] Image data:', image);
-                    console.log('[TRASH] internalAddedTimestamp:', image.internalAddedTimestamp);
-                    setSelectedImage(image);
-                    setActiveTab('noobs');
-                    setFullImageDetails(null);
+                  onClick={(e) => {
+                    if (selectionMode) {
+                      toggleImageSelection(image.id, e);
+                    } else {
+                      console.log('[TRASH] Image clicked:', image.id);
+                      console.log('[TRASH] Image data:', image);
+                      console.log('[TRASH] internalAddedTimestamp:', image.internalAddedTimestamp);
+                      setSelectedImage(image);
+                      setActiveTab('noobs');
+                      setFullImageDetails(null);
+                    }
                   }}
                 >
                   {/* Soft glow effect on hover */}
@@ -394,6 +557,22 @@ export default function TrashPage() {
                                 rounded-xl overflow-hidden shadow-lg group-hover:shadow-2xl
                                 transform transition-all duration-500 ease-out 
                                 group-hover:scale-[1.04] group-hover:-translate-y-2">
+                    {/* Selection Checkbox - shown in selection mode */}
+                    {selectionMode && (
+                      <div className="absolute top-2 right-2 z-20">
+                        <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center
+                                      transition-all duration-200 ${
+                          selectedImages.has(image.id)
+                            ? 'bg-red-500 border-red-400'
+                            : 'bg-black/50 border-white/50 backdrop-blur-sm'
+                        }`}>
+                          {selectedImages.has(image.id) && (
+                            <span className="text-white text-sm font-bold">✓</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
                     {/* Loading skeleton with shimmer */}
                     {!loadedImages.has(image.id) && (
                       <div className="absolute inset-0 bg-slate-800 overflow-hidden">
@@ -1158,6 +1337,151 @@ export default function TrashPage() {
                   <>
                     <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
                     <span>Delete Forever</span>
+                  </>
+                )}
+              </div>
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk Restore Confirmation Modal */}
+      <Modal isOpen={showBulkRestoreConfirm} onClose={() => !isProcessing && setShowBulkRestoreConfirm(false)}>
+        <div className="text-center space-y-6">
+          {/* Animated icon */}
+          <div className="text-7xl animate-bounce">♻️</div>
+          
+          <h3 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-emerald-500 
+                       bg-clip-text text-transparent">
+            Restore {selectedImages.size} Image{selectedImages.size > 1 ? 's' : ''}?
+          </h3>
+          
+          <p className="text-slate-300 text-lg leading-relaxed">
+            This will restore {selectedImages.size} image{selectedImages.size > 1 ? 's' : ''} back to your gallery.
+            <br />
+            <span className="font-semibold text-green-400">They will be removed from trash.</span>
+          </p>
+          
+          <div className="flex gap-4 justify-center pt-4">
+            <button
+              onClick={() => setShowBulkRestoreConfirm(false)}
+              disabled={isProcessing}
+              className="px-6 py-3 rounded-xl bg-white/10 border border-white/20
+                       text-white font-medium
+                       hover:bg-white/20 hover:scale-105
+                       active:scale-95
+                       transition-all duration-200
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+            
+            <button
+              onClick={handleBulkRestore}
+              disabled={isProcessing}
+              className="group relative px-8 py-3 rounded-xl overflow-hidden
+                       bg-gradient-to-r from-green-600 to-emerald-700
+                       border border-green-400/50
+                       transform transition-all duration-300
+                       hover:scale-105 hover:shadow-2xl hover:shadow-green-500/50
+                       active:scale-95
+                       disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {isProcessing && (
+                <div className="absolute inset-0 bg-green-400 animate-ping opacity-25" />
+              )}
+              
+              <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
+                            bg-gradient-to-r from-transparent via-white/20 to-transparent 
+                            transition-transform duration-700" />
+              
+              <div className="relative flex items-center gap-2 text-white font-bold text-lg">
+                {isProcessing ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Restoring...</span>
+                  </>
+                ) : (
+                  <>
+                    <Undo2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
+                    <span>Restore All</span>
+                  </>
+                )}
+              </div>
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk Delete Confirmation Modal */}
+      <Modal isOpen={showBulkDeleteConfirm} onClose={() => !isProcessing && setShowBulkDeleteConfirm(false)}>
+        <div className="text-center space-y-6">
+          {/* Animated warning icon */}
+          <div className="text-7xl animate-bounce">💥</div>
+          
+          <h3 className="text-2xl font-bold bg-gradient-to-r from-red-400 to-rose-500 
+                       bg-clip-text text-transparent">
+            Permanently Delete {selectedImages.size} Image{selectedImages.size > 1 ? 's' : ''}?
+          </h3>
+          
+          <div className="text-left bg-red-900/20 border border-red-500/30 rounded-xl p-4 space-y-2">
+            <p className="text-slate-300 leading-relaxed">
+              This will permanently delete <span className="font-bold text-red-300">{selectedImages.size} image{selectedImages.size > 1 ? 's' : ''}</span> from:
+            </p>
+            <ul className="list-disc list-inside text-slate-300 space-y-1 ml-2">
+              <li>All hosting providers (ImgBB, Pixvid)</li>
+              <li>Your trash bin</li>
+            </ul>
+          </div>
+          
+          <p className="text-yellow-400 font-semibold text-lg flex items-center justify-center gap-2">
+            <AlertTriangle size={20} />
+            This action cannot be undone!
+          </p>
+          
+          <div className="flex gap-4 justify-center pt-4">
+            <button
+              onClick={() => setShowBulkDeleteConfirm(false)}
+              disabled={isProcessing}
+              className="px-6 py-3 rounded-xl bg-white/10 border border-white/20
+                       text-white font-medium
+                       hover:bg-white/20 hover:scale-105
+                       active:scale-95
+                       transition-all duration-200
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+            
+            <button
+              onClick={handleBulkDelete}
+              disabled={isProcessing}
+              className="group relative px-8 py-3 rounded-xl overflow-hidden
+                       bg-gradient-to-r from-red-600 to-rose-700
+                       border border-red-400/50
+                       transform transition-all duration-300
+                       hover:scale-105 hover:shadow-2xl hover:shadow-red-500/50
+                       active:scale-95
+                       disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {isProcessing && (
+                <div className="absolute inset-0 bg-red-400 animate-ping opacity-25" />
+              )}
+              
+              <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
+                            bg-gradient-to-r from-transparent via-white/20 to-transparent 
+                            transition-transform duration-700" />
+              
+              <div className="relative flex items-center gap-2 text-white font-bold text-lg">
+                {isProcessing ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
+                    <span>Delete Permanently</span>
                   </>
                 )}
               </div>

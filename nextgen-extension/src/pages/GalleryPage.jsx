@@ -54,12 +54,70 @@ export default function GalleryPage() {
   const [showCreateCollection, setShowCreateCollection] = useState(false); // Show create collection input
   const [newCollectionName, setNewCollectionName] = useState(''); // New collection name
   
+  // Selection mode state
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedImages, setSelectedImages] = useState(new Set());
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  
   // Drag & drop state
   const [isDragging, setIsDragging] = useState(false);
   const dragCounter = useRef(0);
   // Handle image load for fade-in effect
   const handleImageLoad = (imageId) => {
     setLoadedImages(prev => new Set(prev).add(imageId));
+  };
+
+  // Toggle selection mode
+  const toggleSelectionMode = () => {
+    setSelectionMode(!selectionMode);
+    setSelectedImages(new Set()); // Clear selections when toggling
+  };
+
+  // Toggle image selection
+  const toggleImageSelection = (imageId, e) => {
+    e.stopPropagation();
+    const newSelected = new Set(selectedImages);
+    if (newSelected.has(imageId)) {
+      newSelected.delete(imageId);
+    } else {
+      newSelected.add(imageId);
+    }
+    setSelectedImages(newSelected);
+  };
+
+  // Select all images in current view
+  const selectAll = () => {
+    const allIds = new Set(filteredImages.map(img => img.id));
+    setSelectedImages(allIds);
+  };
+
+  // Deselect all
+  const deselectAll = () => {
+    setSelectedImages(new Set());
+  };
+
+  // Bulk delete selected images
+  const handleBulkDelete = async () => {
+    if (selectedImages.size === 0) return;
+    
+    setShowBulkDeleteConfirm(false);
+    setIsDeleting(true);
+    
+    try {
+      showToast(`🗑️ Moving ${selectedImages.size} image${selectedImages.size > 1 ? 's' : ''} to trash...`, 'info', 0);
+      
+      const deletePromises = Array.from(selectedImages).map(id => deleteImage(id));
+      await Promise.all(deletePromises);
+      
+      showToast(`✅ ${selectedImages.size} image${selectedImages.size > 1 ? 's' : ''} moved to trash!`, 'success', 3000);
+      setSelectedImages(new Set());
+      setSelectionMode(false);
+    } catch (error) {
+      console.error('Bulk delete failed:', error);
+      showToast(`❌ ${error.message || 'Failed to delete some images'}`, 'error', 4000);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const filteredImages = images.filter(img => {
@@ -810,6 +868,18 @@ export default function GalleryPage() {
                     <RefreshCw className="w-5 h-5 text-white" />
                   </button>
                   <button
+                    onClick={toggleSelectionMode}
+                    className={`px-4 py-3 rounded-xl border transition-all duration-300 hover:scale-105 active:scale-95
+                             shadow-lg hover:shadow-xl flex items-center gap-2 font-medium ${
+                      selectionMode 
+                        ? 'bg-primary-500 border-primary-400 text-white hover:bg-primary-600'
+                        : 'bg-white/10 hover:bg-white/20 border-white/20 backdrop-blur-sm text-white'
+                    }`}
+                    title={selectionMode ? "Exit Selection Mode" : "Enter Selection Mode"}
+                  >
+                    {selectionMode ? '✓ Selection Mode' : '☑ Select'}
+                  </button>
+                  <button
                     onClick={() => navigate('/collections')}
                     className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
                              backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
@@ -879,6 +949,54 @@ export default function GalleryPage() {
                   />
                 </div>
               </div>
+
+              {/* Bulk Actions Bar - Shown when in selection mode */}
+              {selectionMode && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="mt-4 p-4 rounded-xl bg-primary-500/20 border border-primary-400/50 backdrop-blur-sm"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-white font-semibold">
+                        {selectedImages.size} selected
+                      </span>
+                      <button
+                        onClick={selectAll}
+                        className="px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 
+                                 text-white transition-all duration-200"
+                      >
+                        Select All ({filteredImages.length})
+                      </button>
+                      {selectedImages.size > 0 && (
+                        <button
+                          onClick={deselectAll}
+                          className="px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 
+                                   text-white transition-all duration-200"
+                        >
+                          Deselect All
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {selectedImages.size > 0 && (
+                        <button
+                          onClick={() => setShowBulkDeleteConfirm(true)}
+                          disabled={isDeleting}
+                          className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 
+                                   text-white font-medium flex items-center gap-2
+                                   transition-all duration-200 disabled:opacity-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Delete Selected
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
             </div>
           </div>
         </div>
@@ -1046,12 +1164,16 @@ export default function GalleryPage() {
                   }}
                   whileHover={{ scale: 1.02, y: -4 }}
                   className="group relative break-inside-avoid mb-6 cursor-pointer"
-                  onClick={() => {
-                    setIsModalAnimating(true);
-                    setSelectedImage(img);
-                    setActiveTab('noobs');
-                    setFullImageDetails(null);
-                    setTimeout(() => setIsModalAnimating(false), 300);
+                  onClick={(e) => {
+                    if (selectionMode) {
+                      toggleImageSelection(img.id, e);
+                    } else {
+                      setIsModalAnimating(true);
+                      setSelectedImage(img);
+                      setActiveTab('noobs');
+                      setFullImageDetails(null);
+                      setTimeout(() => setIsModalAnimating(false), 300);
+                    }
                   }}
                 >
                   {/* Soft glow effect on hover */}
@@ -1064,6 +1186,22 @@ export default function GalleryPage() {
                                 rounded-xl overflow-hidden shadow-lg group-hover:shadow-2xl
                                 transform transition-all duration-500 ease-out 
                                 group-hover:scale-[1.04] group-hover:-translate-y-2">
+                    {/* Selection Checkbox - shown in selection mode */}
+                    {selectionMode && (
+                      <div className="absolute top-2 right-2 z-20">
+                        <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center
+                                      transition-all duration-200 ${
+                          selectedImages.has(img.id)
+                            ? 'bg-primary-500 border-primary-400'
+                            : 'bg-black/50 border-white/50 backdrop-blur-sm'
+                        }`}>
+                          {selectedImages.has(img.id) && (
+                            <span className="text-white text-sm font-bold">✓</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
                     {/* Loading skeleton with shimmer */}
                     {!loadedImages.has(img.id) && (
                       <div className="absolute inset-0 bg-slate-800 overflow-hidden">
@@ -1952,6 +2090,77 @@ export default function GalleryPage() {
               
               <button
                 onClick={handleDelete}
+                disabled={isDeleting}
+                className="group relative px-8 py-3 rounded-xl overflow-hidden
+                         bg-gradient-to-r from-orange-600 to-yellow-700
+                         border border-orange-400/50
+                         transform transition-all duration-300
+                         hover:scale-105 hover:shadow-2xl hover:shadow-orange-500/50
+                         active:scale-95
+                         disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+              >
+                {/* Animated pulse effect when deleting */}
+                {isDeleting && (
+                  <div className="absolute inset-0 bg-orange-400 animate-ping opacity-25" />
+                )}
+                
+                {/* Shimmer effect */}
+                <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
+                              bg-gradient-to-r from-transparent via-white/20 to-transparent 
+                              transition-transform duration-700" />
+                
+                {/* Button content */}
+                <div className="relative flex items-center gap-2 text-white font-bold text-lg">
+                  {isDeleting ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Moving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
+                      <span>Move to Trash</span>
+                    </>
+                  )}
+                </div>
+              </button>
+            </div>
+          </div>
+        </Modal>
+
+        {/* Bulk Delete Confirmation Modal */}
+        <Modal isOpen={showBulkDeleteConfirm} onClose={() => !isDeleting && setShowBulkDeleteConfirm(false)}>
+          <div className="text-center space-y-6">
+            {/* Animated warning icon */}
+            <div className="text-7xl animate-bounce">🗑️</div>
+            
+            <h3 className="text-2xl font-bold bg-gradient-to-r from-yellow-400 to-orange-500 
+                         bg-clip-text text-transparent">
+              Move {selectedImages.size} Image{selectedImages.size > 1 ? 's' : ''} to Trash?
+            </h3>
+            
+            <p className="text-slate-300 text-lg leading-relaxed">
+              This will move {selectedImages.size} image{selectedImages.size > 1 ? 's' : ''} to trash. The images will remain accessible on hosting providers.
+              <br />
+              <span className="font-semibold text-yellow-400">You can restore them later from the trash.</span>
+            </p>
+            
+            <div className="flex gap-4 justify-center pt-4">
+              <button
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                disabled={isDeleting}
+                className="px-6 py-3 rounded-xl bg-white/10 border border-white/20
+                         text-white font-medium
+                         hover:bg-white/20 hover:scale-105
+                         active:scale-95
+                         transition-all duration-200
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              
+              <button
+                onClick={handleBulkDelete}
                 disabled={isDeleting}
                 className="group relative px-8 py-3 rounded-xl overflow-hidden
                          bg-gradient-to-r from-orange-600 to-yellow-700
