@@ -10,12 +10,13 @@ import {
   RefreshCw, FolderOpen, Trash2, Settings, Plus, X, Edit2, Check
 } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
-import { useCollections, useImages } from '../hooks/useChromeExtension';
+import { useCollections, useImages, useChromeStorage } from '../hooks/useChromeExtension';
 
 export default function CollectionsPage() {
   const navigate = useNavigate();
   const { collections, loading: collectionsLoading, createCollection, deleteCollection, updateCollection, reload } = useCollections();
   const { images, loading: imagesLoading } = useImages();
+  const [defaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
   
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
@@ -81,6 +82,13 @@ export default function CollectionsPage() {
 
   const getCollectionImages = (collectionId) => {
     return images.filter(img => img.collectionId === collectionId);
+  };
+
+  const getImageUrl = (img) => {
+    if (defaultGallerySource === 'pixvid') {
+      return img.pixvidUrl || img.imgbbUrl;
+    }
+    return img.imgbbUrl || img.pixvidUrl;
   };
 
   if (collectionsLoading || imagesLoading) {
@@ -262,7 +270,7 @@ export default function CollectionsPage() {
                               onClick={() => setSelectedCollection(collection)}
                             >
                               <img
-                                src={img.imageUrl}
+                                src={getImageUrl(img)}
                                 alt={img.pageTitle}
                                 className="w-full h-full object-cover"
                               />
@@ -351,7 +359,20 @@ export default function CollectionsPage() {
         <Modal
           isOpen={true}
           onClose={() => setSelectedCollection(null)}
-          title={selectedCollection.name}
+          title={
+            <div className="flex items-center justify-between w-full">
+              <h2 className="text-2xl font-bold text-white">{selectedCollection.name}</h2>
+              <button
+                onClick={() => setSelectedCollection(null)}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
+                         backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
+                         shadow-lg hover:shadow-xl text-white"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          }
           fullscreen={true}
         >
           <div className="space-y-4">
@@ -373,7 +394,7 @@ export default function CollectionsPage() {
                              group relative"
                   >
                     <img
-                      src={img.imageUrl}
+                      src={getImageUrl(img)}
                       alt={img.pageTitle}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                     />
