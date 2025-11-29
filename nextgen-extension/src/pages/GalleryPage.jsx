@@ -1203,8 +1203,13 @@ export default function GalleryPage() {
                       ? 'bg-primary-500/20 text-primary-200' 
                       : 'bg-slate-500/20 text-slate-400'
                   }`}>
-                    {/* Count: Title, Added To Vault, Collection, Pixvid URL, Source URL, Page URL, Description, Tags = 8 base + ImgBB URL (conditional) = 9 total */}
-                    9
+                    {/* Count: Title, Added To Vault, Collection (conditional), Pixvid URL, Source URL, Page URL, Description, Tags = 7 base + Collection + ImgBB URL (both conditional) */}
+                    {(() => {
+                      let count = 7; // Title, Added To Vault, Pixvid URL, Source URL, Page URL, Description, Tags
+                      if (selectedImage?.collectionId) count++; // Collection
+                      if (selectedImage?.imgbbUrl) count++; // ImgBB URL
+                      return count;
+                    })()}
                   </span>
                 </button>
                 <button
