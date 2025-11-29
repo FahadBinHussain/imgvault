@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   RefreshCw, FolderOpen, Trash2, Settings, Plus, X, Edit2, Check
 } from 'lucide-react';
-import { Button, Input, IconButton, Card, Modal, Spinner, Toast, CloseButton } from '../components/UI';
+import { Button, Input, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
 import { useCollections, useImages, useChromeStorage } from '../hooks/useChromeExtension';
 
 export default function CollectionsPage() {
@@ -25,7 +25,6 @@ export default function CollectionsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [collectionToDelete, setCollectionToDelete] = useState(null);
   const [toast, setToast] = useState(null);
-  const [selectedCollection, setSelectedCollection] = useState(null);
 
   const showToast = (message, type = 'info', duration = 3000) => {
     setToast({ message, type });
@@ -225,25 +224,25 @@ export default function CollectionsPage() {
                           )}
                         </div>
                         <div className="flex gap-2">
-                          <IconButton
+                          <button
                             onClick={() => setEditingCollection({ ...collection })}
-                            variant="ghost"
-                            size="sm"
+                            className="p-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 
+                                     backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95"
                             title="Edit collection"
                           >
                             <Edit2 className="w-4 h-4 text-white/70" />
-                          </IconButton>
-                          <IconButton
+                          </button>
+                          <button
                             onClick={() => {
                               setCollectionToDelete(collection);
                               setShowDeleteConfirm(true);
                             }}
-                            variant="ghost"
-                            size="sm"
+                            className="p-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 
+                                     backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95"
                             title="Delete collection"
                           >
                             <Trash2 className="w-4 h-4 text-red-400" />
-                          </IconButton>
+                          </button>
                         </div>
                       </div>
 
@@ -267,7 +266,7 @@ export default function CollectionsPage() {
                               key={img.id}
                               className="aspect-square rounded-lg overflow-hidden bg-white/5 cursor-pointer
                                        hover:ring-2 hover:ring-white/30 transition-all"
-                              onClick={() => setSelectedCollection(collection)}
+                              onClick={() => navigate(`/gallery/${collection.id}`)}
                             >
                               <img
                                 src={getImageUrl(img)}
@@ -280,7 +279,7 @@ export default function CollectionsPage() {
                       )}
 
                       <Button
-                        onClick={() => setSelectedCollection(collection)}
+                        onClick={() => navigate(`/gallery/${collection.id}`)}
                         variant="secondary"
                         className="w-full"
                       >
@@ -350,56 +349,6 @@ export default function CollectionsPage() {
                 Cancel
               </Button>
             </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Collection View Modal */}
-      {selectedCollection && (
-        <Modal
-          isOpen={true}
-          onClose={() => setSelectedCollection(null)}
-          title={
-            <div className="flex items-center justify-between w-full">
-              <h2 className="text-2xl font-bold text-white">{selectedCollection.name}</h2>
-              <CloseButton onClick={() => setSelectedCollection(null)} />
-            </div>
-          }
-          fullscreen={true}
-        >
-          <div className="space-y-4">
-            {selectedCollection.description && (
-              <p className="text-white/70 mb-6">{selectedCollection.description}</p>
-            )}
-            
-            {getCollectionImages(selectedCollection.id).length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-white/60">No images in this collection yet</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {getCollectionImages(selectedCollection.id).map((img) => (
-                  <div
-                    key={img.id}
-                    className="aspect-square rounded-lg overflow-hidden bg-white/5 
-                             hover:ring-2 hover:ring-white/30 transition-all cursor-pointer
-                             group relative"
-                  >
-                    <img
-                      src={getImageUrl(img)}
-                      alt={img.pageTitle}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                    />
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 
-                                  transition-opacity duration-300 flex items-center justify-center">
-                      <p className="text-white text-sm text-center px-2 line-clamp-2">
-                        {img.pageTitle}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </Modal>
       )}

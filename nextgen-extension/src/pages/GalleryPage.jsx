@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   RefreshCw, Upload, Search, Trash2, Download, X, Settings, FolderOpen,
@@ -17,6 +17,7 @@ import TimelineScrollbar from '../components/TimelineScrollbar';
 
 export default function GalleryPage() {
   const navigate = useNavigate();
+  const { collectionId } = useParams();
   const { images, loading, reload, deleteImage } = useImages();
   const { trashedImages, loading: trashLoading } = useTrash();
   const { uploadImage, uploading, progress, error: uploadError } = useImageUpload();
@@ -62,6 +63,12 @@ export default function GalleryPage() {
   };
 
   const filteredImages = images.filter(img => {
+    // Filter by collection if collectionId is provided
+    if (collectionId && img.collectionId !== collectionId) {
+      return false;
+    }
+    
+    // Filter by search query
     const query = searchQuery.toLowerCase();
     return (
       img.pageTitle?.toLowerCase().includes(query) ||
@@ -69,6 +76,11 @@ export default function GalleryPage() {
       img.tags?.some(tag => tag.toLowerCase().includes(query))
     );
   });
+
+  // Get current collection name
+  const currentCollection = collectionId 
+    ? collections.find(c => c.id === collectionId)
+    : null;
 
   const showToast = (message, type = 'info', duration = 3000) => {
     setToast({ message, type });
@@ -743,10 +755,38 @@ export default function GalleryPage() {
               {/* Top Row: Logo + Actions */}
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-xl blur-lg opacity-50"></div>
-                    <img src="/icons/icon48.png" alt="ImgVault" className="w-12 h-12 relative z-10 rounded-xl shadow-lg" />
-                  </div>
+                  {collectionId && currentCollection ? (
+                    <>
+                      <button
+                        onClick={() => navigate('/gallery')}
+                        className="p-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
+                                 backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
+                                 shadow-lg hover:shadow-xl text-white"
+                        title="Back to All Images"
+                      >
+                        ← Back
+                      </button>
+                      <div className="flex items-center gap-3">
+                        <FolderOpen className="w-8 h-8 text-white" />
+                        <div>
+                          <h1 className="text-2xl font-bold text-white">{currentCollection.name}</h1>
+                          {currentCollection.description && (
+                            <p className="text-white/60 text-sm">{currentCollection.description}</p>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="relative">
+                        <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-xl blur-lg opacity-50"></div>
+                        <img src="/icons/icon48.png" alt="ImgVault" className="w-12 h-12 relative z-10 rounded-xl shadow-lg" />
+                      </div>
+                    </>
+                  )}
+                </div>
+                
+                {!collectionId && (
                   <div>
                     <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent drop-shadow-lg">
                       ImgVault Gallery
@@ -760,6 +800,9 @@ export default function GalleryPage() {
                       </span>
                     </p>
                   </div>
+                )}
+                
+                <div className="flex items-center gap-3">
                 </div>
                 <div className="flex items-center gap-3">
                   <button
