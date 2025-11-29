@@ -265,3 +265,77 @@ export function usePendingImage() {
 
   return [pendingImage, clearPending];
 }
+
+/**
+ * Hook for managing collections
+ * @returns {Object} Collections state and functions
+ */
+export function useCollections() {
+  const [collections, setCollections] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const sendMessage = useChromeMessage();
+
+  const loadCollections = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const collectionsData = await sendMessage('getCollections');
+      console.log('Loaded collections from background:', collectionsData);
+      setCollections(collectionsData || []);
+    } catch (err) {
+      console.error('Error loading collections:', err);
+      setError(err);
+      setCollections([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [sendMessage]);
+
+  const createCollection = useCallback(async (collectionData) => {
+    try {
+      const newCollection = await sendMessage('createCollection', collectionData);
+      setCollections(prev => [...prev, newCollection]);
+      return newCollection;
+    } catch (err) {
+      setError(err);
+      throw err;
+    }
+  }, [sendMessage]);
+
+  const updateCollection = useCallback(async (id, updates) => {
+    try {
+      const updatedCollection = await sendMessage('updateCollection', { id, updates });
+      setCollections(prev => prev.map(c => c.id === id ? updatedCollection : c));
+      return updatedCollection;
+    } catch (err) {
+      setError(err);
+      throw err;
+    }
+  }, [sendMessage]);
+
+  const deleteCollection = useCallback(async (id) => {
+    try {
+      await sendMessage('deleteCollection', { id });
+      setCollections(prev => prev.filter(c => c.id !== id));
+    } catch (err) {
+      setError(err);
+      throw err;
+    }
+  }, [sendMessage]);
+
+  useEffect(() => {
+    loadCollections();
+  }, [loadCollections]);
+
+  return {
+    collections,
+    loading,
+    error,
+    reload: loadCollections,
+    createCollection,
+    updateCollection,
+    deleteCollection
+  };
+}

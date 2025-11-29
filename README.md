@@ -19,6 +19,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /images/{imageId} { allow read, write: if true; }
     match /trash/{imageId} { allow read, write: if true; }
+    match /collections/{collectionId} { allow read, write: if true; }
     match /userSettings/{document} { allow read, write: if true; }
   }
 }

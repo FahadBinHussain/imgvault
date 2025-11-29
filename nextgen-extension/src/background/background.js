@@ -162,6 +162,36 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'createCollection':
+        this.storage.createCollection(request.data)
+          .then(collection => sendResponse({ success: true, data: collection }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'getCollections':
+        this.storage.getCollections()
+          .then(collections => sendResponse({ success: true, data: collections }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'updateCollection':
+        this.storage.updateCollection(request.data.id, request.data.updates)
+          .then(collection => sendResponse({ success: true, data: collection }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'deleteCollection':
+        this.storage.deleteCollection(request.data.id)
+          .then(() => sendResponse({ success: true }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'getImagesByCollection':
+        this.storage.getImagesByCollection(request.data.collectionId)
+          .then(images => sendResponse({ success: true, data: images }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       default:
         console.warn('Unknown action:', action);
         return false;
@@ -358,7 +388,8 @@ class ImgVaultServiceWorker {
         creationDateSource, // Source of creation date (for debugging)
         tags: data.tags || [],
         description: data.description || '',
-        exifMetadata: metadata.exifMetadata || null
+        exifMetadata: metadata.exifMetadata || null,
+        collectionId: data.collectionId || null
       };
       
       const savedId = await this.storage.saveImage(imageMetadata);

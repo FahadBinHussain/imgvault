@@ -261,6 +261,17 @@ export class StorageManager {
       const result = await response.json();
       const docId = result.name.split('/').pop();
       console.log('✅ [SAVE IMAGE] Saved successfully with ID:', docId);
+      
+      // Update collection imageCount if image has a collectionId
+      if (imageData.collectionId) {
+        try {
+          await this.incrementCollectionCount(imageData.collectionId, 1);
+        } catch (error) {
+          console.warn('⚠️ Failed to update collection count:', error);
+          // Don't fail the whole operation if collection count update fails
+        }
+      }
+      
       return docId;
     } catch (error) {
       console.error('Error saving to Firestore:', error);
@@ -438,6 +449,9 @@ export class StorageManager {
       console.log('📋 [TRASH] Preserving all fields:', Object.keys(imageData));
       console.log('📋 [TRASH] Total fields count:', Object.keys(imageData).length);
       
+      // Store collectionId before moving to trash (for count decrement)
+      const collectionId = imageData.collectionId;
+      
       // Create trash document with all image data plus deletedAt timestamp
       const trashDoc = this.toFirestoreDoc({
         ...imageData,
@@ -467,6 +481,15 @@ export class StorageManager {
 
       if (!deleteResponse.ok) {
         throw new Error('Failed to remove from images collection');
+      }
+      
+      // Decrement collection count if image had a collectionId
+      if (collectionId) {
+        try {
+          await this.incrementCollectionCount(collectionId, -1);
+        } catch (error) {
+          console.warn('⚠️ Failed to decrement collection count:', error);
+        }
       }
       
       console.log('✅ [TRASH] Successfully moved to trash with 100% field preservation (hosts preserved)');
@@ -605,6 +628,9 @@ export class StorageManager {
       console.log('📋 [RESTORE] Preserving all fields:', Object.keys(imageData));
       console.log('📋 [RESTORE] Total fields count:', Object.keys(imageData).length);
       
+      // Store collectionId before restoring (for count increment)
+      const collectionId = imageData.collectionId;
+      
       // Convert internalAddedTimestamp back to Date object if it's a string
       if (imageData.internalAddedTimestamp && typeof imageData.internalAddedTimestamp === 'string') {
         imageData.internalAddedTimestamp = new Date(imageData.internalAddedTimestamp);
@@ -632,6 +658,15 @@ export class StorageManager {
 
       if (!deleteResponse.ok) {
         console.warn('⚠️ [RESTORE] Failed to remove from trash collection');
+      }
+      
+      // Increment collection count if image had a collectionId
+      if (collectionId) {
+        try {
+          await this.incrementCollectionCount(collectionId, 1);
+        } catch (error) {
+          console.warn('⚠️ Failed to increment collection count:', error);
+        }
       }
       
       console.log('✅ [RESTORE] Successfully restored from trash with 100% field preservation');
@@ -929,6 +964,228 @@ export class StorageManager {
     } catch (error) {
       console.error('Error fetching settings:', error);
       return null;
+    }
+  }
+
+  /**
+   * Create a new collection
+   * @param {Object} collectionData - Collection data
+   * @param {string} collectionData.name - Collection name
+   * @param {string} [collectionData.description] - Collection description
+   * @param {string} [collectionData.color] - Collection color (hex)
+   * @returns {Promise<Object>} Created collection with ID
+   */
+  async createCollection(collectionData) {
+    await this.ensureInitialized();
+
+    try {
+      const docId = `collection_${Date.now()}`;
+      const doc = this.toFirestoreDoc({
+        ...collectionData,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        imageCount: 0
+      });
+
+      const url = this.buildUrl(`collections/${docId}`);
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(doc)
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error?.message || 'Failed to create collection');
+      }
+
+      const result = await response.json();
+      return this.fromFirestoreDoc(result);
+    } catch (error) {
+      console.error('Error creating collection:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all collections
+   * @returns {Promise<Array>} Array of collections
+   */
+  async getCollections() {
+    await this.ensureInitialized();
+
+    try {
+      const url = this.buildUrl('collections', { orderBy: 'name asc' });
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return []; // No collections yet
+        }
+        throw new Error('Failed to fetch collections');
+      }
+
+      const result = await response.json();
+      return result.documents 
+        ? result.documents.map(doc => this.fromFirestoreDoc(doc))
+        : [];
+    } catch (error) {
+      console.error('Error fetching collections:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Update a collection
+   * @param {string} collectionId - Collection ID
+   * @param {Object} updates - Fields to update
+   * @returns {Promise<Object>} Updated collection
+   */
+  async updateCollection(collectionId, updates) {
+    await this.ensureInitialized();
+
+    try {
+      // First get the current collection to preserve all fields
+      const currentUrl = this.buildUrl(`collections/${collectionId}`);
+      const currentResponse = await fetch(currentUrl);
+      
+      if (!currentResponse.ok) {
+        throw new Error('Collection not found');
+      }
+      
+      const currentDoc = await currentResponse.json();
+      const currentData = this.fromFirestoreDoc(currentDoc);
+      
+      // Only keep valid collection fields
+      const validCollectionFields = {
+        name: currentData.name,
+        description: currentData.description || '',
+        color: currentData.color || '',
+        imageCount: currentData.imageCount || 0,
+        createdAt: currentData.createdAt
+      };
+      
+      // Merge updates with valid collection data
+      const mergedData = {
+        ...validCollectionFields,
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+      
+      const doc = this.toFirestoreDoc(mergedData);
+
+      const url = this.buildUrl(`collections/${collectionId}`);
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(doc)
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error?.message || 'Failed to update collection');
+      }
+
+      const result = await response.json();
+      return this.fromFirestoreDoc(result);
+    } catch (error) {
+      console.error('Error updating collection:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a collection
+   * @param {string} collectionId - Collection ID
+   * @returns {Promise<boolean>} Success status
+   */
+  async deleteCollection(collectionId) {
+    await this.ensureInitialized();
+
+    try {
+      const url = this.buildUrl(`collections/${collectionId}`);
+      const response = await fetch(url, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok && response.status !== 404) {
+        const error = await response.json();
+        throw new Error(error.error?.message || 'Failed to delete collection');
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error deleting collection:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get images in a specific collection
+   * @param {string} collectionId - Collection ID
+   * @returns {Promise<Array>} Array of images
+   */
+  async getImagesByCollection(collectionId) {
+    await this.ensureInitialized();
+
+    try {
+      // Note: Firestore REST API doesn't support complex queries like "where collectionId ==",
+      // so we fetch all images and filter client-side
+      const url = this.buildUrl('images', { orderBy: 'internalAddedTimestamp desc' });
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return [];
+        }
+        throw new Error('Failed to fetch images');
+      }
+
+      const result = await response.json();
+      const allImages = result.documents 
+        ? result.documents.map(doc => this.fromFirestoreDoc(doc))
+        : [];
+
+      // Filter by collectionId
+      return allImages.filter(img => img.collectionId === collectionId);
+    } catch (error) {
+      console.error('Error fetching images by collection:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Increment or decrement the image count for a collection
+   * @param {string} collectionId - Collection ID
+   * @param {number} delta - Change in count (positive or negative)
+   * @returns {Promise<void>}
+   */
+  async incrementCollectionCount(collectionId, delta) {
+    await this.ensureInitialized();
+
+    try {
+      // First, get the current collection data
+      const url = this.buildUrl(`collections/${collectionId}`);
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.warn(`Collection ${collectionId} not found for count update`);
+          return;
+        }
+        throw new Error('Failed to fetch collection');
+      }
+
+      const doc = await response.json();
+      const collection = this.fromFirestoreDoc(doc);
+      const currentCount = collection.imageCount || 0;
+      const newCount = Math.max(0, currentCount + delta);
+
+      // Update the collection with new count
+      await this.updateCollection(collectionId, { imageCount: newCount });
+    } catch (error) {
+      console.error('Error updating collection count:', error);
+      throw error;
     }
   }
 }

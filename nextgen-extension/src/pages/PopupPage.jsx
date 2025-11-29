@@ -6,12 +6,13 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { Button, Input, Textarea, Card, IconButton, Spinner } from '../components/UI';
-import { usePendingImage, useImageUpload, useChromeStorage } from '../hooks/useChromeExtension';
+import { usePendingImage, useImageUpload, useChromeStorage, useCollections } from '../hooks/useChromeExtension';
 
 export default function PopupPage() {
   const [pendingImage, clearPending] = usePendingImage();
   const [settings] = useChromeStorage('pixvidApiKey', null, 'sync');
   const { uploadImage, uploading, progress, error: uploadError } = useImageUpload();
+  const { collections, createCollection } = useCollections();
 
   const [imageData, setImageData] = useState(null);
   const [pageUrl, setPageUrl] = useState('');
@@ -22,6 +23,10 @@ export default function PopupPage() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [duplicateData, setDuplicateData] = useState(null);
   const [showReplaced, setShowReplaced] = useState(false);
+  const [selectedCollectionId, setSelectedCollectionId] = useState('');
+  const [showCreateCollection, setShowCreateCollection] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState('');
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
     if (pendingImage) {
@@ -100,7 +105,8 @@ export default function PopupPage() {
         tags: tagsArray,
         ignoreDuplicate: ignoreDuplicate,
         fileMimeType: imageData.file?.type || null,
-        fileLastModified: imageData.file?.lastModified || null
+        fileLastModified: imageData.file?.lastModified || null,
+        collectionId: selectedCollectionId || null
       });
 
       setShowSuccess(true);
@@ -116,6 +122,13 @@ export default function PopupPage() {
         setDuplicateData(err.duplicate);
       }
       // For non-duplicate errors, the error will be shown by uploadError state
+    }
+  };
+
+  const showToast = (message, type = 'info', duration = 3000) => {
+    setToast({ message, type });
+    if (duration > 0) {
+      setTimeout(() => setToast(null), duration);
     }
   };
 
@@ -378,6 +391,95 @@ export default function PopupPage() {
                          focus:outline-none focus:border-primary-500 focus:ring-2 
                          focus:ring-primary-500/20 transition-all shadow-lg"
               />
+            </div>
+
+            {/* Collection Selector */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                <span className="text-lg">📁</span>
+                Collection (optional)
+              </label>
+              <select
+                value={selectedCollectionId}
+                onChange={(e) => {
+                  if (e.target.value === '__create_new__') {
+                    setShowCreateCollection(true);
+                  } else {
+                    setSelectedCollectionId(e.target.value);
+                    setShowCreateCollection(false);
+                  }
+                }}
+                className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                         text-white 
+                         focus:outline-none focus:border-primary-500 focus:ring-2 
+                         focus:ring-primary-500/20 transition-all shadow-lg"
+              >
+                <option value="">No Collection</option>
+                {collections.map(collection => (
+                  <option key={collection.id} value={collection.id}>
+                    {collection.name}
+                  </option>
+                ))}
+                <option value="__create_new__">+ Create New Collection</option>
+              </select>
+              
+              {showCreateCollection && (
+                <div className="mt-3 flex gap-2">
+                  <input
+                    type="text"
+                    value={newCollectionName}
+                    onChange={(e) => setNewCollectionName(e.target.value)}
+                    placeholder="Collection name"
+                    className="flex-1 px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-600 
+                             text-white placeholder-slate-400 
+                             focus:outline-none focus:border-primary-500 focus:ring-2 
+                             focus:ring-primary-500/20 transition-all"
+                    onKeyPress={async (e) => {
+                      if (e.key === 'Enter' && newCollectionName.trim()) {
+                        try {
+                          const newCollection = await createCollection({ name: newCollectionName.trim() });
+                          setSelectedCollectionId(newCollection.id);
+                          setShowCreateCollection(false);
+                          setNewCollectionName('');
+                          showToast('✅ Collection created!', 'success', 2000);
+                        } catch (error) {
+                          showToast(`❌ ${error.message}`, 'error', 3000);
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={async () => {
+                      if (newCollectionName.trim()) {
+                        try {
+                          const newCollection = await createCollection({ name: newCollectionName.trim() });
+                          setSelectedCollectionId(newCollection.id);
+                          setShowCreateCollection(false);
+                          setNewCollectionName('');
+                          showToast('✅ Collection created!', 'success', 2000);
+                        } catch (error) {
+                          showToast(`❌ ${error.message}`, 'error', 3000);
+                        }
+                      }
+                    }}
+                    className="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 
+                             text-white font-medium transition-colors text-sm"
+                  >
+                    Create
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowCreateCollection(false);
+                      setNewCollectionName('');
+                      setSelectedCollectionId('');
+                    }}
+                    className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 
+                             text-white font-medium transition-colors text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Display ALL metadata fields that will be saved */}
