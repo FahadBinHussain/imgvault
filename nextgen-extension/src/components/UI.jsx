@@ -306,3 +306,26 @@ export const Toast = ({ message, type = 'info', onClose }) => {
     </div>
   );
 };
+
+/**
+ * Close Button component with animation
+ */
+export const CloseButton = ({ onClick, className, ...props }) => {
+  return (
+    <button
+      onClick={onClick}
+      className={clsx(
+        'w-11 h-11 rounded-full bg-red-500/20 hover:bg-red-500/40',
+        'border border-red-500/50 hover:border-red-500',
+        'flex items-center justify-center',
+        'transition-all duration-300 hover:scale-110 hover:rotate-90',
+        'group shadow-xl',
+        className
+      )}
+      title="Close"
+      {...props}
+    >
+      <span className="text-red-300 group-hover:text-red-100 text-2xl font-bold">✕</span>
+    </button>
+  );
+};

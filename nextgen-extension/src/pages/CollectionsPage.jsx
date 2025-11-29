@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   RefreshCw, FolderOpen, Trash2, Settings, Plus, X, Edit2, Check
 } from 'lucide-react';
-import { Button, Input, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
+import { Button, Input, IconButton, Card, Modal, Spinner, Toast, CloseButton } from '../components/UI';
 import { useCollections, useImages, useChromeStorage } from '../hooks/useChromeExtension';
 
 export default function CollectionsPage() {
@@ -362,15 +362,7 @@ export default function CollectionsPage() {
           title={
             <div className="flex items-center justify-between w-full">
               <h2 className="text-2xl font-bold text-white">{selectedCollection.name}</h2>
-              <button
-                onClick={() => setSelectedCollection(null)}
-                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
-                         backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
-                         shadow-lg hover:shadow-xl text-white"
-                title="Close"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <CloseButton onClick={() => setSelectedCollection(null)} />
             </div>
           }
           fullscreen={true}
