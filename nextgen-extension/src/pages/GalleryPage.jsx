@@ -115,6 +115,9 @@ export default function GalleryPage() {
       
       // Mark this as a local upload
       setIsLocalUpload(true);
+      
+      // Show success feedback
+      showToast('✅ Image replaced with downloaded version!', 'success', 3000);
     }
   };
 

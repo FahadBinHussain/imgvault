@@ -21,6 +21,7 @@ export default function PopupPage() {
   const [isPageUrlEditable, setIsPageUrlEditable] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [duplicateData, setDuplicateData] = useState(null);
+  const [showReplaced, setShowReplaced] = useState(false);
 
   useEffect(() => {
     if (pendingImage) {
@@ -51,6 +52,10 @@ export default function PopupPage() {
         if (savedPageUrl && savedPageUrl !== window.location.href) {
           setPageUrl(savedPageUrl);
         }
+        
+        // Show replaced banner
+        setShowReplaced(true);
+        setTimeout(() => setShowReplaced(false), 4000);
         
         // Extract metadata from the image
         try {
@@ -270,6 +275,17 @@ export default function PopupPage() {
               </div>
             </div>
           </div>
+
+          {/* Image Replaced Banner */}
+          {showReplaced && (
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-green-500/10 border-2 border-green-500/30 
+                          shadow-lg animate-pulse">
+              <span className="text-2xl flex-shrink-0">✅</span>
+              <p className="text-sm text-green-200 font-medium">
+                Image replaced! Ready to upload higher quality version
+              </p>
+            </div>
+          )}
 
           {/* Google Drive tip with animation */}
           {imageData.isGoogleDrive && (
