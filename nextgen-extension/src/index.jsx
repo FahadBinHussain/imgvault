@@ -19,6 +19,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <Routes>
         <Route path="/" element={<Navigate to="/gallery" replace />} />
         <Route path="/gallery" element={<GalleryPage />} />
+        <Route path="/gallery/:collectionId" element={<GalleryPage />} />
         <Route path="/collections" element={<CollectionsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/trash" element={<TrashPage />} />
