@@ -9,6 +9,7 @@ export default defineConfig({
     outDir: 'dist',
     rollupOptions: {
       input: {
+        index: resolve(__dirname, 'index.html'),
         popup: resolve(__dirname, 'popup.html'),
         gallery: resolve(__dirname, 'gallery.html'),
         settings: resolve(__dirname, 'settings.html'),
