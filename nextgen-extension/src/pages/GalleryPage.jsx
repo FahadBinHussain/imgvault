@@ -782,28 +782,23 @@ export default function GalleryPage() {
                         <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-xl blur-lg opacity-50"></div>
                         <img src="/icons/icon48.png" alt="ImgVault" className="w-12 h-12 relative z-10 rounded-xl shadow-lg" />
                       </div>
+                      <div>
+                        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent drop-shadow-lg">
+                          ImgVault Gallery
+                        </h1>
+                        <p className="text-sm text-slate-300 mt-1">
+                          <span className="font-semibold text-primary-300">{images.length}</span> images in your vault
+                          <span className="mx-2 text-slate-500">•</span>
+                          <span className="text-slate-400">Source: </span>
+                          <span className="font-medium text-white">
+                            {defaultGallerySource === 'imgbb' ? 'ImgBB (Original Quality)' : 'Pixvid (Compressed Quality)'}
+                          </span>
+                        </p>
+                      </div>
                     </>
                   )}
                 </div>
                 
-                {!collectionId && (
-                  <div>
-                    <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent drop-shadow-lg">
-                      ImgVault Gallery
-                    </h1>
-                    <p className="text-sm text-slate-300 mt-1">
-                      <span className="font-semibold text-primary-300">{images.length}</span> images in your vault
-                      <span className="mx-2 text-slate-500">•</span>
-                      <span className="text-slate-400">Source: </span>
-                      <span className="font-medium text-white">
-                        {defaultGallerySource === 'imgbb' ? 'ImgBB (Original Quality)' : 'Pixvid (Compressed Quality)'}
-                      </span>
-                    </p>
-                  </div>
-                )}
-                
-                <div className="flex items-center gap-3">
-                </div>
                 <div className="flex items-center gap-3">
                   <button
                     onClick={reload}
