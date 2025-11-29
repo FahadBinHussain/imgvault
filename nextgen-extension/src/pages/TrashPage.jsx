@@ -553,7 +553,7 @@ export default function TrashPage() {
                           
                           // Count EXIF fields (everything that's not in knownFields)
                           const knownFields = new Set([
-                            'id', 'pixvidUrl', 'pixvidDeleteUrl', 'imgbbUrl', 'imgbbDeleteUrl', 'imgbbThumbUrl',
+                            'id', 'pixvidUrl', 'imgbbUrl',
                             'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize', 'tags', 'description',
                             'internalAddedTimestamp', 'sha256', 'pHash', 'aHash', 'dHash', 'width', 'height', 'fileType',
                             'originalId', 'deletedAt', 'fileTypeSource', 'creationDate', 'creationDateSource'
@@ -915,9 +915,9 @@ export default function TrashPage() {
 
                           {/* All other EXIF fields in the same style */}
                           {fullImageDetails && (() => {
-                            // Define known fields to exclude
+                            // Define known fields to exclude (only basic user-facing fields)
                             const knownFields = new Set([
-                              'id', 'pixvidUrl', 'pixvidDeleteUrl', 'imgbbUrl', 'imgbbDeleteUrl', 'imgbbThumbUrl',
+                              'id', 'pixvidUrl', 'imgbbUrl',
                               'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize', 'tags', 'description',
                               'internalAddedTimestamp', 'sha256', 'pHash', 'aHash', 'dHash', 'width', 'height', 'fileType',
                               'originalId', 'deletedAt', 'fileTypeSource', 'creationDate', 'creationDateSource'
