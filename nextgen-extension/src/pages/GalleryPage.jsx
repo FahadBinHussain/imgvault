@@ -18,7 +18,7 @@ export default function GalleryPage() {
   const { images, loading, reload, deleteImage } = useImages();
   const { trashedImages, loading: trashLoading } = useTrash();
   const { uploadImage, uploading, progress, error: uploadError } = useImageUpload();
-  const { collections, loading: collectionsLoading, createCollection } = useCollections();
+  const { collections, loading: collectionsLoading, createCollection, reload: reloadCollections } = useCollections();
   const [defaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
@@ -278,8 +278,8 @@ export default function GalleryPage() {
       setShowUploadModal(false);
       setDuplicateData(null);
       
-      // Then reload and show toast
-      await reload(); // Refresh gallery
+      // Then reload both images and collections, and show toast
+      await Promise.all([reload(), reloadCollections()]); // Refresh gallery and collections
       showToast('✅ Image uploaded successfully!', 'success', 3000);
     } catch (err) {
       console.error('Upload failed:', err);
@@ -453,8 +453,8 @@ export default function GalleryPage() {
         setSelectedImage({ ...selectedImage, collectionId: newCollectionId });
         setEditingField(null);
         
-        // Reload images to reflect the change
-        reload();
+        // Reload both images and collections to reflect the changes
+        await Promise.all([reload(), reloadCollections()]);
         return;
       }
       
