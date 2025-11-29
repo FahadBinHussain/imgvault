@@ -1227,8 +1227,8 @@ export default function GalleryPage() {
                       : 'bg-slate-500/20 text-slate-400'
                   }`}>
                     {fullImageDetails ? (() => {
-                      // Count base technical fields
-                      let count = 8; // Document ID, File Name, File Type, File Size, SHA-256, pHash, aHash, dHash
+                      // Count base technical fields (excluding Document ID)
+                      let count = 7; // File Name, File Type, File Size, SHA-256, pHash, aHash, dHash
                       
                       // Add width and height if present
                       if (fullImageDetails.width) count++;
