@@ -1907,7 +1907,7 @@ export default function GalleryPage() {
                     {/* Metadata field count */}
                     {uploadMetadata && (() => {
                       // Form fields
-                      const formFields = ['sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'description', 'tags'];
+                      const formFields = ['sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'description', 'tags', 'collectionId'];
                       
                       // Core metadata fields
                       const coreMetadataFields = ['fileName', 'fileSize', 'fileType', 'fileTypeSource', 'width', 'height'];
@@ -1946,7 +1946,7 @@ export default function GalleryPage() {
                           </div>
                           <div className="text-xs text-green-200/70 border-t border-green-500/20 pt-3 space-y-1">
                             <div>This includes:</div>
-                            <div>• {formFields.length} form fields</div>
+                            <div>• {formFields.length} form fields (including collection)</div>
                             <div>• {coreMetadataFields.length} core metadata fields</div>
                             <div>• {hashFields.length} hash fields</div>
                             <div>• {dateFields.length} date fields</div>
