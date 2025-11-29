@@ -2163,12 +2163,29 @@ export default function GalleryPage() {
                               <p className="text-blue-300 font-medium text-sm mb-1">
                                 Quality Tip
                               </p>
-                              <p className="text-blue-200/80 text-xs">
+                              <p className="text-blue-200/80 text-xs mb-2">
                                 For best quality, download the image first from{' '}
                                 {pageUrl.includes('drive.google.com') && 'Google Drive'}
                                 {pageUrl.includes('unsplash.com') && 'Unsplash'}
                                 {' '}instead of saving directly from the page. This ensures you get the highest quality version.
                               </p>
+                              <input
+                                type="file"
+                                id="replaceUploadFile"
+                                accept="image/*"
+                                onChange={handleFileUpload}
+                                className="hidden"
+                              />
+                              <button
+                                onClick={() => document.getElementById('replaceUploadFile').click()}
+                                className="mt-1 px-3 py-1.5 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 
+                                         border border-blue-400/40 text-blue-300 text-xs font-medium
+                                         transition-all duration-200 hover:scale-105 active:scale-95
+                                         flex items-center gap-1.5"
+                              >
+                                <Upload className="w-3.5 h-3.5" />
+                                Replace with Downloaded Image
+                              </button>
                             </div>
                           </div>
                         </div>
