@@ -522,8 +522,13 @@ export default function TrashPage() {
                           ? 'bg-red-500/20 text-red-200' 
                           : 'bg-slate-500/20 text-slate-400'
                       }`}>
-                        {/* Count: Title, Deleted At, Added To Vault, Pixvid URL, Source URL, Page URL, Description, Tags = 8 base + ImgBB URL (conditional) = 9 total + Deleted At = 10 */}
-                        10
+                        {/* Count: Title, Deleted At, Added To Vault, Pixvid URL (conditional), Source URL, Page URL, Description, Tags = 7 base + Pixvid URL + ImgBB URL (both conditional) */}
+                        {(() => {
+                          let count = 7; // Title, Deleted At, Added To Vault, Source URL, Page URL, Description, Tags
+                          if (selectedImage?.pixvidUrl) count++; // Pixvid URL
+                          if (selectedImage?.imgbbUrl) count++; // ImgBB URL
+                          return count;
+                        })()}
                       </span>
                     </button>
                     <button
