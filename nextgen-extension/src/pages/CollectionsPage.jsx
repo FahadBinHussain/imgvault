@@ -289,7 +289,7 @@ export default function CollectionsPage() {
 
       {/* Create Collection Modal */}
       {showCreateModal && (
-        <Modal onClose={() => setShowCreateModal(false)} title="Create New Collection">
+        <Modal isOpen={true} onClose={() => setShowCreateModal(false)} title="Create New Collection">
           <div className="space-y-4">
             <div>
               <label className="block text-white/80 mb-2 text-sm">Collection Name *</label>
@@ -325,7 +325,7 @@ export default function CollectionsPage() {
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && collectionToDelete && (
-        <Modal onClose={() => setShowDeleteConfirm(false)} title="Delete Collection?">
+        <Modal isOpen={true} onClose={() => setShowDeleteConfirm(false)} title="Delete Collection?">
           <div className="space-y-4">
             <p className="text-white/80">
               Are you sure you want to delete the collection "{collectionToDelete.name}"?
@@ -349,9 +349,10 @@ export default function CollectionsPage() {
       {/* Collection View Modal */}
       {selectedCollection && (
         <Modal
+          isOpen={true}
           onClose={() => setSelectedCollection(null)}
           title={selectedCollection.name}
-          size="full"
+          fullscreen={true}
         >
           <div className="space-y-4">
             {selectedCollection.description && (
