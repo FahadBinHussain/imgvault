@@ -105,28 +105,40 @@ export default function GalleryPage() {
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      await processImageFile(file);
+      // Save current page metadata before replacing
+      const savedPageUrl = uploadPageUrl;
+      const savedPageTitle = uploadImageData?.pageTitle;
+      
+      await processImageFile(file, savedPageUrl, savedPageTitle);
     }
   };
 
-  const processImageFile = async (file) => {
+  const processImageFile = async (file, preservePageUrl = null, preservePageTitle = null) => {
     const reader = new FileReader();
     reader.onloadend = async () => {
+      // Determine what values to use
+      const finalPageUrl = preservePageUrl && preservePageUrl !== 'Uploaded manually' 
+        ? preservePageUrl 
+        : 'Uploaded manually';
+      const finalPageTitle = preservePageTitle && preservePageTitle !== 'Uploaded manually' 
+        ? preservePageTitle 
+        : 'Uploaded manually';
+      
       setUploadImageData({
         srcUrl: reader.result,
         fileName: file.name,
-        pageTitle: 'Uploaded manually', // Use "Uploaded manually" as title for local uploads
+        pageTitle: finalPageTitle,
         timestamp: Date.now(),
         file: file // Store the original file object for MIME and date extraction
       });
-      setUploadPageUrl('Uploaded manually'); // Set source as "Uploaded manually" for local files
+      setUploadPageUrl(finalPageUrl);
       
       // Extract metadata from the image
       try {
         const response = await chrome.runtime.sendMessage({
           action: 'extractMetadata',
           imageUrl: reader.result,
-          pageUrl: 'Uploaded manually', // Set page URL as "Uploaded manually" for local files
+          pageUrl: finalPageUrl,
           fileName: file.name,
           fileMimeType: file.type,
           fileLastModified: file.lastModified

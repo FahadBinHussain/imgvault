@@ -33,22 +33,31 @@ export default function PopupPage() {
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (file) {
+      // Save current page metadata before replacing
+      const savedPageUrl = pageUrl;
+      const savedPageTitle = imageData?.pageTitle;
+      
       const reader = new FileReader();
       reader.onloadend = async () => {
         setImageData({
           srcUrl: reader.result,
-          pageUrl: window.location.href,
-          pageTitle: 'Uploaded from computer',
+          pageUrl: savedPageUrl || window.location.href,
+          pageTitle: savedPageTitle || 'Uploaded from computer',
           timestamp: Date.now(),
           file: file // Store the original file object for MIME and date extraction
         });
+        
+        // Restore original page URL if it was set
+        if (savedPageUrl && savedPageUrl !== window.location.href) {
+          setPageUrl(savedPageUrl);
+        }
         
         // Extract metadata from the image
         try {
           const response = await chrome.runtime.sendMessage({
             action: 'extractMetadata',
             imageUrl: reader.result,
-            pageUrl: window.location.href,
+            pageUrl: savedPageUrl || window.location.href,
             fileName: file.name,
             fileMimeType: file.type,
             fileLastModified: file.lastModified
