@@ -76,7 +76,7 @@ class ImgVaultServiceWorker {
       
       // Open the gallery page instead of popup
       chrome.tabs.create({
-        url: chrome.runtime.getURL('gallery.html')
+        url: chrome.runtime.getURL('index.html')
       });
     }
   }
@@ -587,7 +587,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Handle extension icon click - open gallery
 chrome.action.onClicked.addListener(() => {
   chrome.tabs.create({
-    url: chrome.runtime.getURL('gallery.html')
+    url: chrome.runtime.getURL('index.html')
   });
 });
 

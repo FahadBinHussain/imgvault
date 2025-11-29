@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   RefreshCw, Undo2, Trash2, AlertTriangle,
@@ -15,6 +16,7 @@ import { useTrash } from '../hooks/useChromeExtension';
 import TimelineScrollbar from '../components/TimelineScrollbar';
 
 export default function TrashPage() {
+  const navigate = useNavigate();
   const { trashedImages, loading, reload, restoreFromTrash, permanentlyDelete, emptyTrash } = useTrash();
   const [selectedImage, setSelectedImage] = useState(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
@@ -256,7 +258,7 @@ export default function TrashPage() {
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-4">
                   <button
-                    onClick={() => window.location.href = 'gallery.html'}
+                    onClick={() => navigate('/gallery')}
                     className="p-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
                              backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
                              shadow-lg hover:shadow-xl text-white"

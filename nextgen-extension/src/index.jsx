@@ -16,11 +16,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <HashRouter>
       <Routes>
-        <Route path="/" element={<GalleryPage />} />
+        <Route path="/" element={<Navigate to="/gallery" replace />} />
+        <Route path="/gallery" element={<GalleryPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/trash" element={<TrashPage />} />
         <Route path="/popup" element={<PopupPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/gallery" replace />} />
       </Routes>
     </HashRouter>
   </React.StrictMode>

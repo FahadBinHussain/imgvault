@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   RefreshCw, Upload, Search, Trash2, Download, X, Settings,
@@ -15,6 +16,7 @@ import { useImages, useImageUpload, useTrash, useChromeStorage, useCollections }
 import TimelineScrollbar from '../components/TimelineScrollbar';
 
 export default function GalleryPage() {
+  const navigate = useNavigate();
   const { images, loading, reload, deleteImage } = useImages();
   const { trashedImages, loading: trashLoading } = useTrash();
   const { uploadImage, uploading, progress, error: uploadError } = useImageUpload();
@@ -770,7 +772,7 @@ export default function GalleryPage() {
                     <RefreshCw className="w-5 h-5 text-white" />
                   </button>
                   <button
-                    onClick={() => window.location.href = 'settings.html'}
+                    onClick={() => navigate('/settings')}
                     className="p-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
                              backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
                              shadow-lg hover:shadow-xl"
@@ -779,7 +781,7 @@ export default function GalleryPage() {
                     <Settings className="w-5 h-5 text-white" />
                   </button>
                   <button
-                    onClick={() => window.location.href = 'trash.html'}
+                    onClick={() => navigate('/trash')}
                     className="relative px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
                              backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
                              shadow-lg hover:shadow-xl flex items-center gap-2 text-white"

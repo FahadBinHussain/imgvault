@@ -4,11 +4,13 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Save, Check, ArrowLeft } from 'lucide-react';
 import { Button, Input, Textarea, Card } from '../components/UI';
 import { useChromeStorage } from '../hooks/useChromeExtension';
 
 export default function SettingsPage() {
+  const navigate = useNavigate();
   const [pixvidApiKey, setPixvidApiKey] = useChromeStorage('pixvidApiKey', '', 'sync');
   const [imgbbApiKey, setImgbbApiKey] = useChromeStorage('imgbbApiKey', '', 'sync');
   const [firebaseConfigRaw, setFirebaseConfigRaw] = useChromeStorage('firebaseConfigRaw', '', 'sync');
@@ -22,7 +24,7 @@ export default function SettingsPage() {
   const [firebaseStatus, setFirebaseStatus] = useState('');
 
   const handleBack = () => {
-    window.location.href = 'gallery.html';
+    navigate('/gallery');
   };
 
   useEffect(() => {
