@@ -53,6 +53,7 @@ export default function GalleryPage() {
   const [selectedCollectionId, setSelectedCollectionId] = useState(''); // Selected collection for upload
   const [showCreateCollection, setShowCreateCollection] = useState(false); // Show create collection input
   const [newCollectionName, setNewCollectionName] = useState(''); // New collection name
+  const [isManualUploadMode, setIsManualUploadMode] = useState(false); // Track if triggered by context menu with no srcUrl
   
   // Selection mode state
   const [selectionMode, setSelectionMode] = useState(false);
@@ -637,47 +638,66 @@ export default function GalleryPage() {
 
   // Check for pending image from right-click context menu
   useEffect(() => {
+    console.log('🚀 GalleryPage useEffect running - checking for pending image...');
     const checkPendingImage = async () => {
       try {
         const { pendingImage } = await chrome.storage.local.get('pendingImage');
-        if (pendingImage && pendingImage.srcUrl) {
+        console.log('📦 Pending image from storage:', pendingImage);
+        console.log('📦 Has srcUrl?', !!pendingImage?.srcUrl);
+        console.log('📦 srcUrl value:', pendingImage?.srcUrl);
+        
+        if (pendingImage) {
           // Clear the pending image
           await chrome.storage.local.remove('pendingImage');
           
-          // Populate the upload modal
-          setUploadImageData({
-            srcUrl: pendingImage.srcUrl,
-            fileName: pendingImage.srcUrl.split('/').pop().split('?')[0] || 'image.jpg',
-            pageTitle: pendingImage.pageTitle || ''
-          });
-          setUploadPageUrl(pendingImage.pageUrl || '');
-          
-          // Open the upload modal
-          setShowUploadModal(true);
-          
-          // Extract metadata
-          try {
-            const response = await chrome.runtime.sendMessage({
-              action: 'extractMetadata',
-              imageUrl: pendingImage.srcUrl,
-              pageUrl: pendingImage.pageUrl,
-              fileName: pendingImage.srcUrl.split('/').pop().split('?')[0]
+          if (pendingImage.srcUrl) {
+            console.log('✅ Pending image found! Opening modal...');
+            // Normal flow - has srcUrl
+            setUploadImageData({
+              srcUrl: pendingImage.srcUrl,
+              fileName: pendingImage.srcUrl.split('/').pop().split('?')[0] || 'image.jpg',
+              pageTitle: pendingImage.pageTitle || '',
+              isBase64: pendingImage.isBase64 || false
             });
+            setUploadPageUrl(pendingImage.pageUrl || '');
+            
+            // Open the upload modal
+            setShowUploadModal(true);
+            console.log('🎨 Modal should be open now!');
+            
+            // Extract metadata
+            try {
+              const response = await chrome.runtime.sendMessage({
+                action: 'extractMetadata',
+                imageUrl: pendingImage.srcUrl,
+                pageUrl: pendingImage.pageUrl,
+                fileName: pendingImage.srcUrl.split('/').pop().split('?')[0]
+              });
 
-            if (response.success) {
-              setUploadMetadata(response.metadata);
-              
-              // Check for duplicates
-              if (response.metadata.duplicateImage) {
-                setDuplicateData(response.metadata.duplicateImage);
+              if (response.success) {
+                setUploadMetadata(response.metadata);
+                
+                // Check for duplicates
+                if (response.metadata.duplicateImage) {
+                  setDuplicateData(response.metadata.duplicateImage);
+                }
               }
+            } catch (error) {
+              console.error('Failed to extract metadata:', error);
             }
-          } catch (error) {
-            console.error('Failed to extract metadata:', error);
+          } else {
+            // No srcUrl - show modal with upload prompt
+            console.log('⚠️ No srcUrl - showing upload prompt');
+            setUploadPageUrl(pendingImage.pageUrl || '');
+            setIsManualUploadMode(true);
+            setShowUploadModal(true);
+            console.log('🎨 Modal opened with upload prompt!');
           }
+        } else {
+          console.log('❌ No pending image found in storage');
         }
       } catch (error) {
-        console.error('Failed to check pending image:', error);
+        console.error('❌ Error checking pending image:', error);
       }
     };
     
@@ -2257,6 +2277,31 @@ export default function GalleryPage() {
             {/* File Upload */}
             {!uploadImageData ? (
               <div className="space-y-4">
+                {/* Manual Upload Mode Message */}
+                {isManualUploadMode && (
+                  <div className="p-6 rounded-xl bg-orange-500/20 border-2 border-orange-500/50">
+                    <div className="flex items-start gap-4">
+                      <span className="text-3xl flex-shrink-0">⚠️</span>
+                      <div className="flex-1">
+                        <h3 className="text-orange-100 font-bold text-lg mb-3">
+                          Image Source Not Available
+                        </h3>
+                        <p className="text-orange-100/90 text-sm leading-relaxed mb-4">
+                          The image you tried to save doesn't have a direct URL that the extension can access. This commonly happens with:
+                        </p>
+                        <ul className="text-orange-100/80 text-sm space-y-2 mb-4 list-disc list-inside">
+                          <li>Lazy-loaded images that haven't fully loaded yet</li>
+                          <li>Images embedded as base64 data</li>
+                          <li>Protected or dynamically generated images</li>
+                        </ul>
+                        <p className="text-orange-100 font-semibold text-sm">
+                          📥 Please download the image manually from the page, then upload it below:
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 <label className="block">
                   <div className="flex items-center justify-center w-full min-h-[calc(100vh-16rem)] px-4 transition 
                                 bg-slate-800/50 border-2 border-dashed border-slate-600 rounded-xl 
@@ -2304,6 +2349,39 @@ export default function GalleryPage() {
                         <X className="w-5 h-5" />
                       </button>
                     </div>
+                    
+                    {/* Base64 Warning */}
+                    {uploadImageData?.isBase64 && (
+                      <div className="p-4 rounded-xl bg-orange-500/20 border-2 border-orange-500/50">
+                        <div className="flex items-start gap-3">
+                          <span className="text-2xl flex-shrink-0">⚠️</span>
+                          <div className="flex-1">
+                            <h4 className="text-orange-100 font-bold text-sm mb-2">
+                              Low Quality Image Detected
+                            </h4>
+                            <p className="text-orange-100/90 text-xs leading-relaxed">
+                              This is a placeholder/thumbnail image (base64 data URL). For best quality, wait for the page to fully load, download the full-resolution image, then replace it using the button below.
+                            </p>
+                            <input
+                              type="file"
+                              id="replaceBase64Upload"
+                              accept="image/*"
+                              onChange={handleFileUpload}
+                              className="hidden"
+                            />
+                            <button
+                              onClick={() => document.getElementById('replaceBase64Upload').click()}
+                              className="mt-3 w-full px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 
+                                       text-white text-sm font-bold transition-colors
+                                       flex items-center justify-center gap-2"
+                            >
+                              <Upload className="w-4 h-4" />
+                              Replace with Full Quality Image
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     
                     {/* Metadata field count */}
                     {uploadMetadata && (() => {

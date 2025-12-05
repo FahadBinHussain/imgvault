@@ -61,22 +61,37 @@ class ImgVaultServiceWorker {
    */
   async handleContextMenuClick(info, tab) {
     if (info.menuItemId === 'saveToImgVault') {
+      console.log('🎯 Context menu clicked!');
+      console.log('📸 info.srcUrl:', info.srcUrl);
+      console.log('📍 Page URL:', info.pageUrl || tab.url);
+      
       const pageUrl = info.pageUrl || tab.url;
       const isGoogleDrive = pageUrl.includes('drive.google.com');
       const isWallpaperMob = pageUrl.includes('wallpaper.mob.org');
       const isArtStation = pageUrl.includes('artstation.com');
       
+      // Check if image is base64
+      const isBase64 = info.srcUrl && info.srcUrl.startsWith('data:image');
+      console.log('🔍 Is Base64?', isBase64);
+      
+      const pendingData = {
+        srcUrl: info.srcUrl,
+        pageUrl,
+        pageTitle: tab.title,
+        timestamp: Date.now(),
+        isGoogleDrive,
+        isWallpaperMob,
+        isArtStation,
+        isBase64
+      };
+      
+      console.log('💾 Storing pending image data:', pendingData);
+      
       await chrome.storage.local.set({
-        pendingImage: {
-          srcUrl: info.srcUrl,
-          pageUrl,
-          pageTitle: tab.title,
-          timestamp: Date.now(),
-          isGoogleDrive,
-          isWallpaperMob,
-          isArtStation
-        }
+        pendingImage: pendingData
       });
+      
+      console.log('✅ Pending image stored!');
       
       // Open the gallery page instead of popup
       chrome.tabs.create({
