@@ -2668,7 +2668,7 @@ export default function GalleryPage() {
                     {/* Quality Tip for specific sites */}
                     {(() => {
                       const pageUrl = uploadPageUrl?.toLowerCase() || '';
-                      const shouldShowTip = pageUrl.includes('drive.google.com') || pageUrl.includes('unsplash.com');
+                      const shouldShowTip = pageUrl.includes('drive.google.com') || pageUrl.includes('unsplash.com') || pageUrl.includes('wallpaper.mob.org');
                       
                       if (!shouldShowTip) return null;
                       
@@ -2684,6 +2684,7 @@ export default function GalleryPage() {
                                 For best quality, download the image first from{' '}
                                 {pageUrl.includes('drive.google.com') && 'Google Drive'}
                                 {pageUrl.includes('unsplash.com') && 'Unsplash'}
+                                {pageUrl.includes('wallpaper.mob.org') && 'Wallpaper Mob'}
                                 {' '}instead of saving directly from the page. This ensures you get the highest quality version.
                               </p>
                               <input
