@@ -64,6 +64,7 @@ class ImgVaultServiceWorker {
       const pageUrl = info.pageUrl || tab.url;
       const isGoogleDrive = pageUrl.includes('drive.google.com');
       const isWallpaperMob = pageUrl.includes('wallpaper.mob.org');
+      const isArtStation = pageUrl.includes('artstation.com');
       
       await chrome.storage.local.set({
         pendingImage: {
@@ -72,7 +73,8 @@ class ImgVaultServiceWorker {
           pageTitle: tab.title,
           timestamp: Date.now(),
           isGoogleDrive,
-          isWallpaperMob
+          isWallpaperMob,
+          isArtStation
         }
       });
       
