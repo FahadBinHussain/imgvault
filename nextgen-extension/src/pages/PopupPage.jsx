@@ -332,6 +332,36 @@ export default function PopupPage() {
             </div>
           )}
 
+          {/* Wallpaper Mob tip with animation */}
+          {imageData.isWallpaperMob && (
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-purple-500/10 border-2 border-purple-500/30 
+                          shadow-lg animate-pulse-slow">
+              <span className="text-2xl flex-shrink-0">💡</span>
+              <div className="flex-1">
+                <p className="text-sm text-purple-200/90 leading-relaxed mb-3">
+                  For maximum quality from Wallpaper Mob, download the file first then use the button below
+                </p>
+                <input
+                  type="file"
+                  id="replaceWallpaperMobFile"
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => document.getElementById('replaceWallpaperMobFile').click()}
+                  className="px-4 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 
+                           border border-purple-400/40 text-purple-300 text-sm font-medium
+                           transition-all duration-200 hover:scale-105 active:scale-95
+                           flex items-center gap-2 shadow-lg"
+                >
+                  <Upload className="w-4 h-4" />
+                  Replace with Downloaded Image
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Form Fields with enhanced styling */}
           <div className="space-y-4">
             <div>
