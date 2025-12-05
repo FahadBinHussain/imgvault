@@ -2673,14 +2673,14 @@ export default function GalleryPage() {
                       if (!shouldShowTip) return null;
                       
                       return (
-                        <div className="mt-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
+                        <div className="mt-3 p-3 rounded-lg bg-red-500/20 border-2 border-red-500/50 shadow-lg shadow-red-500/30 animate-pulse-slow">
                           <div className="flex items-start gap-2">
-                            <div className="flex-shrink-0 text-blue-400 text-lg mt-0.5">💡</div>
+                            <div className="flex-shrink-0 text-red-400 text-lg mt-0.5 animate-bounce">⚠️</div>
                             <div className="flex-1">
-                              <p className="text-blue-300 font-medium text-sm mb-1">
-                                Quality Tip
+                              <p className="text-red-100 font-bold text-sm mb-1">
+                                🔥 Quality Warning
                               </p>
-                              <p className="text-blue-200/80 text-xs mb-2">
+                              <p className="text-red-100/90 text-xs mb-2">
                                 For best quality, download the image first from{' '}
                                 {pageUrl.includes('drive.google.com') && 'Google Drive'}
                                 {pageUrl.includes('unsplash.com') && 'Unsplash'}
@@ -2697,10 +2697,11 @@ export default function GalleryPage() {
                               />
                               <button
                                 onClick={() => document.getElementById('replaceUploadFile').click()}
-                                className="mt-1 px-3 py-1.5 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 
-                                         border border-blue-400/40 text-blue-300 text-xs font-medium
+                                className="mt-1 px-3 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-600 
+                                         border-2 border-red-400 text-white text-xs font-bold
                                          transition-all duration-200 hover:scale-105 active:scale-95
-                                         flex items-center gap-1.5"
+                                         flex items-center gap-1.5 shadow-lg shadow-red-500/40
+                                         hover:shadow-xl hover:shadow-red-500/60"
                               >
                                 <Upload className="w-3.5 h-3.5" />
                                 Replace with Downloaded Image

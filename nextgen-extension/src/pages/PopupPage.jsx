@@ -304,12 +304,12 @@ export default function PopupPage() {
 
           {/* Google Drive tip with animation */}
           {imageData.isGoogleDrive && (
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-yellow-500/10 border-2 border-yellow-500/30 
-                          shadow-lg animate-pulse-slow">
-              <span className="text-2xl flex-shrink-0">💡</span>
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/20 border-2 border-red-500/50 
+                          shadow-lg shadow-red-500/30 animate-pulse-slow">
+              <span className="text-2xl flex-shrink-0 animate-bounce">⚠️</span>
               <div className="flex-1">
-                <p className="text-sm text-yellow-200/90 leading-relaxed mb-3">
-                  For maximum quality from Google Drive, download the file first then use the button below
+                <p className="text-sm text-red-100 font-semibold leading-relaxed mb-3">
+                  🔥 For maximum quality from Google Drive, download the file first then use the button below
                 </p>
                 <input
                   type="file"
@@ -320,10 +320,11 @@ export default function PopupPage() {
                 />
                 <button
                   onClick={() => document.getElementById('replaceGDriveFile').click()}
-                  className="px-4 py-2 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 
-                           border border-yellow-400/40 text-yellow-300 text-sm font-medium
+                  className="px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 
+                           border-2 border-red-400 text-white text-sm font-bold
                            transition-all duration-200 hover:scale-105 active:scale-95
-                           flex items-center gap-2 shadow-lg"
+                           flex items-center gap-2 shadow-lg shadow-red-500/40
+                           hover:shadow-xl hover:shadow-red-500/60"
                 >
                   <Upload className="w-4 h-4" />
                   Replace with Downloaded Image
@@ -334,12 +335,12 @@ export default function PopupPage() {
 
           {/* Wallpaper Mob tip with animation */}
           {imageData.isWallpaperMob && (
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-purple-500/10 border-2 border-purple-500/30 
-                          shadow-lg animate-pulse-slow">
-              <span className="text-2xl flex-shrink-0">💡</span>
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/20 border-2 border-red-500/50 
+                          shadow-lg shadow-red-500/30 animate-pulse-slow">
+              <span className="text-2xl flex-shrink-0 animate-bounce">⚠️</span>
               <div className="flex-1">
-                <p className="text-sm text-purple-200/90 leading-relaxed mb-3">
-                  For maximum quality from Wallpaper Mob, download the file first then use the button below
+                <p className="text-sm text-red-100 font-semibold leading-relaxed mb-3">
+                  🔥 For maximum quality from Wallpaper Mob, download the file first then use the button below
                 </p>
                 <input
                   type="file"
@@ -350,10 +351,11 @@ export default function PopupPage() {
                 />
                 <button
                   onClick={() => document.getElementById('replaceWallpaperMobFile').click()}
-                  className="px-4 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 
-                           border border-purple-400/40 text-purple-300 text-sm font-medium
+                  className="px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 
+                           border-2 border-red-400 text-white text-sm font-bold
                            transition-all duration-200 hover:scale-105 active:scale-95
-                           flex items-center gap-2 shadow-lg"
+                           flex items-center gap-2 shadow-lg shadow-red-500/40
+                           hover:shadow-xl hover:shadow-red-500/60"
                 >
                   <Upload className="w-4 h-4" />
                   Replace with Downloaded Image
@@ -364,12 +366,12 @@ export default function PopupPage() {
 
           {/* ArtStation tip with animation */}
           {imageData.isArtStation && (
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-cyan-500/10 border-2 border-cyan-500/30 
-                          shadow-lg animate-pulse-slow">
-              <span className="text-2xl flex-shrink-0">💡</span>
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/20 border-2 border-red-500/50 
+                          shadow-lg shadow-red-500/30 animate-pulse-slow">
+              <span className="text-2xl flex-shrink-0 animate-bounce">⚠️</span>
               <div className="flex-1">
-                <p className="text-sm text-cyan-200/90 leading-relaxed mb-3">
-                  For maximum quality from ArtStation, download the file first then use the button below
+                <p className="text-sm text-red-100 font-semibold leading-relaxed mb-3">
+                  🔥 For maximum quality from ArtStation, download the file first then use the button below
                 </p>
                 <input
                   type="file"
@@ -380,10 +382,11 @@ export default function PopupPage() {
                 />
                 <button
                   onClick={() => document.getElementById('replaceArtStationFile').click()}
-                  className="px-4 py-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 
-                           border border-cyan-400/40 text-cyan-300 text-sm font-medium
+                  className="px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 
+                           border-2 border-red-400 text-white text-sm font-bold
                            transition-all duration-200 hover:scale-105 active:scale-95
-                           flex items-center gap-2 shadow-lg"
+                           flex items-center gap-2 shadow-lg shadow-red-500/40
+                           hover:shadow-xl hover:shadow-red-500/60"
                 >
                   <Upload className="w-4 h-4" />
                   Replace with Downloaded Image
