@@ -2668,7 +2668,7 @@ export default function GalleryPage() {
                     {/* Quality Tip for specific sites */}
                     {(() => {
                       const pageUrl = uploadPageUrl?.toLowerCase() || '';
-                      const shouldShowTip = pageUrl.includes('drive.google.com') || pageUrl.includes('unsplash.com') || pageUrl.includes('wallpaper.mob.org');
+                      const shouldShowTip = pageUrl.includes('drive.google.com') || pageUrl.includes('unsplash.com') || pageUrl.includes('wallpaper.mob.org') || pageUrl.includes('artstation.com');
                       
                       if (!shouldShowTip) return null;
                       
@@ -2685,6 +2685,7 @@ export default function GalleryPage() {
                                 {pageUrl.includes('drive.google.com') && 'Google Drive'}
                                 {pageUrl.includes('unsplash.com') && 'Unsplash'}
                                 {pageUrl.includes('wallpaper.mob.org') && 'Wallpaper Mob'}
+                                {pageUrl.includes('artstation.com') && 'ArtStation'}
                                 {' '}instead of saving directly from the page. This ensures you get the highest quality version.
                               </p>
                               <input
