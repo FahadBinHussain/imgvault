@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
+import { stripExports } from './vite-plugin-strip-exports.js';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), stripExports()],
   base: './', // Use relative paths for Chrome extension
   build: {
     outDir: 'dist',

@@ -5,6 +5,10 @@ Write-Host "Running post-build tasks..." -ForegroundColor Cyan
 Write-Host "Copying manifest.json..." -ForegroundColor Yellow
 Copy-Item -Path "manifest.json" -Destination "dist/manifest.json" -Force
 
+# Copy flickr-fix.css
+Write-Host "Copying flickr-fix.css..." -ForegroundColor Yellow
+Copy-Item -Path "flickr-fix.css" -Destination "dist/flickr-fix.css" -Force
+
 # Copy icons folder
 Write-Host "Copying icons..." -ForegroundColor Yellow
 if (Test-Path "dist/icons") {

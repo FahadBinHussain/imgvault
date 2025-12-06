@@ -47,10 +47,19 @@ class ImgVaultServiceWorker {
    * Create context menu
    */
   createContextMenu() {
-    chrome.contextMenus.create({
-      id: 'saveToImgVault',
-      title: 'Save to ImgVault',
-      contexts: ['image']
+    // Remove existing menu items first to avoid duplicates
+    chrome.contextMenus.removeAll(() => {
+      chrome.contextMenus.create({
+        id: 'saveToImgVault',
+        title: 'Save to ImgVault',
+        contexts: ['image']
+      }, () => {
+        if (chrome.runtime.lastError) {
+          console.log('Context menu creation:', chrome.runtime.lastError.message);
+        } else {
+          console.log('✅ Context menu created successfully');
+        }
+      });
     });
   }
 
@@ -593,6 +602,12 @@ const serviceWorker = new ImgVaultServiceWorker();
 
 // Event listeners
 chrome.runtime.onInstalled.addListener(() => {
+  serviceWorker.init();
+  serviceWorker.createContextMenu();
+});
+
+// Create context menu on browser startup
+chrome.runtime.onStartup.addListener(() => {
   serviceWorker.init();
   serviceWorker.createContextMenu();
 });

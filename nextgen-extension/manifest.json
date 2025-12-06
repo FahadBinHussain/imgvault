@@ -42,6 +42,13 @@
       "matches": ["<all_urls>"],
       "js": ["content.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.flickr.com/*"],
+      "js": ["content.js"],
+      "css": ["flickr-fix.css"],
+      "run_at": "document_start",
+      "all_frames": true
     }
   ],
   

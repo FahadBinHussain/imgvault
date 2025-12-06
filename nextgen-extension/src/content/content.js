@@ -4,6 +4,8 @@
  * @version 2.0.0
  */
 
+console.log('🚀 ImgVault content script loaded on:', window.location.href);
+
 /**
  * Message handlers
  */
@@ -62,6 +64,67 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
   return true;
 });
+
+/**
+ * Flickr-specific: Make images accessible for context menu
+ */
+if (window.location.hostname.includes('flickr.com')) {
+  console.log('🔧 ImgVault: Enabling Flickr image context menu');
+  
+  // Allow right-click on Flickr images by removing the protective overlay
+  const enableFlickrContextMenu = () => {
+    // Remove pointer-events from protective overlays
+    const protectiveOverlays = document.querySelectorAll('.facade-of-protection-zoom, .facade-of-protection');
+    console.log(`Found ${protectiveOverlays.length} protective overlays`);
+    protectiveOverlays.forEach(overlay => {
+      overlay.style.pointerEvents = 'none';
+      overlay.style.display = 'none'; // Hide it completely
+    });
+    
+    // Make zoom containers allow pointer events to pass through to images
+    const zoomContainers = document.querySelectorAll('.zoom-photo-container');
+    console.log(`Found ${zoomContainers.length} zoom containers`);
+    zoomContainers.forEach(container => {
+      const images = container.querySelectorAll('img');
+      console.log(`Found ${images.length} images in container`);
+      images.forEach(img => {
+        img.style.pointerEvents = 'auto';
+        console.log('Enabled pointer events on image:', img.src);
+      });
+    });
+    
+    // Also handle all images on the page
+    const allImages = document.querySelectorAll('img');
+    console.log(`Total images on page: ${allImages.length}`);
+    allImages.forEach(img => {
+      img.style.pointerEvents = 'auto';
+    });
+  };
+  
+  // Run on page load
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', enableFlickrContextMenu);
+  } else {
+    enableFlickrContextMenu();
+  }
+  
+  // Watch for dynamic content changes
+  const observer = new MutationObserver(() => {
+    enableFlickrContextMenu();
+  });
+  
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+  
+  // Also try to disable contextmenu event listeners
+  document.addEventListener('contextmenu', (e) => {
+    if (e.target.tagName === 'IMG') {
+      console.log('Context menu on image allowed');
+    }
+  }, true); // Use capture phase
+}
 
 // Export for testing
 if (typeof module !== 'undefined' && module.exports) {
