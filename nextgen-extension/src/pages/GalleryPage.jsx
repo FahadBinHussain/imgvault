@@ -2785,7 +2785,7 @@ export default function GalleryPage() {
                     {/* Quality Tip for specific sites */}
                     {(() => {
                       const pageUrl = uploadPageUrl?.toLowerCase() || '';
-                      const shouldShowTip = pageUrl.includes('drive.google.com') || pageUrl.includes('unsplash.com') || pageUrl.includes('wallpaper.mob.org') || pageUrl.includes('artstation.com') || pageUrl.includes('backiee.com') || pageUrl.includes('wall.alphacoders.com');
+                      const shouldShowTip = pageUrl.includes('drive.google.com') || pageUrl.includes('unsplash.com') || pageUrl.includes('wallpaper.mob.org') || pageUrl.includes('artstation.com') || pageUrl.includes('backiee.com') || pageUrl.includes('wall.alphacoders.com') || pageUrl.includes('peakpx.com');
                       
                       if (!shouldShowTip) return null;
                       
@@ -2805,6 +2805,7 @@ export default function GalleryPage() {
                                 {pageUrl.includes('artstation.com') && 'ArtStation'}
                                 {pageUrl.includes('backiee.com') && 'Backiee'}
                                 {pageUrl.includes('wall.alphacoders.com') && 'Alpha Coders'}
+                                {pageUrl.includes('peakpx.com') && 'PeakPX'}
                                 {' '}instead of saving directly from the page. This ensures you get the highest quality version.
                               </p>
                               <input
