@@ -126,6 +126,17 @@ All UI components are in `src/components/UI.jsx` and can be easily customized.
 - `pnpm preview` - Preview production build
 - `pnpm lint` - Run ESLint
 
+### Clean Build
+
+```powershell
+# Remove node_modules
+Remove-Item -Recurse -Force node_modules
+
+# Reinstall and build
+pnpm install
+pnpm build
+```
+
 ## 🔄 Migration from Legacy Extension
 
 The original extension code is preserved in the `extension` folder. The next-gen version includes:
