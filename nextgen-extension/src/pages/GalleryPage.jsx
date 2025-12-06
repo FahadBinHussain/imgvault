@@ -2785,51 +2785,76 @@ export default function GalleryPage() {
                     {/* Quality Tip for specific sites */}
                     {(() => {
                       const pageUrl = uploadPageUrl?.toLowerCase() || '';
-                      const shouldShowTip = pageUrl.includes('drive.google.com') || pageUrl.includes('unsplash.com') || pageUrl.includes('wallpaper.mob.org') || pageUrl.includes('artstation.com') || pageUrl.includes('backiee.com') || pageUrl.includes('wall.alphacoders.com') || pageUrl.includes('peakpx.com');
+                      const shouldShowWarning = pageUrl.includes('drive.google.com') || pageUrl.includes('unsplash.com') || pageUrl.includes('wallpaper.mob.org') || pageUrl.includes('artstation.com') || pageUrl.includes('backiee.com') || pageUrl.includes('wall.alphacoders.com') || pageUrl.includes('peakpx.com') || pageUrl.includes('slideshare.net');
+                      const shouldShowGoodQuality = pageUrl.includes('facebook.com') || pageUrl.includes('instagram.com');
                       
-                      if (!shouldShowTip) return null;
-                      
-                      return (
-                        <div className="mt-3 p-3 rounded-lg bg-red-500/20 border-2 border-red-500/50 shadow-lg shadow-red-500/30 animate-pulse-slow">
-                          <div className="flex items-start gap-2">
-                            <div className="flex-shrink-0 text-red-400 text-lg mt-0.5 animate-bounce">⚠️</div>
-                            <div className="flex-1">
-                              <p className="text-red-100 font-bold text-sm mb-1">
-                                🔥 Quality Warning
-                              </p>
-                              <p className="text-red-100/90 text-xs mb-2">
-                                For best quality, download the image first from{' '}
-                                {pageUrl.includes('drive.google.com') && 'Google Drive'}
-                                {pageUrl.includes('unsplash.com') && 'Unsplash'}
-                                {pageUrl.includes('wallpaper.mob.org') && 'Wallpaper Mob'}
-                                {pageUrl.includes('artstation.com') && 'ArtStation'}
-                                {pageUrl.includes('backiee.com') && 'Backiee'}
-                                {pageUrl.includes('wall.alphacoders.com') && 'Alpha Coders'}
-                                {pageUrl.includes('peakpx.com') && 'PeakPX'}
-                                {' '}instead of saving directly from the page. This ensures you get the highest quality version.
-                              </p>
-                              <input
-                                type="file"
-                                id="replaceUploadFile"
-                                accept="image/*"
-                                onChange={handleFileUpload}
-                                className="hidden"
-                              />
-                              <button
-                                onClick={() => document.getElementById('replaceUploadFile').click()}
-                                className="mt-1 px-3 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-600 
-                                         border-2 border-red-400 text-white text-xs font-bold
-                                         transition-all duration-200 hover:scale-105 active:scale-95
-                                         flex items-center gap-1.5 shadow-lg shadow-red-500/40
-                                         hover:shadow-xl hover:shadow-red-500/60"
-                              >
-                                <Upload className="w-3.5 h-3.5" />
-                                Replace with Downloaded Image
-                              </button>
+                      if (shouldShowWarning) {
+                        return (
+                          <div className="mt-3 p-3 rounded-lg bg-red-500/20 border-2 border-red-500/50 shadow-lg shadow-red-500/30 animate-pulse-slow">
+                            <div className="flex items-start gap-2">
+                              <div className="flex-shrink-0 text-red-400 text-lg mt-0.5 animate-bounce">⚠️</div>
+                              <div className="flex-1">
+                                <p className="text-red-100 font-bold text-sm mb-1">
+                                  🔥 Quality Warning
+                                </p>
+                                <p className="text-red-100/90 text-xs mb-2">
+                                  For best quality, download the image first from{' '}
+                                  {pageUrl.includes('drive.google.com') && 'Google Drive'}
+                                  {pageUrl.includes('unsplash.com') && 'Unsplash'}
+                                  {pageUrl.includes('wallpaper.mob.org') && 'Wallpaper Mob'}
+                                  {pageUrl.includes('artstation.com') && 'ArtStation'}
+                                  {pageUrl.includes('backiee.com') && 'Backiee'}
+                                  {pageUrl.includes('wall.alphacoders.com') && 'Alpha Coders'}
+                                  {pageUrl.includes('peakpx.com') && 'PeakPX'}
+                                  {pageUrl.includes('slideshare.net') && 'SlideShare'}
+                                  {' '}instead of saving directly from the page. This ensures you get the highest quality version.
+                                </p>
+                                <input
+                                  type="file"
+                                  id="replaceUploadFile"
+                                  accept="image/*"
+                                  onChange={handleFileUpload}
+                                  className="hidden"
+                                />
+                                <button
+                                  onClick={() => document.getElementById('replaceUploadFile').click()}
+                                  className="mt-1 px-3 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-600 
+                                           border-2 border-red-400 text-white text-xs font-bold
+                                           transition-all duration-200 hover:scale-105 active:scale-95
+                                           flex items-center gap-1.5 shadow-lg shadow-red-500/40
+                                           hover:shadow-xl hover:shadow-red-500/60"
+                                >
+                                  <Upload className="w-3.5 h-3.5" />
+                                  Replace with Downloaded Image
+                                </button>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      );
+                        );
+                      }
+                      
+                      if (shouldShowGoodQuality) {
+                        return (
+                          <div className="mt-3 p-3 rounded-lg bg-green-500/20 border-2 border-green-500/50 shadow-lg shadow-green-500/30">
+                            <div className="flex items-start gap-2">
+                              <div className="flex-shrink-0 text-green-400 text-lg mt-0.5">✓</div>
+                              <div className="flex-1">
+                                <p className="text-green-100 font-bold text-sm mb-1">
+                                  ✨ Best Quality
+                                </p>
+                                <p className="text-green-100/90 text-xs">
+                                  This image from{' '}
+                                  {pageUrl.includes('facebook.com') && 'Facebook'}
+                                  {pageUrl.includes('instagram.com') && 'Instagram'}
+                                  {' '}is already in the best available quality. You're all set!
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      
+                      return null;
                     })()}
                   </div>
 
