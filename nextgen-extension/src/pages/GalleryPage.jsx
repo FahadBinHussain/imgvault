@@ -2785,8 +2785,8 @@ export default function GalleryPage() {
                     {/* Quality Tip for specific sites */}
                     {(() => {
                       const pageUrl = uploadPageUrl?.toLowerCase() || '';
-                      const shouldShowWarning = pageUrl.includes('drive.google.com') || pageUrl.includes('unsplash.com') || pageUrl.includes('wallpaper.mob.org') || pageUrl.includes('artstation.com') || pageUrl.includes('backiee.com') || pageUrl.includes('wall.alphacoders.com') || pageUrl.includes('peakpx.com') || pageUrl.includes('slideshare.net');
-                      const shouldShowGoodQuality = pageUrl.includes('facebook.com') || pageUrl.includes('instagram.com');
+                      const shouldShowWarning = pageUrl.includes('drive.google.com') || pageUrl.includes('unsplash.com') || pageUrl.includes('wallpaper.mob.org') || pageUrl.includes('artstation.com') || pageUrl.includes('backiee.com') || pageUrl.includes('wall.alphacoders.com') || pageUrl.includes('peakpx.com');
+                      const shouldShowGoodQuality = pageUrl.includes('facebook.com') || pageUrl.includes('instagram.com') || pageUrl.includes('slideshare.net') || pageUrl.includes('flickr.com') || pageUrl.includes('wallpapercave.com') || pageUrl.includes('jngsainui.free.fr') || pageUrl.includes('yelp.com') || pageUrl.includes('divnil.com') || pageUrl.includes('note.com') || pageUrl.includes('goodfon.com') || pageUrl.includes('reddit.com') || pageUrl.includes('wallpapersden.com') || pageUrl.includes('glampinghub.com');
                       
                       if (shouldShowWarning) {
                         return (
@@ -2846,6 +2846,17 @@ export default function GalleryPage() {
                                   This image from{' '}
                                   {pageUrl.includes('facebook.com') && 'Facebook'}
                                   {pageUrl.includes('instagram.com') && 'Instagram'}
+                                  {pageUrl.includes('slideshare.net') && 'SlideShare'}
+                                  {pageUrl.includes('flickr.com') && 'Flickr'}
+                                  {pageUrl.includes('wallpapercave.com') && 'Wallpaper Cave'}
+                                  {pageUrl.includes('jngsainui.free.fr') && 'JNG Sainui'}
+                                  {pageUrl.includes('yelp.com') && 'Yelp'}
+                                  {pageUrl.includes('divnil.com') && 'Divnil'}
+                                  {pageUrl.includes('note.com') && 'Note'}
+                                  {pageUrl.includes('goodfon.com') && 'GoodFon'}
+                                  {pageUrl.includes('reddit.com') && 'Reddit'}
+                                  {pageUrl.includes('wallpapersden.com') && 'Wallpapers Den'}
+                                  {pageUrl.includes('glampinghub.com') && 'Glamping Hub'}
                                   {' '}is already in the best available quality. You're all set!
                                 </p>
                               </div>
