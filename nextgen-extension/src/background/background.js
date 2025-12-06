@@ -69,6 +69,7 @@ class ImgVaultServiceWorker {
       const isGoogleDrive = pageUrl.includes('drive.google.com');
       const isWallpaperMob = pageUrl.includes('wallpaper.mob.org');
       const isArtStation = pageUrl.includes('artstation.com');
+      const isWallHere = pageUrl.includes('wallhere.com');
       
       // Check if image is base64
       const isBase64 = info.srcUrl && info.srcUrl.startsWith('data:image');
@@ -82,6 +83,7 @@ class ImgVaultServiceWorker {
         isGoogleDrive,
         isWallpaperMob,
         isArtStation,
+        isWallHere,
         isBase64
       };
       

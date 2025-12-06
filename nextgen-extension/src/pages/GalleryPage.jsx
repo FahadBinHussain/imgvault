@@ -657,7 +657,11 @@ export default function GalleryPage() {
               srcUrl: pendingImage.srcUrl,
               fileName: pendingImage.srcUrl.split('/').pop().split('?')[0] || 'image.jpg',
               pageTitle: pendingImage.pageTitle || '',
-              isBase64: pendingImage.isBase64 || false
+              isBase64: pendingImage.isBase64 || false,
+              isGoogleDrive: pendingImage.isGoogleDrive || false,
+              isWallpaperMob: pendingImage.isWallpaperMob || false,
+              isArtStation: pendingImage.isArtStation || false,
+              isWallHere: pendingImage.isWallHere || false
             });
             setUploadPageUrl(pendingImage.pageUrl || '');
             
@@ -2377,6 +2381,41 @@ export default function GalleryPage() {
                             >
                               <Upload className="w-4 h-4" />
                               Replace with Full Quality Image
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Site-specific replace tips */}
+                    {uploadImageData?.isWallHere && !uploadImageData?.isBase64 && (
+                      <div className="p-3 rounded-xl bg-red-500/20 border-2 border-red-500/50 shadow-lg shadow-red-500/30 animate-pulse-slow">
+                        <div className="flex items-start gap-2">
+                          <div className="flex-shrink-0 text-red-400 text-lg animate-bounce">⚠️</div>
+                          <div className="flex-1">
+                            <p className="text-red-100 font-bold text-xs mb-1">
+                              🔥 Quality Warning
+                            </p>
+                            <p className="text-red-100/90 text-xs mb-2">
+                              For best quality from WallHere, download the full resolution file first then replace it below.
+                            </p>
+                            <input
+                              type="file"
+                              id="replaceWallHereFile"
+                              accept="image/*"
+                              onChange={handleFileUpload}
+                              className="hidden"
+                            />
+                            <button
+                              onClick={() => document.getElementById('replaceWallHereFile').click()}
+                              className="w-full px-3 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-600 
+                                       border-2 border-red-400 text-white text-xs font-bold
+                                       transition-all duration-200 hover:scale-105 active:scale-95
+                                       flex items-center justify-center gap-1.5 shadow-lg shadow-red-500/40
+                                       hover:shadow-xl hover:shadow-red-500/60"
+                            >
+                              <Upload className="w-3.5 h-3.5" />
+                              Replace with Downloaded Image
                             </button>
                           </div>
                         </div>
