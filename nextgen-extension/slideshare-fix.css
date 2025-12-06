@@ -1,0 +1,16 @@
+/* Fix SlideShare to allow context menu on images */
+.VerticalSlideImage_root__64KSA,
+.slide-actions,
+.VerticalSlideActions_root__azvaH {
+  pointer-events: none !important;
+}
+
+.VerticalSlide_root__jU_9r img,
+#slide-image-2,
+[data-testid="vertical-slide-image"] {
+  pointer-events: auto !important;
+}
+
+img[data-nimg="fill"] {
+  pointer-events: auto !important;
+}

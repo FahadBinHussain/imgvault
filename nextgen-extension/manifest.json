@@ -49,6 +49,13 @@
       "css": ["flickr-fix.css"],
       "run_at": "document_start",
       "all_frames": true
+    },
+    {
+      "matches": ["*://*.slideshare.net/*"],
+      "js": ["content.js"],
+      "css": ["slideshare-fix.css"],
+      "run_at": "document_start",
+      "all_frames": true
     }
   ],
   

@@ -9,6 +9,10 @@ Copy-Item -Path "manifest.json" -Destination "dist/manifest.json" -Force
 Write-Host "Copying flickr-fix.css..." -ForegroundColor Yellow
 Copy-Item -Path "flickr-fix.css" -Destination "dist/flickr-fix.css" -Force
 
+# Copy slideshare-fix.css
+Write-Host "Copying slideshare-fix.css..." -ForegroundColor Yellow
+Copy-Item -Path "slideshare-fix.css" -Destination "dist/slideshare-fix.css" -Force
+
 # Copy icons folder
 Write-Host "Copying icons..." -ForegroundColor Yellow
 if (Test-Path "dist/icons") {
