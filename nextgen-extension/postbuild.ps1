@@ -13,6 +13,10 @@ Copy-Item -Path "flickr-fix.css" -Destination "dist/flickr-fix.css" -Force
 Write-Host "Copying slideshare-fix.css..." -ForegroundColor Yellow
 Copy-Item -Path "slideshare-fix.css" -Destination "dist/slideshare-fix.css" -Force
 
+# Copy rajce-fix.css
+Write-Host "Copying rajce-fix.css..." -ForegroundColor Yellow
+Copy-Item -Path "rajce-fix.css" -Destination "dist/rajce-fix.css" -Force
+
 # Copy icons folder
 Write-Host "Copying icons..." -ForegroundColor Yellow
 if (Test-Path "dist/icons") {

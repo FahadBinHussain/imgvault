@@ -56,6 +56,13 @@
       "css": ["slideshare-fix.css"],
       "run_at": "document_start",
       "all_frames": true
+    },
+    {
+      "matches": ["*://*.rajce.idnes.cz/*"],
+      "js": ["content.js"],
+      "css": ["rajce-fix.css"],
+      "run_at": "document_start",
+      "all_frames": true
     }
   ],
   

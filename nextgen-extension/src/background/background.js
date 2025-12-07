@@ -60,6 +60,23 @@ class ImgVaultServiceWorker {
           console.log('✅ Context menu created successfully');
         }
       });
+      
+      // Add menu item for background images (rajce.idnes.cz and similar sites)
+      chrome.contextMenus.create({
+        id: 'saveBackgroundToImgVault',
+        title: 'Save Background Image to ImgVault',
+        contexts: ['all'],
+        documentUrlPatterns: [
+          '*://*.rajce.idnes.cz/*',
+          '*://*.flickr.com/*'
+        ]
+      }, () => {
+        if (chrome.runtime.lastError) {
+          console.log('Background context menu creation:', chrome.runtime.lastError.message);
+        } else {
+          console.log('✅ Background context menu created successfully');
+        }
+      });
     });
   }
 
@@ -108,6 +125,105 @@ class ImgVaultServiceWorker {
       chrome.tabs.create({
         url: chrome.runtime.getURL('index.html')
       });
+    } else if (info.menuItemId === 'saveBackgroundToImgVault') {
+      console.log('🎯 Background image context menu clicked!');
+      
+      // Try to get the image URL from storage (set by content script on right-click)
+      const storageData = await chrome.storage.local.get(['lastRightClickImageUrl', 'lastRightClickTimestamp']);
+      
+      let imageUrl = null;
+      
+      // Check if we have a recent right-click image (within 2 seconds)
+      if (storageData.lastRightClickImageUrl && 
+          storageData.lastRightClickTimestamp && 
+          Date.now() - storageData.lastRightClickTimestamp < 2000) {
+        imageUrl = storageData.lastRightClickImageUrl;
+        console.log('🎨 Using stored right-click image URL:', imageUrl);
+      }
+      
+      // If no stored URL, try content script
+      if (!imageUrl) {
+        try {
+          const response = await chrome.tabs.sendMessage(tab.id, {
+            action: 'getBackgroundImage',
+            x: info.x || 0,
+            y: info.y || 0
+          });
+          
+          if (response && response.imageUrl) {
+            imageUrl = response.imageUrl;
+            console.log('🎨 Got image from content script:', imageUrl);
+          }
+        } catch (error) {
+          console.log('⚠️ Content script not responding:', error.message);
+        }
+      }
+      
+      // If still no URL, try inline script as fallback
+      if (!imageUrl) {
+        console.log('⚠️ No stored URL, using inline script fallback...');
+        try {
+          const results = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => {
+              // Try to find elements with background images
+              const elements = document.querySelectorAll('[data-cover-image-url-set], [style*="background-image"]');
+              
+              for (const el of elements) {
+                const coverImageUrlSet = el.getAttribute('data-cover-image-url-set');
+                if (coverImageUrlSet) {
+                  const urls = coverImageUrlSet.split(',').map(s => s.trim().split(' ')[0]);
+                  return urls[0];
+                }
+                
+                const style = el.getAttribute('style');
+                if (style && style.includes('background-image')) {
+                  const match = style.match(/background-image:\s*url\(['"]?(.+?)['"]?\)/);
+                  if (match) return match[1];
+                }
+              }
+              
+              return null;
+            }
+          });
+          
+          if (results && results[0] && results[0].result) {
+            imageUrl = results[0].result;
+            console.log('🎨 Found image with inline script:', imageUrl);
+          }
+        } catch (error) {
+          console.error('❌ Inline script failed:', error);
+        }
+      }
+      
+      if (imageUrl) {
+        const pageUrl = info.pageUrl || tab.url;
+        
+        const pendingData = {
+          srcUrl: imageUrl,
+          pageUrl,
+          pageTitle: tab.title,
+          timestamp: Date.now(),
+          isBackgroundImage: true
+        };
+        
+        console.log('💾 Storing background image data:', pendingData);
+        
+        await chrome.storage.local.set({
+          pendingImage: pendingData
+        });
+        
+        // Clear the stored right-click URL
+        await chrome.storage.local.remove(['lastRightClickImageUrl', 'lastRightClickTimestamp']);
+        
+        console.log('✅ Background image stored!');
+        
+        chrome.tabs.create({
+          url: chrome.runtime.getURL('index.html')
+        });
+      } else {
+        console.log('❌ No background image found');
+      }
     }
   }
 
