@@ -1,0 +1,22 @@
+/* Fix rajce.idnes.cz to allow context menu on images */
+#cover-image-wrapper {
+  pointer-events: none !important;
+}
+
+#cover-image-wrapper::before,
+#cover-image-wrapper::after {
+  pointer-events: none !important;
+}
+
+/* Ensure images are clickable */
+#cover-image-wrapper img,
+div[data-cover-image-url-set] img,
+.photo-wrapper img,
+.cover-image img {
+  pointer-events: auto !important;
+}
+
+/* Handle background images - make them accessible */
+div[data-cover-image-url-set] {
+  pointer-events: auto !important;
+}
