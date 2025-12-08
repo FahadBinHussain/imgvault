@@ -97,6 +97,7 @@ class ImgVaultServiceWorker {
       const isArtStation = pageUrl.includes('artstation.com');
       const isWallHere = pageUrl.includes('wallhere.com');
       const isSohu = pageUrl.includes('sohu.com');
+      const isAirbnb = pageUrl.includes('airbnb.com');
       
       // Check if image is base64
       const isBase64 = info.srcUrl && info.srcUrl.startsWith('data:image');
@@ -112,6 +113,7 @@ class ImgVaultServiceWorker {
         isArtStation,
         isWallHere,
         isSohu,
+        isAirbnb,
         isBase64
       };
       

@@ -457,6 +457,37 @@ export default function PopupPage() {
             </div>
           )}
 
+          {/* Airbnb tip with animation */}
+          {imageData.isAirbnb && (
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/20 border-2 border-red-500/50 
+                          shadow-lg shadow-red-500/30 animate-pulse-slow">
+              <span className="text-2xl flex-shrink-0 animate-bounce">⚠️</span>
+              <div className="flex-1">
+                <p className="text-sm text-red-100 font-semibold leading-relaxed mb-3">
+                  🔥 For maximum quality from Airbnb, download the file first then use the button below
+                </p>
+                <input
+                  type="file"
+                  id="replaceAirbnbFile"
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => document.getElementById('replaceAirbnbFile').click()}
+                  className="px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 
+                           border-2 border-red-400 text-white text-sm font-bold
+                           transition-all duration-200 hover:scale-105 active:scale-95
+                           flex items-center gap-2 shadow-lg shadow-red-500/40
+                           hover:shadow-xl hover:shadow-red-500/60"
+                >
+                  <Upload className="w-4 h-4" />
+                  Replace with Downloaded Image
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Form Fields with enhanced styling */}
           <div className="space-y-4">
             <div>
