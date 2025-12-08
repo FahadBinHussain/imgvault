@@ -11,6 +11,8 @@ export const sitesConfig = {
     { url: 'wall.alphacoders.com', displayName: 'Alpha Coders' },
     { url: 'peakpx.com', displayName: 'PeakPX' },
     { url: 'airbnb.com', displayName: 'Airbnb' },
+    { url: 'wallhere.com', displayName: 'WallHere' },
+    { url: 'sohu.com', displayName: 'Sohu' }
   ],
   goodQualitySites: [
     { url: 'facebook.com', displayName: 'Facebook' },

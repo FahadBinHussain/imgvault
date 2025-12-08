@@ -8,6 +8,7 @@ import { StorageManager } from '../utils/storage.js';
 import { DuplicateDetector } from '../utils/duplicate-detector.js';
 import { URLNormalizer } from '../utils/url-normalizer.js';
 import { PixvidUploader, ImgbbUploader } from '../utils/uploaders.js';
+import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig.js';
 
 /**
  * @typedef {Object} ImageData
@@ -92,12 +93,10 @@ class ImgVaultServiceWorker {
       console.log('📍 Page URL:', info.pageUrl || tab.url);
       
       const pageUrl = info.pageUrl || tab.url;
-      const isGoogleDrive = pageUrl.includes('drive.google.com');
-      const isWallpaperMob = pageUrl.includes('wallpaper.mob.org');
-      const isArtStation = pageUrl.includes('artstation.com');
-      const isWallHere = pageUrl.includes('wallhere.com');
-      const isSohu = pageUrl.includes('sohu.com');
-      const isAirbnb = pageUrl.includes('airbnb.com');
+      const isWarning = isWarningSite(pageUrl);
+      const warningSite = getSiteDisplayName(pageUrl, sitesConfig.warningSites);
+      const isGood = isGoodQualitySite(pageUrl);
+      const goodSite = getSiteDisplayName(pageUrl, sitesConfig.goodQualitySites);
       
       // Check if image is base64
       const isBase64 = info.srcUrl && info.srcUrl.startsWith('data:image');
@@ -108,12 +107,10 @@ class ImgVaultServiceWorker {
         pageUrl,
         pageTitle: tab.title,
         timestamp: Date.now(),
-        isGoogleDrive,
-        isWallpaperMob,
-        isArtStation,
-        isWallHere,
-        isSohu,
-        isAirbnb,
+        isWarningSite: isWarning,
+        warningSiteName: warningSite,
+        isGoodQualitySite: isGood,
+        goodQualitySiteName: goodSite,
         isBase64
       };
       
@@ -532,7 +529,7 @@ class ImgVaultServiceWorker {
         pHash: metadata.pHash,
         aHash: metadata.aHash,
         dHash: metadata.dHash,
-        fileType, // File type from File object or EXIF
+        fileType: // File type from File object or EXIF
         fileTypeSource, // Source of file type (for debugging)
         creationDate, // Creation date from EXIF or file metadata
         creationDateSource, // Source of creation date (for debugging)

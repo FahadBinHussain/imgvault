@@ -234,6 +234,39 @@ export default function PopupPage() {
   }
 
   // Image upload view
+  const WarningTip = ({ siteName }) => {
+    const fileId = `replace${siteName.replace(/\s+/g, '')}File`;
+    return (
+      <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/20 border-2 border-red-500/50 
+                    shadow-lg shadow-red-500/30 animate-pulse-slow">
+        <span className="text-2xl flex-shrink-0 animate-bounce">⚠️</span>
+        <div className="flex-1">
+          <p className="text-sm text-red-100 font-semibold leading-relaxed mb-3">
+            🔥 For maximum quality from {siteName}, download the file first then use the button below
+          </p>
+          <input
+            type="file"
+            id={fileId}
+            accept="image/*"
+            onChange={handleFileUpload}
+            className="hidden"
+          />
+          <button
+            onClick={() => document.getElementById(fileId).click()}
+            className="px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 
+                     border-2 border-red-400 text-white text-sm font-bold
+                     transition-all duration-200 hover:scale-105 active:scale-95
+                     flex items-center gap-2 shadow-lg shadow-red-500/40
+                     hover:shadow-xl hover:shadow-red-500/60"
+          >
+            <Upload className="w-4 h-4" />
+            Replace with Downloaded Image
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="w-[420px] bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl">
@@ -303,189 +336,33 @@ export default function PopupPage() {
           )}
 
           {/* Google Drive tip with animation */}
-          {imageData.isGoogleDrive && (
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/20 border-2 border-red-500/50 
-                          shadow-lg shadow-red-500/30 animate-pulse-slow">
-              <span className="text-2xl flex-shrink-0 animate-bounce">⚠️</span>
-              <div className="flex-1">
-                <p className="text-sm text-red-100 font-semibold leading-relaxed mb-3">
-                  🔥 For maximum quality from Google Drive, download the file first then use the button below
-                </p>
-                <input
-                  type="file"
-                  id="replaceGDriveFile"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-                <button
-                  onClick={() => document.getElementById('replaceGDriveFile').click()}
-                  className="px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 
-                           border-2 border-red-400 text-white text-sm font-bold
-                           transition-all duration-200 hover:scale-105 active:scale-95
-                           flex items-center gap-2 shadow-lg shadow-red-500/40
-                           hover:shadow-xl hover:shadow-red-500/60"
-                >
-                  <Upload className="w-4 h-4" />
-                  Replace with Downloaded Image
-                </button>
-              </div>
-            </div>
+          {imageData.isWarningSite && imageData.warningSiteName === 'Google Drive' && (
+            <WarningTip siteName="Google Drive" />
           )}
 
           {/* Wallpaper Mob tip with animation */}
-          {imageData.isWallpaperMob && (
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/20 border-2 border-red-500/50 
-                          shadow-lg shadow-red-500/30 animate-pulse-slow">
-              <span className="text-2xl flex-shrink-0 animate-bounce">⚠️</span>
-              <div className="flex-1">
-                <p className="text-sm text-red-100 font-semibold leading-relaxed mb-3">
-                  🔥 For maximum quality from Wallpaper Mob, download the file first then use the button below
-                </p>
-                <input
-                  type="file"
-                  id="replaceWallpaperMobFile"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-                <button
-                  onClick={() => document.getElementById('replaceWallpaperMobFile').click()}
-                  className="px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 
-                           border-2 border-red-400 text-white text-sm font-bold
-                           transition-all duration-200 hover:scale-105 active:scale-95
-                           flex items-center gap-2 shadow-lg shadow-red-500/40
-                           hover:shadow-xl hover:shadow-red-500/60"
-                >
-                  <Upload className="w-4 h-4" />
-                  Replace with Downloaded Image
-                </button>
-              </div>
-            </div>
+          {imageData.isWarningSite && imageData.warningSiteName === 'Wallpaper Mob' && (
+            <WarningTip siteName="Wallpaper Mob" />
           )}
 
           {/* ArtStation tip with animation */}
-          {imageData.isArtStation && (
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/20 border-2 border-red-500/50 
-                          shadow-lg shadow-red-500/30 animate-pulse-slow">
-              <span className="text-2xl flex-shrink-0 animate-bounce">⚠️</span>
-              <div className="flex-1">
-                <p className="text-sm text-red-100 font-semibold leading-relaxed mb-3">
-                  🔥 For maximum quality from ArtStation, download the file first then use the button below
-                </p>
-                <input
-                  type="file"
-                  id="replaceArtStationFile"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-                <button
-                  onClick={() => document.getElementById('replaceArtStationFile').click()}
-                  className="px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 
-                           border-2 border-red-400 text-white text-sm font-bold
-                           transition-all duration-200 hover:scale-105 active:scale-95
-                           flex items-center gap-2 shadow-lg shadow-red-500/40
-                           hover:shadow-xl hover:shadow-red-500/60"
-                >
-                  <Upload className="w-4 h-4" />
-                  Replace with Downloaded Image
-                </button>
-              </div>
-            </div>
+          {imageData.isWarningSite && imageData.warningSiteName === 'ArtStation' && (
+            <WarningTip siteName="ArtStation" />
           )}
 
           {/* WallHere tip with animation */}
-          {imageData.isWallHere && (
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/20 border-2 border-red-500/50 
-                          shadow-lg shadow-red-500/30 animate-pulse-slow">
-              <span className="text-2xl flex-shrink-0 animate-bounce">⚠️</span>
-              <div className="flex-1">
-                <p className="text-sm text-red-100 font-semibold leading-relaxed mb-3">
-                  🔥 For maximum quality from WallHere, download the file first then use the button below
-                </p>
-                <input
-                  type="file"
-                  id="replaceWallHereFile"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-                <button
-                  onClick={() => document.getElementById('replaceWallHereFile').click()}
-                  className="px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 
-                           border-2 border-red-400 text-white text-sm font-bold
-                           transition-all duration-200 hover:scale-105 active:scale-95
-                           flex items-center gap-2 shadow-lg shadow-red-500/40
-                           hover:shadow-xl hover:shadow-red-500/60"
-                >
-                  <Upload className="w-4 h-4" />
-                  Replace with Downloaded Image
-                </button>
-              </div>
-            </div>
+          {imageData.isWarningSite && imageData.warningSiteName === 'WallHere' && (
+            <WarningTip siteName="WallHere" />
           )}
 
           {/* Sohu tip with animation */}
-          {imageData.isSohu && (
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/20 border-2 border-red-500/50 
-                          shadow-lg shadow-red-500/30 animate-pulse-slow">
-              <span className="text-2xl flex-shrink-0 animate-bounce">⚠️</span>
-              <div className="flex-1">
-                <p className="text-sm text-red-100 font-semibold leading-relaxed mb-3">
-                  🔥 For maximum quality from Sohu, download the file first then use the button below
-                </p>
-                <input
-                  type="file"
-                  id="replaceSohuFile"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-                <button
-                  onClick={() => document.getElementById('replaceSohuFile').click()}
-                  className="px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 
-                           border-2 border-red-400 text-white text-sm font-bold
-                           transition-all duration-200 hover:scale-105 active:scale-95
-                           flex items-center gap-2 shadow-lg shadow-red-500/40
-                           hover:shadow-xl hover:shadow-red-500/60"
-                >
-                  <Upload className="w-4 h-4" />
-                  Replace with Downloaded Image
-                </button>
-              </div>
-            </div>
+          {imageData.isWarningSite && imageData.warningSiteName === 'Sohu' && (
+            <WarningTip siteName="Sohu" />
           )}
 
           {/* Airbnb tip with animation */}
-          {imageData.isAirbnb && (
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/20 border-2 border-red-500/50 
-                          shadow-lg shadow-red-500/30 animate-pulse-slow">
-              <span className="text-2xl flex-shrink-0 animate-bounce">⚠️</span>
-              <div className="flex-1">
-                <p className="text-sm text-red-100 font-semibold leading-relaxed mb-3">
-                  🔥 For maximum quality from Airbnb, download the file first then use the button below
-                </p>
-                <input
-                  type="file"
-                  id="replaceAirbnbFile"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-                <button
-                  onClick={() => document.getElementById('replaceAirbnbFile').click()}
-                  className="px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 
-                           border-2 border-red-400 text-white text-sm font-bold
-                           transition-all duration-200 hover:scale-105 active:scale-95
-                           flex items-center gap-2 shadow-lg shadow-red-500/40
-                           hover:shadow-xl hover:shadow-red-500/60"
-                >
-                  <Upload className="w-4 h-4" />
-                  Replace with Downloaded Image
-                </button>
-              </div>
-            </div>
+          {imageData.isWarningSite && imageData.warningSiteName === 'Airbnb' && (
+            <WarningTip siteName="Airbnb" />
           )}
 
           {/* Form Fields with enhanced styling */}

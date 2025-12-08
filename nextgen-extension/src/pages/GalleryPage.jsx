@@ -659,11 +659,10 @@ export default function GalleryPage() {
               fileName: pendingImage.srcUrl.split('/').pop().split('?')[0] || 'image.jpg',
               pageTitle: pendingImage.pageTitle || '',
               isBase64: pendingImage.isBase64 || false,
-              isGoogleDrive: pendingImage.isGoogleDrive || false,
-              isWallpaperMob: pendingImage.isWallpaperMob || false,
-              isArtStation: pendingImage.isArtStation || false,
-              isWallHere: pendingImage.isWallHere || false,
-              isSohu: pendingImage.isSohu || false
+              isWarningSite: pendingImage.isWarningSite || false,
+              warningSiteName: pendingImage.warningSiteName || '',
+              isGoodQualitySite: pendingImage.isGoodQualitySite || false,
+              goodQualitySiteName: pendingImage.goodQualitySiteName || ''
             });
             setUploadPageUrl(pendingImage.pageUrl || '');
             
