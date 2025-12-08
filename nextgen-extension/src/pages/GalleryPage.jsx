@@ -2857,7 +2857,7 @@ export default function GalleryPage() {
                     {(() => {
                       const pageUrl = uploadPageUrl?.toLowerCase() || '';
                       const shouldShowWarning = pageUrl.includes('drive.google.com') || pageUrl.includes('unsplash.com') || pageUrl.includes('wallpaper.mob.org') || pageUrl.includes('artstation.com') || pageUrl.includes('backiee.com') || pageUrl.includes('wall.alphacoders.com') || pageUrl.includes('peakpx.com') || pageUrl.includes('airbnb.com');
-                      const shouldShowGoodQuality = pageUrl.includes('facebook.com') || pageUrl.includes('instagram.com') || pageUrl.includes('slideshare.net') || pageUrl.includes('flickr.com') || pageUrl.includes('wallpapercave.com') || pageUrl.includes('jngsainui.free.fr') || pageUrl.includes('yelp.com') || pageUrl.includes('divnil.com') || pageUrl.includes('note.com') || pageUrl.includes('goodfon.com') || pageUrl.includes('reddit.com') || pageUrl.includes('wallpapersden.com') || pageUrl.includes('glampinghub.com');
+                      const shouldShowGoodQuality = pageUrl.includes('facebook.com') || pageUrl.includes('instagram.com') || pageUrl.includes('slideshare.net') || pageUrl.includes('flickr.com') || pageUrl.includes('wallpapercave.com') || pageUrl.includes('jngsainui.free.fr') || pageUrl.includes('yelp.com') || pageUrl.includes('divnil.com') || pageUrl.includes('note.com') || pageUrl.includes('goodfon.com') || pageUrl.includes('reddit.com') || pageUrl.includes('wallpapersden.com') || pageUrl.includes('glampinghub.com') || pageUrl.includes('etsy.com') || pageUrl.includes('tripadvisor.com') || pageUrl.includes('axoftglobal.ru');
                       
                       if (shouldShowWarning) {
                         return (
