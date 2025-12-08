@@ -14,6 +14,7 @@ import {
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
 import { useImages, useImageUpload, useTrash, useChromeStorage, useCollections } from '../hooks/useChromeExtension';
 import TimelineScrollbar from '../components/TimelineScrollbar';
+import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig';
 
 export default function GalleryPage() {
   const navigate = useNavigate();
@@ -2855,11 +2856,11 @@ export default function GalleryPage() {
                     
                     {/* Quality Tip for specific sites */}
                     {(() => {
-                      const pageUrl = uploadPageUrl?.toLowerCase() || '';
-                      const shouldShowWarning = pageUrl.includes('drive.google.com') || pageUrl.includes('unsplash.com') || pageUrl.includes('wallpaper.mob.org') || pageUrl.includes('artstation.com') || pageUrl.includes('backiee.com') || pageUrl.includes('wall.alphacoders.com') || pageUrl.includes('peakpx.com') || pageUrl.includes('airbnb.com');
-                      const shouldShowGoodQuality = pageUrl.includes('facebook.com') || pageUrl.includes('instagram.com') || pageUrl.includes('slideshare.net') || pageUrl.includes('flickr.com') || pageUrl.includes('wallpapercave.com') || pageUrl.includes('jngsainui.free.fr') || pageUrl.includes('yelp.com') || pageUrl.includes('divnil.com') || pageUrl.includes('note.com') || pageUrl.includes('goodfon.com') || pageUrl.includes('reddit.com') || pageUrl.includes('wallpapersden.com') || pageUrl.includes('glampinghub.com') || pageUrl.includes('etsy.com') || pageUrl.includes('tripadvisor.com') || pageUrl.includes('axoftglobal.ru');
+                      const shouldShowWarning = isWarningSite(uploadPageUrl);
+                      const shouldShowGoodQuality = isGoodQualitySite(uploadPageUrl);
                       
                       if (shouldShowWarning) {
+                        const siteName = getSiteDisplayName(uploadPageUrl, sitesConfig.warningSites);
                         return (
                           <div className="mt-3 p-3 rounded-lg bg-red-500/20 border-2 border-red-500/50 shadow-lg shadow-red-500/30 animate-pulse-slow">
                             <div className="flex items-start gap-2">
@@ -2869,17 +2870,7 @@ export default function GalleryPage() {
                                   🔥 Quality Warning
                                 </p>
                                 <p className="text-red-100/90 text-xs mb-2">
-                                  For best quality, download the image first from{' '}
-                                  {pageUrl.includes('drive.google.com') && 'Google Drive'}
-                                  {pageUrl.includes('unsplash.com') && 'Unsplash'}
-                                  {pageUrl.includes('wallpaper.mob.org') && 'Wallpaper Mob'}
-                                  {pageUrl.includes('artstation.com') && 'ArtStation'}
-                                  {pageUrl.includes('backiee.com') && 'Backiee'}
-                                  {pageUrl.includes('wall.alphacoders.com') && 'Alpha Coders'}
-                                  {pageUrl.includes('peakpx.com') && 'PeakPX'}
-                                  {pageUrl.includes('airbnb.com') && 'Airbnb'}
-                                  {pageUrl.includes('slideshare.net') && 'SlideShare'}
-                                  {' '}instead of saving directly from the page. This ensures you get the highest quality version.
+                                  For best quality, download the image first from {siteName} instead of saving directly from the page. This ensures you get the highest quality version.
                                 </p>
                                 <input
                                   type="file"
@@ -2906,6 +2897,7 @@ export default function GalleryPage() {
                       }
                       
                       if (shouldShowGoodQuality) {
+                        const siteName = getSiteDisplayName(uploadPageUrl, sitesConfig.goodQualitySites);
                         return (
                           <div className="mt-3 p-3 rounded-lg bg-green-500/20 border-2 border-green-500/50 shadow-lg shadow-green-500/30">
                             <div className="flex items-start gap-2">
@@ -2915,21 +2907,7 @@ export default function GalleryPage() {
                                   ✨ Best Quality
                                 </p>
                                 <p className="text-green-100/90 text-xs">
-                                  This image from{' '}
-                                  {pageUrl.includes('facebook.com') && 'Facebook'}
-                                  {pageUrl.includes('instagram.com') && 'Instagram'}
-                                  {pageUrl.includes('slideshare.net') && 'SlideShare'}
-                                  {pageUrl.includes('flickr.com') && 'Flickr'}
-                                  {pageUrl.includes('wallpapercave.com') && 'Wallpaper Cave'}
-                                  {pageUrl.includes('jngsainui.free.fr') && 'JNG Sainui'}
-                                  {pageUrl.includes('yelp.com') && 'Yelp'}
-                                  {pageUrl.includes('divnil.com') && 'Divnil'}
-                                  {pageUrl.includes('note.com') && 'Note'}
-                                  {pageUrl.includes('goodfon.com') && 'GoodFon'}
-                                  {pageUrl.includes('reddit.com') && 'Reddit'}
-                                  {pageUrl.includes('wallpapersden.com') && 'Wallpapers Den'}
-                                  {pageUrl.includes('glampinghub.com') && 'Glamping Hub'}
-                                  {' '}is already in the best available quality. You're all set!
+                                  This image from {siteName} is already in the best available quality. You're all set!
                                 </p>
                               </div>
                             </div>
