@@ -31,6 +31,7 @@ export const sitesConfig = {
     { url: 'etsy.com', displayName: 'Etsy' },
     { url: 'tripadvisor.com', displayName: 'TripAdvisor' },
     { url: 'axoftglobal.ru', displayName: 'Axoft Global' },
+    { url: '10eastern.com', displayName: '10 Eastern' },
   ],
 };
 
