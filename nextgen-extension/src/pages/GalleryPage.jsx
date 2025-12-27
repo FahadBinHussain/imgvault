@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
 import { useImages, useImageUpload, useTrash, useChromeStorage, useCollections } from '../hooks/useChromeExtension';
+import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import TimelineScrollbar from '../components/TimelineScrollbar';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig';
 
@@ -169,6 +170,72 @@ export default function GalleryPage() {
       setIsDeleting(false);
     }
   };
+
+  // Image navigation functions for keyboard shortcuts
+  const navigateToNextImage = () => {
+    if (!selectedImage || filteredImages.length === 0) return;
+    
+    const currentIndex = filteredImages.findIndex(img => img.id === selectedImage.id);
+    if (currentIndex === -1 || currentIndex === filteredImages.length - 1) return;
+    
+    setSelectedImage(filteredImages[currentIndex + 1]);
+    setActiveTab('noobs'); // Reset to noobs tab (default view)
+    setFullImageDetails(null); // Clear cached details for new image
+  };
+
+  const navigateToPreviousImage = () => {
+    if (!selectedImage || filteredImages.length === 0) return;
+    
+    const currentIndex = filteredImages.findIndex(img => img.id === selectedImage.id);
+    if (currentIndex <= 0) return;
+    
+    setSelectedImage(filteredImages[currentIndex - 1]);
+    setActiveTab('noobs'); // Reset to noobs tab (default view)
+    setFullImageDetails(null); // Clear cached details for new image
+  };
+
+  const closeImageModal = () => {
+    setSelectedImage(null);
+    setFullImageDetails(null);
+  };
+
+  // Keyboard shortcuts for image modal
+  useKeyboardShortcuts({
+    [SHORTCUTS.ARROW_RIGHT]: navigateToNextImage,
+    [SHORTCUTS.ARROW_LEFT]: navigateToPreviousImage,
+    [SHORTCUTS.ESCAPE]: () => {
+      if (selectedImage) closeImageModal();
+      else if (showUploadModal) setShowUploadModal(false);
+      else if (selectionMode) setSelectionMode(false);
+    },
+    [SHORTCUTS.DELETE]: () => {
+      if (selectedImage && !showDeleteConfirm) {
+        setShowDeleteConfirm(true);
+      }
+    },
+    // Global shortcuts
+    [SHORTCUTS.U]: () => {
+      if (!selectedImage && !showUploadModal) openUploadModal();
+    },
+    [SHORTCUTS.SLASH]: () => {
+      // Focus search
+      document.querySelector('input[placeholder*="Search"]')?.focus();
+    },
+    [SHORTCUTS.CTRL_K]: () => {
+      // Focus search (alternative)
+      document.querySelector('input[placeholder*="Search"]')?.focus();
+    },
+    [SHORTCUTS.S]: () => {
+      if (!selectedImage && !showUploadModal) toggleSelectionMode();
+    },
+    [SHORTCUTS.CTRL_S]: (e) => {
+      // Save image if in modal
+      if (selectedImage) {
+        e.preventDefault();
+        handleSave();
+      }
+    },
+  }, true, [selectedImage, filteredImages, showUploadModal, showDeleteConfirm, selectionMode]);
 
   // Upload modal handlers
   const openUploadModal = () => {
