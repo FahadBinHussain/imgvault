@@ -67,6 +67,9 @@ export function useChromeMessage() {
             if (response?.duplicate) {
               error.duplicate = response.duplicate;
             }
+            if (response?.allDuplicates) {
+              error.allDuplicates = response.allDuplicates;
+            }
             console.error('[useChromeMessage] Error:', error);
             reject(error);
           }

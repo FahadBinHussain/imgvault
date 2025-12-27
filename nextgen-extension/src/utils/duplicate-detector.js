@@ -32,9 +32,10 @@ import exifr from 'exifr';
 /**
  * @typedef {Object} DuplicateCheckResult
  * @property {boolean} isDuplicate - Whether duplicate found
- * @property {Object|null} exactMatch - Exact file match
- * @property {Object|null} visualMatch - Visual similarity match
- * @property {Object|null} contextMatch - Context match (same source + page)
+ * @property {Object|null} exactMatch - First exact file match
+ * @property {Object|null} visualMatch - First visual similarity match
+ * @property {Object|null} contextMatch - First context match (same source + page)
+ * @property {Array} allMatches - All duplicate matches found (context, exact, visual)
  * @property {Array} fastFilterMatches - Images passing pre-filter
  */
 
@@ -271,9 +272,11 @@ export class DuplicateDetector {
       exactMatch: null,
       visualMatch: null,
       contextMatch: null,
+      allMatches: [],  // New: Store all matches
       fastFilterMatches: []
     };
 
+    const totalImages = existingImages.length;
     console.log('==========================================');
     console.log('🔍 STARTING DUPLICATE CHECK');
     console.log('==========================================');
@@ -285,49 +288,63 @@ export class DuplicateDetector {
       height: newMetadata.height,
       size: newMetadata.size
     });
-    console.log(`Total existing images: ${existingImages.length}`);
+    console.log(`Total existing images: ${totalImages}`);
     console.log('==========================================');
 
     // Phase 1: Context-based check (source URL + page URL)
     console.log('\n🔗 PHASE 1: CONTEXT CHECK');
     console.log('------------------------------------------');
-    onProgress?.('Phase 1: Checking context...');
+    onProgress?.(`Phase 1: Checking context (0/${totalImages})...`);
     
     const normalizedSourceUrl = URLNormalizer.normalize(newMetadata.sourceUrl);
     const normalizedPageUrl = URLNormalizer.normalize(newMetadata.pageUrl);
     
-    for (const img of existingImages) {
+    for (let i = 0; i < existingImages.length; i++) {
+      const img = existingImages[i];
+      
+      // Report progress every 10 images or at key milestones
+      if (i % 10 === 0 || i === existingImages.length - 1) {
+        onProgress?.(`Phase 1: Context check (${i + 1}/${totalImages})...`);
+      }
+      
       const existingSourceUrl = URLNormalizer.normalize(img.sourceImageUrl);
       const existingPageUrl = URLNormalizer.normalize(img.sourcePageUrl);
       
       if (existingSourceUrl === normalizedSourceUrl && 
           existingPageUrl === normalizedPageUrl) {
-        console.log('🚨 DUPLICATE FOUND - Same context!');
+        console.log('🚨 CONTEXT MATCH FOUND!');
         results.isDuplicate = true;
-        results.contextMatch = img;
-        onProgress?.('✗ Duplicate found (same context)');
-        return results;
+        const match = { ...img, matchType: 'context', matchReason: 'Same source URL + page URL' };
+        results.allMatches.push(match);
+        if (!results.contextMatch) results.contextMatch = match;
       }
     }
     
-    console.log('✅ Passed Phase 1 - No context matches\n');
+    console.log(`Phase 1 Result: ${results.allMatches.length} context match(es) found\n`);
 
     // Phase 2: SHA-256 exact match
     console.log('🔐 PHASE 2: SHA-256 HASH');
     console.log('------------------------------------------');
-    onProgress?.('Phase 2: Checking exact file match...');
+    onProgress?.(`Phase 2: Exact match check (0/${totalImages})...`);
     
-    for (const img of existingImages) {
+    for (let i = 0; i < existingImages.length; i++) {
+      const img = existingImages[i];
+      
+      // Report progress every 10 images or at key milestones
+      if (i % 10 === 0 || i === existingImages.length - 1) {
+        onProgress?.(`Phase 2: Exact match (${i + 1}/${totalImages})...`);
+      }
+      
       if (img.sha256 === newMetadata.sha256) {
-        console.log('🚨 DUPLICATE FOUND - Exact file match!');
+        console.log('🚨 EXACT MATCH FOUND!');
         results.isDuplicate = true;
-        results.exactMatch = img;
-        onProgress?.('✗ Duplicate found (exact match)');
-        return results;
+        const match = { ...img, matchType: 'exact', matchReason: 'Identical file (SHA-256)' };
+        results.allMatches.push(match);
+        if (!results.exactMatch) results.exactMatch = match;
       }
     }
     
-    console.log('✅ Passed Phase 2 - No exact matches\n');
+    console.log(`Phase 2 Result: ${results.allMatches.filter(m => m.matchType === 'exact').length} exact match(es) found\n`);
 
     // Phase 3: Perceptual hash for visual similarity
     console.log('👁️ PHASE 3: PERCEPTUAL HASH');
@@ -337,32 +354,55 @@ export class DuplicateDetector {
       aHash: `${this.aHashThreshold}/64 bits`,
       dHash: `${this.dHashThreshold}/64 bits`
     });
-    onProgress?.('Phase 3: Analyzing visual similarity...');
+    onProgress?.(`Phase 3: Visual similarity (0/${totalImages})...`);
     
-    for (const img of existingImages) {
+    for (let i = 0; i < existingImages.length; i++) {
+      const img = existingImages[i];
+      
+      // Report progress every 10 images or at key milestones
+      if (i % 10 === 0 || i === existingImages.length - 1) {
+        const percentage = Math.round((i + 1) / totalImages * 100);
+        onProgress?.(`Phase 3: Visual check (${i + 1}/${totalImages} - ${percentage}%)...`);
+      }
+      
       const hashResults = this.compareHashes(newMetadata, img);
       const matchCount = hashResults.matchCount;
       
       if (matchCount >= 1) {
         const avgSimilarity = hashResults.avgSimilarity.toFixed(1);
-        console.log(`🚨 DUPLICATE FOUND - Visual match (${avgSimilarity}% similar)`);
+        console.log(`🚨 VISUAL MATCH FOUND (${avgSimilarity}% similar)`);
         
         results.isDuplicate = true;
-        results.visualMatch = { 
+        const match = { 
           ...img, 
+          matchType: 'visual',
+          matchReason: `Visually similar (${avgSimilarity}% match)`,
           hashResults: hashResults.details,
           matchCount,
           similarity: avgSimilarity
         };
-        onProgress?.(`✗ Duplicate found (${avgSimilarity}% similar)`);
-        return results;
+        results.allMatches.push(match);
+        if (!results.visualMatch) results.visualMatch = match;
       }
     }
 
-    console.log('✅ Passed Phase 3 - No visual matches');
+    console.log(`Phase 3 Result: ${results.allMatches.filter(m => m.matchType === 'visual').length} visual match(es) found`);
     console.log('==========================================');
-    console.log('✅ NO DUPLICATES DETECTED\n');
-    onProgress?.('✓ No duplicates found');
+    console.log(`✅ SCAN COMPLETE: ${results.allMatches.length} total match(es) found`);
+    
+    if (results.isDuplicate) {
+      const summary = {
+        context: results.allMatches.filter(m => m.matchType === 'context').length,
+        exact: results.allMatches.filter(m => m.matchType === 'exact').length,
+        visual: results.allMatches.filter(m => m.matchType === 'visual').length
+      };
+      console.log('Match breakdown:', summary);
+      onProgress?.(`✗ ${results.allMatches.length} duplicate(s) found (${summary.context} context, ${summary.exact} exact, ${summary.visual} visual)`);
+    } else {
+      console.log('✅ NO DUPLICATES DETECTED\n');
+      onProgress?.('✓ No duplicates found');
+    }
+    
     return results;
   }
 

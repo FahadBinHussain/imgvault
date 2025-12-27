@@ -363,7 +363,12 @@ export default function GalleryPage() {
       // Check if error has duplicate data
       if (err?.duplicate) {
         console.log('Duplicate data found:', err.duplicate);
-        setDuplicateData(err.duplicate);
+        console.log('All duplicates found:', err.allDuplicates);
+        // Set both single duplicate and all duplicates
+        setDuplicateData({
+          primary: err.duplicate,
+          all: err.allDuplicates || [err.duplicate]
+        });
       } else {
         // For non-duplicate errors, show toast
         showToast(`❌ ${errorMessage}`, 'error', 4000);
@@ -2613,63 +2618,6 @@ export default function GalleryPage() {
                       </div>
                     )}
                     
-                    {/* Duplicate Detection */}
-                    {duplicateData && (
-                      <div className="space-y-4 p-5 rounded-xl bg-yellow-500/10 border-2 border-yellow-500/30">
-                        <div className="flex items-start gap-3">
-                          <div className="flex-shrink-0 text-yellow-400 text-2xl">⚠️</div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="text-yellow-300 font-semibold text-lg mb-2">Duplicate Found!</h4>
-                            <p className="text-yellow-200/80 text-sm mb-4">
-                              This image already exists in your vault.
-                            </p>
-                            
-                            {/* Show duplicate image */}
-                            <div className="rounded-lg overflow-hidden border border-yellow-500/30 bg-slate-800/50 max-w-full">
-                              <div className="w-full flex items-center justify-center bg-slate-900/30 p-2">
-                                <img
-                                  src={duplicateData.imgbbUrl || duplicateData.pixvidUrl}
-                                  alt="Duplicate"
-                                  className="max-w-full max-h-48 object-contain rounded"
-                                />
-                              </div>
-                              <div className="p-3 bg-slate-900/50">
-                                <p className="text-slate-300 text-sm font-medium truncate">
-                                  {duplicateData.pageTitle || 'Untitled'}
-                                </p>
-                                {duplicateData.sourcePageUrl && (
-                                  <p className="text-slate-400 text-xs truncate mt-1">
-                                    {duplicateData.sourcePageUrl}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Action buttons */}
-                            <div className="flex gap-3 mt-4">
-                              <button
-                                onClick={() => setDuplicateData(null)}
-                                className="flex-1 px-4 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 
-                                         text-white font-medium transition-colors text-sm"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                onClick={() => handleUploadSubmit(true)}
-                                disabled={uploading}
-                                className="flex-1 px-4 py-2.5 rounded-lg bg-gradient-to-r from-yellow-500 to-orange-500 
-                                         hover:from-yellow-600 hover:to-orange-600 text-white font-medium 
-                                         transition-all disabled:opacity-50 disabled:cursor-not-allowed
-                                         shadow-lg hover:shadow-xl text-sm"
-                              >
-                                {uploading ? 'Uploading...' : 'Upload Anyway'}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    
                     {/* Upload Progress */}
                     {uploading && (
                       <div className="p-4 rounded-xl bg-primary-500/10 border border-primary-500/30 space-y-3">
@@ -2697,6 +2645,112 @@ export default function GalleryPage() {
                 {/* Right Column - Scrollable Form Fields */}
                 <div className="flex-1 space-y-4 max-h-[70vh] overflow-y-auto pr-2"
                      style={{ scrollbarGutter: 'stable' }}>
+                  
+                  {/* Duplicate Detection - Enhanced UI - Moved to top of right column */}
+                  {duplicateData && (
+                    <div className="space-y-4 p-5 rounded-xl bg-yellow-500/10 border-2 border-yellow-500/30 sticky top-0 z-10 bg-slate-900/95 backdrop-blur-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 text-yellow-400 text-2xl">⚠️</div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-yellow-300 font-semibold text-lg mb-2">
+                            {duplicateData.all ? `${duplicateData.all.length} Duplicate${duplicateData.all.length !== 1 ? 's' : ''} Found!` : 'Duplicate Found!'}
+                          </h4>
+                          <p className="text-yellow-200/80 text-sm mb-4">
+                            {duplicateData.all && duplicateData.all.length > 1 
+                              ? `This image matches ${duplicateData.all.length} existing images in your vault.`
+                              : 'This image already exists in your vault.'}
+                          </p>
+                          
+                          {/* Show all duplicate images */}
+                          <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+                            {(duplicateData.all || [duplicateData.primary || duplicateData]).map((dup, index) => {
+                              const matchType = dup.matchType || 'unknown';
+                              const matchReason = dup.matchReason || 'Unknown match';
+                              const similarity = dup.similarity || null;
+                              
+                              return (
+                                <div key={index} className="rounded-lg overflow-hidden border border-yellow-500/30 bg-slate-800/50">
+                                  <div className="w-full flex items-center justify-center bg-slate-900/30 p-2 relative">
+                                    {/* Match badge */}
+                                    <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-slate-900/80 border border-yellow-500/50">
+                                      <span className="text-xs font-medium text-yellow-300">
+                                        {matchType === 'context' && '🔗 Context'}
+                                        {matchType === 'exact' && '🔐 Exact'}
+                                        {matchType === 'visual' && '👁️ Visual'}
+                                        {matchType === 'unknown' && '❓ Unknown'}
+                                      </span>
+                                    </div>
+                                    <img
+                                      src={dup.imgbbUrl || dup.pixvidUrl}
+                                      alt={`Duplicate ${index + 1}`}
+                                      className="max-w-full max-h-24 object-contain rounded"
+                                    />
+                                  </div>
+                                  <div className="p-3 bg-slate-900/50">
+                                    <p className="text-slate-300 text-sm font-medium truncate">
+                                      {dup.pageTitle || 'Untitled'}
+                                    </p>
+                                    {dup.sourcePageUrl && (
+                                      <p className="text-slate-400 text-xs truncate mt-1">
+                                        {dup.sourcePageUrl}
+                                      </p>
+                                    )}
+                                    <div className="mt-2 pt-2 border-t border-slate-700">
+                                      <p className="text-xs text-yellow-300/80">
+                                        {matchReason}
+                                        {similarity && ` - ${similarity}% similar`}
+                                      </p>
+                                      {dup.hashResults && (
+                                        <div className="flex gap-2 mt-1">
+                                          {dup.hashResults.pHash?.match && (
+                                            <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-300">
+                                              pHash ✓
+                                            </span>
+                                          )}
+                                          {dup.hashResults.aHash?.match && (
+                                            <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-300">
+                                              aHash ✓
+                                            </span>
+                                          )}
+                                          {dup.hashResults.dHash?.match && (
+                                            <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-300">
+                                              dHash ✓
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Action buttons */}
+                          <div className="flex gap-3 mt-4">
+                            <button
+                              onClick={() => setDuplicateData(null)}
+                              className="flex-1 px-4 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 
+                                       text-white font-medium transition-colors text-sm"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => handleUploadSubmit(true)}
+                              disabled={uploading}
+                              className="flex-1 px-4 py-2.5 rounded-lg bg-gradient-to-r from-yellow-500 to-orange-500 
+                                       hover:from-yellow-600 hover:to-orange-600 text-white font-medium 
+                                       transition-all disabled:opacity-50 disabled:cursor-not-allowed
+                                       shadow-lg hover:shadow-xl text-sm"
+                            >
+                              {uploading ? 'Uploading...' : 'Upload Anyway'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* Form Fields - Alphabetically ordered */}
                   <div className="space-y-4">
                   

@@ -245,7 +245,8 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ 
             success: false, 
             error: error.message,
-            duplicate: error.duplicate || null
+            duplicate: error.duplicate || null,
+            allDuplicates: error.allDuplicates || null
           }));
         return true;
 
@@ -684,32 +685,90 @@ class ImgVaultServiceWorker {
    * @returns {Error} Error with duplicate details
    */
   buildDuplicateError(duplicateCheck) {
-    let errorMsg = 'Duplicate image detected!\n';
+    const totalMatches = duplicateCheck.allMatches?.length || 0;
+    let errorMsg = `Duplicate image detected! (${totalMatches} match${totalMatches !== 1 ? 'es' : ''} found)\n\n`;
     let duplicateData = null;
     
-    if (duplicateCheck.contextMatch) {
-      errorMsg += '✗ Same image from same page already exists';
-      duplicateData = duplicateCheck.contextMatch;
-    } else if (duplicateCheck.exactMatch) {
-      errorMsg += '✗ Identical file already exists (SHA-256 match)';
-      duplicateData = duplicateCheck.exactMatch;
-    } else if (duplicateCheck.visualMatch) {
-      const similarity = duplicateCheck.visualMatch.similarity || '0';
-      const matchCount = duplicateCheck.visualMatch.matchCount || 0;
-      const hashResults = duplicateCheck.visualMatch.hashResults || {};
+    if (totalMatches > 0) {
+      // Group matches by type
+      const contextMatches = duplicateCheck.allMatches.filter(m => m.matchType === 'context');
+      const exactMatches = duplicateCheck.allMatches.filter(m => m.matchType === 'exact');
+      const visualMatches = duplicateCheck.allMatches.filter(m => m.matchType === 'visual');
       
-      const matchedHashes = [];
-      if (hashResults.pHash?.match) matchedHashes.push('pHash');
-      if (hashResults.aHash?.match) matchedHashes.push('aHash');
-      if (hashResults.dHash?.match) matchedHashes.push('dHash');
+      // Show context matches
+      if (contextMatches.length > 0) {
+        errorMsg += `🔗 Context Matches (${contextMatches.length}):\n`;
+        contextMatches.slice(0, 3).forEach((match, i) => {
+          errorMsg += `  ${i + 1}. Same source URL + page URL\n`;
+        });
+        if (contextMatches.length > 3) {
+          errorMsg += `  ... and ${contextMatches.length - 3} more\n`;
+        }
+        errorMsg += '\n';
+      }
       
-      const matchedHashesStr = matchedHashes.length > 0 ? matchedHashes.join(', ') : 'unknown';
-      errorMsg += `✗ Visually similar image found (${similarity}% similar, ${matchCount}/3 hashes matched: ${matchedHashesStr})`;
-      duplicateData = duplicateCheck.visualMatch;
+      // Show exact matches
+      if (exactMatches.length > 0) {
+        errorMsg += `🔐 Exact Matches (${exactMatches.length}):\n`;
+        exactMatches.slice(0, 3).forEach((match, i) => {
+          errorMsg += `  ${i + 1}. Identical file (SHA-256)\n`;
+        });
+        if (exactMatches.length > 3) {
+          errorMsg += `  ... and ${exactMatches.length - 3} more\n`;
+        }
+        errorMsg += '\n';
+      }
+      
+      // Show visual matches
+      if (visualMatches.length > 0) {
+        errorMsg += `👁️ Visual Matches (${visualMatches.length}):\n`;
+        visualMatches.slice(0, 3).forEach((match, i) => {
+          const similarity = match.similarity || '0';
+          const matchCount = match.matchCount || 0;
+          const hashResults = match.hashResults || {};
+          
+          const matchedHashes = [];
+          if (hashResults.pHash?.match) matchedHashes.push('pHash');
+          if (hashResults.aHash?.match) matchedHashes.push('aHash');
+          if (hashResults.dHash?.match) matchedHashes.push('dHash');
+          
+          const matchedHashesStr = matchedHashes.length > 0 ? matchedHashes.join(', ') : 'unknown';
+          errorMsg += `  ${i + 1}. ${similarity}% similar (${matchCount}/3 hashes: ${matchedHashesStr})\n`;
+        });
+        if (visualMatches.length > 3) {
+          errorMsg += `  ... and ${visualMatches.length - 3} more\n`;
+        }
+      }
+      
+      // Use the first match for duplicate data (maintain backward compatibility)
+      duplicateData = duplicateCheck.contextMatch || duplicateCheck.exactMatch || duplicateCheck.visualMatch;
+    } else {
+      // Fallback to old behavior if allMatches is not available
+      if (duplicateCheck.contextMatch) {
+        errorMsg += '✗ Same image from same page already exists';
+        duplicateData = duplicateCheck.contextMatch;
+      } else if (duplicateCheck.exactMatch) {
+        errorMsg += '✗ Identical file already exists (SHA-256 match)';
+        duplicateData = duplicateCheck.exactMatch;
+      } else if (duplicateCheck.visualMatch) {
+        const similarity = duplicateCheck.visualMatch.similarity || '0';
+        const matchCount = duplicateCheck.visualMatch.matchCount || 0;
+        const hashResults = duplicateCheck.visualMatch.hashResults || {};
+        
+        const matchedHashes = [];
+        if (hashResults.pHash?.match) matchedHashes.push('pHash');
+        if (hashResults.aHash?.match) matchedHashes.push('aHash');
+        if (hashResults.dHash?.match) matchedHashes.push('dHash');
+        
+        const matchedHashesStr = matchedHashes.length > 0 ? matchedHashes.join(', ') : 'unknown';
+        errorMsg += `✗ Visually similar image found (${similarity}% similar, ${matchCount}/3 hashes matched: ${matchedHashesStr})`;
+        duplicateData = duplicateCheck.visualMatch;
+      }
     }
     
     const error = new Error(errorMsg);
     error.duplicate = duplicateData;
+    error.allDuplicates = duplicateCheck.allMatches;  // Include all matches
     return error;
   }
 }
