@@ -163,3 +163,94 @@ export class ImgbbUploader extends BaseUploader {
     }
   }
 }
+
+/**
+ * Filemoon uploader service for videos
+ */
+export class FilemoonUploader extends BaseUploader {
+  constructor() {
+    super('Filemoon');
+    this.apiUrl = 'https://filemoonapi.com/api/upload/server';
+  }
+
+  /**
+   * Get upload server URL
+   * @param {string} apiKey - Filemoon API key
+   * @returns {Promise<string>} Upload server URL
+   */
+  async getUploadServer(apiKey) {
+    try {
+      const response = await fetch(`${this.apiUrl}?key=${apiKey}`);
+      
+      if (!response.ok) {
+        await this.handleError(response, 'Failed to get upload server');
+      }
+
+      const result = await response.json();
+      
+      if (result.status !== 200 || !result.result) {
+        throw new Error(result.msg || 'Failed to get upload server');
+      }
+
+      return result.result;
+    } catch (error) {
+      console.error('Filemoon get server error:', error);
+      throw new Error(`Failed to get Filemoon upload server: ${error.message}`);
+    }
+  }
+
+  /**
+   * Upload video to Filemoon
+   * @param {Blob} blob - Video blob
+   * @param {string} apiKey - Filemoon API key
+   * @param {string} [filename] - Optional filename
+   * @returns {Promise<UploadResult>}
+   */
+  async upload(blob, apiKey, filename = 'video.mp4') {
+    try {
+      // Step 1: Get upload server URL
+      const uploadServerUrl = await this.getUploadServer(apiKey);
+      console.log('📡 Filemoon upload server:', uploadServerUrl);
+
+      // Step 2: Upload to the server
+      const formData = new FormData();
+      
+      // Extract filename from URL or use default
+      const videoFilename = filename.split('/').pop().split('?')[0] || 'video.mp4';
+      formData.append('file', blob, videoFilename);
+      formData.append('key', apiKey);
+      
+      const response = await fetch(uploadServerUrl, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        await this.handleError(response, 'Filemoon upload failed');
+      }
+
+      const result = await response.json();
+      
+      if (result.status !== 200 || !result.files || result.files.length === 0) {
+        throw new Error(result.msg || result.error?.message || 'Upload failed');
+      }
+
+      const fileData = result.files[0];
+      
+      // Construct the file URL from filecode
+      const fileUrl = `https://filemoon.sx/e/${fileData.filecode}`;
+      
+      return {
+        url: fileUrl,
+        deleteUrl: null, // Filemoon doesn't provide delete URL in response
+        displayUrl: fileUrl,
+        thumbUrl: null,
+        filecode: fileData.filecode,
+        filename: fileData.filename
+      };
+    } catch (error) {
+      console.error('Filemoon API error:', error);
+      throw new Error(`Failed to upload to Filemoon: ${error.message}`);
+    }
+  }
+}

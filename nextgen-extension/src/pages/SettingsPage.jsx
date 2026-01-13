@@ -13,11 +13,13 @@ export default function SettingsPage() {
   const navigate = useNavigate();
   const [pixvidApiKey, setPixvidApiKey] = useChromeStorage('pixvidApiKey', '', 'sync');
   const [imgbbApiKey, setImgbbApiKey] = useChromeStorage('imgbbApiKey', '', 'sync');
+  const [filemoonApiKey, setFilemoonApiKey] = useChromeStorage('filemoonApiKey', '', 'sync');
   const [firebaseConfigRaw, setFirebaseConfigRaw] = useChromeStorage('firebaseConfigRaw', '', 'sync');
   const [defaultGallerySource, setDefaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
   
   const [localPixvid, setLocalPixvid] = useState('');
   const [localImgbb, setLocalImgbb] = useState('');
+  const [localFilemoon, setLocalFilemoon] = useState('');
   const [localFirebase, setLocalFirebase] = useState('');
   const [localGallerySource, setLocalGallerySource] = useState('imgbb');
   const [saved, setSaved] = useState(false);
@@ -30,9 +32,10 @@ export default function SettingsPage() {
   useEffect(() => {
     setLocalPixvid(pixvidApiKey || '');
     setLocalImgbb(imgbbApiKey || '');
+    setLocalFilemoon(filemoonApiKey || '');
     setLocalFirebase(firebaseConfigRaw || '');
     setLocalGallerySource(defaultGallerySource || 'imgbb');
-  }, [pixvidApiKey, imgbbApiKey, firebaseConfigRaw, defaultGallerySource]);
+  }, [pixvidApiKey, imgbbApiKey, filemoonApiKey, firebaseConfigRaw, defaultGallerySource]);
 
   // Auto-load settings from Firebase
   useEffect(() => {
@@ -67,6 +70,11 @@ export default function SettingsPage() {
           if (!localImgbb && firebaseSettings.imgbbApiKey?.trim()) {
             setLocalImgbb(firebaseSettings.imgbbApiKey);
             setImgbbApiKey(firebaseSettings.imgbbApiKey);
+            updated = true;
+          }
+          if (!localFilemoon && firebaseSettings.filemoonApiKey?.trim()) {
+            setLocalFilemoon(firebaseSettings.filemoonApiKey);
+            setFilemoonApiKey(firebaseSettings.filemoonApiKey);
             updated = true;
           }
           if (firebaseSettings.defaultGallerySource?.trim()) {
@@ -145,6 +153,7 @@ export default function SettingsPage() {
     // Save other settings locally
     setPixvidApiKey(localPixvid);
     setImgbbApiKey(localImgbb);
+    setFilemoonApiKey(localFilemoon);
     setDefaultGallerySource(localGallerySource);
 
     // Also save to Firebase if configured
@@ -155,7 +164,7 @@ export default function SettingsPage() {
         });
       });
 
-      if (firebaseConfig && (localPixvid || localImgbb)) {
+      if (firebaseConfig && (localPixvid || localImgbb || localFilemoon)) {
         setFirebaseStatus('☁️ Syncing to Firebase...');
         
         const { StorageManager } = await import('../utils/storage.js');
@@ -166,6 +175,7 @@ export default function SettingsPage() {
         const settingsToSave = {};
         if (localPixvid) settingsToSave.pixvidApiKey = localPixvid;
         if (localImgbb) settingsToSave.imgbbApiKey = localImgbb;
+        if (localFilemoon) settingsToSave.filemoonApiKey = localFilemoon;
         if (localGallerySource) settingsToSave.defaultGallerySource = localGallerySource;
 
         if (Object.keys(settingsToSave).length > 0) {
@@ -244,6 +254,22 @@ export default function SettingsPage() {
                   value={localImgbb}
                   onChange={(e) => setLocalImgbb(e.target.value)}
                   placeholder="Enter your ImgBB API key"
+                  className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                           text-white placeholder-slate-400 
+                           focus:outline-none focus:border-primary-500 focus:ring-2 
+                           focus:ring-primary-500/20 transition-all shadow-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-200 mb-2 flex items-center gap-2">
+                  <span className="text-lg">🎬</span>
+                  Filemoon API Key (For Videos)
+                </label>
+                <input
+                  type="password"
+                  value={localFilemoon}
+                  onChange={(e) => setLocalFilemoon(e.target.value)}
+                  placeholder="Enter your Filemoon API key"
                   className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
                            text-white placeholder-slate-400 
                            focus:outline-none focus:border-primary-500 focus:ring-2 
@@ -383,6 +409,20 @@ export default function SettingsPage() {
                   className="text-primary-300 hover:text-primary-200 underline font-medium"
                 >
                   api.imgbb.com
+                </a>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
+              <span className="text-lg flex-shrink-0">🎬</span>
+              <div>
+                <strong className="text-white">Filemoon API Key:</strong> Get it from{' '}
+                <a
+                  href="https://filemoon.sx/api"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary-300 hover:text-primary-200 underline font-medium"
+                >
+                  filemoon.sx/api
                 </a>
               </div>
             </div>

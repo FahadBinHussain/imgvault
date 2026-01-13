@@ -259,17 +259,18 @@ export default function GalleryPage() {
       const savedPageUrl = uploadPageUrl;
       const savedPageTitle = uploadImageData?.pageTitle;
       
-      await processImageFile(file, savedPageUrl, savedPageTitle);
+      await processMediaFile(file, savedPageUrl, savedPageTitle);
       
       // Mark this as a local upload
       setIsLocalUpload(true);
       
       // Show success feedback
-      showToast('✅ Image replaced with downloaded version!', 'success', 3000);
+      const fileType = file.type.startsWith('video/') ? 'Video' : 'Image';
+      showToast(`✅ ${fileType} loaded successfully!`, 'success', 3000);
     }
   };
 
-  const processImageFile = async (file, preservePageUrl = null, preservePageTitle = null) => {
+  const processMediaFile = async (file, preservePageUrl = null, preservePageTitle = null) => {
     const reader = new FileReader();
     reader.onloadend = async () => {
       // Determine what values to use
@@ -280,24 +281,29 @@ export default function GalleryPage() {
         ? preservePageTitle 
         : 'Uploaded manually';
       
+      const isVideo = file.type.startsWith('video/');
+      
       setUploadImageData({
         srcUrl: reader.result,
         fileName: file.name,
         pageTitle: finalPageTitle,
         timestamp: Date.now(),
-        file: file // Store the original file object for MIME and date extraction
+        file: file, // Store the original file object for MIME and date extraction
+        isVideo: isVideo,
+        fileType: file.type
       });
       setUploadPageUrl(finalPageUrl);
       
-      // Extract metadata from the image
+      // Extract metadata from the media file
       try {
         const response = await chrome.runtime.sendMessage({
           action: 'extractMetadata',
-          imageUrl: reader.result,
+          imageUrl: isVideo ? null : reader.result, // Don't send video data for metadata extraction
           pageUrl: finalPageUrl,
           fileName: file.name,
           fileMimeType: file.type,
-          fileLastModified: file.lastModified
+          fileLastModified: file.lastModified,
+          isVideo: isVideo
         });
         
         if (response.success && response.metadata) {
@@ -344,12 +350,12 @@ export default function GalleryPage() {
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
       const file = files[0];
-      // Check if it's an image
-      if (file.type.startsWith('image/')) {
-        await processImageFile(file);
+      // Check if it's an image or video
+      if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+        await processMediaFile(file);
         setShowUploadModal(true);
       } else {
-        showToast('❌ Please drop an image file', 'error', 3000);
+        showToast('❌ Please drop an image or video file', 'error', 3000);
       }
     }
   };
@@ -398,11 +404,14 @@ export default function GalleryPage() {
         ignoreDuplicate: Boolean(ignoreDuplicates),
         fileMimeType: uploadImageData.file?.type || null,
         fileLastModified: uploadImageData.file?.lastModified || null,
-        collectionId: selectedCollectionId || null
+        collectionId: selectedCollectionId || null,
+        isVideo: Boolean(uploadImageData.isVideo),
+        fileType: uploadImageData.fileType || uploadImageData.file?.type || null
       };
 
       console.log('Uploading with data (keys):', Object.keys(uploadData));
-      console.log('Image URL length:', uploadData.imageUrl.length);
+      console.log('Media URL length:', uploadData.imageUrl.length);
+      console.log('Is Video:', uploadData.isVideo);
       
       // Try to JSON.stringify to check if it's serializable
       try {
@@ -421,14 +430,15 @@ export default function GalleryPage() {
       
       // Then reload both images and collections, and show toast
       await Promise.all([reload(), reloadCollections()]); // Refresh gallery and collections
-      showToast('✅ Image uploaded successfully!', 'success', 3000);
+      const mediaType = uploadData.isVideo ? 'Video' : 'Image';
+      showToast(`✅ ${mediaType} uploaded successfully!`, 'success', 3000);
     } catch (err) {
       console.error('Upload failed:', err);
       
       const errorMessage = err?.message || String(err) || 'Upload failed';
       
-      // Check if error has duplicate data
-      if (err?.duplicate) {
+      // Check if error has duplicate data (only for images)
+      if (err?.duplicate && !uploadImageData.isVideo) {
         console.log('Duplicate data found:', err.duplicate);
         console.log('All duplicates found:', err.allDuplicates);
         // Set both single duplicate and all duplicates
@@ -1373,7 +1383,7 @@ export default function GalleryPage() {
               <div className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-500
                             ${isModalAnimating ? 'opacity-0' : 'opacity-100'}`} />
 
-              {/* LEFT SIDE - IMAGE with Zoom Animation */}
+              {/* LEFT SIDE - IMAGE/VIDEO with Zoom Animation */}
               <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-8 relative z-10">
                 {/* Radial glow effect */}
                 <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
@@ -1381,15 +1391,27 @@ export default function GalleryPage() {
                               transition-all duration-700 ease-out
                               ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}></div>
                 
-                {/* Image with smooth zoom-in transition */}
-                <img
-                  src={selectedImage.imgbbUrl || selectedImage.pixvidUrl}
-                  alt={selectedImage.pageTitle}
-                  className={`max-w-full max-h-full object-contain rounded-2xl shadow-2xl relative z-10
-                           transition-all duration-700 ease-out
-                           hover:scale-[1.02] hover:shadow-[0_0_80px_rgba(99,102,241,0.3)]
-                           ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
-                />
+                {/* Conditional rendering for video or image */}
+                {selectedImage.filemoonUrl ? (
+                  <iframe
+                    src={selectedImage.filemoonUrl}
+                    className={`w-full h-full rounded-2xl shadow-2xl relative z-10
+                             transition-all duration-700 ease-out
+                             ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
+                    frameBorder="0"
+                    allowFullScreen
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  />
+                ) : (
+                  <img
+                    src={selectedImage.imgbbUrl || selectedImage.pixvidUrl}
+                    alt={selectedImage.pageTitle}
+                    className={`max-w-full max-h-full object-contain rounded-2xl shadow-2xl relative z-10
+                             transition-all duration-700 ease-out
+                             hover:scale-[1.02] hover:shadow-[0_0_80px_rgba(99,102,241,0.3)]
+                             ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
+                  />
+                )}
               </div>
 
               {/* RIGHT SIDE - DETAILS with Slide-up Animation */}
@@ -1443,6 +1465,7 @@ export default function GalleryPage() {
                       let count = 7; // Title, Added To Vault, Pixvid URL, Source URL, Page URL, Description, Tags
                       if (selectedImage?.collectionId) count++; // Collection
                       if (selectedImage?.imgbbUrl) count++; // ImgBB URL
+                      if (selectedImage?.filemoonUrl) count++; // Filemoon URL
                       return count;
                     })()}
                   </span>
@@ -1700,6 +1723,25 @@ export default function GalleryPage() {
                             className="text-green-300 hover:text-green-200 break-all text-sm"
                           >
                             {selectedImage.imgbbUrl}
+                          </a>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedImage.filemoonUrl && (
+                      <div>
+                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                          <Link2 className="w-3.5 h-3.5" />
+                          Filemoon URL
+                        </div>
+                        <div className="bg-white/5 rounded p-2">
+                          <a
+                            href={selectedImage.filemoonUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-purple-300 hover:text-purple-200 break-all text-sm"
+                          >
+                            {selectedImage.filemoonUrl}
                           </a>
                         </div>
                       </div>
@@ -2388,18 +2430,19 @@ export default function GalleryPage() {
                       <Upload className="w-16 h-16 mx-auto text-slate-400 group-hover:text-primary-400 
                                        transition-colors mb-4" />
                       <p className="text-slate-300 text-lg font-medium mb-2">
-                        Click to select an image
+                        Click to select an image or video
                       </p>
                       <p className="text-slate-400 text-sm">
                         or drag and drop
                       </p>
                       <p className="text-slate-500 text-xs mt-2">
-                        PNG, JPG, GIF up to 10MB
+                        Images: PNG, JPG, GIF up to 10MB<br/>
+                        Videos: MP4, WebM, AVI, MOV
                       </p>
                     </div>
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/*,video/*"
                       onChange={handleFileUpload}
                       className="hidden"
                     />
@@ -2408,27 +2451,35 @@ export default function GalleryPage() {
               </div>
             ) : (
               <div className="flex gap-6">
-                {/* Left Column - Sticky Image Preview */}
+                {/* Left Column - Sticky Media Preview */}
                 <div className="w-1/3 flex-shrink-0">
                   <div className="sticky top-0 space-y-3">
                     <div className="relative rounded-xl overflow-hidden bg-slate-800/50 border border-slate-700">
-                      <img
-                        src={uploadImageData.srcUrl}
-                        alt="Preview"
-                        className="w-full h-auto max-h-96 object-contain"
-                      />
+                      {uploadImageData.isVideo ? (
+                        <video
+                          src={uploadImageData.srcUrl}
+                          controls
+                          className="w-full h-auto max-h-96 object-contain"
+                        />
+                      ) : (
+                        <img
+                          src={uploadImageData.srcUrl}
+                          alt="Preview"
+                          className="w-full h-auto max-h-96 object-contain"
+                        />
+                      )}
                       <button
                         onClick={() => setUploadImageData(null)}
                         className="absolute top-4 right-4 p-2 rounded-lg bg-red-500/80 hover:bg-red-500 
                                  text-white transition-colors shadow-lg"
-                        title="Remove image"
+                        title={`Remove ${uploadImageData.isVideo ? 'video' : 'image'}`}
                       >
                         <X className="w-5 h-5" />
                       </button>
                     </div>
                     
                     {/* Base64 Warning */}
-                    {uploadImageData?.isBase64 && (
+                    {uploadImageData?.isBase64 && !uploadImageData.isVideo && (
                       <div className="p-4 rounded-xl bg-orange-500/20 border-2 border-orange-500/50">
                         <div className="flex items-start gap-3">
                           <span className="text-2xl flex-shrink-0">⚠️</span>

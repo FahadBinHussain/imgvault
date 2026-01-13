@@ -252,7 +252,7 @@ export default function TrashPage() {
   const getImageUrl = (image, useFullSize = false) => {
     // For modal/detail view, use full size. For grid thumbnails, use thumb
     if (useFullSize) {
-      return image.imgbbUrl || image.pixvidUrl || image.sourceImageUrl;
+      return image.filemoonUrl || image.imgbbUrl || image.pixvidUrl || image.sourceImageUrl;
     }
     return image.imgbbThumbUrl || image.imgbbUrl || image.pixvidUrl || image.sourceImageUrl;
   };
@@ -646,20 +646,30 @@ export default function TrashPage() {
               {/* Dark Overlay Background */}
               <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
-              {/* LEFT SIDE - IMAGE with Zoom Animation */}
+              {/* LEFT SIDE - IMAGE/VIDEO with Zoom Animation */}
               <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-8 relative z-10">
                 {/* Radial glow effect */}
                 <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
                               w-4/5 h-4/5 bg-red-500/10 rounded-full blur-3xl"></div>
                 
-                {/* Image */}
-                <img
-                  src={getImageUrl(selectedImage, true)}
-                  alt={selectedImage.pageTitle}
-                  className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl relative z-10
-                           hover:scale-[1.02] hover:shadow-[0_0_80px_rgba(239,68,68,0.3)]
-                           transition-all duration-700"
-                />
+                {/* Conditional rendering for video or image */}
+                {selectedImage.filemoonUrl ? (
+                  <iframe
+                    src={selectedImage.filemoonUrl}
+                    className="w-full h-full rounded-2xl shadow-2xl relative z-10"
+                    frameBorder="0"
+                    allowFullScreen
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  />
+                ) : (
+                  <img
+                    src={getImageUrl(selectedImage, true)}
+                    alt={selectedImage.pageTitle}
+                    className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl relative z-10
+                             hover:scale-[1.02] hover:shadow-[0_0_80px_rgba(239,68,68,0.3)]
+                             transition-all duration-700"
+                  />
+                )}
               </div>
 
               {/* RIGHT SIDE - DETAILS */}
@@ -706,6 +716,7 @@ export default function TrashPage() {
                           let count = 7; // Title, Deleted At, Added To Vault, Source URL, Page URL, Description, Tags
                           if (selectedImage?.pixvidUrl) count++; // Pixvid URL
                           if (selectedImage?.imgbbUrl) count++; // ImgBB URL
+                          if (selectedImage?.filemoonUrl) count++; // Filemoon URL
                           return count;
                         })()}
                       </span>
@@ -832,6 +843,22 @@ export default function TrashPage() {
                                 className="text-green-300 hover:text-green-200 break-all text-sm"
                               >
                                 {selectedImage.imgbbUrl}
+                              </a>
+                            </div>
+                          </div>
+                        )}
+
+                        {selectedImage.filemoonUrl && (
+                          <div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1">Filemoon URL</div>
+                            <div className="bg-white/5 rounded p-2">
+                              <a
+                                href={selectedImage.filemoonUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-purple-300 hover:text-purple-200 break-all text-sm"
+                              >
+                                {selectedImage.filemoonUrl}
                               </a>
                             </div>
                           </div>

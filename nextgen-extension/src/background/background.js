@@ -7,7 +7,7 @@
 import { StorageManager } from '../utils/storage.js';
 import { DuplicateDetector } from '../utils/duplicate-detector.js';
 import { URLNormalizer } from '../utils/url-normalizer.js';
-import { PixvidUploader, ImgbbUploader } from '../utils/uploaders.js';
+import { PixvidUploader, ImgbbUploader, FilemoonUploader } from '../utils/uploaders.js';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig.js';
 
 /**
@@ -28,6 +28,7 @@ class ImgVaultServiceWorker {
     this.duplicateDetector = new DuplicateDetector();
     this.pixvidUploader = new PixvidUploader();
     this.imgbbUploader = new ImgbbUploader();
+    this.filemoonUploader = new FilemoonUploader();
     this.initialized = false;
   }
 
@@ -360,6 +361,11 @@ class ImgVaultServiceWorker {
    * @returns {Promise<Object>} Upload result
    */
   async handleImageUpload(data) {
+    // Check if it's a video upload
+    if (data.isVideo) {
+      return this.handleVideoUpload(data);
+    }
+    
     try {
       // Get API keys from storage
       const settings = await chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey']);
@@ -552,6 +558,95 @@ class ImgVaultServiceWorker {
       };
     } catch (error) {
       console.error('Upload error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Handle video upload
+   * @param {Object} data - Video data to upload
+   * @returns {Promise<Object>} Upload result
+   */
+  async handleVideoUpload(data) {
+    try {
+      // Get API key from storage
+      const settings = await chrome.storage.sync.get(['filemoonApiKey']);
+      
+      if (!settings.filemoonApiKey) {
+        throw new Error('Filemoon API key not configured. Please set it in the extension settings.');
+      }
+
+      this.updateStatus('📥 Fetching video...');
+      
+      // Fetch the video
+      const videoBlob = await this.fetchImage(data.imageUrl); // reuse fetchImage for video
+      
+      this.updateStatus('☁️ Uploading to Filemoon...');
+      
+      // Upload to Filemoon
+      const filemoonResult = await this.filemoonUploader.upload(
+        videoBlob, 
+        settings.filemoonApiKey, 
+        data.fileName || 'video.mp4'
+      );
+      
+      this.updateStatus('💾 Saving to Firebase...');
+      
+      // Extract filename if not provided
+      const fileName = this.extractFileName(data);
+      
+      // Clean sourceImageUrl - don't save base64 data URLs to Firebase
+      let cleanSourceImageUrl = data.originalSourceUrl || data.imageUrl;
+      
+      // If it's a data URL (base64), it was uploaded via manual upload
+      if (cleanSourceImageUrl && cleanSourceImageUrl.startsWith('data:')) {
+        console.log('⚠️ [SAVE] Source is base64 data URL (manual upload), setting source URL to empty');
+        cleanSourceImageUrl = '';
+      }
+      
+      // Compute creation date (use file lastModified or current timestamp)
+      let creationDate = null;
+      let creationDateSource = '';
+      
+      if (data.fileLastModified) {
+        creationDate = new Date(data.fileLastModified).toISOString();
+        creationDateSource = 'OS lastModified';
+      } else {
+        creationDate = new Date().toISOString();
+        creationDateSource = 'Current timestamp (no metadata available)';
+      }
+      
+      // Save metadata to Firebase
+      const videoMetadata = {
+        filemoonUrl: filemoonResult.url,
+        filemoonDeleteUrl: filemoonResult.deleteUrl,
+        filemoonThumbUrl: filemoonResult.thumbUrl,
+        sourceImageUrl: cleanSourceImageUrl,
+        sourcePageUrl: data.pageUrl,
+        pageTitle: data.pageTitle,
+        fileName,
+        fileSize: videoBlob.size,
+        fileType: data.fileType || data.fileMimeType || videoBlob.type,
+        fileTypeSource: 'File object',
+        creationDate,
+        creationDateSource,
+        tags: data.tags || [],
+        description: data.description || '',
+        collectionId: data.collectionId || null,
+        isVideo: true
+      };
+      
+      const savedId = await this.storage.saveImage(videoMetadata); // reuse saveImage for videos
+      
+      this.updateStatus('✅ Video saved successfully!');
+      
+      return {
+        id: savedId,
+        filemoonUrl: filemoonResult.url,
+        ...videoMetadata
+      };
+    } catch (error) {
+      console.error('Video upload error:', error);
       throw error;
     }
   }

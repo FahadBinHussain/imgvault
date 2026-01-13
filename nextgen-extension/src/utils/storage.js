@@ -22,6 +22,7 @@
  * @property {string} [imgbbUrl] - ImgBB image URL
  * @property {string} [imgbbDeleteUrl] - ImgBB delete URL
  * @property {string} [imgbbThumbUrl] - ImgBB thumbnail URL
+ * @property {string} [filemoonUrl] - Filemoon video URL
  * @property {string} sourceImageUrl - Original source image URL
  * @property {string} sourcePageUrl - Source page URL
  * @property {string} [pageTitle] - Page title
@@ -326,6 +327,7 @@ export class StorageManager {
               pixvidUrl: fields.pixvidUrl?.stringValue || '',
               imgbbUrl: fields.imgbbUrl?.stringValue || '',
               imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
+              filemoonUrl: fields.filemoonUrl?.stringValue || '',
               sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
               sha256: fields.sha256?.stringValue || '',
               pHash: fields.pHash?.stringValue || '',
@@ -367,7 +369,7 @@ export class StorageManager {
       
       // Only fetch essential fields for gallery view
       const maskFields = [
-        'pixvidUrl', 'imgbbUrl', 'imgbbThumbUrl', 'sourceImageUrl',
+        'pixvidUrl', 'imgbbUrl', 'imgbbThumbUrl', 'filemoonUrl', 'sourceImageUrl',
         'sourcePageUrl', 'pageTitle', 'tags', 'description', 'internalAddedTimestamp',
         'collectionId' // Include collectionId for filtering and display
       ];
@@ -540,6 +542,7 @@ export class StorageManager {
           imgbbUrl: fields.imgbbUrl?.stringValue || '',
           imgbbDeleteUrl: fields.imgbbDeleteUrl?.stringValue || '',
           imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
+          filemoonUrl: fields.filemoonUrl?.stringValue || '',
           sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
           sourcePageUrl: fields.sourcePageUrl?.stringValue || '',
           pageTitle: fields.pageTitle?.stringValue || '',
@@ -887,6 +890,7 @@ export class StorageManager {
         existingSettings = {
           pixvidApiKey: fields.pixvidApiKey?.stringValue || '',
           imgbbApiKey: fields.imgbbApiKey?.stringValue || '',
+          filemoonApiKey: fields.filemoonApiKey?.stringValue || '',
           defaultGallerySource: fields.defaultGallerySource?.stringValue || 'imgbb'
         };
       }
@@ -895,6 +899,7 @@ export class StorageManager {
       const mergedSettings = { ...existingSettings };
       if (settings.pixvidApiKey) mergedSettings.pixvidApiKey = settings.pixvidApiKey;
       if (settings.imgbbApiKey) mergedSettings.imgbbApiKey = settings.imgbbApiKey;
+      if (settings.filemoonApiKey) mergedSettings.filemoonApiKey = settings.filemoonApiKey;
       if (settings.defaultGallerySource) mergedSettings.defaultGallerySource = settings.defaultGallerySource;
 
       const doc = this.toFirestoreDoc({
@@ -963,6 +968,7 @@ export class StorageManager {
       return {
         pixvidApiKey: fields.pixvidApiKey?.stringValue || '',
         imgbbApiKey: fields.imgbbApiKey?.stringValue || '',
+        filemoonApiKey: fields.filemoonApiKey?.stringValue || '',
         defaultGallerySource: fields.defaultGallerySource?.stringValue || 'imgbb',
         updatedAt: fields.updatedAt?.timestampValue || ''
       };
