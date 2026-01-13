@@ -341,6 +341,18 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'getFilemoonThumbnail':
+        this.getFilemoonThumbnail(request.filecode)
+          .then(thumbnailUrl => sendResponse({ success: true, thumbnailUrl }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'updateFilemoonThumbnail':
+        this.storage.updateImage(request.imageId, { filemoonThumbUrl: request.thumbnailUrl })
+          .then(() => sendResponse({ success: true }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       default:
         console.warn('Unknown action:', action);
         return false;
@@ -619,8 +631,7 @@ class ImgVaultServiceWorker {
       // Save metadata to Firebase
       const videoMetadata = {
         filemoonUrl: filemoonResult.url,
-        filemoonDeleteUrl: filemoonResult.deleteUrl,
-        filemoonThumbUrl: filemoonResult.thumbUrl,
+        filemoonThumbUrl: filemoonResult.thumbUrl || '',
         sourceImageUrl: cleanSourceImageUrl,
         sourcePageUrl: data.pageUrl,
         pageTitle: data.pageTitle,
@@ -647,6 +658,44 @@ class ImgVaultServiceWorker {
       };
     } catch (error) {
       console.error('Video upload error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get Filemoon video thumbnail
+   * @param {string} filecode - Filemoon file code
+   * @returns {Promise<string|null>} Thumbnail URL or null
+   */
+  async getFilemoonThumbnail(filecode) {
+    try {
+      const settings = await this.storage.getUserSettings();
+      const apiKey = settings?.filemoonApiKey;
+      
+      if (!apiKey) {
+        throw new Error('Filemoon API key not configured');
+      }
+      
+      console.log(`📸 [FILEMOON] Fetching thumbnail for filecode: ${filecode}`);
+      
+      const response = await fetch(`https://filemoonapi.com/api/images/thumb?key=${apiKey}&file_code=${filecode}`);
+      
+      if (!response.ok) {
+        throw new Error(`Thumbnail API returned ${response.status}`);
+      }
+      
+      const result = await response.json();
+      console.log(`📸 [FILEMOON] Thumbnail API response:`, result);
+      
+      if (result.status === 200 && result.result?.thumbnail) {
+        console.log(`✅ [FILEMOON] Thumbnail URL: ${result.result.thumbnail}`);
+        return result.result.thumbnail;
+      }
+      
+      console.warn(`⚠️ [FILEMOON] Thumbnail not available yet for filecode: ${filecode}`);
+      return null;
+    } catch (error) {
+      console.error(`❌ [FILEMOON] Failed to get thumbnail:`, error);
       throw error;
     }
   }
