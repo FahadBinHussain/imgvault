@@ -573,24 +573,36 @@ export default function TrashPage() {
                       </div>
                     )}
                     
-                    {/* Loading skeleton with shimmer */}
-                    {!loadedImages.has(image.id) && (
+                    {/* Loading skeleton with shimmer - only for non-video items */}
+                    {!loadedImages.has(image.id) && !image.filemoonUrl && (
                       <div className="absolute inset-0 bg-slate-800 overflow-hidden">
                         <div className="absolute inset-0 shimmer"></div>
                       </div>
                     )}
                     
-                    <img
-                      src={image.imgbbUrl || image.pixvidUrl}
-                      alt={image.pageTitle || 'Trashed image'}
-                      onLoad={() => handleImageLoad(image.id)}
-                      className={`w-full object-cover transition-all duration-700 ease-out
-                               group-hover:scale-110
-                               ${loadedImages.has(image.id) 
-                                 ? 'opacity-100' 
-                                 : 'opacity-0'}`}
-                      loading="lazy"
-                    />
+                    {/* Render image or video embed */}
+                    {image.filemoonUrl ? (
+                      <iframe
+                        src={image.filemoonUrl}
+                        className="w-full aspect-video object-cover pointer-events-none"
+                        frameBorder="0"
+                        scrolling="no"
+                        style={{ pointerEvents: 'none' }}
+                        onLoad={() => handleImageLoad(image.id)}
+                      />
+                    ) : (
+                      <img
+                        src={image.imgbbUrl || image.pixvidUrl}
+                        alt={image.pageTitle || 'Trashed image'}
+                        onLoad={() => handleImageLoad(image.id)}
+                        className={`w-full object-cover transition-all duration-700 ease-out
+                                 group-hover:scale-110
+                                 ${loadedImages.has(image.id) 
+                                   ? 'opacity-100' 
+                                   : 'opacity-0'}`}
+                        loading="lazy"
+                      />
+                    )}
                     
                     {/* Gradient Overlay */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent 

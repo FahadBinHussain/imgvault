@@ -1309,24 +1309,47 @@ export default function GalleryPage() {
                       </div>
                     )}
                     
-                    {/* Loading skeleton with shimmer */}
-                    {!loadedImages.has(img.id) && (
+                    {/* Loading skeleton with shimmer - only show for non-video items */}
+                    {!loadedImages.has(img.id) && !img.filemoonUrl && (
                       <div className="absolute inset-0 bg-slate-800 overflow-hidden">
                         <div className="absolute inset-0 shimmer"></div>
                       </div>
                     )}
                     
-                    <img
-                      src={img.imgbbUrl || img.pixvidUrl}
-                      alt={img.pageTitle}
-                      onLoad={() => handleImageLoad(img.id)}
-                      className={`w-full object-cover transition-all duration-700 ease-out
-                               group-hover:scale-110
-                               ${loadedImages.has(img.id) 
-                                 ? 'opacity-100' 
-                                 : 'opacity-0'}`}
-                      loading="lazy"
-                    />
+                    {/* Render image or video thumbnail/embed */}
+                    {img.filemoonUrl ? (
+                      <iframe
+                        src={img.filemoonUrl}
+                        className="w-full aspect-video object-cover pointer-events-none"
+                        frameBorder="0"
+                        scrolling="no"
+                        style={{ pointerEvents: 'none' }}
+                        onLoad={() => handleImageLoad(img.id)}
+                      />
+                    ) : (
+                      <img
+                        src={img.imgbbUrl || img.pixvidUrl}
+                        alt={img.pageTitle}
+                        onLoad={() => handleImageLoad(img.id)}
+                        className={`w-full object-cover transition-all duration-700 ease-out
+                                 group-hover:scale-110
+                                 ${loadedImages.has(img.id) 
+                                   ? 'opacity-100' 
+                                   : 'opacity-0'}`}
+                        loading="lazy"
+                      />
+                    )}
+                    
+                    {/* Video play icon overlay */}
+                    {img.filemoonUrl && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="bg-black/60 backdrop-blur-sm rounded-full p-4">
+                          <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z"/>
+                          </svg>
+                        </div>
+                      </div>
+                    )}
                     
                     {/* Gradient Overlay */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent 

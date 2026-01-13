@@ -23,6 +23,7 @@
  * @property {string} [imgbbDeleteUrl] - ImgBB delete URL
  * @property {string} [imgbbThumbUrl] - ImgBB thumbnail URL
  * @property {string} [filemoonUrl] - Filemoon video URL
+ * @property {string} [filemoonThumbUrl] - Filemoon video thumbnail URL
  * @property {string} sourceImageUrl - Original source image URL
  * @property {string} sourcePageUrl - Source page URL
  * @property {string} [pageTitle] - Page title

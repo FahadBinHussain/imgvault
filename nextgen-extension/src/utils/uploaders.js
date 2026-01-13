@@ -240,11 +240,15 @@ export class FilemoonUploader extends BaseUploader {
       // Construct the file URL from filecode
       const fileUrl = `https://filemoon.sx/e/${fileData.filecode}`;
       
+      console.log('🎬 [FILEMOON] File uploaded successfully, filecode:', fileData.filecode);
+      console.log('🎬 [FILEMOON] Embed URL:', fileUrl);
+      console.log('ℹ️ [FILEMOON] Thumbnail will be fetched later when gallery loads (video needs time to process)');
+      
       return {
         url: fileUrl,
-        deleteUrl: null, // Filemoon doesn't provide delete URL in response
+        deleteUrl: null,
         displayUrl: fileUrl,
-        thumbUrl: null,
+        thumbUrl: null, // Will be fetched later when gallery loads
         filecode: fileData.filecode,
         filename: fileData.filename
       };
