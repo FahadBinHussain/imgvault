@@ -14,12 +14,16 @@ export default function SettingsPage() {
   const [pixvidApiKey, setPixvidApiKey] = useChromeStorage('pixvidApiKey', '', 'sync');
   const [imgbbApiKey, setImgbbApiKey] = useChromeStorage('imgbbApiKey', '', 'sync');
   const [filemoonApiKey, setFilemoonApiKey] = useChromeStorage('filemoonApiKey', '', 'sync');
+  const [udropKey1, setUdropKey1] = useChromeStorage('udropKey1', '', 'sync');
+  const [udropKey2, setUdropKey2] = useChromeStorage('udropKey2', '', 'sync');
   const [firebaseConfigRaw, setFirebaseConfigRaw] = useChromeStorage('firebaseConfigRaw', '', 'sync');
   const [defaultGallerySource, setDefaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
   
   const [localPixvid, setLocalPixvid] = useState('');
   const [localImgbb, setLocalImgbb] = useState('');
   const [localFilemoon, setLocalFilemoon] = useState('');
+  const [localUdropKey1, setLocalUdropKey1] = useState('');
+  const [localUdropKey2, setLocalUdropKey2] = useState('');
   const [localFirebase, setLocalFirebase] = useState('');
   const [localGallerySource, setLocalGallerySource] = useState('imgbb');
   const [saved, setSaved] = useState(false);
@@ -33,9 +37,11 @@ export default function SettingsPage() {
     setLocalPixvid(pixvidApiKey || '');
     setLocalImgbb(imgbbApiKey || '');
     setLocalFilemoon(filemoonApiKey || '');
+    setLocalUdropKey1(udropKey1 || '');
+    setLocalUdropKey2(udropKey2 || '');
     setLocalFirebase(firebaseConfigRaw || '');
     setLocalGallerySource(defaultGallerySource || 'imgbb');
-  }, [pixvidApiKey, imgbbApiKey, filemoonApiKey, firebaseConfigRaw, defaultGallerySource]);
+  }, [pixvidApiKey, imgbbApiKey, filemoonApiKey, udropKey1, udropKey2, firebaseConfigRaw, defaultGallerySource]);
 
   // Auto-load settings from Firebase
   useEffect(() => {
@@ -75,6 +81,16 @@ export default function SettingsPage() {
           if (!localFilemoon && firebaseSettings.filemoonApiKey?.trim()) {
             setLocalFilemoon(firebaseSettings.filemoonApiKey);
             setFilemoonApiKey(firebaseSettings.filemoonApiKey);
+            updated = true;
+          }
+          if (!localUdropKey1 && firebaseSettings.udropKey1?.trim()) {
+            setLocalUdropKey1(firebaseSettings.udropKey1);
+            setUdropKey1(firebaseSettings.udropKey1);
+            updated = true;
+          }
+          if (!localUdropKey2 && firebaseSettings.udropKey2?.trim()) {
+            setLocalUdropKey2(firebaseSettings.udropKey2);
+            setUdropKey2(firebaseSettings.udropKey2);
             updated = true;
           }
           if (firebaseSettings.defaultGallerySource?.trim()) {
@@ -154,6 +170,8 @@ export default function SettingsPage() {
     setPixvidApiKey(localPixvid);
     setImgbbApiKey(localImgbb);
     setFilemoonApiKey(localFilemoon);
+    setUdropKey1(localUdropKey1);
+    setUdropKey2(localUdropKey2);
     setDefaultGallerySource(localGallerySource);
 
     // Also save to Firebase if configured
@@ -164,7 +182,7 @@ export default function SettingsPage() {
         });
       });
 
-      if (firebaseConfig && (localPixvid || localImgbb || localFilemoon)) {
+      if (firebaseConfig && (localPixvid || localImgbb || localFilemoon || localUdropKey1 || localUdropKey2)) {
         setFirebaseStatus('☁️ Syncing to Firebase...');
         
         const { StorageManager } = await import('../utils/storage.js');
@@ -176,13 +194,21 @@ export default function SettingsPage() {
         if (localPixvid) settingsToSave.pixvidApiKey = localPixvid;
         if (localImgbb) settingsToSave.imgbbApiKey = localImgbb;
         if (localFilemoon) settingsToSave.filemoonApiKey = localFilemoon;
+        if (localUdropKey1) settingsToSave.udropKey1 = localUdropKey1;
+        if (localUdropKey2) settingsToSave.udropKey2 = localUdropKey2;
         if (localGallerySource) settingsToSave.defaultGallerySource = localGallerySource;
+
+        console.log('📤 [SETTINGS] Saving to Firebase:', Object.keys(settingsToSave));
+        console.log('📤 [SETTINGS] UDrop Key 1:', localUdropKey1 ? '✓ Set' : '✗ Empty');
+        console.log('📤 [SETTINGS] UDrop Key 2:', localUdropKey2 ? '✓ Set' : '✗ Empty');
 
         if (Object.keys(settingsToSave).length > 0) {
           await storageManager.saveUserSettings(settingsToSave);
           setFirebaseStatus('✅ Settings saved to Firebase');
+          console.log('✅ [SETTINGS] Successfully saved to Firebase');
         } else {
           setFirebaseStatus('ℹ️ No settings to sync to Firebase');
+          console.log('ℹ️ [SETTINGS] No settings to save');
         }
       }
     } catch (error) {
@@ -270,6 +296,38 @@ export default function SettingsPage() {
                   value={localFilemoon}
                   onChange={(e) => setLocalFilemoon(e.target.value)}
                   placeholder="Enter your Filemoon API key"
+                  className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                           text-white placeholder-slate-400 
+                           focus:outline-none focus:border-primary-500 focus:ring-2 
+                           focus:ring-primary-500/20 transition-all shadow-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-200 mb-2 flex items-center gap-2">
+                  <span className="text-lg">📦</span>
+                  UDrop API Key 1 (For Videos)
+                </label>
+                <input
+                  type="password"
+                  value={localUdropKey1}
+                  onChange={(e) => setLocalUdropKey1(e.target.value)}
+                  placeholder="Enter your UDrop API Key 1 (64 characters)"
+                  className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                           text-white placeholder-slate-400 
+                           focus:outline-none focus:border-primary-500 focus:ring-2 
+                           focus:ring-primary-500/20 transition-all shadow-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-200 mb-2 flex items-center gap-2">
+                  <span className="text-lg">🔑</span>
+                  UDrop API Key 2 (For Videos)
+                </label>
+                <input
+                  type="password"
+                  value={localUdropKey2}
+                  onChange={(e) => setLocalUdropKey2(e.target.value)}
+                  placeholder="Enter your UDrop API Key 2 (64 characters)"
                   className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
                            text-white placeholder-slate-400 
                            focus:outline-none focus:border-primary-500 focus:ring-2 

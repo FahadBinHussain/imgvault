@@ -258,3 +258,113 @@ export class FilemoonUploader extends BaseUploader {
     }
   }
 }
+
+/**
+ * UDrop Video Uploader
+ * Uploads videos to UDrop.com using their API v2
+ */
+export class UDropUploader extends BaseUploader {
+  constructor() {
+    super('UDrop');
+    this.apiUrl = 'https://www.udrop.com/api/v2';
+  }
+
+  /**
+   * Authorize with UDrop API and get access token
+   * @param {string} key1 - UDrop API Key 1 (64 characters)
+   * @param {string} key2 - UDrop API Key 2 (64 characters)
+   * @returns {Promise<{access_token: string, account_id: string}>}
+   */
+  async authorize(key1, key2) {
+    try {
+      const formData = new FormData();
+      formData.append('key1', key1);
+      formData.append('key2', key2);
+
+      const response = await fetch(`${this.apiUrl}/authorize`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        await this.handleError(response, 'Failed to authorize with UDrop');
+      }
+
+      const result = await response.json();
+      
+      if (result._status !== 'success' || !result.data || !result.data.access_token) {
+        throw new Error(result.response || 'Authorization failed');
+      }
+
+      return {
+        access_token: result.data.access_token,
+        account_id: result.data.account_id
+      };
+    } catch (error) {
+      console.error('UDrop authorization error:', error);
+      throw new Error(`Failed to authorize with UDrop: ${error.message}`);
+    }
+  }
+
+  /**
+   * Upload video to UDrop
+   * @param {Blob} blob - Video blob
+   * @param {string} key1 - UDrop API Key 1
+   * @param {string} key2 - UDrop API Key 2
+   * @param {string} [filename] - Optional filename
+   * @returns {Promise<UploadResult>}
+   */
+  async upload(blob, key1, key2, filename = 'video.mp4') {
+    try {
+      // Step 1: Authorize and get access token
+      const auth = await this.authorize(key1, key2);
+      console.log('🔐 UDrop authorized, account:', auth.account_id);
+
+      // Step 2: Upload video file
+      const formData = new FormData();
+      
+      const videoFilename = filename.split('/').pop().split('?')[0] || 'video.mp4';
+      formData.append('upload_file', blob, videoFilename);
+      formData.append('access_token', auth.access_token);
+      formData.append('account_id', auth.account_id);
+      // folder_id is optional, leave blank for root folder
+      
+      const response = await fetch(`${this.apiUrl}/file/upload`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        await this.handleError(response, 'UDrop upload failed');
+      }
+
+      const result = await response.json();
+      
+      if (result._status !== 'success' || !result.data || result.data.length === 0) {
+        throw new Error(result.response || 'Upload failed');
+      }
+
+      const fileData = result.data[0];
+      
+      console.log('📦 [UDROP] File uploaded successfully');
+      console.log('📦 [UDROP] URL:', fileData.url);
+      console.log('📦 [UDROP] Short URL:', fileData.short_url);
+      console.log('📦 [UDROP] File ID:', fileData.file_id);
+      
+      return {
+        url: fileData.url,
+        deleteUrl: fileData.delete_url,
+        displayUrl: fileData.url,
+        thumbUrl: null, // UDrop doesn't provide thumbnail URLs for videos
+        fileId: fileData.file_id,
+        shortUrl: fileData.short_url,
+        deleteHash: fileData.delete_hash,
+        filename: fileData.name
+      };
+    } catch (error) {
+      console.error('UDrop API error:', error);
+      throw new Error(`Failed to upload to UDrop: ${error.message}`);
+    }
+  }
+}
+

@@ -24,6 +24,9 @@
  * @property {string} [imgbbThumbUrl] - ImgBB thumbnail URL
  * @property {string} [filemoonUrl] - Filemoon video URL
  * @property {string} [filemoonThumbUrl] - Filemoon video thumbnail URL
+ * @property {string} [udropUrl] - UDrop video URL
+ * @property {string} [udropShortUrl] - UDrop short URL
+ * @property {string} [udropFileId] - UDrop file ID
  * @property {string} sourceImageUrl - Original source image URL
  * @property {string} sourcePageUrl - Source page URL
  * @property {string} [pageTitle] - Page title
@@ -370,7 +373,7 @@ export class StorageManager {
       
       // Only fetch essential fields for gallery view
       const maskFields = [
-        'pixvidUrl', 'imgbbUrl', 'imgbbThumbUrl', 'filemoonUrl', 'sourceImageUrl',
+        'pixvidUrl', 'imgbbUrl', 'imgbbThumbUrl', 'filemoonUrl', 'udropUrl', 'sourceImageUrl',
         'sourcePageUrl', 'pageTitle', 'tags', 'description', 'internalAddedTimestamp',
         'collectionId' // Include collectionId for filtering and display
       ];
@@ -892,6 +895,8 @@ export class StorageManager {
           pixvidApiKey: fields.pixvidApiKey?.stringValue || '',
           imgbbApiKey: fields.imgbbApiKey?.stringValue || '',
           filemoonApiKey: fields.filemoonApiKey?.stringValue || '',
+          udropKey1: fields.udropKey1?.stringValue || '',
+          udropKey2: fields.udropKey2?.stringValue || '',
           defaultGallerySource: fields.defaultGallerySource?.stringValue || 'imgbb'
         };
       }
@@ -901,6 +906,8 @@ export class StorageManager {
       if (settings.pixvidApiKey) mergedSettings.pixvidApiKey = settings.pixvidApiKey;
       if (settings.imgbbApiKey) mergedSettings.imgbbApiKey = settings.imgbbApiKey;
       if (settings.filemoonApiKey) mergedSettings.filemoonApiKey = settings.filemoonApiKey;
+      if (settings.udropKey1) mergedSettings.udropKey1 = settings.udropKey1;
+      if (settings.udropKey2) mergedSettings.udropKey2 = settings.udropKey2;
       if (settings.defaultGallerySource) mergedSettings.defaultGallerySource = settings.defaultGallerySource;
 
       const doc = this.toFirestoreDoc({
