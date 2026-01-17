@@ -1310,7 +1310,7 @@ export default function GalleryPage() {
                     )}
                     
                     {/* Loading skeleton with shimmer - only show for non-video items */}
-                    {!loadedImages.has(img.id) && !img.filemoonUrl && (
+                    {!loadedImages.has(img.id) && !img.filemoonUrl && !img.udropUrl && (
                       <div className="absolute inset-0 bg-slate-800 overflow-hidden">
                         <div className="absolute inset-0 shimmer"></div>
                       </div>
@@ -1325,6 +1325,13 @@ export default function GalleryPage() {
                         scrolling="no"
                         style={{ pointerEvents: 'none' }}
                         onLoad={() => handleImageLoad(img.id)}
+                      />
+                    ) : img.udropUrl ? (
+                      <video
+                        src={img.udropUrl}
+                        className="w-full aspect-video object-cover"
+                        style={{ pointerEvents: 'none' }}
+                        onLoadedMetadata={() => handleImageLoad(img.id)}
                       />
                     ) : (
                       <img
@@ -1341,7 +1348,7 @@ export default function GalleryPage() {
                     )}
                     
                     {/* Video play icon overlay */}
-                    {img.filemoonUrl && (
+                    {(img.filemoonUrl || img.udropUrl) && (
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="bg-black/60 backdrop-blur-sm rounded-full p-4">
                           <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -1425,6 +1432,14 @@ export default function GalleryPage() {
                     allowFullScreen
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   />
+                ) : selectedImage.udropUrl ? (
+                  <video
+                    src={selectedImage.udropUrl}
+                    controls
+                    className={`w-full h-full rounded-2xl shadow-2xl relative z-10
+                             transition-all duration-700 ease-out
+                             ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
+                  />
                 ) : (
                   <img
                     src={selectedImage.imgbbUrl || selectedImage.pixvidUrl}
@@ -1489,6 +1504,7 @@ export default function GalleryPage() {
                       if (selectedImage?.collectionId) count++; // Collection
                       if (selectedImage?.imgbbUrl) count++; // ImgBB URL
                       if (selectedImage?.filemoonUrl) count++; // Filemoon URL
+                      if (selectedImage?.udropUrl) count++; // UDrop URL
                       return count;
                     })()}
                   </span>

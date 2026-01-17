@@ -7,7 +7,7 @@
 import { StorageManager } from '../utils/storage.js';
 import { DuplicateDetector } from '../utils/duplicate-detector.js';
 import { URLNormalizer } from '../utils/url-normalizer.js';
-import { PixvidUploader, ImgbbUploader, FilemoonUploader } from '../utils/uploaders.js';
+import { PixvidUploader, ImgbbUploader, FilemoonUploader, UDropUploader } from '../utils/uploaders.js';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig.js';
 
 /**
@@ -29,6 +29,7 @@ class ImgVaultServiceWorker {
     this.pixvidUploader = new PixvidUploader();
     this.imgbbUploader = new ImgbbUploader();
     this.filemoonUploader = new FilemoonUploader();
+    this.udropUploader = new UDropUploader();
     this.initialized = false;
   }
 
@@ -575,48 +576,75 @@ class ImgVaultServiceWorker {
   }
 
   /**
-   * Handle video upload
+   * Handle video upload to both Filemoon and UDrop
    * @param {Object} data - Video data to upload
    * @returns {Promise<Object>} Upload result
    */
   async handleVideoUpload(data) {
     try {
-      // Get API key from storage
-      const settings = await chrome.storage.sync.get(['filemoonApiKey']);
+      // Get API keys from storage
+      const settings = await chrome.storage.sync.get(['filemoonApiKey', 'udropKey1', 'udropKey2']);
       
-      if (!settings.filemoonApiKey) {
-        throw new Error('Filemoon API key not configured. Please set it in the extension settings.');
+      const hasFilemoon = !!settings.filemoonApiKey;
+      const hasUDrop = settings.udropKey1 && settings.udropKey2;
+      
+      if (!hasFilemoon && !hasUDrop) {
+        throw new Error('No video hosting service configured. Please set Filemoon API key or UDrop API keys in settings.');
       }
 
       this.updateStatus('📥 Fetching video...');
       
-      // Fetch the video
-      const videoBlob = await this.fetchImage(data.imageUrl); // reuse fetchImage for video
+      // Fetch the video once
+      const videoBlob = await this.fetchImage(data.imageUrl);
       
-      this.updateStatus('☁️ Uploading to Filemoon...');
+      // Upload to available services in parallel
+      const uploadPromises = [];
       
-      // Upload to Filemoon
-      const filemoonResult = await this.filemoonUploader.upload(
-        videoBlob, 
-        settings.filemoonApiKey, 
-        data.fileName || 'video.mp4'
-      );
+      if (hasFilemoon) {
+        this.updateStatus('☁️ Uploading to Filemoon...');
+        uploadPromises.push(
+          this.filemoonUploader.upload(
+            videoBlob, 
+            settings.filemoonApiKey, 
+            data.fileName || 'video.mp4'
+          ).catch(err => {
+            console.error('Filemoon upload failed:', err);
+            return null; // Don't fail entire upload if one service fails
+          })
+        );
+      }
+      
+      if (hasUDrop) {
+        this.updateStatus('☁️ Uploading to UDrop...');
+        uploadPromises.push(
+          this.udropUploader.upload(
+            videoBlob, 
+            settings.udropKey1, 
+            settings.udropKey2, 
+            data.fileName || 'video.mp4'
+          ).catch(err => {
+            console.error('UDrop upload failed:', err);
+            return null; // Don't fail entire upload if one service fails
+          })
+        );
+      }
+      
+      const [filemoonResult, udropResult] = await Promise.all(uploadPromises);
       
       this.updateStatus('💾 Saving to Firebase...');
       
       // Extract filename if not provided
       const fileName = this.extractFileName(data);
       
-      // Clean sourceImageUrl - don't save base64 data URLs to Firebase
+      // Clean sourceImageUrl
       let cleanSourceImageUrl = data.originalSourceUrl || data.imageUrl;
       
-      // If it's a data URL (base64), it was uploaded via manual upload
       if (cleanSourceImageUrl && cleanSourceImageUrl.startsWith('data:')) {
         console.log('⚠️ [SAVE] Source is base64 data URL (manual upload), setting source URL to empty');
         cleanSourceImageUrl = '';
       }
       
-      // Compute creation date (use file lastModified or current timestamp)
+      // Compute creation date
       let creationDate = null;
       let creationDateSource = '';
       
@@ -628,10 +656,8 @@ class ImgVaultServiceWorker {
         creationDateSource = 'Current timestamp (no metadata available)';
       }
       
-      // Save metadata to Firebase
+      // Save metadata to Firebase with both URLs
       const videoMetadata = {
-        filemoonUrl: filemoonResult.url,
-        filemoonThumbUrl: filemoonResult.thumbUrl || '',
         sourceImageUrl: cleanSourceImageUrl,
         sourcePageUrl: data.pageUrl,
         pageTitle: data.pageTitle,
@@ -647,13 +673,25 @@ class ImgVaultServiceWorker {
         isVideo: true
       };
       
-      const savedId = await this.storage.saveImage(videoMetadata); // reuse saveImage for videos
+      // Add Filemoon URLs if uploaded successfully
+      if (filemoonResult) {
+        videoMetadata.filemoonUrl = filemoonResult.url;
+        videoMetadata.filemoonThumbUrl = filemoonResult.thumbUrl || '';
+      }
+      
+      // Add UDrop URLs if uploaded successfully
+      if (udropResult) {
+        videoMetadata.udropUrl = udropResult.url;
+        videoMetadata.udropShortUrl = udropResult.shortUrl;
+        videoMetadata.udropFileId = udropResult.fileId;
+      }
+      
+      const savedId = await this.storage.saveImage(videoMetadata);
       
       this.updateStatus('✅ Video saved successfully!');
       
       return {
         id: savedId,
-        filemoonUrl: filemoonResult.url,
         ...videoMetadata
       };
     } catch (error) {

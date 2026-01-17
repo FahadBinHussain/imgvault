@@ -252,7 +252,7 @@ export default function TrashPage() {
   const getImageUrl = (image, useFullSize = false) => {
     // For modal/detail view, use full size. For grid thumbnails, use thumb
     if (useFullSize) {
-      return image.filemoonUrl || image.imgbbUrl || image.pixvidUrl || image.sourceImageUrl;
+      return image.filemoonUrl || image.udropUrl || image.imgbbUrl || image.pixvidUrl || image.sourceImageUrl;
     }
     return image.imgbbThumbUrl || image.imgbbUrl || image.pixvidUrl || image.sourceImageUrl;
   };
@@ -590,6 +590,13 @@ export default function TrashPage() {
                         style={{ pointerEvents: 'none' }}
                         onLoad={() => handleImageLoad(image.id)}
                       />
+                    ) : image.udropUrl ? (
+                      <video
+                        src={image.udropUrl}
+                        className="w-full aspect-video object-cover"
+                        style={{ pointerEvents: 'none' }}
+                        onLoadedMetadata={() => handleImageLoad(image.id)}
+                      />
                     ) : (
                       <img
                         src={image.imgbbUrl || image.pixvidUrl}
@@ -672,6 +679,12 @@ export default function TrashPage() {
                     frameBorder="0"
                     allowFullScreen
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  />
+                ) : selectedImage.udropUrl ? (
+                  <video
+                    src={selectedImage.udropUrl}
+                    controls
+                    className="w-full h-full rounded-2xl shadow-2xl relative z-10"
                   />
                 ) : (
                   <img
@@ -871,6 +884,22 @@ export default function TrashPage() {
                                 className="text-purple-300 hover:text-purple-200 break-all text-sm"
                               >
                                 {selectedImage.filemoonUrl}
+                              </a>
+                            </div>
+                          </div>
+                        )}
+
+                        {selectedImage.udropUrl && (
+                          <div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1">UDrop URL</div>
+                            <div className="bg-white/5 rounded p-2">
+                              <a
+                                href={selectedImage.udropUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-300 hover:text-blue-200 break-all text-sm"
+                              >
+                                {selectedImage.udropUrl}
                               </a>
                             </div>
                           </div>
