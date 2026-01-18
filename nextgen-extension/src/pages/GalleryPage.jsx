@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   RefreshCw, Upload, Search, Trash2, Download, X, Settings, FolderOpen,
@@ -19,6 +19,7 @@ import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } fro
 
 export default function GalleryPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { collectionId } = useParams();
   const { images, loading, reload, deleteImage } = useImages();
   const { trashedImages, loading: trashLoading } = useTrash();
@@ -790,6 +791,29 @@ export default function GalleryPage() {
     
     checkPendingImage();
   }, []);
+
+  // Handle auto-open upload from debug page
+  useEffect(() => {
+    if (location.state?.autoOpenUpload && location.state?.uploadFile) {
+      const file = location.state.uploadFile;
+      console.log('🐛 Debug page upload file received:', file.name);
+      
+      // Process the file and open modal
+      const processFile = async () => {
+        await processMediaFile(file, 'debug://upload', 'Debug Upload');
+        setIsLocalUpload(true);
+        setShowUploadModal(true);
+        
+        const fileType = file.type.startsWith('video/') ? 'Video' : 'Image';
+        showToast(`✅ ${fileType} loaded successfully!`, 'success', 3000);
+      };
+      
+      processFile();
+      
+      // Clear the navigation state
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state]);
 
   return (
     <div ref={pageContainerRef} className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-y-auto">
