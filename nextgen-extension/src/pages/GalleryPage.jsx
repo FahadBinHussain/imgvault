@@ -1498,13 +1498,15 @@ export default function GalleryPage() {
                       ? 'bg-primary-500/20 text-primary-200' 
                       : 'bg-slate-500/20 text-slate-400'
                   }`}>
-                    {/* Count: Title, Added To Vault, Collection (conditional), Pixvid URL, Source URL, Page URL, Description, Tags = 7 base + Collection + ImgBB URL (both conditional) */}
+                    {/* Count: Title, Added To Vault, Collection (conditional), Pixvid/Filemoon/UDrop URLs, ImgBB URL, Source URL, Page URL, Description, Tags */}
                     {(() => {
-                      let count = 7; // Title, Added To Vault, Pixvid URL, Source URL, Page URL, Description, Tags
+                      let count = 6; // Title, Added To Vault, Source URL, Page URL, Description, Tags
                       if (selectedImage?.collectionId) count++; // Collection
+                      // Images show Pixvid URL, videos show Filemoon/UDrop
+                      if (selectedImage?.pixvidUrl && !selectedImage?.filemoonUrl && !selectedImage?.udropUrl) count++; // Pixvid URL (images only)
                       if (selectedImage?.imgbbUrl) count++; // ImgBB URL
-                      if (selectedImage?.filemoonUrl) count++; // Filemoon URL
-                      if (selectedImage?.udropUrl) count++; // UDrop URL
+                      if (selectedImage?.filemoonUrl) count++; // Filemoon URL (videos)
+                      if (selectedImage?.udropUrl) count++; // UDrop URL (videos)
                       return count;
                     })()}
                   </span>
@@ -1731,22 +1733,25 @@ export default function GalleryPage() {
                       )}
                     </div>
 
-                    <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
-                        <Link2 className="w-3.5 h-3.5" />
-                        Pixvid URL
+                    {/* Pixvid URL - Only show for images (not videos) */}
+                    {selectedImage.pixvidUrl && !selectedImage.filemoonUrl && !selectedImage.udropUrl && (
+                      <div>
+                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                          <Link2 className="w-3.5 h-3.5" />
+                          Pixvid URL
+                        </div>
+                        <div className="bg-white/5 rounded p-2">
+                          <a
+                            href={selectedImage.pixvidUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-300 hover:text-blue-200 break-all text-sm"
+                          >
+                            {selectedImage.pixvidUrl}
+                          </a>
+                        </div>
                       </div>
-                      <div className="bg-white/5 rounded p-2">
-                        <a
-                          href={selectedImage.pixvidUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-300 hover:text-blue-200 break-all text-sm"
-                        >
-                          {selectedImage.pixvidUrl}
-                        </a>
-                      </div>
-                    </div>
+                    )}
 
                     {selectedImage.imgbbUrl && (
                       <div>
@@ -1781,6 +1786,25 @@ export default function GalleryPage() {
                             className="text-purple-300 hover:text-purple-200 break-all text-sm"
                           >
                             {selectedImage.filemoonUrl}
+                          </a>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedImage.udropUrl && (
+                      <div>
+                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                          <Link2 className="w-3.5 h-3.5" />
+                          UDrop URL
+                        </div>
+                        <div className="bg-white/5 rounded p-2">
+                          <a
+                            href={selectedImage.udropUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-orange-300 hover:text-orange-200 break-all text-sm"
+                          >
+                            {selectedImage.udropUrl}
                           </a>
                         </div>
                       </div>

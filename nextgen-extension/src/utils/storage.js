@@ -547,6 +547,7 @@ export class StorageManager {
           imgbbDeleteUrl: fields.imgbbDeleteUrl?.stringValue || '',
           imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
           filemoonUrl: fields.filemoonUrl?.stringValue || '',
+          udropUrl: fields.udropUrl?.stringValue || '',
           sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
           sourcePageUrl: fields.sourcePageUrl?.stringValue || '',
           pageTitle: fields.pageTitle?.stringValue || '',

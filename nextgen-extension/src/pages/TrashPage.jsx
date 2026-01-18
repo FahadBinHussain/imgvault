@@ -145,17 +145,17 @@ export default function TrashPage() {
     setIsProcessing(true);
     
     try {
-      showToast(`♻️ Restoring ${selectedImages.size} image${selectedImages.size > 1 ? 's' : ''}...`, 'info', 0);
+      showToast(`♻️ Restoring ${selectedImages.size} item${selectedImages.size > 1 ? 's' : ''}...`, 'info', 0);
       
       const restorePromises = Array.from(selectedImages).map(id => restoreFromTrash(id));
       await Promise.all(restorePromises);
       
-      showToast(`✅ ${selectedImages.size} image${selectedImages.size > 1 ? 's' : ''} restored successfully!`, 'success', 3000);
+      showToast(`✅ ${selectedImages.size} item${selectedImages.size > 1 ? 's' : ''} restored successfully!`, 'success', 3000);
       setSelectedImages(new Set());
       setSelectionMode(false);
     } catch (error) {
       console.error('Bulk restore failed:', error);
-      showToast(`❌ ${error.message || 'Failed to restore some images'}`, 'error', 4000);
+      showToast(`❌ ${error.message || 'Failed to restore some items'}`, 'error', 4000);
     } finally {
       setIsProcessing(false);
     }
@@ -169,17 +169,17 @@ export default function TrashPage() {
     setIsProcessing(true);
     
     try {
-      showToast(`🔥 Permanently deleting ${selectedImages.size} image${selectedImages.size > 1 ? 's' : ''}...`, 'info', 0);
+      showToast(`🔥 Permanently deleting ${selectedImages.size} item${selectedImages.size > 1 ? 's' : ''}...`, 'info', 0);
       
       const deletePromises = Array.from(selectedImages).map(id => permanentlyDelete(id));
       await Promise.all(deletePromises);
       
-      showToast(`✅ ${selectedImages.size} image${selectedImages.size > 1 ? 's' : ''} permanently deleted!`, 'success', 3000);
+      showToast(`✅ ${selectedImages.size} item${selectedImages.size > 1 ? 's' : ''} permanently deleted!`, 'success', 3000);
       setSelectedImages(new Set());
       setSelectionMode(false);
     } catch (error) {
       console.error('Bulk delete failed:', error);
-      showToast(`❌ ${error.message || 'Failed to delete some images'}`, 'error', 4000);
+      showToast(`❌ ${error.message || 'Failed to delete some items'}`, 'error', 4000);
     } finally {
       setIsProcessing(false);
     }
@@ -199,10 +199,10 @@ export default function TrashPage() {
     setShowRestoreConfirm(false);
     
     try {
-      showToast('♻️ Restoring image...', 'info', 0);
+      showToast('♻️ Restoring item...', 'info', 0);
       await restoreFromTrash(selectedImage.id);
       
-      showToast('✅ Image restored successfully!', 'success', 3000);
+      showToast('✅ Item restored successfully!', 'success', 3000);
       setSelectedImage(null);
     } catch (error) {
       console.error('Restore failed:', error);
@@ -222,7 +222,7 @@ export default function TrashPage() {
       showToast('🔥 Permanently deleting from hosts and trash...', 'info', 0);
       await permanentlyDelete(selectedImage.id);
       
-      showToast('✅ Image permanently deleted!', 'success', 3000);
+      showToast('✅ Item permanently deleted!', 'success', 3000);
       setSelectedImage(null);
     } catch (error) {
       console.error('Permanent delete failed:', error);
@@ -413,9 +413,9 @@ export default function TrashPage() {
             <div className="p-4 bg-yellow-900/30 border border-yellow-600/50 rounded-xl backdrop-blur-sm flex items-start gap-3">
               <AlertTriangle className="text-yellow-500 mt-1 flex-shrink-0" size={20} />
               <div className="text-sm">
-                <p className="font-medium text-yellow-300">Images in trash are still hosted</p>
+                <p className="font-medium text-yellow-300">Items in trash are still hosted</p>
                 <p className="text-yellow-400/80 mt-1">
-                  Trashed images remain accessible via their URLs. To completely remove them from hosts, 
+                  Trashed items remain accessible via their URLs. To completely remove them from hosts, 
                   use "Permanently Delete" or "Empty Trash".
                 </p>
               </div>
@@ -736,12 +736,14 @@ export default function TrashPage() {
                           ? 'bg-red-500/20 text-red-200' 
                           : 'bg-slate-500/20 text-slate-400'
                       }`}>
-                        {/* Count: Title, Deleted At, Added To Vault, Pixvid URL (conditional), Source URL, Page URL, Description, Tags = 7 base + Pixvid URL + ImgBB URL (both conditional) */}
+                        {/* Count: Title, Deleted At, Added To Vault, Pixvid/Filemoon/UDrop URLs (conditional), Source URL, Page URL, Description, Tags */}
                         {(() => {
-                          let count = 7; // Title, Deleted At, Added To Vault, Source URL, Page URL, Description, Tags
-                          if (selectedImage?.pixvidUrl) count++; // Pixvid URL
+                          let count = 6; // Title, Deleted At, Added To Vault, Source URL, Page URL, Description, Tags
+                          // Images show Pixvid URL, videos show Filemoon/UDrop
+                          if (selectedImage?.pixvidUrl && !selectedImage?.filemoonUrl && !selectedImage?.udropUrl) count++; // Pixvid URL (images only)
                           if (selectedImage?.imgbbUrl) count++; // ImgBB URL
-                          if (selectedImage?.filemoonUrl) count++; // Filemoon URL
+                          if (selectedImage?.filemoonUrl) count++; // Filemoon URL (videos)
+                          if (selectedImage?.udropUrl) count++; // UDrop URL (videos)
                           return count;
                         })()}
                       </span>
@@ -841,7 +843,8 @@ export default function TrashPage() {
                           </div>
                         </div>
 
-                        {selectedImage.pixvidUrl && (
+                        {/* Pixvid URL - Only show for images (not videos) */}
+                        {selectedImage.pixvidUrl && !selectedImage.filemoonUrl && !selectedImage.udropUrl && (
                           <div>
                             <div className="text-xs font-semibold text-slate-400 mb-1">Pixvid URL</div>
                             <div className="bg-white/5 rounded p-2">
@@ -897,7 +900,7 @@ export default function TrashPage() {
                                 href={selectedImage.udropUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-blue-300 hover:text-blue-200 break-all text-sm"
+                                className="text-orange-300 hover:text-orange-200 break-all text-sm"
                               >
                                 {selectedImage.udropUrl}
                               </a>
@@ -964,9 +967,9 @@ export default function TrashPage() {
                         <div className="flex items-start gap-3">
                           <AlertTriangle className="text-yellow-500 mt-0.5 flex-shrink-0" size={18} />
                           <div className="text-sm">
-                            <p className="font-medium text-yellow-300">Image Still Hosted</p>
+                            <p className="font-medium text-yellow-300">Item Still Hosted</p>
                             <p className="text-yellow-400/80 mt-1">
-                              This image remains accessible via its URLs. Use "Delete Permanently" to remove it from all hosts.
+                              This item remains accessible via its URLs. Use "Delete Permanently" to remove it from all hosts.
                             </p>
                           </div>
                         </div>
@@ -1345,11 +1348,13 @@ export default function TrashPage() {
           
           <div className="text-left bg-red-900/20 border border-red-500/30 rounded-xl p-4 space-y-2">
             <p className="text-slate-300 leading-relaxed">
-              This will permanently delete the image from:
+              This will permanently delete the item from:
             </p>
             <ul className="list-disc list-inside text-slate-300 space-y-1 ml-2">
-              <li>ImgBB hosting (if uploaded)</li>
-              <li>Pixvid hosting (if uploaded)</li>
+              {selectedImage?.imgbbUrl && <li>ImgBB hosting</li>}
+              {selectedImage?.pixvidUrl && !selectedImage?.filemoonUrl && !selectedImage?.udropUrl && <li>Pixvid hosting</li>}
+              {selectedImage?.filemoonUrl && <li className="text-yellow-400">⚠️ Filemoon video (must be manually deleted from dashboard)</li>}
+              {selectedImage?.udropUrl && <li className="text-yellow-400">⚠️ UDrop video (must be manually deleted from dashboard)</li>}
               <li>Your trash bin</li>
             </ul>
           </div>
@@ -1489,15 +1494,15 @@ export default function TrashPage() {
           
           <h3 className="text-2xl font-bold bg-gradient-to-r from-red-400 to-rose-500 
                        bg-clip-text text-transparent">
-            Permanently Delete {selectedImages.size} Image{selectedImages.size > 1 ? 's' : ''}?
+            Permanently Delete {selectedImages.size} Item{selectedImages.size > 1 ? 's' : ''}?
           </h3>
           
           <div className="text-left bg-red-900/20 border border-red-500/30 rounded-xl p-4 space-y-2">
             <p className="text-slate-300 leading-relaxed">
-              This will permanently delete <span className="font-bold text-red-300">{selectedImages.size} image{selectedImages.size > 1 ? 's' : ''}</span> from:
+              This will permanently delete <span className="font-bold text-red-300">{selectedImages.size} item{selectedImages.size > 1 ? 's' : ''}</span> from:
             </p>
             <ul className="list-disc list-inside text-slate-300 space-y-1 ml-2">
-              <li>All hosting providers (ImgBB, Pixvid)</li>
+              <li>All hosting providers (ImgBB, Pixvid, Filemoon, UDrop)</li>
               <li>Your trash bin</li>
             </ul>
           </div>
@@ -1571,10 +1576,10 @@ export default function TrashPage() {
           
           <div className="text-left bg-red-900/20 border border-red-500/30 rounded-xl p-4 space-y-2">
             <p className="text-slate-300 leading-relaxed">
-              This will permanently delete <span className="font-bold text-red-300">{trashedImages.length} image{trashedImages.length !== 1 ? 's' : ''}</span> from:
+              This will permanently delete <span className="font-bold text-red-300">{trashedImages.length} item{trashedImages.length !== 1 ? 's' : ''}</span> from:
             </p>
             <ul className="list-disc list-inside text-slate-300 space-y-1 ml-2">
-              <li>All hosting providers (ImgBB, Pixvid)</li>
+              <li>All hosting providers (ImgBB, Pixvid, Filemoon, UDrop)</li>
               <li>Your trash bin</li>
             </ul>
           </div>
