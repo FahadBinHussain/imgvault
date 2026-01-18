@@ -1,0 +1,9 @@
+{
+  "name": "com.imgvault.nativehost",
+  "description": "ImgVault Native Messaging Host",
+  "path": "C:\\Users\\Admin\\Downloads\\ImgVault\\nextgen-extension\\native-host\\ImgVault-Native-Host.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://johjkjkidbedgjmogpekmlpfakccnoan/"
+  ]
+}

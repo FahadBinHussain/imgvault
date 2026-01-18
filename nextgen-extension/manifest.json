@@ -9,7 +9,8 @@
     "contextMenus",
     "activeTab",
     "storage",
-    "scripting"
+    "scripting",
+    "nativeMessaging"
   ],
   
   "host_permissions": [

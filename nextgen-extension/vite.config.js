@@ -15,6 +15,7 @@ export default defineConfig({
         gallery: resolve(__dirname, 'gallery.html'),
         settings: resolve(__dirname, 'settings.html'),
         trash: resolve(__dirname, 'trash.html'),
+        extensionId: resolve(__dirname, 'extension-id.html'),
         background: resolve(__dirname, 'src/background/background.js'),
         content: resolve(__dirname, 'src/content/content.js'),
       },
