@@ -354,6 +354,12 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'nativeDownload':
+        this.handleNativeDownload(request.url)
+          .then(result => sendResponse({ success: true, filePath: result.filePath }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       default:
         console.warn('Unknown action:', action);
         return false;
@@ -734,6 +740,61 @@ class ImgVaultServiceWorker {
       return null;
     } catch (error) {
       console.error(`❌ [FILEMOON] Failed to get thumbnail:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Handle native host download via native messaging
+   * @param {string} url - URL to download
+   * @returns {Promise<Object>} Download result with file path
+   */
+  async handleNativeDownload(url) {
+    try {
+      console.log(`📥 [NATIVE] Sending download request for: ${url}`);
+      
+      // Generate output path (downloads folder with timestamp)
+      const timestamp = Date.now();
+      const outputPath = `C:\\Users\\Admin\\Downloads\\yt-dlp-${timestamp}.mp4`;
+      
+      // Connect to native messaging host
+      const port = chrome.runtime.connectNative('com.imgvault.nativehost');
+      
+      return new Promise((resolve, reject) => {
+        let responseReceived = false;
+        
+        port.onMessage.addListener((response) => {
+          console.log(`📨 [NATIVE] Response from host:`, response);
+          responseReceived = true;
+          
+          if (response.success) {
+            resolve(response);
+          } else {
+            reject(new Error(response.message || 'Native host download failed'));
+          }
+          
+          port.disconnect();
+        });
+        
+        port.onDisconnect.addListener(() => {
+          if (!responseReceived) {
+            console.error(`❌ [NATIVE] Port disconnected without response`);
+            const error = chrome.runtime.lastError;
+            reject(new Error(error ? error.message : 'Native host disconnected unexpectedly. Make sure the native host is registered.'));
+          }
+        });
+        
+        // Send download request
+        port.postMessage({
+          action: 'download',
+          url: url,
+          output_path: outputPath
+        });
+        
+        console.log(`✉️ [NATIVE] Message sent to native host`);
+      });
+    } catch (error) {
+      console.error(`❌ [NATIVE] Failed to communicate with native host:`, error);
       throw error;
     }
   }

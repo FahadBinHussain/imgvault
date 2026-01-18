@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Get Extension ID</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+      max-width: 600px;
+      width: 100%;
+    }
+    h1 {
+      color: #1f2937;
+      margin-bottom: 20px;
+    }
+    .extension-id {
+      background: #f3f4f6;
+      padding: 15px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 14px;
+      word-break: break-all;
+      margin: 20px 0;
+      border: 2px solid #667eea;
+    }
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    button:hover {
+      transform: translateY(-2px);
+    }
+    .success {
+      color: #10b981;
+      font-weight: 600;
+      margin-top: 10px;
+    }
+    .instructions {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 20px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .instructions ol {
+      margin: 10px 0;
+      padding-left: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📋 ImgVault Extension ID</h1>
+    <p>Your extension ID is:</p>
+    <div class="extension-id" id="extensionId">Loading...</div>
+    <button onclick="copyToClipboard()">📋 Copy to Clipboard</button>
+    <div id="success" class="success" style="display: none;">✓ Copied!</div>
+    
+    <div class="instructions">
+      <strong>Next Steps:</strong>
+      <ol>
+        <li>Copy this extension ID</li>
+        <li>Run <code>ImgVault-Native-Host.exe</code></li>
+        <li>Click "Register"</li>
+        <li>Open <code>manifest.json</code> in the same folder</li>
+        <li>Replace <code>YOUR_EXTENSION_ID_HERE</code> with this ID</li>
+        <li>Place <code>yt-dlp.exe</code> in the same folder</li>
+      </ol>
+    </div>
+  </div>
+
+  <script>
+    // Get the extension ID
+    const extensionId = chrome.runtime.id;
+    document.getElementById('extensionId').textContent = extensionId;
+
+    function copyToClipboard() {
+      navigator.clipboard.writeText(extensionId);
+      const successEl = document.getElementById('success');
+      successEl.style.display = 'block';
+      setTimeout(() => {
+        successEl.style.display = 'none';
+      }, 2000);
+    }
+  </script>
+</body>
+</html>

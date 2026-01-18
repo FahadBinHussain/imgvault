@@ -1,12 +1,15 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader, FolderOpen, File } from 'lucide-react';
+import { Loader, FolderOpen, File, Download } from 'lucide-react';
 
 export default function DebugPage() {
   const [filePath, setFilePath] = useState('jenna-ortega-nodding.mp4');
   const [directoryHandle, setDirectoryHandle] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [downloadUrl, setDownloadUrl] = useState('');
+  const [downloadLoading, setDownloadLoading] = useState(false);
+  const [downloadSuccess, setDownloadSuccess] = useState('');
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
 
@@ -87,6 +90,36 @@ export default function DebugPage() {
     } catch (err) {
       setError(err.message || 'Failed to process file');
       setLoading(false);
+    }
+  };
+
+  const handleNativeDownload = async () => {
+    if (!downloadUrl.trim()) {
+      setError('Please enter a URL to download');
+      return;
+    }
+
+    setDownloadLoading(true);
+    setError('');
+    setDownloadSuccess('');
+
+    try {
+      // Send message to native host via background script
+      const response = await chrome.runtime.sendMessage({
+        action: 'nativeDownload',
+        url: downloadUrl
+      });
+
+      if (response.success) {
+        setDownloadSuccess(`✓ Downloaded: ${response.filePath || 'Success!'}`);
+        setDownloadUrl('');
+      } else {
+        setError(response.error || 'Download failed');
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to communicate with native host. Make sure it\'s registered.');
+    } finally {
+      setDownloadLoading(false);
     }
   };
 
@@ -189,6 +222,54 @@ export default function DebugPage() {
               </>
             )}
           </button>
+        </div>
+
+        {/* Native Host Download */}
+        <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 backdrop-blur-sm border border-purple-500/30 rounded-xl p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+            <Download size={20} className="text-purple-400" />
+            {isSupported ? '4. Native Host Download (yt-dlp)' : 'Native Host Download (yt-dlp)'}
+          </h2>
+          <p className="text-sm text-slate-300">
+            Download videos using yt-dlp via the native messaging host
+          </p>
+          <div>
+            <label className="text-sm font-semibold text-slate-300 mb-2 block">
+              Video URL
+            </label>
+            <input
+              type="text"
+              value={downloadUrl}
+              onChange={(e) => setDownloadUrl(e.target.value)}
+              placeholder="https://www.youtube.com/watch?v=..."
+              className="w-full px-4 py-3 bg-slate-900/50 border border-purple-500/30 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              disabled={downloadLoading}
+            />
+          </div>
+
+          <button
+            onClick={handleNativeDownload}
+            disabled={downloadLoading || !downloadUrl.trim()}
+            className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-lg text-white font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {downloadLoading ? (
+              <>
+                <Loader className="animate-spin" size={20} />
+                Downloading...
+              </>
+            ) : (
+              <>
+                <Download size={20} />
+                Download with yt-dlp
+              </>
+            )}
+          </button>
+
+          {downloadSuccess && (
+            <div className="p-3 bg-green-900/30 border border-green-500/50 rounded-lg text-green-300 text-sm">
+              {downloadSuccess}
+            </div>
+          )}
         </div>
 
         {error && (
