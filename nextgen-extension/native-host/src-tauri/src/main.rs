@@ -24,6 +24,7 @@ struct NativeMessage {
 struct NativeResponse {
     success: bool,
     message: Option<String>,
+    #[serde(rename = "filePath")]
     file_path: Option<String>,
 }
 
@@ -139,7 +140,9 @@ fn download_video(url: &str, output_path: &str) -> Result<String, String> {
         .arg("-o")
         .arg(output_path)
         .arg("--no-playlist")
-        .arg("--quiet");
+        .arg("--quiet")
+        .arg("--print")
+        .arg("after_move:filepath");
     
     // Hide CMD window on Windows
     #[cfg(target_os = "windows")]
@@ -154,7 +157,16 @@ fn download_video(url: &str, output_path: &str) -> Result<String, String> {
         .map_err(|e| format!("Failed to execute yt-dlp: {}", e))?;
     
     if output.status.success() {
-        Ok(output_path.to_string())
+        // Get the actual file path from stdout
+        let file_path = String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .to_string();
+        
+        if file_path.is_empty() {
+            Err("yt-dlp did not return a file path".to_string())
+        } else {
+            Ok(file_path)
+        }
     } else {
         let error = String::from_utf8_lossy(&output.stderr);
         Err(format!("yt-dlp failed: {}", error))

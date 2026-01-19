@@ -753,10 +753,21 @@ class ImgVaultServiceWorker {
     try {
       console.log(`📥 [NATIVE] Sending download request for: ${url}`);
       
-      // Generate output path (downloads folder with timestamp)
-      const timestamp = Date.now();
-      const outputPath = `C:\\Users\\Admin\\Downloads\\yt-dlp-${timestamp}.%(ext)s`;
+      // Get download folder from settings
+      const settings = await new Promise((resolve) => {
+        chrome.storage.sync.get(['downloadFolder'], (result) => {
+          resolve(result);
+        });
+      });
       
+      const downloadFolder = settings.downloadFolder || 'C:\\Users\\Admin\\Videos';
+      
+      // Generate output path with timestamp
+      const timestamp = Date.now();
+      const outputPath = `${downloadFolder}\\yt-dlp-${timestamp}.%(ext)s`;
+      
+      console.log(`📁 [NATIVE] Download folder: ${downloadFolder}`);
+      console.log(`📝 [NATIVE] Output path template: ${outputPath}`);
       console.log(`🔌 [NATIVE] Attempting to connect to native host: com.imgvault.nativehost`);
       
       // Connect to native messaging host
