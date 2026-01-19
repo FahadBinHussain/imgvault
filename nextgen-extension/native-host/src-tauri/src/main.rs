@@ -3,9 +3,9 @@
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, BufReader, Write, Read};
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use tauri::Manager;
 
 #[cfg(target_os = "windows")]
@@ -133,12 +133,23 @@ fn unregister_host() -> Result<(), String> {
 
 // Download video using yt-dlp
 fn download_video(url: &str, output_path: &str) -> Result<String, String> {
-    let output = Command::new("yt-dlp")
+    let mut command = Command::new("yt-dlp");
+    command
         .arg(url)
         .arg("-o")
         .arg(output_path)
         .arg("--no-playlist")
-        .arg("--quiet")
+        .arg("--quiet");
+    
+    // Hide CMD window on Windows
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    
+    let output = command
         .output()
         .map_err(|e| format!("Failed to execute yt-dlp: {}", e))?;
     
@@ -150,79 +161,205 @@ fn download_video(url: &str, output_path: &str) -> Result<String, String> {
     }
 }
 
+// Test download with detailed output (for GUI)
+#[tauri::command]
+fn test_download(url: String, output_path: String, hide_window: bool) -> Result<serde_json::Value, String> {
+    eprintln!("[yt-dlp] Starting download: {}", url);
+    eprintln!("[yt-dlp] Output path: {}", output_path);
+    eprintln!("[yt-dlp] Hide window: {}", hide_window);
+    
+    let mut command = Command::new("yt-dlp");
+    command
+        .arg(&url)
+        .arg("-o")
+        .arg(&output_path)
+        .arg("--no-playlist")
+        .arg("--progress")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    
+    // Hide CMD window on Windows if requested
+    #[cfg(target_os = "windows")]
+    if hide_window {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    
+    let mut child = command
+        .spawn()
+        .map_err(|e| format!("Failed to execute yt-dlp: {}. Make sure yt-dlp is in the same folder or in PATH", e))?;
+    
+    // Read stdout and stderr
+    if let Some(stdout) = child.stdout.take() {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            if let Ok(line) = line {
+                eprintln!("[yt-dlp] {}", line);
+            }
+        }
+    }
+    
+    let status = child.wait()
+        .map_err(|e| format!("Failed to wait for yt-dlp: {}", e))?;
+    
+    if status.success() {
+        eprintln!("[yt-dlp] ✅ Download completed successfully");
+        Ok(serde_json::json!({
+            "success": true,
+            "filePath": output_path
+        }))
+    } else {
+        eprintln!("[yt-dlp] ❌ Download failed with exit code: {:?}", status.code());
+        Err(format!("yt-dlp failed with exit code: {:?}", status.code()))
+    }
+}
+
 // Handle native messaging (stdin/stdout communication)
 fn handle_native_messaging() {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     
-    for line in stdin.lock().lines() {
-        match line {
-            Ok(msg) => {
-                // Parse the message
-                match serde_json::from_str::<NativeMessage>(&msg) {
-                    Ok(native_msg) => {
-                        let response = match native_msg.action.as_str() {
-                            "download" => {
-                                if let (Some(url), Some(output_path)) = 
-                                    (native_msg.url, native_msg.output_path) 
-                                {
-                                    match download_video(&url, &output_path) {
-                                        Ok(file_path) => NativeResponse {
-                                            success: true,
-                                            message: Some("Download complete".to_string()),
-                                            file_path: Some(file_path),
-                                        },
-                                        Err(e) => NativeResponse {
-                                            success: false,
-                                            message: Some(e),
-                                            file_path: None,
-                                        },
+    loop {
+        // Read message length (4 bytes, little-endian)
+        let mut length_bytes = [0u8; 4];
+        if stdin.lock().read_exact(&mut length_bytes).is_err() {
+            break;
+        }
+        let message_length = u32::from_ne_bytes(length_bytes) as usize;
+        
+        // Read message content
+        let mut message_buffer = vec![0u8; message_length];
+        if stdin.lock().read_exact(&mut message_buffer).is_err() {
+            break;
+        }
+        
+        // Parse JSON message
+        let msg = match String::from_utf8(message_buffer) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        
+        eprintln!("[NATIVE] Received message: {}", msg);
+        
+        // Parse the message
+        let response = match serde_json::from_str::<NativeMessage>(&msg) {
+            Ok(native_msg) => {
+                match native_msg.action.as_str() {
+                    "download" => {
+                        if let (Some(url), Some(output_path)) = 
+                            (native_msg.url, native_msg.output_path) 
+                        {
+                            eprintln!("[NATIVE] Processing download: {} -> {}", url, output_path);
+                            match download_video(&url, &output_path) {
+                                Ok(file_path) => {
+                                    eprintln!("[NATIVE] Download successful: {}", file_path);
+                                    NativeResponse {
+                                        success: true,
+                                        message: Some("Download complete".to_string()),
+                                        file_path: Some(file_path),
                                     }
-                                } else {
+                                },
+                                Err(e) => {
+                                    eprintln!("[NATIVE] Download failed: {}", e);
                                     NativeResponse {
                                         success: false,
-                                        message: Some("Missing url or output_path".to_string()),
+                                        message: Some(e),
                                         file_path: None,
                                     }
-                                }
+                                },
                             }
-                            _ => NativeResponse {
+                        } else {
+                            eprintln!("[NATIVE] Missing url or output_path");
+                            NativeResponse {
                                 success: false,
-                                message: Some("Unknown action".to_string()),
+                                message: Some("Missing url or output_path".to_string()),
                                 file_path: None,
-                            },
-                        };
-                        
-                        // Send response
-                        let response_json = serde_json::to_string(&response).unwrap();
-                        writeln!(stdout, "{}", response_json).ok();
-                        stdout.flush().ok();
+                            }
+                        }
                     }
-                    Err(e) => {
-                        eprintln!("Failed to parse message: {}", e);
-                    }
+                    _ => {
+                        eprintln!("[NATIVE] Unknown action: {}", native_msg.action);
+                        NativeResponse {
+                            success: false,
+                            message: Some("Unknown action".to_string()),
+                            file_path: None,
+                        }
+                    },
                 }
             }
             Err(e) => {
-                eprintln!("Error reading stdin: {}", e);
-                break;
+                eprintln!("[NATIVE] Failed to parse message: {}", e);
+                NativeResponse {
+                    success: false,
+                    message: Some(format!("Failed to parse message: {}", e)),
+                    file_path: None,
+                }
             }
+        };
+        
+        // Send response with length header
+        let response_json = serde_json::to_string(&response).unwrap();
+        let response_length = response_json.len() as u32;
+        
+        eprintln!("[NATIVE] Sending response: {}", response_json);
+        
+        // Write length header (4 bytes, little-endian)
+        if stdout.write_all(&response_length.to_ne_bytes()).is_err() {
+            eprintln!("[NATIVE] Failed to write response length");
+            break;
         }
+        
+        // Write response content
+        if stdout.write_all(response_json.as_bytes()).is_err() {
+            eprintln!("[NATIVE] Failed to write response content");
+            break;
+        }
+        
+        if stdout.flush().is_err() {
+            eprintln!("[NATIVE] Failed to flush stdout");
+            break;
+        }
+        
+        eprintln!("[NATIVE] Response sent successfully");
     }
+    
+    eprintln!("[NATIVE] Native messaging loop ended");
 }
 
 fn main() {
     // Check if running in native mode (headless)
     let args: Vec<String> = env::args().collect();
     
+    // If --native flag is passed, run in headless mode
     if args.contains(&"--native".to_string()) {
-        // Run in headless mode for native messaging
         handle_native_messaging();
-    } else {
-        // Run GUI mode
-        tauri::Builder::default()
-            .invoke_handler(tauri::generate_handler![check_registration, register_host, unregister_host])
-            .run(tauri::generate_context!())
-            .expect("error while running tauri application");
+        return;
     }
+    
+    // Try to detect if launched by Chrome
+    // Chrome launches with stdin as a pipe for native messaging
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::io::AsRawHandle;
+        use std::io::stdin;
+        
+        let handle = stdin().as_raw_handle();
+        unsafe {
+            use winapi::um::fileapi::GetFileType;
+            use winapi::um::winbase::FILE_TYPE_PIPE;
+            
+            // If stdin is a pipe, we're in native messaging mode
+            if GetFileType(handle as _) == FILE_TYPE_PIPE {
+                handle_native_messaging();
+                return;
+            }
+        }
+    }
+    
+    // Otherwise, run GUI mode
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![check_registration, register_host, unregister_host, test_download])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
