@@ -31,8 +31,7 @@ pnpm tauri dev
 ### Build for Production
 
 ```bash
-cd nextgen-extension/native-host
-pnpm tauri:build
+cd nextgen-extension/native-host;pnpm tauri:build
 ```
 
 ## Usage

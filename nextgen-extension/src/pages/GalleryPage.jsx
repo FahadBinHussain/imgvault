@@ -66,6 +66,98 @@ export default function GalleryPage() {
   // Drag & drop state
   const [isDragging, setIsDragging] = useState(false);
   const dragCounter = useRef(0);
+  
+  // Auto-upload state
+  const [showFolderPrompt, setShowFolderPrompt] = useState(false);
+  const [pendingDownloadFile, setPendingDownloadFile] = useState(null);
+  
+  // IndexedDB helpers for storing directory handle
+  const saveDirectoryHandle = async (handle) => {
+    try {
+      const db = await openDB();
+      const tx = db.transaction('handles', 'readwrite');
+      await tx.objectStore('handles').put(handle, 'downloadFolder');
+      await tx.done;
+      console.log('✅ [IDB] Directory handle saved');
+    } catch (err) {
+      console.error('❌ [IDB] Failed to save directory handle:', err);
+    }
+  };
+  
+  const getDirectoryHandle = async () => {
+    try {
+      const db = await openDB();
+      const tx = db.transaction('handles', 'readonly');
+      const handle = await tx.objectStore('handles').get('downloadFolder');
+      await tx.done;
+      
+      if (handle) {
+        console.log('✅ [IDB] Directory handle retrieved from storage');
+        
+        // Try to verify/request permission
+        try {
+          if (typeof handle.queryPermission === 'function') {
+            const permission = await handle.queryPermission({ mode: 'read' });
+            console.log('🔐 [IDB] Current permission:', permission);
+            
+            if (permission === 'granted') {
+              console.log('✅ [IDB] Permission already granted');
+              return handle;
+            } else if (permission === 'prompt') {
+              console.log('🔔 [IDB] Requesting permission...');
+              const newPermission = await handle.requestPermission({ mode: 'read' });
+              if (newPermission === 'granted') {
+                console.log('✅ [IDB] Permission granted after request');
+                return handle;
+              } else {
+                console.log('❌ [IDB] Permission denied');
+                await clearDirectoryHandle();
+              }
+            }
+          } else {
+            console.log('⚠️ [IDB] queryPermission not supported, trying direct access');
+            // Browser doesn't support queryPermission, just return the handle and let file access fail if no permission
+            return handle;
+          }
+        } catch (permErr) {
+          console.log('⚠️ [IDB] Permission check failed:', permErr.message);
+        }
+      }
+      return null;
+    } catch (err) {
+      console.error('❌ [IDB] Failed to get directory handle:', err);
+      return null;
+    }
+  };
+  
+  const clearDirectoryHandle = async () => {
+    try {
+      const db = await openDB();
+      const tx = db.transaction('handles', 'readwrite');
+      await tx.objectStore('handles').delete('downloadFolder');
+      await tx.done;
+      console.log('🗑️ [IDB] Directory handle cleared');
+    } catch (err) {
+      console.error('❌ [IDB] Failed to clear directory handle:', err);
+    }
+  };
+  
+  const openDB = () => {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('ImgVaultDB', 1);
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+      
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains('handles')) {
+          db.createObjectStore('handles');
+        }
+      };
+    });
+  };
+  
   // Handle image load for fade-in effect
   const handleImageLoad = (imageId) => {
     setLoadedImages(prev => new Set(prev).add(imageId));
@@ -323,8 +415,88 @@ export default function GalleryPage() {
     e.preventDefault();
     e.stopPropagation();
     dragCounter.current++;
-    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+    
+    if (dragCounter.current === 1) {
       setIsDragging(true);
+    }
+  };
+  
+  // Handle folder selection for auto-upload
+  const handleSelectDownloadFolder = async () => {
+    if (!pendingDownloadFile) return;
+    
+    try {
+      // Check if File System Access API is supported
+      if (!('showDirectoryPicker' in window)) {
+        console.log('⚠️ [AUTO-LOAD] File System Access API not supported');
+        setShowFolderPrompt(false);
+        setShowUploadModal(true);
+        showToast('⚠️ Please manually select the file to upload.', 'warning', 4000);
+        return;
+      }
+      
+      // Extract filename from path
+      const fileName = pendingDownloadFile.split('\\').pop();
+      console.log('📁 [AUTO-LOAD] Extracted filename:', fileName);
+      
+      console.log('📂 [AUTO-LOAD] Showing directory picker...');
+      // Request permission to read the directory
+      const dirHandle = await window.showDirectoryPicker({ 
+        id: 'video-downloads',
+        startIn: 'videos',
+        mode: 'read'
+      });
+      
+      console.log('✅ [AUTO-LOAD] Directory permission granted:', dirHandle.name);
+      
+      // Request persistent permission if supported
+      if (typeof dirHandle.requestPermission === 'function') {
+        try {
+          const permission = await dirHandle.requestPermission({ mode: 'read' });
+          console.log('🔐 [AUTO-LOAD] Requested persistent permission:', permission);
+        } catch (permErr) {
+          console.log('⚠️ [AUTO-LOAD] Permission request failed:', permErr.message);
+        }
+      }
+      
+      // Save to IndexedDB for future use
+      await saveDirectoryHandle(dirHandle);
+      
+      // Get the file
+      console.log('📄 [AUTO-LOAD] Getting file handle for:', fileName);
+      const fileHandle = await dirHandle.getFileHandle(fileName);
+      const file = await fileHandle.getFile();
+      
+      console.log('✅ [AUTO-LOAD] File loaded successfully:', file.name, file.size, 'bytes');
+      
+      // Hide the prompt
+      setShowFolderPrompt(false);
+      setPendingDownloadFile(null);
+      
+      // Process and show modal
+      await processMediaFile(file, 'native-download://upload', 'Downloaded Video');
+      setIsLocalUpload(true);
+      setShowUploadModal(true);
+      showToast(`✅ Video "${fileName}" loaded successfully!`, 'success', 3000);
+      
+    } catch (err) {
+      console.error('❌ [AUTO-LOAD] Error:', err.name, err.message);
+      if (err.name === 'AbortError') {
+        console.log('⚠️ [AUTO-LOAD] User cancelled folder selection');
+        setShowFolderPrompt(false);
+        showToast('❌ Folder selection cancelled.', 'error', 3000);
+      } else if (err.name === 'NotFoundError') {
+        console.log('⚠️ [AUTO-LOAD] File not found in selected folder');
+        const fileName = pendingDownloadFile.split('\\').pop();
+        setShowFolderPrompt(false);
+        setShowUploadModal(true);
+        showToast(`⚠️ File "${fileName}" not found in selected folder. Please select it manually.`, 'warning', 5000);
+      } else {
+        console.error('❌ [AUTO-LOAD] Unexpected error:', err);
+        setShowFolderPrompt(false);
+        setShowUploadModal(true);
+        showToast('⚠️ Failed to load file. Please select it manually.', 'warning', 4000);
+      }
     }
   };
 
@@ -794,21 +966,109 @@ export default function GalleryPage() {
 
   // Handle auto-open upload from debug page
   useEffect(() => {
-    if (location.state?.autoOpenUpload && location.state?.uploadFile) {
-      const file = location.state.uploadFile;
-      console.log('🐛 Debug page upload file received:', file.name);
-      
-      // Process the file and open modal
-      const processFile = async () => {
-        await processMediaFile(file, 'debug://upload', 'Debug Upload');
-        setIsLocalUpload(true);
-        setShowUploadModal(true);
+    if (location.state?.autoOpenUpload) {
+      // If a file was provided (from debug page with File System API)
+      if (location.state?.uploadFile) {
+        const file = location.state.uploadFile;
+        console.log('🐛 Debug page upload file received:', file.name);
         
-        const fileType = file.type.startsWith('video/') ? 'Video' : 'Image';
-        showToast(`✅ ${fileType} loaded successfully!`, 'success', 3000);
-      };
-      
-      processFile();
+        // Process the file and open modal
+        const processFile = async () => {
+          await processMediaFile(file, 'debug://upload', 'Debug Upload');
+          setIsLocalUpload(true);
+          setShowUploadModal(true);
+          
+          const fileType = file.type.startsWith('video/') ? 'Video' : 'Image';
+          showToast(`✅ ${fileType} loaded successfully!`, 'success', 3000);
+        };
+        
+        processFile();
+      } else if (location.state?.downloadFilePath) {
+        // Auto-load file using saved directory handle
+        console.log('🐛 [AUTO-LOAD] Starting auto-load for:', location.state.downloadFilePath);
+        
+        const loadDownloadedFile = async () => {
+          try {
+            const fileName = location.state.downloadFilePath.split('\\').pop();
+            console.log('� [AUTO-LOAD] Extracted filename:', fileName);
+            
+            // Try to get saved directory handle
+            let dirHandle = await getDirectoryHandle();
+            
+            if (dirHandle) {
+              try {
+                console.log('✅ [AUTO-LOAD] Using saved directory handle');
+                // Try to access the file
+                const fileHandle = await dirHandle.getFileHandle(fileName);
+                const file = await fileHandle.getFile();
+                
+                console.log('✅ [AUTO-LOAD] File loaded successfully:', file.name, file.size, 'bytes');
+                
+                // Process and show modal
+                await processMediaFile(file, 'native-download://upload', 'Downloaded Video');
+                setIsLocalUpload(true);
+                setShowUploadModal(true);
+                showToast(`✅ Video "${fileName}" loaded successfully!`, 'success', 3000);
+                return;
+              } catch (fileErr) {
+                console.log('⚠️ [AUTO-LOAD] Failed to access file with saved handle:', fileErr.message);
+                // Clear the invalid handle
+                await clearDirectoryHandle();
+              }
+            }
+            
+            // No saved handle or it failed - directly open folder picker
+            console.log('📂 [AUTO-LOAD] Opening folder picker directly...');
+            
+            try {
+              const newDirHandle = await window.showDirectoryPicker({ 
+                id: 'video-downloads',
+                startIn: 'videos',
+                mode: 'read'
+              });
+              
+              console.log('✅ [AUTO-LOAD] Folder selected:', newDirHandle.name);
+              
+              // Save for next time
+              await saveDirectoryHandle(newDirHandle);
+              
+              // Load the file
+              const fileHandle = await newDirHandle.getFileHandle(fileName);
+              const file = await fileHandle.getFile();
+              
+              console.log('✅ [AUTO-LOAD] File loaded successfully:', file.name, file.size, 'bytes');
+              
+              await processMediaFile(file, 'native-download://upload', 'Downloaded Video');
+              setIsLocalUpload(true);
+              setShowUploadModal(true);
+              showToast(`✅ Video "${fileName}" loaded successfully!`, 'success', 3000);
+              
+            } catch (pickerErr) {
+              console.error('❌ [AUTO-LOAD] Folder picker error:', pickerErr);
+              if (pickerErr.name === 'AbortError') {
+                showToast('❌ Folder selection cancelled', 'error', 2000);
+              } else if (pickerErr.name === 'NotFoundError') {
+                setShowUploadModal(true);
+                showToast(`⚠️ File "${fileName}" not found in selected folder`, 'warning', 4000);
+              } else {
+                setShowUploadModal(true);
+                showToast('⚠️ Failed to load file. Please select manually.', 'warning', 3000);
+              }
+            }
+            
+          } catch (err) {
+            console.error('❌ [AUTO-LOAD] Unexpected error:', err);
+            showToast('⚠️ Failed to auto-load file. Please use manual upload.', 'error', 4000);
+          }
+        };
+        
+        loadDownloadedFile();
+      } else {
+        // Just open the upload modal (for native download without file path)
+        console.log('🐛 Auto-opening upload modal after download');
+        setShowUploadModal(true);
+        showToast('✅ Download complete! Please select the downloaded file to upload.', 'info', 4000);
+      }
       
       // Clear the navigation state
       navigate(location.pathname, { replace: true, state: {} });
@@ -3257,6 +3517,53 @@ export default function GalleryPage() {
             type={toast.type}
             onClose={() => setToast(null)}
           />
+        )}
+        
+        {/* Folder Selection Prompt for Auto-Upload */}
+        {showFolderPrompt && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-purple-500/50 rounded-2xl p-8 max-w-md w-full shadow-2xl">
+              <div className="text-center space-y-6">
+                <div className="w-16 h-16 mx-auto bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                  <FolderOpen className="w-8 h-8 text-white" />
+                </div>
+                
+                <div>
+                  <h2 className="text-2xl font-bold text-white mb-2">
+                    📂 Select Download Folder
+                  </h2>
+                  <p className="text-slate-300">
+                    Your video has been downloaded! Please select the folder where it was saved to automatically load it.
+                  </p>
+                  {pendingDownloadFile && (
+                    <p className="mt-3 text-sm text-purple-300 font-mono bg-slate-900/50 p-2 rounded">
+                      {pendingDownloadFile.split('\\').pop()}
+                    </p>
+                  )}
+                </div>
+                
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowFolderPrompt(false);
+                      setPendingDownloadFile(null);
+                      showToast('❌ Auto-upload cancelled', 'error', 2000);
+                    }}
+                    className="flex-1 px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-medium transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSelectDownloadFolder}
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-lg text-white font-medium transition-all flex items-center justify-center gap-2"
+                  >
+                    <FolderOpen size={20} />
+                    Select Folder
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
         </div>
       </div>

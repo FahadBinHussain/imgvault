@@ -10,6 +10,7 @@ export default function DebugPage() {
   const [downloadUrl, setDownloadUrl] = useState('');
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState('');
+  const [autoUpload, setAutoUpload] = useState(false);
   const [logs, setLogs] = useState([]);
   const fileInputRef = useRef(null);
   const logsEndRef = useRef(null);
@@ -133,6 +134,24 @@ export default function DebugPage() {
         const successMsg = `✅ Downloaded: ${response.filePath || 'Success!'}`;
         setDownloadSuccess(successMsg);
         addLog(successMsg, 'success');
+        
+        // Auto-upload if checkbox is checked
+        if (autoUpload && response.filePath) {
+          addLog('🚀 Auto-open modal enabled, navigating to gallery...', 'info');
+          addLog(`📂 Downloaded file: ${response.filePath}`, 'info');
+          
+          // Small delay to let user see the success message
+          setTimeout(() => {
+            // Navigate to gallery with auto-open upload modal and file path
+            navigate('/gallery', {
+              state: {
+                autoOpenUpload: true,
+                downloadFilePath: response.filePath
+              }
+            });
+          }, 1000);
+        }
+        
         setDownloadUrl('');
       } else {
         const errorMsg = response.error || 'Download failed';
@@ -259,6 +278,21 @@ export default function DebugPage() {
           <p className="text-sm text-slate-300">
             Download videos using yt-dlp via the native messaging host
           </p>
+          
+          {/* Auto Upload Checkbox */}
+          <div className="flex items-center gap-3 p-3 bg-slate-900/30 rounded-lg border border-purple-500/20">
+            <input
+              type="checkbox"
+              id="autoUpload"
+              checked={autoUpload}
+              onChange={(e) => setAutoUpload(e.target.checked)}
+              className="w-4 h-4 rounded border-purple-500 text-purple-600 focus:ring-purple-500 cursor-pointer"
+            />
+            <label htmlFor="autoUpload" className="text-sm text-slate-200 cursor-pointer flex-1">
+              🚀 Auto-open upload modal after download
+            </label>
+          </div>
+          
           <div>
             <label className="text-sm font-semibold text-slate-300 mb-2 block">
               Video URL

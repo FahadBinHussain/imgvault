@@ -18,6 +18,7 @@ export default function SettingsPage() {
   const [udropKey2, setUdropKey2] = useChromeStorage('udropKey2', '', 'sync');
   const [firebaseConfigRaw, setFirebaseConfigRaw] = useChromeStorage('firebaseConfigRaw', '', 'sync');
   const [defaultGallerySource, setDefaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
+  const [downloadFolder, setDownloadFolder] = useChromeStorage('downloadFolder', 'C:\\Users\\Admin\\Videos', 'sync');
   
   const [localPixvid, setLocalPixvid] = useState('');
   const [localImgbb, setLocalImgbb] = useState('');
@@ -26,6 +27,7 @@ export default function SettingsPage() {
   const [localUdropKey2, setLocalUdropKey2] = useState('');
   const [localFirebase, setLocalFirebase] = useState('');
   const [localGallerySource, setLocalGallerySource] = useState('imgbb');
+  const [localDownloadFolder, setLocalDownloadFolder] = useState('C:\\Users\\Admin\\Videos');
   const [saved, setSaved] = useState(false);
   const [firebaseStatus, setFirebaseStatus] = useState('');
 
@@ -41,7 +43,8 @@ export default function SettingsPage() {
     setLocalUdropKey2(udropKey2 || '');
     setLocalFirebase(firebaseConfigRaw || '');
     setLocalGallerySource(defaultGallerySource || 'imgbb');
-  }, [pixvidApiKey, imgbbApiKey, filemoonApiKey, udropKey1, udropKey2, firebaseConfigRaw, defaultGallerySource]);
+    setLocalDownloadFolder(downloadFolder || 'C:\\Users\\Admin\\Videos');
+  }, [pixvidApiKey, imgbbApiKey, filemoonApiKey, udropKey1, udropKey2, firebaseConfigRaw, defaultGallerySource, downloadFolder]);
 
   // Auto-load settings from Firebase
   useEffect(() => {
@@ -173,6 +176,7 @@ export default function SettingsPage() {
     setUdropKey1(localUdropKey1);
     setUdropKey2(localUdropKey2);
     setDefaultGallerySource(localGallerySource);
+    setDownloadFolder(localDownloadFolder);
 
     // Also save to Firebase if configured
     try {
@@ -333,6 +337,26 @@ export default function SettingsPage() {
                            focus:outline-none focus:border-primary-500 focus:ring-2 
                            focus:ring-primary-500/20 transition-all shadow-lg"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-200 mb-2 flex items-center gap-2">
+                  <span className="text-lg">📂</span>
+                  Video Download Folder (yt-dlp)
+                </label>
+                <input
+                  type="text"
+                  value={localDownloadFolder}
+                  onChange={(e) => setLocalDownloadFolder(e.target.value)}
+                  placeholder="C:\Users\YourName\Videos"
+                  className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
+                           text-white placeholder-slate-400 font-mono text-sm
+                           focus:outline-none focus:border-primary-500 focus:ring-2 
+                           focus:ring-primary-500/20 transition-all shadow-lg"
+                />
+                <p className="mt-2 text-xs text-slate-400 flex items-start gap-2">
+                  <span className="text-base">💡</span>
+                  <span>Folder where videos will be downloaded using the native host. Use double backslashes on Windows (e.g., C:\\Users\\Admin\\Videos). Avoid system folders like Downloads.</span>
+                </p>
               </div>
             </div>
           </div>
