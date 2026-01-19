@@ -755,17 +755,36 @@ class ImgVaultServiceWorker {
       
       // Generate output path (downloads folder with timestamp)
       const timestamp = Date.now();
-      const outputPath = `C:\\Users\\Admin\\Downloads\\yt-dlp-${timestamp}.mp4`;
+      const outputPath = `C:\\Users\\Admin\\Downloads\\yt-dlp-${timestamp}.%(ext)s`;
+      
+      console.log(`🔌 [NATIVE] Attempting to connect to native host: com.imgvault.nativehost`);
       
       // Connect to native messaging host
-      const port = chrome.runtime.connectNative('com.imgvault.nativehost');
+      let port;
+      try {
+        port = chrome.runtime.connectNative('com.imgvault.nativehost');
+        console.log(`✅ [NATIVE] Port connected successfully`);
+      } catch (connectError) {
+        console.error(`❌ [NATIVE] Failed to connect:`, connectError);
+        throw new Error('Failed to connect to native host: ' + connectError.message);
+      }
       
       return new Promise((resolve, reject) => {
         let responseReceived = false;
         
+        // Set a timeout
+        const timeout = setTimeout(() => {
+          if (!responseReceived) {
+            console.error(`⏱️ [NATIVE] Timeout waiting for response`);
+            port.disconnect();
+            reject(new Error('Timeout waiting for native host response'));
+          }
+        }, 30000); // 30 second timeout
+        
         port.onMessage.addListener((response) => {
           console.log(`📨 [NATIVE] Response from host:`, response);
           responseReceived = true;
+          clearTimeout(timeout);
           
           if (response.success) {
             resolve(response);
@@ -777,21 +796,29 @@ class ImgVaultServiceWorker {
         });
         
         port.onDisconnect.addListener(() => {
+          clearTimeout(timeout);
           if (!responseReceived) {
             console.error(`❌ [NATIVE] Port disconnected without response`);
             const error = chrome.runtime.lastError;
-            reject(new Error(error ? error.message : 'Native host disconnected unexpectedly. Make sure the native host is registered.'));
+            const errorMsg = error ? error.message : 'Native host disconnected unexpectedly. Make sure the native host is registered.';
+            console.error(`❌ [NATIVE] Error details:`, errorMsg);
+            reject(new Error(errorMsg));
           }
         });
         
         // Send download request
-        port.postMessage({
-          action: 'download',
-          url: url,
-          output_path: outputPath
-        });
-        
-        console.log(`✉️ [NATIVE] Message sent to native host`);
+        try {
+          port.postMessage({
+            action: 'download',
+            url: url,
+            output_path: outputPath
+          });
+          console.log(`✉️ [NATIVE] Message sent to native host:`, { action: 'download', url, output_path: outputPath });
+        } catch (sendError) {
+          console.error(`❌ [NATIVE] Failed to send message:`, sendError);
+          clearTimeout(timeout);
+          reject(new Error('Failed to send message to native host: ' + sendError.message));
+        }
       });
     } catch (error) {
       console.error(`❌ [NATIVE] Failed to communicate with native host:`, error);

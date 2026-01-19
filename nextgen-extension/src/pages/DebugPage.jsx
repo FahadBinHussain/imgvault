@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader, FolderOpen, File, Download } from 'lucide-react';
 
@@ -10,8 +10,20 @@ export default function DebugPage() {
   const [downloadUrl, setDownloadUrl] = useState('');
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState('');
+  const [logs, setLogs] = useState([]);
   const fileInputRef = useRef(null);
+  const logsEndRef = useRef(null);
   const navigate = useNavigate();
+
+  // Auto-scroll logs
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
+
+  const addLog = (message, type = 'info') => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs(prev => [...prev, { timestamp, message, type }]);
+  };
 
   // Check if File System Access API is supported
   const isSupported = 'showDirectoryPicker' in window;
@@ -96,30 +108,44 @@ export default function DebugPage() {
   const handleNativeDownload = async () => {
     if (!downloadUrl.trim()) {
       setError('Please enter a URL to download');
+      addLog('❌ Error: Please enter a URL to download', 'error');
       return;
     }
 
     setDownloadLoading(true);
     setError('');
     setDownloadSuccess('');
+    addLog(`🔄 Starting download: ${downloadUrl}`, 'info');
 
     try {
+      addLog('📤 Sending message to background script...', 'info');
+      
       // Send message to native host via background script
       const response = await chrome.runtime.sendMessage({
         action: 'nativeDownload',
         url: downloadUrl
       });
 
+      addLog('📨 Received response from background script', 'info');
+      addLog(`Response: ${JSON.stringify(response)}`, 'debug');
+
       if (response.success) {
-        setDownloadSuccess(`✓ Downloaded: ${response.filePath || 'Success!'}`);
+        const successMsg = `✅ Downloaded: ${response.filePath || 'Success!'}`;
+        setDownloadSuccess(successMsg);
+        addLog(successMsg, 'success');
         setDownloadUrl('');
       } else {
-        setError(response.error || 'Download failed');
+        const errorMsg = response.error || 'Download failed';
+        setError(errorMsg);
+        addLog(`❌ Download failed: ${errorMsg}`, 'error');
       }
     } catch (err) {
-      setError(err.message || 'Failed to communicate with native host. Make sure it\'s registered.');
+      const errorMsg = err.message || 'Failed to communicate with native host. Make sure it\'s registered.';
+      setError(errorMsg);
+      addLog(`❌ Exception: ${errorMsg}`, 'error');
     } finally {
       setDownloadLoading(false);
+      addLog('🏁 Download request completed', 'info');
     }
   };
 
@@ -271,6 +297,37 @@ export default function DebugPage() {
             </div>
           )}
         </div>
+
+        {/* Logs Section */}
+        {logs.length > 0 && (
+          <div className="bg-slate-900/70 backdrop-blur-sm border border-white/10 rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">📋 Debug Logs</h2>
+              <button
+                onClick={() => setLogs([])}
+                className="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded text-slate-300 transition-all"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="max-h-96 overflow-y-auto space-y-1 font-mono text-xs">
+              {logs.map((log, index) => (
+                <div 
+                  key={index} 
+                  className={`p-2 rounded ${
+                    log.type === 'error' ? 'bg-red-900/20 text-red-300' :
+                    log.type === 'success' ? 'bg-green-900/20 text-green-300' :
+                    log.type === 'debug' ? 'bg-blue-900/20 text-blue-300' :
+                    'bg-slate-800/50 text-slate-300'
+                  }`}
+                >
+                  <span className="text-slate-500">[{log.timestamp}]</span> {log.message}
+                </div>
+              ))}
+              <div ref={logsEndRef} />
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="p-4 bg-red-900/30 border border-red-500/50 rounded-lg text-red-300">

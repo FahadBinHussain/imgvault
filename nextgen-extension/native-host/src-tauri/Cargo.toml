@@ -15,6 +15,9 @@ serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
 winreg = "0.52"
 
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["fileapi", "winbase", "minwindef"] }
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
