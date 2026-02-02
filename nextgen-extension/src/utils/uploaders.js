@@ -346,15 +346,41 @@ export class UDropUploader extends BaseUploader {
 
       const fileData = result.data[0];
       
+      // Step 3: Generate download URL
+      let downloadUrl = fileData.url; // Fallback to regular URL
+      
+      try {
+        const downloadFormData = new FormData();
+        downloadFormData.append('access_token', auth.access_token);
+        downloadFormData.append('account_id', auth.account_id);
+        downloadFormData.append('file_id', fileData.file_id);
+        
+        const downloadResponse = await fetch(`${this.apiUrl}/file/download`, {
+          method: 'POST',
+          body: downloadFormData
+        });
+        
+        if (downloadResponse.ok) {
+          const downloadResult = await downloadResponse.json();
+          if (downloadResult._status === 'success' && downloadResult.data && downloadResult.data.download_url) {
+            downloadUrl = downloadResult.data.download_url;
+            console.log('📦 [UDROP] Download URL generated:', downloadUrl);
+          }
+        }
+      } catch (err) {
+        console.warn('⚠️ [UDROP] Failed to generate download URL, using regular URL:', err.message);
+      }
+      
       console.log('📦 [UDROP] File uploaded successfully');
       console.log('📦 [UDROP] URL:', fileData.url);
       console.log('📦 [UDROP] Short URL:', fileData.short_url);
       console.log('📦 [UDROP] File ID:', fileData.file_id);
+      console.log('📦 [UDROP] Download URL:', downloadUrl);
       
       return {
-        url: fileData.url,
+        url: downloadUrl, // Use download URL as primary URL
         deleteUrl: fileData.delete_url,
-        displayUrl: fileData.url,
+        displayUrl: fileData.url, // Keep original URL for display
         thumbUrl: null, // UDrop doesn't provide thumbnail URLs for videos
         fileId: fileData.file_id,
         shortUrl: fileData.short_url,

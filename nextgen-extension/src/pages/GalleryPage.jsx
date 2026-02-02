@@ -808,6 +808,31 @@ export default function GalleryPage() {
 
   const downloadImage = async (url, source) => {
     try {
+      // For Filemoon, convert embed URL to download URL
+      if (source === 'filemoon') {
+        // Extract filecode from URL (format: https://filemoon.sx/e/FILECODE)
+        const match = url.match(/\/e\/([^\/\?]+)/);
+        if (match && match[1]) {
+          const filecode = match[1];
+          const downloadUrl = `https://bysesayeveum.com/download/${filecode}`;
+          window.open(downloadUrl, '_blank');
+          showToast('✅ Opening Filemoon download page...', 'success', 3000);
+        } else {
+          // Fallback to opening the embed URL
+          window.open(url, '_blank');
+          showToast('✅ Opening Filemoon page...', 'success', 3000);
+        }
+        return;
+      }
+      
+      // For UDrop, open in new tab
+      if (source === 'udrop') {
+        window.open(url, '_blank');
+        showToast('✅ Opening UDrop download page...', 'success', 3000);
+        return;
+      }
+      
+      // For direct image URLs (Pixvid, ImgBB), download directly
       const response = await fetch(url);
       const blob = await response.blob();
       
@@ -2305,23 +2330,52 @@ export default function GalleryPage() {
 
                   {/* Download Buttons */}
                   <div className="flex gap-2 pt-4 border-t border-white/10">
-                    <Button
-                      variant="glass"
-                      size="sm"
-                      onClick={() => downloadImage(selectedImage.pixvidUrl, 'pixvid')}
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Download from Pixvid
-                    </Button>
-                    {selectedImage.imgbbUrl && (
-                      <Button
-                        variant="glass"
-                        size="sm"
-                        onClick={() => downloadImage(selectedImage.imgbbUrl, 'imgbb')}
-                      >
-                        <Download className="w-4 h-4 mr-2" />
-                        Download from ImgBB
-                      </Button>
+                    {/* Show video sources if it's a video */}
+                    {(selectedImage.filemoonUrl || selectedImage.udropUrl) ? (
+                      <>
+                        {selectedImage.filemoonUrl && (
+                          <Button
+                            variant="glass"
+                            size="sm"
+                            onClick={() => downloadImage(selectedImage.filemoonUrl, 'filemoon')}
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Download from Filemoon
+                          </Button>
+                        )}
+                        {selectedImage.udropUrl && (
+                          <Button
+                            variant="glass"
+                            size="sm"
+                            onClick={() => downloadImage(selectedImage.udropUrl, 'udrop')}
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Download from UDrop
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {/* Show image sources if it's an image */}
+                        <Button
+                          variant="glass"
+                          size="sm"
+                          onClick={() => downloadImage(selectedImage.pixvidUrl, 'pixvid')}
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          Download from Pixvid
+                        </Button>
+                        {selectedImage.imgbbUrl && (
+                          <Button
+                            variant="glass"
+                            size="sm"
+                            onClick={() => downloadImage(selectedImage.imgbbUrl, 'imgbb')}
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Download from ImgBB
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -3087,17 +3141,19 @@ export default function GalleryPage() {
                     {uploading && (
                       <div className="p-4 rounded-xl bg-primary-500/10 border border-primary-500/30 space-y-3">
                         <div className="flex items-center gap-3">
-                          <span className="text-2xl animate-pulse">☁️</span>
+                          <span className="text-2xl animate-pulse">{uploadImageData?.isVideo ? '🎬' : '🖼️'}</span>
                           <div className="flex-1">
-                            <div className="flex items-center justify-between text-sm text-primary-200 mb-2">
-                              <span>Uploading to Pixvid and ImgBB...</span>
-                              <span className="font-bold">{progress}%</span>
+                            <div className="text-sm text-primary-200 mb-2">
+                              <span>
+                                {uploadImageData?.isVideo 
+                                  ? 'Uploading video to Filemoon and UDrop...' 
+                                  : 'Uploading image to Pixvid and ImgBB...'}
+                              </span>
                             </div>
                             <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
                               <div
                                 className="h-full bg-gradient-to-r from-primary-500 to-secondary-500 
-                                         transition-all duration-300 ease-out"
-                                style={{ width: `${progress}%` }}
+                                         animate-pulse"
                               />
                             </div>
                           </div>
