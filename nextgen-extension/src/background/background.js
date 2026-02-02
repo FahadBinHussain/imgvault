@@ -603,11 +603,21 @@ class ImgVaultServiceWorker {
       // Fetch the video once
       const videoBlob = await this.fetchImage(data.imageUrl);
       
+      // Build status message based on available services
+      const services = [];
+      if (hasFilemoon) services.push('Filemoon');
+      if (hasUDrop) services.push('UDrop');
+      
+      const statusMsg = services.length > 1 
+        ? `☁️ Uploading to ${services.join(' and ')}...`
+        : `☁️ Uploading to ${services[0]}...`;
+      
+      this.updateStatus(statusMsg);
+      
       // Upload to available services in parallel
       const uploadPromises = [];
       
       if (hasFilemoon) {
-        this.updateStatus('☁️ Uploading to Filemoon...');
         uploadPromises.push(
           this.filemoonUploader.upload(
             videoBlob, 
@@ -621,7 +631,6 @@ class ImgVaultServiceWorker {
       }
       
       if (hasUDrop) {
-        this.updateStatus('☁️ Uploading to UDrop...');
         uploadPromises.push(
           this.udropUploader.upload(
             videoBlob, 
