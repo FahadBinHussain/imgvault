@@ -21,9 +21,7 @@ import {
   Pencil,
   Save
 } from 'lucide-react'
-import ThemeSwitcher from '../components/ThemeSwitcher'
-import UserDropdown from '../components/UserDropdown'
-import BrandLogo from '../components/BrandLogo'
+import AppNavbar from '../components/AppNavbar'
 
 // Skeleton Loader Component with Shimmer
 function SkeletonCard({ viewMode }) {
@@ -43,45 +41,6 @@ function SkeletonCard({ viewMode }) {
         </div>
       )}
     </div>
-  )
-}
-
-// Navbar Component
-function Navbar() {
-  const { data: session } = useSession()
-
-  return (
-    <nav className="fixed top-0 left-0 right-0 z-50 glass">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
-        <a href="/" className="flex items-center gap-3">
-          <BrandLogo href={null} className="w-10 h-10 animate-glow" />
-          <span className="text-lg sm:text-xl font-bold hidden sm:inline">
-            Img<span className="gradient-text">Vault</span>
-          </span>
-        </a>
-        
-        <div className="flex items-center gap-2 sm:gap-4 lg:gap-6">
-          <a href="/" className="hidden sm:inline text-dark-300 hover:text-white transition-all duration-300 text-sm font-medium relative group">
-            Home
-            <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-primary-500 transition-all duration-300 group-hover:w-full" />
-          </a>
-          <a href="/gallery" className="hidden sm:inline text-white text-sm font-medium relative group">
-            Gallery
-            <span className="absolute -bottom-1 left-0 w-full h-0.5 bg-primary-500" />
-          </a>
-          <ThemeSwitcher className="w-28 sm:w-auto" />
-          <a href="/settings" className="text-dark-300 hover:text-white transition-all duration-300 p-2 rounded-lg hover:bg-white/5">
-            <Settings className="w-5 h-5" />
-          </a>
-          {session?.user && (
-            <UserDropdown
-              user={session.user}
-              avatarClassName="w-8 h-8 rounded-full ring-2 ring-primary-500/50 ring-offset-2 ring-offset-dark-950"
-            />
-          )}
-        </div>
-      </div>
-    </nav>
   )
 }
 
@@ -795,7 +754,7 @@ export default function GalleryPage() {
   if (status === 'loading' || loading) {
     return (
   <main className="min-h-screen theme-surface">
-        <Navbar />
+    <AppNavbar mode="dashboard" activeRoute="gallery" />
   <section className="pt-24 sm:pt-28 pb-10 sm:pb-12 px-4 sm:px-6">
           <div className="max-w-7xl mx-auto">
             <div className="mb-8">
@@ -816,7 +775,7 @@ export default function GalleryPage() {
   return (
     <>
   <main className="min-h-screen theme-surface">
-        <Navbar />
+    <AppNavbar mode="dashboard" activeRoute="gallery" />
         
   <section className="pt-24 sm:pt-28 pb-10 sm:pb-12 px-4 sm:px-6">
           <div className="max-w-7xl mx-auto">
