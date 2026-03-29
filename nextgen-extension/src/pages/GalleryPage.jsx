@@ -1862,11 +1862,17 @@ export default function GalleryPage() {
               {activeTab === 'noobs' && (
                 <div className="space-y-4">
                   {/* Details Grid */}
+                  {(() => {
+                    let noobsFieldCounter = 0;
+                    const fieldNo = () => `${++noobsFieldCounter}.`;
+
+                    return (
                   <div className="space-y-3">
                     <div>
                       <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <FileText className="w-3.5 h-3.5" />
+                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
                           Title
                         </span>
                         {editingField !== 'pageTitle' && (
@@ -1912,6 +1918,7 @@ export default function GalleryPage() {
                       <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <Calendar className="w-3.5 h-3.5" />
+                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
                           Added To Vault
                         </span>
                         {editingField !== 'internalAddedTimestamp' && (
@@ -1974,6 +1981,7 @@ export default function GalleryPage() {
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                           </svg>
+                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
                           Collection
                         </span>
                         {editingField !== 'collectionId' && (
@@ -2047,6 +2055,7 @@ export default function GalleryPage() {
                       <div>
                         <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
                           <Link2 className="w-3.5 h-3.5" />
+                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
                           Pixvid URL
                         </div>
                         <div className="bg-white/5 rounded p-2">
@@ -2066,6 +2075,7 @@ export default function GalleryPage() {
                       <div>
                         <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
                           <Link2 className="w-3.5 h-3.5" />
+                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
                           ImgBB URL
                         </div>
                         <div className="bg-white/5 rounded p-2">
@@ -2085,6 +2095,7 @@ export default function GalleryPage() {
                       <div>
                         <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
                           <Link2 className="w-3.5 h-3.5" />
+                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
                           Filemoon URL
                         </div>
                         <div className="bg-white/5 rounded p-2">
@@ -2104,6 +2115,7 @@ export default function GalleryPage() {
                       <div>
                         <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
                           <Link2 className="w-3.5 h-3.5" />
+                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
                           UDrop URL
                         </div>
                         <div className="bg-white/5 rounded p-2">
@@ -2123,6 +2135,7 @@ export default function GalleryPage() {
                       <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <ImageIcon className="w-3.5 h-3.5" />
+                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
                           Source URL
                         </span>
                         {editingField !== 'sourceImageUrl' && (
@@ -2175,6 +2188,7 @@ export default function GalleryPage() {
                       <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <Globe className="w-3.5 h-3.5" />
+                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
                           Page URL
                         </span>
                         {editingField !== 'sourcePageUrl' && (
@@ -2227,6 +2241,7 @@ export default function GalleryPage() {
                       <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <AlignLeft className="w-3.5 h-3.5" />
+                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
                           Description
                         </span>
                         {editingField !== 'description' && (
@@ -2272,6 +2287,7 @@ export default function GalleryPage() {
                       <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <Tag className="w-3.5 h-3.5" />
+                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
                           Tags
                         </span>
                         {editingField !== 'tags' && (
@@ -2327,6 +2343,8 @@ export default function GalleryPage() {
                       )}
                     </div>
                   </div>
+                    );
+                  })()}
 
                   {/* Download Buttons */}
                   <div className="flex gap-2 pt-4 border-t border-white/10">

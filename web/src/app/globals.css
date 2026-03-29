@@ -21,6 +21,7 @@ html[data-theme] [class*='bg-dark-'] {
   background-color: var(--color-base-200, #f3f4f6) !important;
 }
 
+html[data-theme] [class~='text-white'],
 html[data-theme] [class='text-white'],
 html[data-theme] [class^='text-white '],
 html[data-theme] [class*=' text-white '],
@@ -30,6 +31,14 @@ html[data-theme] [class*=' text-white'] {
 
 html[data-theme] [class*='hover:text-white']:hover {
   color: var(--color-base-content, #111827) !important;
+}
+
+html[data-theme] [class*='text-dark-100'] {
+  color: color-mix(in oklab, var(--color-base-content, #111827) 92%, transparent) !important;
+}
+
+html[data-theme] [class*='text-dark-200'] {
+  color: color-mix(in oklab, var(--color-base-content, #111827) 84%, transparent) !important;
 }
 
 html[data-theme] [class*='text-dark-300'] {

@@ -3,38 +3,35 @@
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
-import { Image, Settings, Save, Loader2, Check, AlertCircle } from 'lucide-react'
-import UserAvatar from '../components/UserAvatar'
+import { Settings, Save, Loader2, Check, AlertCircle } from 'lucide-react'
 import ThemeSwitcher from '../components/ThemeSwitcher'
+import UserDropdown from '../components/UserDropdown'
+import BrandLogo from '../components/BrandLogo'
 
 function Navbar() {
   const { data: session } = useSession()
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass py-4">
-      <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-lg shadow-primary-500/25">
-            <Image className="w-5 h-5 text-white" />
-          </div>
-          <span className="text-xl font-bold">
+          <BrandLogo href="/" className="w-10 h-10" />
+          <span className="text-lg sm:text-xl font-bold hidden sm:inline">
             Img<span className="gradient-text">Vault</span>
           </span>
         </div>
 
-        <div className="flex items-center gap-4">
-          <a href="/" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">Home</a>
-          <a href="/gallery" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">Gallery</a>
-          <ThemeSwitcher />
+        <div className="flex items-center gap-2 sm:gap-4">
+          <a href="/" className="hidden sm:inline text-dark-300 hover:text-white transition-colors text-sm font-medium">Home</a>
+          <a href="/gallery" className="hidden sm:inline text-dark-300 hover:text-white transition-colors text-sm font-medium">Gallery</a>
+          <ThemeSwitcher className="w-28 sm:w-auto" />
           <a href="/settings" className="text-white">
             <Settings className="w-5 h-5" />
           </a>
           {session?.user && (
-            <UserAvatar
+            <UserDropdown
               user={session.user}
-              className="w-8 h-8 rounded-full"
-              alt="Profile"
-              title={session.user?.name || session.user?.email || 'Profile'}
+              avatarClassName="w-8 h-8 rounded-full"
             />
           )}
         </div>
@@ -166,15 +163,15 @@ export default function SettingsPage() {
   <main className="min-h-screen theme-surface">
       <Navbar />
 
-      <section className="pt-24 pb-12 px-6">
+      <section className="pt-24 pb-12 px-4 sm:px-6">
         <div className="max-w-2xl mx-auto">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Settings</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold mb-2">Settings</h1>
             <p className="text-dark-400">Configure your Firebase connection</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="glass rounded-2xl p-8">
-            <div className="flex items-center justify-between mb-6">
+          <form onSubmit={handleSubmit} className="glass rounded-2xl p-5 sm:p-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
               <h2 className="text-xl font-semibold">Firebase Configuration</h2>
               <button
                 type="button"
@@ -191,7 +188,7 @@ export default function SettingsPage() {
                 value={configText}
                 onChange={(e) => handleConfigChange(e.target.value)}
                 placeholder='{"apiKey":"...","authDomain":"..."}'
-                className="mt-1 w-full min-h-[260px] rounded-md border border-gray-700 bg-gray-900 p-3 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="mt-1 w-full min-h-[220px] sm:min-h-[260px] rounded-md border border-gray-700 bg-gray-900 p-3 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <p className="mt-1 text-xs text-gray-400">
                 Paste the full Firebase config JSON. It will be parsed automatically.

@@ -794,16 +794,21 @@ export default function TrashPage() {
                   {activeTab === 'noobs' && (
                     <div className="space-y-4">
                       {/* Details Grid */}
+                      {(() => {
+                        let noobsFieldCounter = 0;
+                        const fieldNo = () => `${++noobsFieldCounter}.`;
+
+                        return (
                       <div className="space-y-3">
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">Title</div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Title</div>
                           <div className="text-white font-medium">
                             {selectedImage.pageTitle || 'Untitled'}
                           </div>
                         </div>
 
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">Deleted At</div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Deleted At</div>
                           <div className="text-white">
                             {selectedImage.deletedAt
                               ? new Date(selectedImage.deletedAt).toLocaleString('en-US', {
@@ -819,7 +824,7 @@ export default function TrashPage() {
                         </div>
 
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">Added To Vault</div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Added To Vault</div>
                           <div className="text-white">
                             {selectedImage.internalAddedTimestamp
                               ? new Date(selectedImage.internalAddedTimestamp).toLocaleString('en-US', {
@@ -846,7 +851,7 @@ export default function TrashPage() {
                         {/* Pixvid URL - Only show for images (not videos) */}
                         {selectedImage.pixvidUrl && !selectedImage.filemoonUrl && !selectedImage.udropUrl && (
                           <div>
-                            <div className="text-xs font-semibold text-slate-400 mb-1">Pixvid URL</div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Pixvid URL</div>
                             <div className="bg-white/5 rounded p-2">
                               <a
                                 href={selectedImage.pixvidUrl}
@@ -862,7 +867,7 @@ export default function TrashPage() {
 
                         {selectedImage.imgbbUrl && (
                           <div>
-                            <div className="text-xs font-semibold text-slate-400 mb-1">ImgBB URL</div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} ImgBB URL</div>
                             <div className="bg-white/5 rounded p-2">
                               <a
                                 href={selectedImage.imgbbUrl}
@@ -878,7 +883,7 @@ export default function TrashPage() {
 
                         {selectedImage.filemoonUrl && (
                           <div>
-                            <div className="text-xs font-semibold text-slate-400 mb-1">Filemoon URL</div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Filemoon URL</div>
                             <div className="bg-white/5 rounded p-2">
                               <a
                                 href={selectedImage.filemoonUrl}
@@ -894,7 +899,7 @@ export default function TrashPage() {
 
                         {selectedImage.udropUrl && (
                           <div>
-                            <div className="text-xs font-semibold text-slate-400 mb-1">UDrop URL</div>
+                            <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} UDrop URL</div>
                             <div className="bg-white/5 rounded p-2">
                               <a
                                 href={selectedImage.udropUrl}
@@ -909,7 +914,7 @@ export default function TrashPage() {
                         )}
 
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">Source URL</div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Source URL</div>
                           <div className="bg-white/5 rounded p-2">
                             <a
                               href={selectedImage.sourceImageUrl}
@@ -923,7 +928,7 @@ export default function TrashPage() {
                         </div>
 
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">Page URL</div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Page URL</div>
                           <div className="bg-white/5 rounded p-2">
                             <a
                               href={selectedImage.sourcePageUrl}
@@ -937,14 +942,14 @@ export default function TrashPage() {
                         </div>
 
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">Description</div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Description</div>
                           <div className="text-slate-300 text-sm">
                             {selectedImage.description || 'No description'}
                           </div>
                         </div>
 
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">Tags</div>
+                          <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Tags</div>
                           {selectedImage.tags && selectedImage.tags.length > 0 ? (
                             <div className="flex flex-wrap gap-2">
                               {selectedImage.tags.map(tag => (
@@ -961,6 +966,8 @@ export default function TrashPage() {
                           )}
                         </div>
                       </div>
+                        );
+                      })()}
 
                       {/* Warning Box */}
                       <div className="mt-4 p-4 bg-yellow-900/30 border border-yellow-600/50 rounded-xl">
