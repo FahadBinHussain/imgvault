@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { Image, Settings, Save, Loader2, Check, AlertCircle } from 'lucide-react'
+import UserAvatar from '../components/UserAvatar'
 
 function Navbar() {
   const { data: session } = useSession()
@@ -26,11 +27,12 @@ function Navbar() {
           <a href="/settings" className="text-white">
             <Settings className="w-5 h-5" />
           </a>
-          {session?.user?.image && (
-            <img
-              src={session.user.image}
-              alt="Profile"
+          {session?.user && (
+            <UserAvatar
+              user={session.user}
               className="w-8 h-8 rounded-full"
+              alt="Profile"
+              title={session.user?.name || session.user?.email || 'Profile'}
             />
           )}
         </div>
