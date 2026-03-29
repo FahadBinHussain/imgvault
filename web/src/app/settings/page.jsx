@@ -4,41 +4,7 @@ import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { Settings, Save, Loader2, Check, AlertCircle } from 'lucide-react'
-import ThemeSwitcher from '../components/ThemeSwitcher'
-import UserDropdown from '../components/UserDropdown'
-import BrandLogo from '../components/BrandLogo'
-
-function Navbar() {
-  const { data: session } = useSession()
-
-  return (
-    <nav className="fixed top-0 left-0 right-0 z-50 glass py-4">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <BrandLogo href="/" className="w-10 h-10" />
-          <span className="text-lg sm:text-xl font-bold hidden sm:inline">
-            Img<span className="gradient-text">Vault</span>
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2 sm:gap-4">
-          <a href="/" className="hidden sm:inline text-dark-300 hover:text-white transition-colors text-sm font-medium">Home</a>
-          <a href="/gallery" className="hidden sm:inline text-dark-300 hover:text-white transition-colors text-sm font-medium">Gallery</a>
-          <ThemeSwitcher className="w-28 sm:w-auto" />
-          <a href="/settings" className="text-white">
-            <Settings className="w-5 h-5" />
-          </a>
-          {session?.user && (
-            <UserDropdown
-              user={session.user}
-              avatarClassName="w-8 h-8 rounded-full"
-            />
-          )}
-        </div>
-      </div>
-    </nav>
-  )
-}
+import AppNavbar from '../components/AppNavbar'
 
 export default function SettingsPage() {
   const { status } = useSession()
@@ -151,7 +117,7 @@ export default function SettingsPage() {
   if (status === 'loading' || loading) {
     return (
   <main className="min-h-screen theme-surface">
-        <Navbar />
+        <AppNavbar mode="dashboard" activeRoute="settings" />
         <div className="pt-24 flex items-center justify-center min-h-[60vh]">
           <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
         </div>
@@ -161,7 +127,7 @@ export default function SettingsPage() {
 
   return (
   <main className="min-h-screen theme-surface">
-      <Navbar />
+      <AppNavbar mode="dashboard" activeRoute="settings" />
 
       <section className="pt-24 pb-12 px-4 sm:px-6">
         <div className="max-w-2xl mx-auto">
