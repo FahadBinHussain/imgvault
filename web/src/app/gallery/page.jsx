@@ -8,7 +8,6 @@ import {
   Search, 
   Grid, 
   List, 
-  Heart, 
   ExternalLink,
   Calendar,
   Tag,
@@ -17,20 +16,26 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  ZoomIn,
-  Download,
   Sparkles
 } from 'lucide-react'
 
-// Skeleton Loader Component
+// Skeleton Loader Component with Shimmer
 function SkeletonCard({ viewMode }) {
   return (
-    <div className={`glass rounded-2xl overflow-hidden animate-pulse ${viewMode === 'list' ? 'flex' : ''}`}>
-      <div className={`${viewMode === 'list' ? 'w-32 h-24' : 'aspect-square'} bg-dark-800/50`} />
-      <div className={`p-3 space-y-2 ${viewMode === 'list' ? 'flex-1' : ''}`}>
-        <div className="h-4 bg-dark-700/50 rounded w-3/4" />
-        <div className="h-3 bg-dark-700/50 rounded w-1/2" />
+    <div className={`glass rounded-2xl overflow-hidden ${viewMode === 'list' ? 'flex' : ''}`} style={{ minHeight: viewMode === 'list' ? 'auto' : '200px' }}>
+      <div className={`${viewMode === 'list' ? 'w-32 h-28' : 'h-full min-h-[200px]'} relative overflow-hidden bg-dark-800/50`}>
+        <div className="absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" style={{ backgroundSize: '200% 100%' }} />
       </div>
+      {viewMode === 'list' && (
+        <div className="p-4 space-y-3 flex-1">
+          <div className="relative overflow-hidden rounded h-4 bg-dark-700/50">
+            <div className="absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" style={{ backgroundSize: '200% 100%' }} />
+          </div>
+          <div className="relative overflow-hidden rounded h-3 bg-dark-700/50 w-1/2">
+            <div className="absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" style={{ backgroundSize: '200% 100%' }} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -42,14 +47,14 @@ function Navbar() {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass">
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <a href="/" className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-lg shadow-primary-500/25 animate-glow">
             <Image className="w-5 h-5 text-white" />
           </div>
           <span className="text-xl font-bold">
             Img<span className="gradient-text">Vault</span>
           </span>
-        </div>
+        </a>
         
         <div className="flex items-center gap-6">
           <a href="/" className="text-dark-300 hover:text-white transition-all duration-300 text-sm font-medium relative group">
@@ -251,15 +256,15 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate }) {
 }
 
 // Image Card Component
-function ImageCard({ image, index, viewMode, onClick }) {
+function ImageCard({ image, index, viewMode, onClick, className = '' }) {
   const [isLoaded, setIsLoaded] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   
-  const imageUrl = image.imgbbThumbUrl || image.imgbbUrl || image.pixvidUrl || image.sourceImageUrl
+  const imageUrl = image.imgbbUrl || image.pixvidUrl || image.sourceImageUrl || image.imgbbThumbUrl
 
   return (
     <div 
-      className={`group relative glass rounded-2xl overflow-hidden cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-xl hover:shadow-primary-500/10 ${viewMode === 'list' ? 'flex' : ''}`}
+      className={`group relative glass rounded-2xl overflow-hidden cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-xl hover:shadow-primary-500/10 ${viewMode === 'list' ? 'flex' : ''} ${className}`}
       style={{ 
         animationDelay: `${index * 50}ms`,
         animation: 'fadeInUp 0.6s ease-out forwards',
@@ -270,17 +275,26 @@ function ImageCard({ image, index, viewMode, onClick }) {
       onClick={onClick}
     >
       {/* Image Container */}
-      <div className={`${viewMode === 'list' ? 'w-40 h-28 flex-shrink-0' : 'aspect-square'} bg-dark-900 relative overflow-hidden`}>
+      <div
+        className={`${viewMode === 'list' ? 'w-40 h-28 flex-shrink-0' : 'h-auto'} bg-dark-900 relative overflow-hidden`}
+        style={viewMode !== 'list' && !isLoaded ? { minHeight: '220px' } : undefined}
+      >
         {imageUrl ? (
           <>
             {!isLoaded && (
-              <div className="absolute inset-0 bg-dark-800 animate-pulse" />
+              <div className="absolute inset-0 bg-dark-800/70">
+                <div
+                  className="absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent"
+                  style={{ backgroundSize: '200% 100%' }}
+                />
+              </div>
             )}
             <img
               src={imageUrl}
               alt={image.pageTitle || 'Saved image'}
-              className={`w-full h-full object-cover transition-all duration-700 ${isHovered ? 'scale-110' : 'scale-100'} ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+              className={`block w-full ${viewMode === 'list' ? 'h-full object-contain' : 'h-auto object-contain'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
               onLoad={() => setIsLoaded(true)}
+              onError={() => setIsLoaded(true)}
             />
           </>
         ) : (
@@ -291,34 +305,6 @@ function ImageCard({ image, index, viewMode, onClick }) {
         
         {/* Hover overlay */}
         <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
-          <div className="absolute inset-0 flex items-center justify-center gap-3">
-            <button 
-              type="button" 
-              className="p-3 glass rounded-full hover:bg-white/20 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0"
-              style={{ transitionDelay: '50ms' }}
-            >
-              <ZoomIn className="w-5 h-5" />
-            </button>
-            <button 
-              type="button" 
-              className="p-3 glass rounded-full hover:bg-white/20 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0"
-              style={{ transitionDelay: '100ms' }}
-            >
-              <Heart className="w-5 h-5" />
-            </button>
-            {(image.pixvidUrl || image.imgbbUrl || image.sourceImageUrl) && (
-              <a
-                href={image.pixvidUrl || image.imgbbUrl || image.sourceImageUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="p-3 glass rounded-full hover:bg-white/20 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0"
-                style={{ transitionDelay: '150ms' }}
-              >
-                <Download className="w-5 h-5" />
-              </a>
-            )}
-          </div>
         </div>
 
         {/* Gradient border effect */}
@@ -330,37 +316,81 @@ function ImageCard({ image, index, viewMode, onClick }) {
         />
       </div>
 
-      {/* Content */}
-      <div className={`p-4 space-y-3 ${viewMode === 'list' ? 'flex-1 flex flex-col justify-center' : ''}`}>
-        <h3 className="text-sm font-semibold truncate transition-colors duration-300 group-hover:text-primary-400" title={image.pageTitle || 'Untitled'}>
-          {image.pageTitle || 'Untitled'}
-        </h3>
-        <div className="flex items-center gap-2 text-xs text-dark-400">
-          <Calendar className="w-3.5 h-3.5" />
-          <span>
-            {image.internalAddedTimestamp
-              ? new Date(image.internalAddedTimestamp).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric'
-                })
-              : 'Unknown date'}
-          </span>
-        </div>
-        {image.tags?.length > 0 && viewMode === 'grid' && (
-          <div className="flex flex-wrap gap-1.5">
-            {image.tags.slice(0, 3).map((tag) => (
-              <span
-                key={`${image.id}-${tag}`}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary-500/10 text-primary-300 text-xs font-medium transition-all duration-300 hover:bg-primary-500/20"
-              >
-                <Tag className="w-3 h-3" />
-                {tag}
-              </span>
-            ))}
+      {/* Content - Only show in list mode */}
+      {viewMode === 'list' && (
+        <div className="p-4 space-y-3 flex-1 flex flex-col justify-center">
+          <h3 className="text-sm font-semibold truncate transition-colors duration-300 group-hover:text-primary-400" title={image.pageTitle || 'Untitled'}>
+            {image.pageTitle || 'Untitled'}
+          </h3>
+          <div className="flex items-center gap-2 text-xs text-dark-400">
+            <Calendar className="w-3.5 h-3.5" />
+            <span>
+              {image.internalAddedTimestamp
+                ? new Date(image.internalAddedTimestamp).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                  })
+                : 'Unknown date'}
+            </span>
           </div>
-        )}
+          {image.tags?.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {image.tags.slice(0, 3).map((tag) => (
+                <span
+                  key={`${image.id}-${tag}`}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary-500/10 text-primary-300 text-xs font-medium transition-all duration-300 hover:bg-primary-500/20"
+                >
+                  <Tag className="w-3 h-3" />
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Group images by date helper
+function groupImagesByDate(images) {
+  const groups = {}
+  
+  images.forEach((img) => {
+    const date = img.internalAddedTimestamp 
+      ? new Date(img.internalAddedTimestamp).toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric'
+        })
+      : 'Unknown Date'
+    
+    if (!groups[date]) {
+      groups[date] = []
+    }
+    groups[date].push(img)
+  })
+  
+  return Object.entries(groups).map(([date, imgs]) => ({
+    date,
+    images: imgs
+  }))
+}
+
+// Date Header Component
+function DateHeader({ date }) {
+  return (
+    <div className="col-span-full py-4 flex items-center gap-4">
+      <div className="flex-shrink-0 w-16 text-right">
+        <span className="text-sm font-semibold text-primary-400">
+          {date.split(' ')[1]?.replace(',', '') || ''}
+        </span>
+        <div className="text-xs text-dark-400">
+          {date.split(' ')[0]}
+        </div>
       </div>
+      <div className="flex-1 h-px bg-gradient-to-r from-primary-500/30 to-transparent" />
     </div>
   )
 }
@@ -536,16 +566,56 @@ export default function GalleryPage() {
               </div>
             ) : filteredImages.length === 0 ? (
               <EmptyState hasConfig={hasConfig} />
+            ) : viewMode === 'grid' ? (
+              /* Google Photos style with date headers */
+              <div className="space-y-8">
+                {groupImagesByDate(filteredImages).map((group) => (
+                  <div key={group.date}>
+                    <div className="flex items-center gap-4 mb-4">
+                      <span className="text-lg font-semibold text-primary-400">{group.date}</span>
+                      <div className="flex-1 h-px bg-gradient-to-r from-primary-500/30 to-transparent" />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 items-start">
+                      {group.images.map((img) => {
+                        const globalIndex = filteredImages.findIndex(i => i.id === img.id)
+                        return (
+                          <ImageCard 
+                            key={img.id}
+                            image={img}
+                            index={globalIndex}
+                            viewMode={viewMode}
+                            onClick={() => handleImageClick(img, globalIndex)}
+                          />
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <div className={`grid gap-5 ${viewMode === 'grid' ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5' : 'grid-cols-1'}`}>
-                {filteredImages.map((img, index) => (
-                  <ImageCard 
-                    key={img.id}
-                    image={img}
-                    index={index}
-                    viewMode={viewMode}
-                    onClick={() => handleImageClick(img, index)}
-                  />
+              /* List Layout */
+              <div className="space-y-8">
+                {groupImagesByDate(filteredImages).map((group) => (
+                  <div key={group.date}>
+                    <div className="flex items-center gap-4 mb-4">
+                      <span className="text-lg font-semibold text-primary-400">{group.date}</span>
+                      <div className="flex-1 h-px bg-gradient-to-r from-primary-500/30 to-transparent" />
+                    </div>
+                    <div className="grid grid-cols-1 gap-4">
+                      {group.images.map((img) => {
+                        const globalIndex = filteredImages.findIndex(i => i.id === img.id)
+                        return (
+                          <ImageCard 
+                            key={img.id}
+                            image={img}
+                            index={globalIndex}
+                            viewMode={viewMode}
+                            onClick={() => handleImageClick(img, globalIndex)}
+                          />
+                        )
+                      })}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
