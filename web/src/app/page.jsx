@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { signIn, useSession } from 'next-auth/react'
 import { 
   Shield, 
   Zap, 
@@ -19,102 +18,25 @@ import {
   Cpu,
   ArrowRight,
   Check,
-  Star,
-  Menu,
-  X,
-  LogIn
+  Star
 } from 'lucide-react'
-import ThemeSwitcher from './components/ThemeSwitcher'
-import UserDropdown from './components/UserDropdown'
+import AppNavbar from './components/AppNavbar'
 import BrandLogo from './components/BrandLogo'
 
-function Navbar() {
-  const { data: session } = useSession()
-  const [scrolled, setScrolled] = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-
-  useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20)
-    window.addEventListener('scroll', handleScroll)
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [])
-
-  return (
-    <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'glass py-3' : 'py-6'}`}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <BrandLogo href="/" className="w-10 h-10" />
-          <span className="text-lg sm:text-xl font-bold">
-            Img<span className="gradient-text">Vault</span>
-          </span>
-        </div>
-        
-        <div className="hidden lg:flex items-center gap-4 xl:gap-8">
-          <a href="#features" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">Features</a>
-          <a href="#demo" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">Demo</a>
-          <a href="#download" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">Download</a>
-          <ThemeSwitcher />
-          <a href="https://github.com/FahadBinHussain/ImgVault" target="_blank" rel="noopener noreferrer" className="text-dark-300 hover:text-white transition-colors">
-            <Github className="w-5 h-5" />
-          </a>
-          {session ? (
-            <>
-              <UserDropdown
-                user={session.user}
-                avatarClassName="w-8 h-8 rounded-full"
-              />
-            </>
-          ) : (
-            <button 
-              onClick={() => signIn('google')}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary-600 to-primary-500 rounded-xl font-semibold text-sm hover:shadow-lg hover:shadow-primary-500/25 transition-all"
-            >
-              <LogIn className="w-4 h-4" />
-              Sign In
-            </button>
-          )}
-        </div>
-
-        <button 
-          className="lg:hidden text-white"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-        >
-          {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </button>
-      </div>
-
-      {mobileMenuOpen && (
-        <div className="lg:hidden glass mt-3 mx-4 sm:mx-6 rounded-2xl p-4 sm:p-6 flex flex-col gap-4">
-          <a href="#features" className="text-dark-300 hover:text-white transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>Features</a>
-          <a href="#demo" className="text-dark-300 hover:text-white transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>Demo</a>
-          <a href="#download" className="text-dark-300 hover:text-white transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>Download</a>
-          <ThemeSwitcher className="w-full max-w-[220px]" />
-          {session ? (
-            <>
-              <UserDropdown
-                user={session.user}
-                className="ml-auto"
-                avatarClassName="w-8 h-8 rounded-full"
-              />
-            </>
-          ) : (
-            <button 
-              onClick={() => signIn('google')}
-              className="flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-primary-600 to-primary-500 rounded-xl font-semibold hover:shadow-lg hover:shadow-primary-500/25 transition-all"
-            >
-              <LogIn className="w-4 h-4" />
-              Sign In with Google
-            </button>
-          )}
-        </div>
-      )}
-    </nav>
-  )
-}
-
 function HeroSection() {
+  const mockGalleryImages = [
+    'https://picsum.photos/id/1015/400/400',
+    'https://picsum.photos/id/1011/400/400',
+    'https://picsum.photos/id/1043/400/400',
+    'https://picsum.photos/id/1002/400/400',
+    'https://picsum.photos/id/1003/400/400',
+    'https://picsum.photos/id/1025/400/400',
+    'https://picsum.photos/id/1021/400/400',
+    'https://picsum.photos/id/1035/400/400',
+  ]
+
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-24 sm:pt-20">
+  <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-32 sm:pt-28 md:pt-24">
       {/* Background effects */}
       <div className="absolute inset-0 bg-grid-pattern bg-grid opacity-30"></div>
       <div className="hidden sm:block absolute top-1/4 left-1/4 w-96 h-96 bg-primary-500/20 rounded-full blur-[128px] animate-pulse-slow"></div>
@@ -141,7 +63,7 @@ function HeroSection() {
             href="#download" 
             className="group relative w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-2xl font-semibold text-lg overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/25 hover:-translate-y-0.5"
           >
-            <span className="relative z-10 flex items-center gap-2">
+            <span className="relative z-10 flex w-full items-center justify-center gap-2">
               <Download className="w-5 h-5" />
               Install Extension
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -171,15 +93,18 @@ function HeroSection() {
                 </div>
               </div>
               <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
-                {[...Array(8)].map((_, i) => (
+                {mockGalleryImages.map((imageUrl, i) => (
                   <div 
                     key={i} 
                     className="aspect-square rounded-xl bg-gradient-to-br from-primary-500/20 to-primary-700/20 border border-white/5 hover:border-primary-500/30 transition-all duration-300 hover:scale-105 cursor-pointer group"
                     style={{ animationDelay: `${i * 0.1}s` }}
                   >
-                    <div className="w-full h-full flex items-center justify-center">
-                      <Image className="w-6 h-6 text-dark-500 group-hover:text-primary-400 transition-colors" />
-                    </div>
+                    <img
+                      src={imageUrl}
+                      alt={`Sample gallery image ${i + 1}`}
+                      className="w-full h-full object-cover rounded-xl"
+                      loading="lazy"
+                    />
                   </div>
                 ))}
               </div>
@@ -372,30 +297,30 @@ function DownloadSection() {
   return (
     <section id="download" className="py-20 md:py-32 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="glass rounded-3xl p-8 md:p-16 gradient-border relative overflow-hidden">
+        <div className="glass rounded-2xl sm:rounded-3xl p-5 sm:p-8 md:p-16 gradient-border relative overflow-hidden">
           <div className="hidden sm:block absolute top-0 right-0 w-96 h-96 bg-primary-500/10 rounded-full blur-[100px]"></div>
           <div className="hidden sm:block absolute bottom-0 left-0 w-80 h-80 bg-primary-600/10 rounded-full blur-[80px]"></div>
           
-          <div className="relative z-10 grid lg:grid-cols-2 gap-12 items-center">
-            <div>
+          <div className="relative z-10 grid lg:grid-cols-2 gap-8 sm:gap-12 items-center">
+            <div className="min-w-0">
               <div className="inline-flex items-center gap-2 glass rounded-full px-5 py-2 mb-6">
                 <Download className="w-4 h-4 text-primary-400" />
                 <span className="text-sm text-dark-200">Get Started</span>
               </div>
-              <h2 className="text-4xl md:text-5xl font-bold mb-6">
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-6 break-words">
                 Ready to <span className="gradient-text">Transform</span> Your Workflow?
               </h2>
-              <p className="text-lg text-dark-400 mb-8 leading-relaxed">
+              <p className="text-base sm:text-lg text-dark-400 mb-8 leading-relaxed">
                 Install ImgVault Next-Gen in seconds and start saving images like a pro.
               </p>
 
               <div className="flex flex-col gap-4 mb-8">
                 {steps.map((step, i) => (
-                  <div key={i} className="flex items-center gap-4">
+                  <div key={i} className="flex items-start gap-4 min-w-0">
                     <div className="w-8 h-8 rounded-full bg-primary-500/20 flex items-center justify-center shrink-0">
                       <span className="text-sm font-semibold text-primary-400">{i + 1}</span>
                     </div>
-                    <p className="text-dark-300">{step}</p>
+                    <p className="text-dark-300 break-words">{step}</p>
                   </div>
                 ))}
               </div>
@@ -405,7 +330,7 @@ function DownloadSection() {
                   href="https://github.com/FahadBinHussain/ImgVault" 
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="group px-8 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-2xl font-semibold text-center transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/25 hover:-translate-y-0.5 flex items-center justify-center gap-2"
+                  className="group w-full sm:w-auto px-6 sm:px-8 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-2xl font-semibold text-center transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/25 hover:-translate-y-0.5 flex items-center justify-center gap-2"
                 >
                   <Github className="w-5 h-5" />
                   View on GitHub
@@ -413,7 +338,7 @@ function DownloadSection() {
                 </a>
                 <a 
                   href="https://github.com/FahadBinHussain/ImgVault/archive/refs/heads/main.zip"
-                  className="px-8 py-4 glass rounded-2xl font-semibold text-center hover:bg-white/10 transition-all duration-300 flex items-center justify-center gap-2"
+                  className="w-full sm:w-auto px-6 sm:px-8 py-4 glass rounded-2xl font-semibold text-center hover:bg-white/10 transition-all duration-300 flex items-center justify-center gap-2"
                 >
                   <Download className="w-5 h-5" />
                   Download ZIP
@@ -421,13 +346,13 @@ function DownloadSection() {
               </div>
             </div>
 
-            <div className="glass rounded-2xl p-6 bg-dark-900/50">
+            <div className="glass rounded-2xl p-4 sm:p-6 bg-dark-900/50 min-w-0 overflow-hidden">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
                 <div className="w-3 h-3 rounded-full bg-yellow-500/80"></div>
                 <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
               </div>
-              <pre className="text-xs sm:text-sm text-dark-300 font-mono overflow-x-auto">
+              <pre className="text-xs sm:text-sm text-dark-300 font-mono overflow-x-auto max-w-full">
                 <code>{`# Clone the repository
 git clone https://github.com/FahadBinHussain/ImgVault.git
 
@@ -456,9 +381,7 @@ function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center">
-              <Image className="w-4 h-4 text-white" />
-            </div>
+            <BrandLogo href="/" className="w-8 h-8" />
             <span className="font-semibold">ImgVault Next-Gen</span>
           </div>
 
@@ -480,7 +403,7 @@ function Footer() {
 export default function Home() {
   return (
     <main className="min-h-screen overflow-x-hidden">
-      <Navbar />
+      <AppNavbar mode="landing" />
       <HeroSection />
       <FeaturesSection />
       <DemoSection />

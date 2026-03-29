@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 function getInitials(nameOrEmail) {
   if (!nameOrEmail || typeof nameOrEmail !== 'string') {
@@ -29,12 +29,18 @@ export default function UserAvatar({
   const [imageFailed, setImageFailed] = useState(false)
 
   const imageSrc = useMemo(() => {
-    if (typeof user?.image !== 'string') {
+    const candidate = user?.image || user?.picture || user?.avatar_url
+
+    if (typeof candidate !== 'string') {
       return ''
     }
 
-    return user.image.trim()
-  }, [user?.image])
+    return candidate.trim()
+  }, [user?.image, user?.picture, user?.avatar_url])
+
+  useEffect(() => {
+    setImageFailed(false)
+  }, [imageSrc])
 
   const initials = useMemo(() => {
     return getInitials(user?.name || user?.email)
@@ -48,6 +54,7 @@ export default function UserAvatar({
         title={title}
         className={className}
         loading="lazy"
+        referrerPolicy="no-referrer"
         onError={() => setImageFailed(true)}
       />
     )
