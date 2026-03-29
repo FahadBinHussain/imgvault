@@ -92,14 +92,14 @@ export default function CollectionsPage() {
 
   if (collectionsLoading || imagesLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+  <div className="min-h-screen bg-base-200 text-base-content flex items-center justify-center">
         <Spinner size="lg" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+  <div className="min-h-screen bg-base-200 text-base-content">
       {/* Navigation Bar */}
       <div className="sticky top-0 z-40 mb-8">
         <div className="backdrop-blur-2xl bg-white/5 border-b border-white/10 shadow-2xl">

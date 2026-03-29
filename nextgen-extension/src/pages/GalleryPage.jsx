@@ -1103,7 +1103,7 @@ export default function GalleryPage() {
   }, [location.state]);
 
   return (
-    <div ref={pageContainerRef} className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-y-auto">
+  <div ref={pageContainerRef} className="min-h-screen bg-base-200 text-base-content overflow-y-auto">
       {/* Drag & Drop Overlay with Animated Highlights */}
       <AnimatePresence>
         {isDragging && (
@@ -1139,7 +1139,7 @@ export default function GalleryPage() {
                   repeat: Infinity,
                   ease: "easeInOut"
                 }}
-                className="w-full h-full rounded-3xl border-4 border-dashed border-white/40"
+                className="w-full h-full rounded-3xl border-4 border-dashed border-base-content/40"
               />
               
               {/* Center content */}
@@ -1170,7 +1170,7 @@ export default function GalleryPage() {
                   />
                   
                   {/* Upload icon */}
-                  <div className="relative z-10 bg-white rounded-full p-8 shadow-2xl">
+                  <div className="relative z-10 bg-base-100 rounded-full p-8 shadow-2xl">
                     <Upload className="w-20 h-20 text-primary-600" />
                   </div>
                 </motion.div>
@@ -1181,10 +1181,10 @@ export default function GalleryPage() {
                   transition={{ delay: 0.2 }}
                   className="text-center"
                 >
-                  <h3 className="text-4xl font-bold text-white mb-3 drop-shadow-2xl">
+                  <h3 className="text-4xl font-bold text-base-content mb-3 drop-shadow-2xl">
                     Drop your image here
                   </h3>
-                  <p className="text-xl text-white/80 drop-shadow-lg">
+                  <p className="text-xl text-base-content/80 drop-shadow-lg">
                     Release to upload to ImgVault
                   </p>
                 </motion.div>
@@ -1206,7 +1206,7 @@ export default function GalleryPage() {
                       delay: i * 0.2,
                       ease: "easeOut"
                     }}
-                    className="absolute w-3 h-3 bg-white/60 rounded-full blur-sm"
+                    className="absolute w-3 h-3 bg-base-content/60 rounded-full blur-sm"
                     style={{
                       left: '50%',
                       top: '50%',
@@ -1258,7 +1258,7 @@ export default function GalleryPage() {
               <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-full blur-2xl opacity-50 animate-pulse"></div>
               <Spinner size="lg" className="relative z-10" />
             </div>
-            <p className="mt-6 text-white text-lg font-medium">Loading your vault...</p>
+            <p className="mt-6 text-base-content/85 text-lg font-medium">Loading your vault...</p>
           </div>
         )}
 
@@ -1268,7 +1268,7 @@ export default function GalleryPage() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
-            className="glass-card rounded-3xl backdrop-blur-xl bg-white/5 border border-white/10 
+            className="glass-card rounded-3xl backdrop-blur-xl bg-base-100/80 border border-base-content/20 
                       shadow-2xl p-16 text-center relative overflow-hidden"
             style={{ willChange: 'transform, opacity' }}
           >
@@ -1324,10 +1324,10 @@ export default function GalleryPage() {
               transition={{ delay: 0.15, duration: 0.3 }}
               style={{ willChange: 'transform, opacity' }}
             >
-              <h3 className="text-4xl font-bold text-white mb-4 drop-shadow-lg bg-gradient-to-r from-white to-slate-200 bg-clip-text text-transparent">
+              <h3 className="text-4xl font-bold mb-4 drop-shadow-lg bg-gradient-to-r from-base-content to-base-content/70 bg-clip-text text-transparent">
                 Your Vault is Empty
               </h3>
-              <p className="text-slate-300 text-lg mb-10 max-w-md mx-auto leading-relaxed">
+              <p className="text-base-content/70 text-lg mb-10 max-w-md mx-auto leading-relaxed">
                 Start building your collection by uploading your first image
               </p>
             </motion.div>
@@ -1342,12 +1342,12 @@ export default function GalleryPage() {
               whileTap={{ scale: 0.95 }}
               style={{ willChange: 'transform' }}
               className="group relative px-10 py-5 rounded-2xl bg-gradient-to-r from-primary-500 to-secondary-500 
-                       text-white font-bold text-lg shadow-2xl overflow-hidden
+                       text-primary-content font-bold text-lg shadow-2xl overflow-hidden
                        transition-all duration-150"
             >
               {/* Button shine effect */}
               <motion.div
-                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                className="absolute inset-0 bg-gradient-to-r from-transparent via-base-content/20 to-transparent"
                 initial={{ x: '-100%' }}
                 whileHover={{ x: '100%' }}
                 transition={{ duration: 0.4 }}
@@ -1370,7 +1370,7 @@ export default function GalleryPage() {
             {[...Array(6)].map((_, i) => (
               <motion.div
                 key={i}
-                className="absolute w-2 h-2 bg-white/20 rounded-full"
+                className="absolute w-2 h-2 bg-base-content/20 rounded-full"
                 style={{
                   left: `${20 + i * 12}%`,
                   top: `${30 + (i % 3) * 20}%`,
@@ -1394,7 +1394,7 @@ export default function GalleryPage() {
         {/* Gallery Grid */}
         {!loading && Object.keys(groupedImages).map(date => (
           <div key={date} className="mb-10" ref={el => dateGroupRefs.current[date] = el}>
-            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+            <h2 className="text-2xl font-bold text-base-content mb-6 flex items-center gap-3">
               <span className="bg-gradient-to-r from-primary-500 to-secondary-500 w-1 h-8 rounded-full"></span>
               {date}
             </h2>
@@ -1431,7 +1431,7 @@ export default function GalleryPage() {
                                 transition-all duration-700 ease-out"></div>
                   
                   {/* Card with soft shadows and smooth animations */}
-                  <div className="relative bg-slate-800/80 backdrop-blur-sm border border-white/10 
+                  <div className="relative bg-base-100/80 backdrop-blur-sm border border-base-content/20 
                                 rounded-xl overflow-hidden shadow-lg group-hover:shadow-2xl
                                 transform transition-all duration-500 ease-out 
                                 group-hover:scale-[1.04] group-hover:-translate-y-2">
@@ -1442,10 +1442,10 @@ export default function GalleryPage() {
                                       transition-all duration-200 ${
                           selectedImages.has(img.id)
                             ? 'bg-primary-500 border-primary-400'
-                            : 'bg-black/50 border-white/50 backdrop-blur-sm'
+                            : 'bg-base-300/70 border-base-content/40 backdrop-blur-sm'
                         }`}>
                           {selectedImages.has(img.id) && (
-                            <span className="text-white text-sm font-bold">✓</span>
+                            <span className="text-primary-content text-sm font-bold">✓</span>
                           )}
                         </div>
                       </div>
@@ -1453,7 +1453,7 @@ export default function GalleryPage() {
                     
                     {/* Loading skeleton with shimmer - only show for non-video items */}
                     {!loadedImages.has(img.id) && !img.filemoonUrl && !img.udropUrl && (
-                      <div className="absolute inset-0 bg-slate-800 overflow-hidden">
+                      <div className="absolute inset-0 bg-base-300 overflow-hidden">
                         <div className="absolute inset-0 shimmer"></div>
                       </div>
                     )}
@@ -1492,8 +1492,8 @@ export default function GalleryPage() {
                     {/* Video play icon overlay */}
                     {(img.filemoonUrl || img.udropUrl) && (
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="bg-black/60 backdrop-blur-sm rounded-full p-4">
-                          <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <div className="bg-base-300/80 backdrop-blur-sm rounded-full p-4">
+                          <svg className="w-12 h-12 text-base-content" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M8 5v14l11-7z"/>
                           </svg>
                         </div>
@@ -1506,7 +1506,7 @@ export default function GalleryPage() {
                       <div className="absolute bottom-0 left-0 right-0 p-4 space-y-2 
                                     transform translate-y-2 group-hover:translate-y-0 
                                     transition-transform duration-500 ease-out">
-                        <p className="text-white text-sm font-semibold truncate drop-shadow-xl">
+                        <p className="text-base-content text-sm font-semibold truncate drop-shadow-xl">
                           {img.pageTitle || 'Untitled'}
                         </p>
                         {img.tags && img.tags.length > 0 && (
@@ -1514,15 +1514,15 @@ export default function GalleryPage() {
                             {img.tags.slice(0, 2).map(tag => (
                               <span
                                 key={tag}
-                                className="text-xs px-2.5 py-1 rounded-lg bg-white/20 backdrop-blur-sm 
-                                         text-white border border-white/30 font-medium shadow-lg"
+                                className="text-xs px-2.5 py-1 rounded-lg bg-base-100/70 backdrop-blur-sm 
+                                         text-base-content border border-base-content/30 font-medium shadow-lg"
                               >
                                 {tag}
                               </span>
                             ))}
                             {img.tags.length > 2 && (
-                              <span className="text-xs px-2.5 py-1 rounded-lg bg-white/20 backdrop-blur-sm 
-                                             text-white border border-white/30 font-medium shadow-lg">
+                              <span className="text-xs px-2.5 py-1 rounded-lg bg-base-100/70 backdrop-blur-sm 
+                                             text-base-content border border-base-content/30 font-medium shadow-lg">
                                 +{img.tags.length - 2}
                               </span>
                             )}
@@ -1552,14 +1552,14 @@ export default function GalleryPage() {
                           ${isModalAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
               
               {/* Dark Overlay Background with Fade */}
-              <div className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-500
+              <div className={`absolute inset-0 bg-base-300/90 transition-opacity duration-500
                             ${isModalAnimating ? 'opacity-0' : 'opacity-100'}`} />
 
               {/* LEFT SIDE - IMAGE/VIDEO with Zoom Animation */}
-              <div className="flex-1 min-h-[35vh] lg:min-h-0 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-3 sm:p-6 lg:p-8 relative z-10">
+              <div className="flex-1 min-h-[35vh] lg:min-h-0 flex items-center justify-center bg-gradient-to-br from-base-300 to-base-200 p-3 sm:p-6 lg:p-8 relative z-10">
                 {/* Radial glow effect */}
                 <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
-                              w-4/5 h-4/5 bg-primary-500/10 rounded-full blur-3xl
+                              w-4/5 h-4/5 bg-primary/10 rounded-full blur-3xl
                               transition-all duration-700 ease-out
                               ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}></div>
                 
@@ -1588,18 +1588,18 @@ export default function GalleryPage() {
                     alt={selectedImage.pageTitle}
                     className={`max-w-full max-h-full object-contain rounded-2xl shadow-2xl relative z-10
                              transition-all duration-700 ease-out
-                             hover:scale-[1.02] hover:shadow-[0_0_80px_rgba(99,102,241,0.3)]
+                             hover:scale-[1.02] hover:shadow-primary/30
                              ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
                   />
                 )}
               </div>
 
               {/* RIGHT SIDE - DETAILS with Slide-up Animation */}
-              <div className={`w-full lg:w-[550px] lg:flex-shrink-0 bg-slate-800/90 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-white/10 
+  <div className={`w-full lg:w-[550px] lg:flex-shrink-0 bg-base-100 border-t lg:border-t-0 lg:border-l border-base-content/20 
                             overflow-y-auto flex flex-col relative z-10
                             transition-all duration-500 ease-out
                             ${isModalAnimating ? 'translate-y-8 opacity-0' : 'translate-y-0 opacity-100'}`}
-                   style={{ scrollbarWidth: 'thin', scrollbarColor: '#6366f1 #1e293b' }}
+          style={{ scrollbarWidth: 'thin', scrollbarColor: 'hsl(var(--p)) hsl(var(--b3))' }}
               >
                 {/* Close Button with Fade Animation */}
                 <button
@@ -1608,37 +1608,37 @@ export default function GalleryPage() {
                     setActiveTab('noobs');
                     setFullImageDetails(null);
                   }}
-                  className={`absolute top-4 right-4 z-50 w-11 h-11 rounded-full bg-red-500/20 
-                           hover:bg-red-500/40 border border-red-500/50 hover:border-red-500 
+                  className={`absolute top-4 right-4 z-50 w-11 h-11 rounded-full bg-error/20 
+                           hover:bg-error/35 border border-error/50 hover:border-error 
                            flex items-center justify-center transition-all duration-300 
                            hover:scale-110 hover:rotate-90 group shadow-xl
                            ${isModalAnimating ? 'opacity-0' : 'opacity-100'}`}
                   title="Close"
                 >
-                  <span className="text-red-300 group-hover:text-red-100 text-2xl font-bold">✕</span>
+                  <span className="text-error group-hover:text-error-content text-2xl font-bold">✕</span>
                 </button>
 
                 <div className="p-6 flex-1 pt-16">
               {/* Details Header */}
-              <h2 className="text-2xl font-bold text-white mb-4 bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent">
+              <h2 className="text-2xl font-bold text-base-content mb-4">
                 Details
               </h2>
 
               {/* Tab Navigation */}
-              <div className="flex gap-2 mb-4 border-b border-white/10 overflow-x-auto whitespace-nowrap">
+              <div className="flex gap-2 mb-4 border-b border-base-content/20 overflow-x-auto whitespace-nowrap">
                 <button
                   onClick={() => handleTabSwitch('noobs')}
                   className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${
                     activeTab === 'noobs'
-                      ? 'text-primary-300 border-b-2 border-primary-300'
-                      : 'text-slate-400 hover:text-slate-300'
+            ? 'text-info border-b-2 border-info'
+            : 'text-base-content/60 hover:text-base-content/85'
                   }`}
                 >
                   <span>For Noobs 👶</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full ${
                     activeTab === 'noobs' 
-                      ? 'bg-primary-500/20 text-primary-200' 
-                      : 'bg-slate-500/20 text-slate-400'
+            ? 'bg-info/20 text-info' 
+            : 'bg-base-300/70 text-base-content/60'
                   }`}>
                     {/* Count: Title, Added To Vault, Collection (conditional), Pixvid/Filemoon/UDrop URLs, ImgBB URL, Source URL, Page URL, Description, Tags */}
                     {(() => {
@@ -1657,15 +1657,15 @@ export default function GalleryPage() {
                   onClick={() => handleTabSwitch('nerds')}
                   className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${
                     activeTab === 'nerds'
-                      ? 'text-green-300 border-b-2 border-green-300'
-                      : 'text-slate-400 hover:text-slate-300'
+            ? 'text-success border-b-2 border-success'
+            : 'text-base-content/60 hover:text-base-content/85'
                   }`}
                 >
                   <span>For Nerds 🤓</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full ${
                     activeTab === 'nerds' 
-                      ? 'bg-green-500/20 text-green-200' 
-                      : 'bg-slate-500/20 text-slate-400'
+            ? 'bg-success/20 text-success' 
+            : 'bg-base-300/70 text-base-content/60'
                   }`}>
                     {fullImageDetails ? (() => {
                       // Count base technical fields (excluding Document ID)
@@ -1702,16 +1702,16 @@ export default function GalleryPage() {
                     return (
                   <div className="space-y-3">
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                      <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <FileText className="w-3.5 h-3.5" />
-                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
+                          <span className="text-primary font-bold">{fieldNo()}</span>
                           Title
                         </span>
                         {editingField !== 'pageTitle' && (
                           <button
                             onClick={() => startEditing('pageTitle')}
-                            className="text-primary-300 hover:text-primary-200 text-xs"
+                            className="text-primary hover:text-primary/80 text-xs"
                           >
                             ✏️ Edit
                           </button>
@@ -1723,7 +1723,7 @@ export default function GalleryPage() {
                             type="text"
                             value={editValues.pageTitle || ''}
                             onChange={(e) => setEditValues({ ...editValues, pageTitle: e.target.value })}
-                            className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
+                            className="w-full px-3 py-2 rounded bg-base-100 border border-base-content/25 text-base-content text-sm"
                           />
                           <div className="flex gap-2">
                             <button
@@ -1741,23 +1741,23 @@ export default function GalleryPage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="text-white font-medium">
+                        <div className="text-base-content font-medium">
                           {selectedImage.pageTitle || 'Untitled'}
                         </div>
                       )}
                     </div>
 
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                      <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <Calendar className="w-3.5 h-3.5" />
-                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
+                          <span className="text-primary font-bold">{fieldNo()}</span>
                           Added To Vault
                         </span>
                         {editingField !== 'internalAddedTimestamp' && (
                           <button
                             onClick={() => startEditing('internalAddedTimestamp')}
-                            className="text-primary-300 hover:text-primary-200 text-xs"
+                            className="text-primary hover:text-primary/80 text-xs"
                           >
                             ✏️ Edit
                           </button>
@@ -1774,7 +1774,7 @@ export default function GalleryPage() {
                               ...editValues, 
                               internalAddedTimestamp: new Date(e.target.value).toISOString()
                             })}
-                            className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
+                            className="w-full px-3 py-2 rounded bg-base-100 border border-base-content/25 text-base-content text-sm"
                           />
                           <div className="flex gap-2">
                             <button
@@ -1792,7 +1792,7 @@ export default function GalleryPage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="text-white">
+                        <div className="text-base-content">
                           {selectedImage.internalAddedTimestamp
                             ? new Date(selectedImage.internalAddedTimestamp).toLocaleString('en-US', {
                                 weekday: 'short',
@@ -1809,18 +1809,18 @@ export default function GalleryPage() {
 
                     {/* Collection */}
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                      <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                           </svg>
-                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
+                          <span className="text-primary font-bold">{fieldNo()}</span>
                           Collection
                         </span>
                         {editingField !== 'collectionId' && (
                           <button
                             onClick={() => startEditing('collectionId')}
-                            className="text-primary-300 hover:text-primary-200 text-xs"
+                            className="text-primary hover:text-primary/80 text-xs"
                           >
                             ✏️ Edit
                           </button>
@@ -1832,7 +1832,7 @@ export default function GalleryPage() {
                           <select
                             value={editValues.collectionId || ''}
                             onChange={(e) => setEditValues({ ...editValues, collectionId: e.target.value || null })}
-                            className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
+                            className="w-full px-3 py-2 rounded bg-base-100 border border-base-content/25 text-base-content text-sm"
                           >
                             <option value="">No Collection</option>
                             {collections.map(col => (
@@ -1877,7 +1877,7 @@ export default function GalleryPage() {
                           </div>
                         );
                       })() : (
-                        <div className="text-white/50 text-sm italic">
+                        <div className="text-base-content/50 text-sm italic">
                           Not in any collection
                         </div>
                       )}
@@ -1886,17 +1886,17 @@ export default function GalleryPage() {
                     {/* Pixvid URL - Only show for images (not videos) */}
                     {selectedImage.pixvidUrl && !selectedImage.filemoonUrl && !selectedImage.udropUrl && (
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                           <Link2 className="w-3.5 h-3.5" />
-                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
+                          <span className="text-primary font-bold">{fieldNo()}</span>
                           Pixvid URL
                         </div>
-                        <div className="bg-white/5 rounded p-2">
+                        <div className="bg-base-200 rounded p-2">
                           <a
                             href={selectedImage.pixvidUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-300 hover:text-blue-200 break-all text-sm"
+                            className="text-info hover:text-info/80 break-all text-sm"
                           >
                             {selectedImage.pixvidUrl}
                           </a>
@@ -1906,17 +1906,17 @@ export default function GalleryPage() {
 
                     {selectedImage.imgbbUrl && (
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                           <Link2 className="w-3.5 h-3.5" />
-                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
+                          <span className="text-primary font-bold">{fieldNo()}</span>
                           ImgBB URL
                         </div>
-                        <div className="bg-white/5 rounded p-2">
+                        <div className="bg-base-200 rounded p-2">
                           <a
                             href={selectedImage.imgbbUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-green-300 hover:text-green-200 break-all text-sm"
+                            className="text-success hover:text-success/80 break-all text-sm"
                           >
                             {selectedImage.imgbbUrl}
                           </a>
@@ -1926,17 +1926,17 @@ export default function GalleryPage() {
 
                     {selectedImage.filemoonUrl && (
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                           <Link2 className="w-3.5 h-3.5" />
-                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
+                          <span className="text-primary font-bold">{fieldNo()}</span>
                           Filemoon URL
                         </div>
-                        <div className="bg-white/5 rounded p-2">
+                        <div className="bg-base-200 rounded p-2">
                           <a
                             href={selectedImage.filemoonUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-purple-300 hover:text-purple-200 break-all text-sm"
+                            className="text-secondary hover:text-secondary/80 break-all text-sm"
                           >
                             {selectedImage.filemoonUrl}
                           </a>
@@ -1946,17 +1946,17 @@ export default function GalleryPage() {
 
                     {selectedImage.udropUrl && (
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                           <Link2 className="w-3.5 h-3.5" />
-                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
+                          <span className="text-primary font-bold">{fieldNo()}</span>
                           UDrop URL
                         </div>
-                        <div className="bg-white/5 rounded p-2">
+                        <div className="bg-base-200 rounded p-2">
                           <a
                             href={selectedImage.udropUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-orange-300 hover:text-orange-200 break-all text-sm"
+                            className="text-warning hover:text-warning/80 break-all text-sm"
                           >
                             {selectedImage.udropUrl}
                           </a>
@@ -1965,16 +1965,16 @@ export default function GalleryPage() {
                     )}
 
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                      <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <ImageIcon className="w-3.5 h-3.5" />
-                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
+                          <span className="text-primary font-bold">{fieldNo()}</span>
                           Source URL
                         </span>
                         {editingField !== 'sourceImageUrl' && (
                           <button
                             onClick={() => startEditing('sourceImageUrl')}
-                            className="text-primary-300 hover:text-primary-200 text-xs"
+                            className="text-primary hover:text-primary/80 text-xs"
                           >
                             ✏️ Edit
                           </button>
@@ -1986,7 +1986,7 @@ export default function GalleryPage() {
                             type="text"
                             value={editValues.sourceImageUrl || ''}
                             onChange={(e) => setEditValues({ ...editValues, sourceImageUrl: e.target.value })}
-                            className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
+                            className="w-full px-3 py-2 rounded bg-base-100/70 border border-base-content/25 text-base-content text-sm"
                           />
                           <div className="flex gap-2">
                             <button
@@ -2004,12 +2004,12 @@ export default function GalleryPage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="bg-white/5 rounded p-2">
+                        <div className="bg-base-100/60 rounded p-2">
                           <a
                             href={selectedImage.sourceImageUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-primary-300 hover:text-primary-200 break-all text-sm"
+                            className="text-primary hover:text-primary/80 break-all text-sm"
                           >
                             {selectedImage.sourceImageUrl || 'N/A'}
                           </a>
@@ -2018,16 +2018,16 @@ export default function GalleryPage() {
                     </div>
 
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                      <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <Globe className="w-3.5 h-3.5" />
-                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
+                          <span className="text-primary font-bold">{fieldNo()}</span>
                           Page URL
                         </span>
                         {editingField !== 'sourcePageUrl' && (
                           <button
                             onClick={() => startEditing('sourcePageUrl')}
-                            className="text-primary-300 hover:text-primary-200 text-xs"
+                            className="text-primary hover:text-primary/80 text-xs"
                           >
                             ✏️ Edit
                           </button>
@@ -2039,7 +2039,7 @@ export default function GalleryPage() {
                             type="text"
                             value={editValues.sourcePageUrl || ''}
                             onChange={(e) => setEditValues({ ...editValues, sourcePageUrl: e.target.value })}
-                            className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
+                            className="w-full px-3 py-2 rounded bg-base-100/70 border border-base-content/25 text-base-content text-sm"
                           />
                           <div className="flex gap-2">
                             <button
@@ -2057,12 +2057,12 @@ export default function GalleryPage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="bg-white/5 rounded p-2">
+                        <div className="bg-base-100/60 rounded p-2">
                           <a
                             href={selectedImage.sourcePageUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-primary-300 hover:text-primary-200 break-all text-sm"
+                            className="text-primary hover:text-primary/80 break-all text-sm"
                           >
                             {selectedImage.sourcePageUrl || 'N/A'}
                           </a>
@@ -2071,16 +2071,16 @@ export default function GalleryPage() {
                     </div>
 
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                      <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <AlignLeft className="w-3.5 h-3.5" />
-                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
+                          <span className="text-primary font-bold">{fieldNo()}</span>
                           Description
                         </span>
                         {editingField !== 'description' && (
                           <button
                             onClick={() => startEditing('description')}
-                            className="text-primary-300 hover:text-primary-200 text-xs"
+                            className="text-primary hover:text-primary/80 text-xs"
                           >
                             ✏️ Edit
                           </button>
@@ -2091,7 +2091,7 @@ export default function GalleryPage() {
                           <textarea
                             value={editValues.description || ''}
                             onChange={(e) => setEditValues({ ...editValues, description: e.target.value })}
-                            className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
+                            className="w-full px-3 py-2 rounded bg-base-100/70 border border-base-content/25 text-base-content text-sm"
                             rows="3"
                           />
                           <div className="flex gap-2">
@@ -2110,23 +2110,23 @@ export default function GalleryPage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="text-slate-300 text-sm">
+                        <div className="text-base-content/70 text-sm">
                           {selectedImage.description || 'No description'}
                         </div>
                       )}
                     </div>
 
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                      <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <Tag className="w-3.5 h-3.5" />
-                          <span className="text-primary-300 font-bold">{fieldNo()}</span>
+                          <span className="text-primary font-bold">{fieldNo()}</span>
                           Tags
                         </span>
                         {editingField !== 'tags' && (
                           <button
                             onClick={() => startEditing('tags')}
-                            className="text-primary-300 hover:text-primary-200 text-xs"
+                            className="text-primary hover:text-primary/80 text-xs"
                           >
                             ✏️ Edit
                           </button>
@@ -2139,7 +2139,7 @@ export default function GalleryPage() {
                             value={editValues.tags || ''}
                             onChange={(e) => setEditValues({ ...editValues, tags: e.target.value })}
                             placeholder="Comma separated tags"
-                            className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
+                            className="w-full px-3 py-2 rounded bg-base-100/70 border border-base-content/25 text-base-content text-sm"
                           />
                           <div className="flex gap-2">
                             <button
@@ -2163,14 +2163,14 @@ export default function GalleryPage() {
                               {selectedImage.tags.map(tag => (
                                 <span
                                   key={tag}
-                                  className="px-3 py-1 rounded-full bg-primary-500/20 text-primary-200 text-sm"
+                                  className="px-3 py-1 rounded-full bg-primary/20 text-primary text-sm"
                                 >
                                   {tag}
                                 </span>
                               ))}
                             </div>
                           ) : (
-                            <div className="text-slate-500 italic text-sm">No tags</div>
+                            <div className="text-base-content/50 italic text-sm">No tags</div>
                           )}
                         </>
                       )}
@@ -2180,7 +2180,7 @@ export default function GalleryPage() {
                   })()}
 
                   {/* Download Buttons */}
-                  <div className="flex gap-2 pt-4 border-t border-white/10">
+                  <div className="flex gap-2 pt-4 border-t border-base-content/20">
                     {/* Show video sources if it's a video */}
                     {(selectedImage.filemoonUrl || selectedImage.udropUrl) ? (
                       <>
@@ -2238,18 +2238,18 @@ export default function GalleryPage() {
                   {loadingNerdsTab && !fullImageDetails ? (
                     <div className="flex justify-center items-center py-10">
                       <Spinner size="md" />
-                      <span className="ml-3 text-slate-300">Loading technical details...</span>
+                      <span className="ml-3 text-base-content/70">Loading technical details...</span>
                     </div>
                   ) : (
                     <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                       {/* Document ID */}
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                           <Database className="w-3.5 h-3.5" />
                           Document ID
                         </div>
-                        <div className="bg-white/5 rounded p-2">
-                          <p className="text-white font-mono text-sm break-all">
+                        <div className="bg-base-100/60 rounded p-2">
+                          <p className="text-base-content font-mono text-sm break-all">
                             {selectedImage.id || 'N/A'}
                           </p>
                         </div>
@@ -2257,12 +2257,12 @@ export default function GalleryPage() {
 
                       {/* File Name */}
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                           <File className="w-3.5 h-3.5" />
                           File Name
                         </div>
-                        <div className="bg-white/5 rounded p-2">
-                          <p className="text-white font-mono text-sm break-all">
+                        <div className="bg-base-100/60 rounded p-2">
+                          <p className="text-base-content font-mono text-sm break-all">
                             {fullImageDetails?.fileName || (loadingNerdsTab ? 'Loading...' : 'N/A')}
                           </p>
                         </div>
@@ -2270,12 +2270,12 @@ export default function GalleryPage() {
 
                       {/* File Type */}
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                           <FileText className="w-3.5 h-3.5" />
                           File Type
                         </div>
-                        <div className="bg-white/5 rounded p-2">
-                          <p className="text-white font-mono text-sm">
+                        <div className="bg-base-100/60 rounded p-2">
+                          <p className="text-base-content font-mono text-sm">
                             {fullImageDetails?.fileType || (loadingNerdsTab ? 'Loading...' : 'N/A')}
                           </p>
                         </div>
@@ -2283,12 +2283,12 @@ export default function GalleryPage() {
 
                       {/* File Size */}
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                           <Database className="w-3.5 h-3.5" />
                           File Size
                         </div>
-                        <div className="bg-white/5 rounded p-2">
-                          <p className="text-white font-mono text-sm">
+                        <div className="bg-base-100/60 rounded p-2">
+                          <p className="text-base-content font-mono text-sm">
                             {fullImageDetails?.fileSize 
                               ? `${(fullImageDetails.fileSize / 1024).toFixed(2)} KB` 
                               : loadingNerdsTab ? 'Loading...' : 'N/A'}
@@ -2299,12 +2299,12 @@ export default function GalleryPage() {
                       {/* Width */}
                       {fullImageDetails?.width && (
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                          <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                             <Ruler className="w-3.5 h-3.5" />
                             Width
                           </div>
-                          <div className="bg-white/5 rounded p-2">
-                            <p className="text-white font-mono text-sm">
+                          <div className="bg-base-100/60 rounded p-2">
+                            <p className="text-base-content font-mono text-sm">
                               {fullImageDetails.width}
                             </p>
                           </div>
@@ -2314,12 +2314,12 @@ export default function GalleryPage() {
                       {/* Height */}
                       {fullImageDetails?.height && (
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                          <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                             <Ruler className="w-3.5 h-3.5" />
                             Height
                           </div>
-                          <div className="bg-white/5 rounded p-2">
-                            <p className="text-white font-mono text-sm">
+                          <div className="bg-base-100/60 rounded p-2">
+                            <p className="text-base-content font-mono text-sm">
                               {fullImageDetails.height}
                             </p>
                           </div>
@@ -2328,12 +2328,12 @@ export default function GalleryPage() {
 
                       {/* SHA-256 */}
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                           <Fingerprint className="w-3.5 h-3.5" />
                           SHA-256
                         </div>
-                        <div className="bg-white/5 rounded p-2">
-                          <p className="text-white font-mono text-sm break-all">
+                        <div className="bg-base-100/60 rounded p-2">
+                          <p className="text-base-content font-mono text-sm break-all">
                             {fullImageDetails?.sha256 || (loadingNerdsTab ? 'Loading...' : 'N/A')}
                           </p>
                         </div>
@@ -2341,12 +2341,12 @@ export default function GalleryPage() {
 
                       {/* pHash */}
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                           <Hash className="w-3.5 h-3.5" />
                           pHash
                         </div>
-                        <div className="bg-white/5 rounded p-2">
-                          <p className="text-white font-mono text-sm break-all">
+                        <div className="bg-base-100/60 rounded p-2">
+                          <p className="text-base-content font-mono text-sm break-all">
                             {fullImageDetails?.pHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
                           </p>
                         </div>
@@ -2354,12 +2354,12 @@ export default function GalleryPage() {
 
                       {/* aHash */}
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                           <Hash className="w-3.5 h-3.5" />
                           aHash
                         </div>
-                        <div className="bg-white/5 rounded p-2">
-                          <p className="text-white font-mono text-sm break-all">
+                        <div className="bg-base-100/60 rounded p-2">
+                          <p className="text-base-content font-mono text-sm break-all">
                             {fullImageDetails?.aHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
                           </p>
                         </div>
@@ -2367,12 +2367,12 @@ export default function GalleryPage() {
 
                       {/* dHash */}
                       <div>
-                        <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                           <Hash className="w-3.5 h-3.5" />
                           dHash
                         </div>
-                        <div className="bg-white/5 rounded p-2">
-                          <p className="text-white font-mono text-sm break-all">
+                        <div className="bg-base-100/60 rounded p-2">
+                          <p className="text-base-content font-mono text-sm break-all">
                             {fullImageDetails?.dHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
                           </p>
                         </div>
@@ -2394,12 +2394,12 @@ export default function GalleryPage() {
                         
                         return exifFields.map(([key, value]) => (
                           <div key={key}>
-                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                               <FileText className="w-3.5 h-3.5" />
                               {key}
                             </div>
-                            <div className="bg-white/5 rounded p-2">
-                              <p className="text-white font-mono text-sm break-all">
+                            <div className="bg-base-100/60 rounded p-2">
+                              <p className="text-base-content font-mono text-sm break-all">
                                 {typeof value === 'object' ? JSON.stringify(value) : String(value || 'N/A')}
                               </p>
                             </div>
@@ -2412,7 +2412,7 @@ export default function GalleryPage() {
               )}
 
                 {/* Action Buttons */}
-                <div className="flex gap-2 pt-4 border-t border-white/10 mt-6">
+                <div className="flex gap-2 pt-4 border-t border-base-content/20 mt-6">
                   <div className="flex-1" />
                   <button
                     onClick={() => {

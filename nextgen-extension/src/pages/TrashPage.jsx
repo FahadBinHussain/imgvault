@@ -7,13 +7,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  RefreshCw, Undo2, Trash2, AlertTriangle,
+  Undo2, Trash2, AlertTriangle,
   FileText, Calendar, Cloud, Link2, Globe, AlignLeft, Tag,
   File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint
 } from 'lucide-react';
 import { Button, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
 import { useTrash } from '../hooks/useChromeExtension';
 import TimelineScrollbar from '../components/TimelineScrollbar';
+import GalleryNavbar from '../components/GalleryNavbar';
 
 export default function TrashPage() {
   const navigate = useNavigate();
@@ -34,6 +35,8 @@ export default function TrashPage() {
   const [selectedImages, setSelectedImages] = useState(new Set());
   const [showBulkRestoreConfirm, setShowBulkRestoreConfirm] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [navbarHeight, setNavbarHeight] = useState(0);
 
   // Timeline scrollbar refs
   const pageContainerRef = useRef(null);
@@ -128,7 +131,7 @@ export default function TrashPage() {
 
   // Select all images
   const selectAll = () => {
-    const allIds = new Set(trashedImages.map(img => img.id));
+    const allIds = new Set(filteredTrashedImages.map(img => img.id));
     setSelectedImages(allIds);
   };
 
@@ -288,7 +291,24 @@ export default function TrashPage() {
     return groups;
   };
 
-  const groupedImages = groupImagesByDate(trashedImages);
+  const filteredTrashedImages = trashedImages.filter((img) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+
+    const haystack = [
+      img?.pageTitle,
+      img?.description,
+      img?.sourcePageUrl,
+      ...(img?.tags || []),
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    return haystack.includes(q);
+  });
+
+  const groupedImages = groupImagesByDate(filteredTrashedImages);
 
   // Build timeline data for scrollbar (grouped by month/year)
   useEffect(() => {
@@ -327,94 +347,45 @@ export default function TrashPage() {
   }, [groupedImages]);
 
   return (
-    <div ref={pageContainerRef} className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-y-auto">
+  <div ref={pageContainerRef} className="min-h-screen bg-base-200 text-base-content overflow-y-auto">
       {/* Timeline Scrollbar */}
       <TimelineScrollbar dateGroups={timelineData} containerRef={pageContainerRef} />
       
       <div className="w-full px-6">
-        {/* Glassmorphism Navigation Bar - Apple-like */}
-        <div className="sticky top-0 z-40 mb-8">
-          {/* Frosted glass bar */}
-          <div className="backdrop-blur-2xl bg-white/5 border-b border-white/10 shadow-2xl">
-            <div className="px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
-              {/* Top Row: Logo + Actions */}
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => navigate('/gallery')}
-                    className="p-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
-                             backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
-                             shadow-lg hover:shadow-xl text-white"
-                    title="Back to Gallery"
-                  >
-                    ← Back
-                  </button>
-                  <div className="relative">
-                    <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-pink-500 rounded-xl blur-lg opacity-50"></div>
-                    <div className="w-12 h-12 relative z-10 rounded-xl shadow-lg bg-gradient-to-r from-red-500 to-pink-500 flex items-center justify-center text-2xl">
-                      🗑️
-                    </div>
-                  </div>
-                  <div>
-                    <h1 className="text-3xl font-bold bg-gradient-to-r from-red-300 to-pink-300 bg-clip-text text-transparent drop-shadow-lg">
-                      ImgVault Trash
-                    </h1>
-                    <p className="text-sm text-slate-300 mt-1">
-                      <span className="font-semibold text-red-300">{trashedImages.length}</span> item{trashedImages.length !== 1 ? 's' : ''} in trash
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={reload}
-                    className="p-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
-                             backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
-                             shadow-lg hover:shadow-xl"
-                    title="Refresh"
-                  >
-                    <RefreshCw className={`w-5 h-5 text-white ${loading ? 'animate-spin' : ''}`} />
-                  </button>
-                  {trashedImages.length > 0 && (
-                    <button
-                      onClick={toggleSelectionMode}
-                      className={`px-4 py-3 rounded-xl border transition-all duration-300 hover:scale-105 active:scale-95
-                               shadow-lg hover:shadow-xl flex items-center gap-2 font-medium ${
-                        selectionMode 
-                          ? 'bg-red-500 border-red-400 text-white hover:bg-red-600'
-                          : 'bg-white/10 hover:bg-white/20 border-white/20 backdrop-blur-sm text-white'
-                      }`}
-                      title={selectionMode ? "Exit Selection Mode" : "Enter Selection Mode"}
-                    >
-                      {selectionMode ? '✓ Selection Mode' : '☑ Select'}
-                    </button>
-                  )}
-                  {trashedImages.length > 0 && (
-                    <button
-                      onClick={() => setShowEmptyTrashConfirm(true)}
-                      disabled={isProcessing}
-                      className="px-5 py-3 rounded-xl bg-gradient-to-r from-red-500 to-pink-500 
-                               text-white font-semibold shadow-lg hover:shadow-xl hover:scale-105 
-                               active:scale-95 transition-all duration-300 flex items-center gap-2
-                               disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                      Empty Trash
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <GalleryNavbar
+          navigate={navigate}
+          images={filteredTrashedImages}
+          reload={reload}
+          toggleSelectionMode={toggleSelectionMode}
+          selectionMode={selectionMode}
+          collectionsLoading={false}
+          collections={[]}
+          trashLoading={loading}
+          trashedImages={trashedImages}
+          openUploadModal={() => {}}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          selectedImages={selectedImages}
+          selectAll={selectAll}
+          filteredImages={filteredTrashedImages}
+          deselectAll={deselectAll}
+          setShowBulkDeleteConfirm={setShowBulkDeleteConfirm}
+          isDeleting={isProcessing}
+          onHeightChange={setNavbarHeight}
+          isTrashPage={true}
+          onEmptyTrash={() => setShowEmptyTrashConfirm(true)}
+        />
+
+        <div style={{ height: navbarHeight ? `${navbarHeight + 8}px` : '120px' }} />
 
         {/* Warning Message */}
         {trashedImages.length > 0 && !selectionMode && (
           <div className="px-6 mb-6">
-            <div className="p-4 bg-yellow-900/30 border border-yellow-600/50 rounded-xl backdrop-blur-sm flex items-start gap-3">
-              <AlertTriangle className="text-yellow-500 mt-1 flex-shrink-0" size={20} />
+            <div className="p-4 bg-warning/15 border border-warning/40 rounded-xl backdrop-blur-sm flex items-start gap-3">
+              <AlertTriangle className="text-warning mt-1 flex-shrink-0" size={20} />
               <div className="text-sm">
-                <p className="font-medium text-yellow-300">Items in trash are still hosted</p>
-                <p className="text-yellow-400/80 mt-1">
+                <p className="font-medium text-warning">Items in trash are still hosted</p>
+                <p className="text-base-content/80 mt-1">
                   Trashed items remain accessible via their URLs. To completely remove them from hosts, 
                   use "Permanently Delete" or "Empty Trash".
                 </p>
@@ -430,25 +401,25 @@ export default function TrashPage() {
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="p-4 rounded-xl bg-red-500/20 border border-red-400/50 backdrop-blur-sm"
+              className="p-4 rounded-xl bg-error/15 border border-error/40 backdrop-blur-sm"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="text-white font-semibold">
+                  <span className="text-base-content font-semibold">
                     {selectedImages.size} selected
                   </span>
                   <button
                     onClick={selectAll}
-                    className="px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 
-                             text-white transition-all duration-200"
+                    className="px-3 py-1.5 text-sm rounded-lg bg-base-100/70 hover:bg-base-100 
+                             text-base-content transition-all duration-200"
                   >
                     Select All ({trashedImages.length})
                   </button>
                   {selectedImages.size > 0 && (
                     <button
                       onClick={deselectAll}
-                      className="px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 
-                               text-white transition-all duration-200"
+                      className="px-3 py-1.5 text-sm rounded-lg bg-base-100/70 hover:bg-base-100 
+                               text-base-content transition-all duration-200"
                     >
                       Deselect All
                     </button>
@@ -460,8 +431,8 @@ export default function TrashPage() {
                       <button
                         onClick={() => setShowBulkRestoreConfirm(true)}
                         disabled={isProcessing}
-                        className="px-4 py-2 rounded-lg bg-green-500 hover:bg-green-600 
-                                 text-white font-medium flex items-center gap-2
+                        className="px-4 py-2 rounded-lg bg-success/20 hover:bg-success/30 
+                                 text-success-content font-medium flex items-center gap-2
                                  transition-all duration-200 disabled:opacity-50"
                       >
                         <Undo2 className="w-4 h-4" />
@@ -470,8 +441,8 @@ export default function TrashPage() {
                       <button
                         onClick={() => setShowBulkDeleteConfirm(true)}
                         disabled={isProcessing}
-                        className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 
-                                 text-white font-medium flex items-center gap-2
+                        className="px-4 py-2 rounded-lg bg-error/20 hover:bg-error/30 
+                                 text-error-content font-medium flex items-center gap-2
                                  transition-all duration-200 disabled:opacity-50"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -490,23 +461,23 @@ export default function TrashPage() {
         {loading && (
           <div className="flex flex-col justify-center items-center py-32">
             <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur-2xl opacity-50 animate-pulse"></div>
+              <div className="absolute inset-0 bg-gradient-to-r from-error to-warning rounded-full blur-2xl opacity-50 animate-pulse"></div>
               <Spinner size="lg" className="relative z-10" />
             </div>
-            <p className="mt-6 text-white text-lg font-medium">Loading trash...</p>
+            <p className="mt-6 text-base-content text-lg font-medium">Loading trash...</p>
           </div>
         )}
 
         {/* Empty State */}
         {!loading && trashedImages.length === 0 && (
-          <div className="glass-card rounded-xl backdrop-blur-xl bg-white/10 border border-white/20 
+          <div className="glass-card rounded-xl backdrop-blur-xl bg-base-100/70 border border-base-content/20 
                         shadow-2xl p-16 text-center">
             <div className="relative inline-block mb-6">
-              <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur-3xl opacity-30"></div>
+              <div className="absolute inset-0 bg-gradient-to-r from-error to-warning rounded-full blur-3xl opacity-30"></div>
               <div className="text-8xl relative z-10 drop-shadow-2xl">🗑️</div>
             </div>
-            <h3 className="text-3xl font-bold text-white mb-3 drop-shadow-lg">Trash is Empty</h3>
-            <p className="text-slate-300 text-lg max-w-md mx-auto">
+            <h3 className="text-3xl font-bold text-base-content mb-3 drop-shadow-lg">Trash is Empty</h3>
+            <p className="text-base-content/70 text-lg max-w-md mx-auto">
               Deleted images will appear here. You can restore them or delete them permanently.
             </p>
           </div>
@@ -515,8 +486,8 @@ export default function TrashPage() {
         {/* Gallery Grid */}
         {!loading && Object.keys(groupedImages).map(date => (
           <div key={date} className="mb-10" ref={el => dateGroupRefs.current[date] = el}>
-            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-              <span className="bg-gradient-to-r from-red-500 to-pink-500 w-1 h-8 rounded-full"></span>
+            <h2 className="text-2xl font-bold text-base-content mb-6 flex items-center gap-3">
+              <span className="bg-gradient-to-r from-error to-warning w-1 h-8 rounded-full"></span>
               {date}
             </h2>
             
@@ -548,12 +519,12 @@ export default function TrashPage() {
                   }}
                 >
                   {/* Soft glow effect on hover */}
-                  <div className="absolute -inset-1 bg-gradient-to-r from-red-500/40 to-pink-500/40 
+                  <div className="absolute -inset-1 bg-gradient-to-r from-error/40 to-warning/40 
                                 rounded-xl opacity-0 group-hover:opacity-100 blur-xl 
                                 transition-all duration-700 ease-out"></div>
                   
                   {/* Card with soft shadows and smooth animations */}
-                  <div className="relative bg-slate-800/80 backdrop-blur-sm border border-white/10 
+                  <div className="relative bg-base-100/80 backdrop-blur-sm border border-base-content/20 
                                 rounded-xl overflow-hidden shadow-lg group-hover:shadow-2xl
                                 transform transition-all duration-500 ease-out 
                                 group-hover:scale-[1.04] group-hover:-translate-y-2">
@@ -563,11 +534,11 @@ export default function TrashPage() {
                         <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center
                                       transition-all duration-200 ${
                           selectedImages.has(image.id)
-                            ? 'bg-red-500 border-red-400'
-                            : 'bg-black/50 border-white/50 backdrop-blur-sm'
+                            ? 'bg-error border-error/80'
+                            : 'bg-base-300/70 border-base-content/50 backdrop-blur-sm'
                         }`}>
                           {selectedImages.has(image.id) && (
-                            <span className="text-white text-sm font-bold">✓</span>
+                            <span className="text-error-content text-sm font-bold">✓</span>
                           )}
                         </div>
                       </div>
@@ -575,7 +546,7 @@ export default function TrashPage() {
                     
                     {/* Loading skeleton with shimmer - only for non-video items */}
                     {!loadedImages.has(image.id) && !image.filemoonUrl && (
-                      <div className="absolute inset-0 bg-slate-800 overflow-hidden">
+                      <div className="absolute inset-0 bg-base-300 overflow-hidden">
                         <div className="absolute inset-0 shimmer"></div>
                       </div>
                     )}
@@ -612,15 +583,15 @@ export default function TrashPage() {
                     )}
                     
                     {/* Gradient Overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent 
+                    <div className="absolute inset-0 bg-gradient-to-t from-base-300 via-base-300/60 to-transparent 
                                   opacity-0 group-hover:opacity-100 transition-all duration-500 ease-out">
                       <div className="absolute bottom-0 left-0 right-0 p-4 space-y-2 
                                     transform translate-y-2 group-hover:translate-y-0 
                                     transition-transform duration-500 ease-out">
-                        <p className="text-white text-sm font-semibold truncate drop-shadow-xl">
+                        <p className="text-base-content text-sm font-semibold truncate drop-shadow-xl">
                           {image.pageTitle || 'Untitled'}
                         </p>
-                        <p className="text-white/70 text-xs">
+                        <p className="text-base-content/70 text-xs">
                           Deleted: {formatDate(image.deletedAt)}
                         </p>
                         {image.tags && image.tags.length > 0 && (
@@ -628,15 +599,15 @@ export default function TrashPage() {
                             {image.tags.slice(0, 2).map(tag => (
                               <span
                                 key={tag}
-                                className="text-xs px-2.5 py-1 rounded-lg bg-white/20 backdrop-blur-sm 
-                                         text-white border border-white/30 font-medium shadow-lg"
+                                className="text-xs px-2.5 py-1 rounded-lg bg-base-100/70 backdrop-blur-sm 
+                                         text-base-content border border-base-content/30 font-medium shadow-lg"
                               >
                                 {tag}
                               </span>
                             ))}
                             {image.tags.length > 2 && (
-                              <span className="text-xs px-2.5 py-1 rounded-lg bg-white/20 backdrop-blur-sm 
-                                             text-white border border-white/30 font-medium shadow-lg">
+                              <span className="text-xs px-2.5 py-1 rounded-lg bg-base-100/70 backdrop-blur-sm 
+                                             text-base-content border border-base-content/30 font-medium shadow-lg">
                                 +{image.tags.length - 2}
                               </span>
                             )}
@@ -663,13 +634,13 @@ export default function TrashPage() {
           <div className="flex flex-col lg:flex-row h-full relative">
               
               {/* Dark Overlay Background */}
-              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+              <div className="absolute inset-0 bg-base-content/20 backdrop-blur-sm" />
 
               {/* LEFT SIDE - IMAGE/VIDEO with Zoom Animation */}
-              <div className="flex-1 min-h-[35vh] lg:min-h-0 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-3 sm:p-6 lg:p-8 relative z-10">
+              <div className="flex-1 min-h-[35vh] lg:min-h-0 flex items-center justify-center bg-gradient-to-br from-base-300 to-base-200 p-3 sm:p-6 lg:p-8 relative z-10">
                 {/* Radial glow effect */}
                 <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
-                              w-4/5 h-4/5 bg-red-500/10 rounded-full blur-3xl"></div>
+                              w-4/5 h-4/5 bg-error/10 rounded-full blur-3xl"></div>
                 
                 {/* Conditional rendering for video or image */}
                 {selectedImage.filemoonUrl ? (
@@ -698,25 +669,25 @@ export default function TrashPage() {
               </div>
 
               {/* RIGHT SIDE - DETAILS */}
-        <div className="w-full lg:w-[550px] lg:flex-shrink-0 bg-slate-800/90 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-white/10 
+  <div className="w-full lg:w-[550px] lg:flex-shrink-0 bg-base-100/90 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-base-content/20 
                             overflow-y-auto flex flex-col relative z-10"
-                   style={{ scrollbarWidth: 'thin', scrollbarColor: '#ef4444 #1e293b' }}
+       style={{ scrollbarWidth: 'thin', scrollbarColor: 'hsl(var(--er)) hsl(var(--b3))' }}
               >
                 {/* Close Button */}
                 <button
                   onClick={() => setSelectedImage(null)}
-                  className="absolute top-4 right-4 z-50 w-11 h-11 rounded-full bg-red-500/20 
-                           hover:bg-red-500/40 border border-red-500/50 hover:border-red-500 
+                  className="absolute top-4 right-4 z-50 w-11 h-11 rounded-full bg-error/20 
+                           hover:bg-error/35 border border-error/50 hover:border-error 
                            flex items-center justify-center transition-all duration-300 
                            hover:scale-110 hover:rotate-90 group shadow-xl"
                   title="Close"
                 >
-                  <span className="text-red-300 group-hover:text-red-100 text-2xl font-bold">✕</span>
+                  <span className="text-error group-hover:text-error-content text-2xl font-bold">✕</span>
                 </button>
 
                 <div className="p-6 flex-1 pt-16">
                   {/* Details Header */}
-                  <h2 className="text-2xl font-bold text-white mb-4 bg-gradient-to-r from-red-300 to-pink-300 bg-clip-text text-transparent">
+                  <h2 className="text-2xl font-bold text-base-content mb-4 bg-gradient-to-r from-error to-warning bg-clip-text text-transparent">
                     Details
                   </h2>
 
@@ -726,15 +697,15 @@ export default function TrashPage() {
                       onClick={() => handleTabSwitch('noobs')}
                       className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${
                         activeTab === 'noobs'
-                          ? 'text-red-300 border-b-2 border-red-300'
-                          : 'text-slate-400 hover:text-slate-300'
+                          ? 'text-info border-b-2 border-info'
+                          : 'text-base-content/60 hover:text-base-content/85'
                       }`}
                     >
                       <span>For Noobs 👶</span>
                       <span className={`text-xs px-2 py-0.5 rounded-full ${
                         activeTab === 'noobs' 
-                          ? 'bg-red-500/20 text-red-200' 
-                          : 'bg-slate-500/20 text-slate-400'
+                          ? 'bg-info/20 text-info' 
+                          : 'bg-base-300/70 text-base-content/60'
                       }`}>
                         {/* Count: Title, Deleted At, Added To Vault, Pixvid/Filemoon/UDrop URLs (conditional), Source URL, Page URL, Description, Tags */}
                         {(() => {

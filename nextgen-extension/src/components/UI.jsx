@@ -21,8 +21,8 @@ export const Button = ({
     primary: 'bg-primary-600 hover:bg-primary-700 text-white',
     secondary: 'bg-secondary-500 hover:bg-secondary-600 text-white',
     danger: 'bg-red-600 hover:bg-red-700 text-white',
-    glass: 'glass-button text-white',
-    outline: 'border-2 border-white/30 hover:border-white/50 text-white bg-transparent'
+    glass: 'glass-button text-base-content',
+    outline: 'border-2 border-base-content/30 hover:border-base-content/50 text-base-content bg-transparent'
   };
 
   const sizes = {
@@ -59,15 +59,15 @@ export const Input = ({
   return (
     <div className="w-full">
       {label && (
-        <label className="block text-sm font-medium text-slate-200 mb-2">
+        <label className="block text-sm font-medium text-base-content/80 mb-2">
           {label}
         </label>
       )}
       <input
         className={clsx(
           'w-full px-4 py-2 rounded-lg',
-          'bg-white/10 border border-white/20',
-          'text-white placeholder-slate-400',
+          'bg-base-100/70 border border-base-content/20',
+          'text-base-content placeholder-base-content/50',
           'focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent',
           'transition-all duration-200',
           error && 'border-red-400',
@@ -94,15 +94,15 @@ export const Textarea = ({
   return (
     <div className="w-full">
       {label && (
-        <label className="block text-sm font-medium text-slate-200 mb-2">
+        <label className="block text-sm font-medium text-base-content/80 mb-2">
           {label}
         </label>
       )}
       <textarea
         className={clsx(
           'w-full px-4 py-2 rounded-lg',
-          'bg-white/10 border border-white/20',
-          'text-white placeholder-slate-400',
+          'bg-base-100/70 border border-base-content/20',
+          'text-base-content placeholder-base-content/50',
           'focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent',
           'transition-all duration-200 resize-none',
           error && 'border-red-400',
@@ -165,7 +165,7 @@ export const IconButton = ({
  */
 export const Badge = ({ children, variant = 'default', className }) => {
   const variants = {
-    default: 'bg-slate-500/30 text-slate-200',
+    default: 'bg-base-300 text-base-content',
     primary: 'bg-primary-500/30 text-primary-200',
     success: 'bg-green-500/30 text-green-200',
     error: 'bg-red-500/30 text-red-200'
@@ -197,7 +197,7 @@ export const Spinner = ({ size = 'md', className }) => {
   return (
     <div
       className={clsx(
-        'animate-spin rounded-full border-2 border-white/20 border-t-white',
+        'animate-spin rounded-full border-2 border-base-content/20 border-t-base-content',
         sizes[size],
         className
       )}
@@ -229,14 +229,14 @@ export const Modal = ({ isOpen, onClose, title, children, className, fullscreen 
         {title && (
           <div className="flex items-center justify-between mb-6">
             {typeof title === 'string' ? (
-              <h2 className="text-2xl font-bold text-white">{title}</h2>
+              <h2 className="text-2xl font-bold text-base-content">{title}</h2>
             ) : (
               title
             )}
             {!fullscreen && (
               <button
                 onClick={onClose}
-                className="p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
+                className="p-2 rounded-lg hover:bg-base-content/10 transition-colors text-base-content/70 hover:text-base-content"
               >
                 <X className="w-5 h-5" />
               </button>
