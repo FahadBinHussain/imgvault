@@ -5,18 +5,10 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --bg-dark: #0f172a;
-    --bg-card: rgba(255, 255, 255, 0.1);
-    --bg-glass: rgba(255, 255, 255, 0.05);
-    --text-primary: #f1f5f9;
-    --text-secondary: #cbd5e1;
-    --border: rgba(255, 255, 255, 0.1);
-  }
-
   body {
     @apply antialiased font-inter tracking-tight;
-    background: linear-gradient(to bottom right, #0f172a, #581c87, #0f172a);
+    background-color: hsl(var(--b2));
+    color: hsl(var(--bc));
     background-attachment: fixed;
     min-height: 100vh;
   }
@@ -38,9 +30,9 @@
     animation: shimmer 2s infinite linear;
     background: linear-gradient(
       90deg,
-      rgba(30, 41, 59, 0) 0%,
-      rgba(148, 163, 184, 0.4) 50%,
-      rgba(30, 41, 59, 0) 100%
+      hsl(var(--bc) / 0) 0%,
+      hsl(var(--bc) / 0.25) 50%,
+      hsl(var(--bc) / 0) 100%
     );
     background-size: 1000px 100%;
   }
@@ -48,14 +40,22 @@
 
 @layer components {
   .glass-card {
-    @apply bg-white/5 backdrop-blur-xl border border-white/10;
+    @apply backdrop-blur-xl border;
+    background-color: hsl(var(--b1) / 0.7);
+    border-color: hsl(var(--bc) / 0.15);
   }
 
   .glass-button {
-    @apply bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 transition-all;
+    @apply backdrop-blur-sm border transition-all;
+    background-color: hsl(var(--b1) / 0.8);
+    border-color: hsl(var(--bc) / 0.2);
+  }
+
+  .glass-button:hover {
+    background-color: hsl(var(--b1) / 1);
   }
 
   .gradient-text {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-300;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary;
   }
 }
