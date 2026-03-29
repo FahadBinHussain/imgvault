@@ -7,7 +7,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  RefreshCw, Upload, Search, Trash2, Download, X, Settings, FolderOpen,
+  Upload, Trash2, Download, X, FolderOpen,
   FileText, Calendar, Cloud, Link2, Globe, AlignLeft, Tag,
   File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint
 } from 'lucide-react';
@@ -15,6 +15,7 @@ import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from
 import { useImages, useImageUpload, useTrash, useChromeStorage, useCollections } from '../hooks/useChromeExtension';
 import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import TimelineScrollbar from '../components/TimelineScrollbar';
+import GalleryNavbar from '../components/GalleryNavbar';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig';
 
 export default function GalleryPage() {
@@ -38,6 +39,7 @@ export default function GalleryPage() {
   const [isDeleting, setIsDeleting] = useState(false); // Track deletion progress
   const [loadedImages, setLoadedImages] = useState(new Set()); // Track loaded images for fade-in
   const [isModalAnimating, setIsModalAnimating] = useState(false); // Track modal animation state
+  const [navbarHeight, setNavbarHeight] = useState(0);
   
   // Timeline scrollbar refs
   const pageContainerRef = useRef(null);
@@ -1219,205 +1221,36 @@ export default function GalleryPage() {
 
       {/* Timeline Scrollbar */}
       <TimelineScrollbar dateGroups={timelineData} containerRef={pageContainerRef} />
-      
-      <div className="w-full px-6">
-        {/* Glassmorphism Navigation Bar - Apple-like */}
-        <div className="sticky top-0 z-40 mb-8">
-          {/* Frosted glass bar */}
-          <div className="backdrop-blur-2xl bg-white/5 border-b border-white/10 shadow-2xl">
-            <div className="px-8 py-6">
-              {/* Top Row: Logo + Actions */}
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-4">
-                  {collectionId && currentCollection ? (
-                    <>
-                      <button
-                        onClick={() => navigate('/gallery')}
-                        className="p-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
-                                 backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
-                                 shadow-lg hover:shadow-xl text-white"
-                        title="Back to All Images"
-                      >
-                        ← Back
-                      </button>
-                      <div className="flex items-center gap-3">
-                        <FolderOpen className="w-8 h-8 text-white" />
-                        <div>
-                          <h1 className="text-2xl font-bold text-white">{currentCollection.name}</h1>
-                          {currentCollection.description && (
-                            <p className="text-white/60 text-sm">{currentCollection.description}</p>
-                          )}
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="relative">
-                        <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-xl blur-lg opacity-50"></div>
-                        <img src="/icons/icon48.png" alt="ImgVault" className="w-12 h-12 relative z-10 rounded-xl shadow-lg" />
-                      </div>
-                      <div>
-                        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent drop-shadow-lg">
-                          ImgVault Gallery
-                        </h1>
-                        <p className="text-sm text-slate-300 mt-1">
-                          <span className="font-semibold text-primary-300">{images.length}</span> images in your vault
-                          <span className="mx-2 text-slate-500">•</span>
-                          <span className="text-slate-400">Source: </span>
-                          <span className="font-medium text-white">
-                            {defaultGallerySource === 'imgbb' ? 'ImgBB (Original Quality)' : 'Pixvid (Compressed Quality)'}
-                          </span>
-                        </p>
-                      </div>
-                    </>
-                  )}
-                </div>
-                
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={reload}
-                    className="p-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
-                             backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
-                             shadow-lg hover:shadow-xl"
-                    title="Refresh"
-                  >
-                    <RefreshCw className="w-5 h-5 text-white" />
-                  </button>
-                  <button
-                    onClick={toggleSelectionMode}
-                    className={`px-4 py-3 rounded-xl border transition-all duration-300 hover:scale-105 active:scale-95
-                             shadow-lg hover:shadow-xl flex items-center gap-2 font-medium ${
-                      selectionMode 
-                        ? 'bg-primary-500 border-primary-400 text-white hover:bg-primary-600'
-                        : 'bg-white/10 hover:bg-white/20 border-white/20 backdrop-blur-sm text-white'
-                    }`}
-                    title={selectionMode ? "Exit Selection Mode" : "Enter Selection Mode"}
-                  >
-                    {selectionMode ? '✓ Selection Mode' : '☑ Select'}
-                  </button>
-                  <button
-                    onClick={() => navigate('/collections')}
-                    className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
-                             backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
-                             shadow-lg hover:shadow-xl flex items-center gap-2 text-white"
-                    title="Collections"
-                  >
-                    <FolderOpen className="w-5 h-5" />
-                    Collections
-                    {!collectionsLoading && collections.length > 0 && (
-                      <span className="ml-1 text-xs text-white/60">
-                        {collections.length}
-                      </span>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => navigate('/settings')}
-                    className="p-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
-                             backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
-                             shadow-lg hover:shadow-xl"
-                    title="Settings"
-                  >
-                    <Settings className="w-5 h-5 text-white" />
-                  </button>
-                  <button
-                    onClick={() => navigate('/trash')}
-                    className="relative px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
-                             backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95
-                             shadow-lg hover:shadow-xl flex items-center gap-2 text-white"
-                    title="Trash"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                    Trash
-                    {!trashLoading && trashedImages.length > 0 && (
-                      <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold 
-                                     rounded-full w-6 h-6 flex items-center justify-center 
-                                     animate-pulse shadow-lg">
-                        {trashedImages.length}
-                      </span>
-                    )}
-                  </button>
-                  <button
-                    onClick={openUploadModal}
-                    className="px-5 py-3 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
-                             text-white font-semibold shadow-lg hover:shadow-xl hover:scale-105 
-                             active:scale-95 transition-all duration-300 flex items-center gap-2"
-                  >
-                    <Upload className="w-5 h-5" />
-                    Upload
-                  </button>
-                </div>
-              </div>
 
-              {/* Search Bar */}
-              <div className="relative group">
-                <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-xl blur opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
-                <div className="relative flex items-center shadow-lg">
-                  <Search className="absolute left-4 w-5 h-5 text-slate-400" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by title, description, or tags..."
-                    className="w-full pl-12 pr-4 py-4 rounded-xl bg-white/10 backdrop-blur-sm 
-                             border border-white/20 text-white placeholder-slate-400 
-                             focus:outline-none focus:border-primary-300 focus:bg-white/15 
-                             focus:shadow-xl transition-all duration-300"
-                  />
-                </div>
-              </div>
+      <GalleryNavbar
+        collectionId={collectionId}
+        currentCollection={currentCollection}
+        navigate={navigate}
+        images={images}
+        defaultGallerySource={defaultGallerySource}
+        reload={reload}
+        toggleSelectionMode={toggleSelectionMode}
+        selectionMode={selectionMode}
+        collectionsLoading={collectionsLoading}
+        collections={collections}
+        trashLoading={trashLoading}
+        trashedImages={trashedImages}
+        openUploadModal={openUploadModal}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        selectedImages={selectedImages}
+        selectAll={selectAll}
+        filteredImages={filteredImages}
+        deselectAll={deselectAll}
+        setShowBulkDeleteConfirm={setShowBulkDeleteConfirm}
+        isDeleting={isDeleting}
+        onHeightChange={setNavbarHeight}
+      />
 
-              {/* Bulk Actions Bar - Shown when in selection mode */}
-              {selectionMode && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="mt-4 p-4 rounded-xl bg-primary-500/20 border border-primary-400/50 backdrop-blur-sm"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-white font-semibold">
-                        {selectedImages.size} selected
-                      </span>
-                      <button
-                        onClick={selectAll}
-                        className="px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 
-                                 text-white transition-all duration-200"
-                      >
-                        Select All ({filteredImages.length})
-                      </button>
-                      {selectedImages.size > 0 && (
-                        <button
-                          onClick={deselectAll}
-                          className="px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 
-                                   text-white transition-all duration-200"
-                        >
-                          Deselect All
-                        </button>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {selectedImages.size > 0 && (
-                        <button
-                          onClick={() => setShowBulkDeleteConfirm(true)}
-                          disabled={isDeleting}
-                          className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 
-                                   text-white font-medium flex items-center gap-2
-                                   transition-all duration-200 disabled:opacity-50"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          Delete Selected
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </div>
-          </div>
-        </div>
+      <div style={{ height: navbarHeight ? `${navbarHeight + 8}px` : '180px' }} />
 
-        <div className="px-6">
+      <div className="w-full px-3 sm:px-6">
+  <div className="px-0">
         {/* Loading State */}
         {loading && (
           <div className="flex flex-col justify-center items-center py-32">
@@ -1567,7 +1400,7 @@ export default function GalleryPage() {
             </h2>
             
             {/* Masonry Grid - 3 columns on mobile, 4 on tablet, 5 on desktop, 6 on large screens */}
-            <div className="columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-6 space-y-6">
+            <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-3 sm:gap-4 md:gap-6 space-y-3 sm:space-y-4 md:space-y-6">
               {groupedImages[date].map((img, index) => (
                 <motion.div
                   key={img.id}
@@ -1715,7 +1548,7 @@ export default function GalleryPage() {
           className="!max-w-[95vw] !w-full !h-[95vh] !p-0 !overflow-hidden"
         >
           {selectedImage && (
-            <div className={`flex h-full relative transition-all duration-500 ease-out
+            <div className={`flex flex-col lg:flex-row h-full relative transition-all duration-500 ease-out
                           ${isModalAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
               
               {/* Dark Overlay Background with Fade */}
@@ -1723,7 +1556,7 @@ export default function GalleryPage() {
                             ${isModalAnimating ? 'opacity-0' : 'opacity-100'}`} />
 
               {/* LEFT SIDE - IMAGE/VIDEO with Zoom Animation */}
-              <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-8 relative z-10">
+              <div className="flex-1 min-h-[35vh] lg:min-h-0 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-3 sm:p-6 lg:p-8 relative z-10">
                 {/* Radial glow effect */}
                 <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
                               w-4/5 h-4/5 bg-primary-500/10 rounded-full blur-3xl
@@ -1762,7 +1595,7 @@ export default function GalleryPage() {
               </div>
 
               {/* RIGHT SIDE - DETAILS with Slide-up Animation */}
-              <div className={`w-[550px] flex-shrink-0 bg-slate-800/90 backdrop-blur-xl border-l border-white/10 
+              <div className={`w-full lg:w-[550px] lg:flex-shrink-0 bg-slate-800/90 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-white/10 
                             overflow-y-auto flex flex-col relative z-10
                             transition-all duration-500 ease-out
                             ${isModalAnimating ? 'translate-y-8 opacity-0' : 'translate-y-0 opacity-100'}`}
@@ -1792,7 +1625,7 @@ export default function GalleryPage() {
               </h2>
 
               {/* Tab Navigation */}
-              <div className="flex gap-2 mb-4 border-b border-white/10">
+              <div className="flex gap-2 mb-4 border-b border-white/10 overflow-x-auto whitespace-nowrap">
                 <button
                   onClick={() => handleTabSwitch('noobs')}
                   className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${

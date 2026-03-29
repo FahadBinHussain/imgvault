@@ -103,8 +103,8 @@ export default function CollectionsPage() {
       {/* Navigation Bar */}
       <div className="sticky top-0 z-40 mb-8">
         <div className="backdrop-blur-2xl bg-white/5 border-b border-white/10 shadow-2xl">
-          <div className="px-8 py-6">
-            <div className="flex items-center justify-between mb-6">
+          <div className="px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-2 sm:mb-4 lg:mb-6">
               <div className="flex items-center gap-4">
                 <button
                   onClick={() => navigate('/gallery')}
@@ -115,13 +115,13 @@ export default function CollectionsPage() {
                 >
                   ← Back
                 </button>
-                <h1 className="text-3xl font-bold text-white flex items-center gap-3">
+                <h1 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-3">
                   <FolderOpen className="w-8 h-8" />
                   Collections
                 </h1>
               </div>
               
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                 <button
                   onClick={reload}
                   className="p-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 
@@ -142,12 +142,13 @@ export default function CollectionsPage() {
                 </button>
                 <button
                   onClick={() => setShowCreateModal(true)}
-                  className="px-5 py-3 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
+                  className="px-4 sm:px-5 py-3 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
                            hover:shadow-xl transition-all duration-300 hover:scale-105 active:scale-95
                            shadow-lg flex items-center gap-2 text-white font-semibold"
                 >
                   <Plus className="w-5 h-5" />
-                  New Collection
+                  <span className="hidden sm:inline">New Collection</span>
+                  <span className="sm:hidden">New</span>
                 </button>
               </div>
             </div>
@@ -156,7 +157,7 @@ export default function CollectionsPage() {
       </div>
 
       {/* Collections Grid */}
-      <div className="container mx-auto px-8 pb-16">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 pb-16">
         {collections.length === 0 ? (
           <div className="text-center py-20">
             <FolderOpen className="w-20 h-20 text-white/30 mx-auto mb-4" />
@@ -167,7 +168,7 @@ export default function CollectionsPage() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
             {collections.map((collection) => {
               const collectionImages = getCollectionImages(collection.id);
               const isEditing = editingCollection?.id === collection.id;

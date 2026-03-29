@@ -145,7 +145,7 @@ export default function PopupPage() {
   // No image view
   if (!imageData) {
     return (
-      <div className="w-[420px] min-h-[400px] bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      <div className="w-full max-w-[420px] min-h-screen sm:min-h-[400px] mx-auto bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
         <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl">
           {/* Header with glassmorphism */}
           <div className="p-6 border-b border-white/10 backdrop-blur-xl bg-white/5">
@@ -218,7 +218,7 @@ export default function PopupPage() {
   // Success view
   if (showSuccess) {
     return (
-      <div className="w-[420px] min-h-[400px] bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+      <div className="w-full max-w-[420px] min-h-screen sm:min-h-[400px] mx-auto bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center px-4">
         <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl rounded-2xl p-8 text-center">
           <div className="relative inline-block mb-6">
             <div className="absolute inset-0 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full blur-3xl opacity-50 animate-pulse"></div>
@@ -268,10 +268,10 @@ export default function PopupPage() {
   };
 
   return (
-    <div className="w-[420px] bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div className="w-full max-w-[420px] mx-auto min-h-screen sm:min-h-0 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl">
         {/* Header with glassmorphism */}
-        <div className="p-6 border-b border-white/10 backdrop-blur-xl bg-white/5">
+  <div className="p-4 sm:p-6 border-b border-white/10 backdrop-blur-xl bg-white/5">
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-lg blur-md opacity-50"></div>
@@ -293,7 +293,7 @@ export default function PopupPage() {
         </div>
 
         {/* Image Preview with soft shadows */}
-        <div className="p-6 space-y-4">
+  <div className="p-4 sm:p-6 space-y-4">
           <div className="relative rounded-xl overflow-hidden bg-slate-800/50 border border-white/10 shadow-xl group">
             <div className="absolute -inset-1 bg-gradient-to-r from-primary-500/40 to-secondary-500/40 
                           rounded-xl opacity-0 group-hover:opacity-100 blur-xl transition-all duration-500"></div>

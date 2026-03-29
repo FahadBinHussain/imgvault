@@ -336,7 +336,7 @@ export default function TrashPage() {
         <div className="sticky top-0 z-40 mb-8">
           {/* Frosted glass bar */}
           <div className="backdrop-blur-2xl bg-white/5 border-b border-white/10 shadow-2xl">
-            <div className="px-8 py-6">
+            <div className="px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
               {/* Top Row: Logo + Actions */}
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-4">
@@ -521,7 +521,7 @@ export default function TrashPage() {
             </h2>
             
             {/* Masonry Grid - 3 columns on mobile, 4 on tablet, 5 on desktop, 6 on large screens */}
-            <div className="columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-6 space-y-6">
+            <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 2xl:columns-6 gap-4 sm:gap-6 space-y-4 sm:space-y-6">
               {groupedImages[date].map((image, index) => (
                 <motion.div
                   key={image.id}
@@ -660,13 +660,13 @@ export default function TrashPage() {
         className="!max-w-[95vw] !w-full !h-[95vh] !p-0 !overflow-hidden"
       >
         {selectedImage && (
-          <div className="flex h-full relative">
+          <div className="flex flex-col lg:flex-row h-full relative">
               
               {/* Dark Overlay Background */}
               <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
               {/* LEFT SIDE - IMAGE/VIDEO with Zoom Animation */}
-              <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-8 relative z-10">
+              <div className="flex-1 min-h-[35vh] lg:min-h-0 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-3 sm:p-6 lg:p-8 relative z-10">
                 {/* Radial glow effect */}
                 <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
                               w-4/5 h-4/5 bg-red-500/10 rounded-full blur-3xl"></div>
@@ -698,7 +698,7 @@ export default function TrashPage() {
               </div>
 
               {/* RIGHT SIDE - DETAILS */}
-              <div className="w-[550px] flex-shrink-0 bg-slate-800/90 backdrop-blur-xl border-l border-white/10 
+        <div className="w-full lg:w-[550px] lg:flex-shrink-0 bg-slate-800/90 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-white/10 
                             overflow-y-auto flex flex-col relative z-10"
                    style={{ scrollbarWidth: 'thin', scrollbarColor: '#ef4444 #1e293b' }}
               >
@@ -721,7 +721,7 @@ export default function TrashPage() {
                   </h2>
 
                   {/* Tab Navigation */}
-                  <div className="flex gap-2 mb-4 border-b border-white/10">
+                  <div className="flex gap-2 mb-4 border-b border-white/10 overflow-x-auto whitespace-nowrap">
                     <button
                       onClick={() => handleTabSwitch('noobs')}
                       className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${

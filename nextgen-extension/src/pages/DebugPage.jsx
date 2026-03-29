@@ -169,9 +169,9 @@ export default function DebugPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
-      <div className="max-w-2xl mx-auto space-y-6">
-        <h1 className="text-4xl font-bold text-white mb-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-3 sm:p-6 lg:p-8">
+      <div className="max-w-2xl mx-auto space-y-6 w-full">
+        <h1 className="text-3xl sm:text-4xl font-bold text-white mb-8">
           🐛 Debug Upload
         </h1>
 

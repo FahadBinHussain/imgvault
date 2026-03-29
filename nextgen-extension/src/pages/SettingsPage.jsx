@@ -225,11 +225,11 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
-      <div className="max-w-3xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-3 sm:p-6">
+      <div className="max-w-3xl mx-auto w-full">
         {/* Header */}
-        <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl rounded-2xl p-6 mb-6">
-          <div className="flex items-center gap-4">
+        <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl rounded-2xl p-4 sm:p-6 mb-6">
+          <div className="flex items-start sm:items-center gap-3 sm:gap-4">
             <Button
               onClick={handleBack}
               variant="secondary"
@@ -243,14 +243,14 @@ export default function SettingsPage() {
               <img src="/icons/icon48.png" alt="ImgVault" className="w-12 h-12 relative z-10 rounded-xl shadow-lg" />
             </div>
             <div className="flex-1">
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent">Settings</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent">Settings</h1>
               <p className="text-sm text-slate-300 mt-1">Configure your ImgVault extension</p>
             </div>
           </div>
         </div>
 
         {/* Settings Form */}
-        <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl rounded-2xl p-8 space-y-8">
+  <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl rounded-2xl p-4 sm:p-8 space-y-8">
           {/* API Keys Section */}
           <div>
             <h2 className="text-xl font-semibold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent mb-6 flex items-center gap-2">
@@ -460,7 +460,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Help Section */}
-        <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl rounded-2xl p-6 mt-6">
+  <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl rounded-2xl p-4 sm:p-6 mt-6">
           <h2 className="text-lg font-semibold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent mb-4 flex items-center gap-2">
             <span className="text-xl">❓</span>
             Need Help?
