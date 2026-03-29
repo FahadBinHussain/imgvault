@@ -21,6 +21,7 @@ import {
   Pencil,
   Save
 } from 'lucide-react'
+import UserAvatar from '../components/UserAvatar'
 
 // Skeleton Loader Component with Shimmer
 function SkeletonCard({ viewMode }) {
@@ -71,11 +72,12 @@ function Navbar() {
           <a href="/settings" className="text-dark-300 hover:text-white transition-all duration-300 p-2 rounded-lg hover:bg-white/5">
             <Settings className="w-5 h-5" />
           </a>
-          {session?.user?.image && (
-            <img 
-              src={session.user.image} 
-              alt="Profile" 
+          {session?.user && (
+            <UserAvatar
+              user={session.user}
               className="w-8 h-8 rounded-full ring-2 ring-primary-500/50 ring-offset-2 ring-offset-dark-950"
+              alt="Profile"
+              title={session.user?.name || session.user?.email || 'Profile'}
             />
           )}
         </div>

@@ -24,6 +24,7 @@ import {
   X,
   LogIn
 } from 'lucide-react'
+import UserAvatar from './components/UserAvatar'
 
 function Navbar() {
   const { data: session } = useSession()
@@ -57,7 +58,12 @@ function Navbar() {
           </a>
           {session ? (
             <a href="/gallery" className="flex items-center gap-2 text-dark-300 hover:text-white transition-colors text-sm font-medium">
-              <img src={session.user?.image} alt="" className="w-6 h-6 rounded-full" />
+              <UserAvatar
+                user={session.user}
+                className="w-6 h-6 rounded-full"
+                alt="Profile"
+                title={session.user?.name || session.user?.email || 'Profile'}
+              />
               Gallery
             </a>
           ) : (
@@ -86,7 +92,12 @@ function Navbar() {
           <a href="#download" className="text-dark-300 hover:text-white transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>Download</a>
           {session ? (
             <a href="/gallery" className="flex items-center gap-2 text-dark-300 hover:text-white transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>
-              <img src={session.user?.image} alt="" className="w-6 h-6 rounded-full" />
+              <UserAvatar
+                user={session.user}
+                className="w-6 h-6 rounded-full"
+                alt="Profile"
+                title={session.user?.name || session.user?.email || 'Profile'}
+              />
               Gallery
             </a>
           ) : (
