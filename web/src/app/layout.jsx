@@ -1,5 +1,6 @@
 import './globals.css'
 import Providers from './providers'
+import Script from 'next/script'
 
 export const metadata = {
   title: 'ImgVault Next-Gen | Save Images with Context',
@@ -15,8 +16,20 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
-      <body className="bg-dark-950 text-white antialiased" suppressHydrationWarning>
+    <html lang="en" data-theme="dark" suppressHydrationWarning>
+      <head>
+        <Script id="imgvault-theme-init" strategy="beforeInteractive">
+          {`(() => {
+  try {
+    const savedTheme = localStorage.getItem('imgvault-theme');
+    if (savedTheme) {
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    }
+  } catch (_) {}
+})();`}
+        </Script>
+      </head>
+      <body className="min-h-screen theme-surface antialiased" suppressHydrationWarning>
         <Providers>
           {children}
         </Providers>

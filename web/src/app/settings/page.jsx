@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { Image, Settings, Save, Loader2, Check, AlertCircle } from 'lucide-react'
 import UserAvatar from '../components/UserAvatar'
+import ThemeSwitcher from '../components/ThemeSwitcher'
 
 function Navbar() {
   const { data: session } = useSession()
@@ -24,6 +25,7 @@ function Navbar() {
         <div className="flex items-center gap-4">
           <a href="/" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">Home</a>
           <a href="/gallery" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">Gallery</a>
+          <ThemeSwitcher />
           <a href="/settings" className="text-white">
             <Settings className="w-5 h-5" />
           </a>
@@ -151,7 +153,7 @@ export default function SettingsPage() {
 
   if (status === 'loading' || loading) {
     return (
-      <main className="min-h-screen bg-dark-950">
+  <main className="min-h-screen theme-surface">
         <Navbar />
         <div className="pt-24 flex items-center justify-center min-h-[60vh]">
           <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
@@ -161,7 +163,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-dark-950">
+  <main className="min-h-screen theme-surface">
       <Navbar />
 
       <section className="pt-24 pb-12 px-6">
