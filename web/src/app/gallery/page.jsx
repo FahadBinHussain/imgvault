@@ -21,8 +21,9 @@ import {
   Pencil,
   Save
 } from 'lucide-react'
-import UserAvatar from '../components/UserAvatar'
 import ThemeSwitcher from '../components/ThemeSwitcher'
+import UserDropdown from '../components/UserDropdown'
+import BrandLogo from '../components/BrandLogo'
 
 // Skeleton Loader Component with Shimmer
 function SkeletonCard({ viewMode }) {
@@ -51,35 +52,31 @@ function Navbar() {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass">
-      <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
         <a href="/" className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-lg shadow-primary-500/25 animate-glow">
-            <Image className="w-5 h-5 text-white" />
-          </div>
-          <span className="text-xl font-bold">
+          <BrandLogo href={null} className="w-10 h-10 animate-glow" />
+          <span className="text-lg sm:text-xl font-bold hidden sm:inline">
             Img<span className="gradient-text">Vault</span>
           </span>
         </a>
         
-        <div className="flex items-center gap-6">
-          <a href="/" className="text-dark-300 hover:text-white transition-all duration-300 text-sm font-medium relative group">
+        <div className="flex items-center gap-2 sm:gap-4 lg:gap-6">
+          <a href="/" className="hidden sm:inline text-dark-300 hover:text-white transition-all duration-300 text-sm font-medium relative group">
             Home
             <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-primary-500 transition-all duration-300 group-hover:w-full" />
           </a>
-          <a href="/gallery" className="text-white text-sm font-medium relative group">
+          <a href="/gallery" className="hidden sm:inline text-white text-sm font-medium relative group">
             Gallery
             <span className="absolute -bottom-1 left-0 w-full h-0.5 bg-primary-500" />
           </a>
-          <ThemeSwitcher />
+          <ThemeSwitcher className="w-28 sm:w-auto" />
           <a href="/settings" className="text-dark-300 hover:text-white transition-all duration-300 p-2 rounded-lg hover:bg-white/5">
             <Settings className="w-5 h-5" />
           </a>
           {session?.user && (
-            <UserAvatar
+            <UserDropdown
               user={session.user}
-              className="w-8 h-8 rounded-full ring-2 ring-primary-500/50 ring-offset-2 ring-offset-dark-950"
-              alt="Profile"
-              title={session.user?.name || session.user?.email || 'Profile'}
+              avatarClassName="w-8 h-8 rounded-full ring-2 ring-primary-500/50 ring-offset-2 ring-offset-dark-950"
             />
           )}
         </div>
@@ -406,35 +403,35 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
 
   return (
     <div 
-      className="fixed inset-0 z-[100] flex bg-black/90 backdrop-blur-xl animate-fade-in"
+      className="fixed inset-0 z-[100] flex flex-col lg:flex-row bg-black/90 backdrop-blur-xl animate-fade-in"
       onClick={onClose}
     >
       {/* Left side - Image */}
-      <div className="flex-1 flex items-center justify-center p-8 relative">
+      <div className="flex-1 flex items-center justify-center p-3 sm:p-6 lg:p-8 relative min-h-[45vh] lg:min-h-0">
         {/* Close button */}
         <button 
           onClick={onClose}
-          className="absolute top-6 right-6 p-3 glass rounded-full hover:bg-white/20 transition-all duration-300 z-10"
+          className="absolute top-3 right-3 sm:top-6 sm:right-6 p-2 sm:p-3 glass rounded-full hover:bg-white/20 transition-all duration-300 z-10"
         >
-          <X className="w-6 h-6" />
+          <X className="w-5 h-5 sm:w-6 sm:h-6" />
         </button>
 
         {/* Navigation buttons */}
         {currentIndex > 0 && (
           <button 
             onClick={(e) => { e.stopPropagation(); handlePrev() }}
-            className="absolute left-6 p-4 glass rounded-full hover:bg-white/20 transition-all duration-300 hover:-translate-x-1"
+            className="absolute left-2 sm:left-6 p-2 sm:p-4 glass rounded-full hover:bg-white/20 transition-all duration-300 hover:-translate-x-1"
           >
-            <ChevronLeft className="w-6 h-6" />
+            <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         )}
         
         {currentIndex < images.length - 1 && (
           <button 
             onClick={(e) => { e.stopPropagation(); handleNext() }}
-            className="absolute right-6 p-4 glass rounded-full hover:bg-white/20 transition-all duration-300 hover:translate-x-1"
+            className="absolute right-2 sm:right-6 p-2 sm:p-4 glass rounded-full hover:bg-white/20 transition-all duration-300 hover:translate-x-1"
           >
-            <ChevronRight className="w-6 h-6" />
+            <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         )}
 
@@ -451,7 +448,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
           <img
             src={imageUrl}
             alt={image.pageTitle || 'Image'}
-            className={`max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+            className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-2xl shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
             onLoad={() => setIsLoading(false)}
           />
         </div>
@@ -463,7 +460,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
       </div>
 
       {/* Right side - Details Panel */}
-      <div className="w-[400px] bg-dark-900/95 backdrop-blur-xl border-l border-white/10 overflow-y-auto flex flex-col">
+      <div className="w-full lg:w-[400px] max-h-[50vh] lg:max-h-none bg-dark-900/95 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-white/10 overflow-y-auto flex flex-col">
         <div className="p-6 flex-1">
           {/* Tab Navigation */}
           <div className="flex gap-2 mb-6 border-b border-white/10 pb-4">
@@ -568,7 +565,7 @@ function ImageCard({ image, index, viewMode, onClick, className = '' }) {
     >
       {/* Image Container */}
       <div
-        className={`${viewMode === 'list' ? 'w-40 h-28 flex-shrink-0' : 'h-auto'} bg-dark-900 relative overflow-hidden`}
+        className={`${viewMode === 'list' ? 'w-28 h-24 sm:w-40 sm:h-28 flex-shrink-0' : 'h-auto'} bg-dark-900 relative overflow-hidden`}
         style={viewMode !== 'list' && !isLoaded ? { minHeight: '220px' } : undefined}
       >
         {imageUrl ? (
@@ -799,13 +796,13 @@ export default function GalleryPage() {
     return (
   <main className="min-h-screen theme-surface">
         <Navbar />
-        <section className="pt-28 pb-12 px-6">
+  <section className="pt-24 sm:pt-28 pb-10 sm:pb-12 px-4 sm:px-6">
           <div className="max-w-7xl mx-auto">
             <div className="mb-8">
               <div className="h-10 bg-dark-800/50 rounded-xl w-48 mb-3 animate-pulse" />
               <div className="h-5 bg-dark-800/50 rounded w-64 animate-pulse" />
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {[...Array(8)].map((_, i) => (
                 <SkeletonCard key={i} viewMode="grid" />
               ))}
@@ -821,12 +818,12 @@ export default function GalleryPage() {
   <main className="min-h-screen theme-surface">
         <Navbar />
         
-        <section className="pt-28 pb-12 px-6">
+  <section className="pt-24 sm:pt-28 pb-10 sm:pb-12 px-4 sm:px-6">
           <div className="max-w-7xl mx-auto">
             {/* Header */}
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-10">
               <div className="animate-fade-in">
-                <h1 className="text-4xl font-bold mb-2">
+                <h1 className="text-3xl sm:text-4xl font-bold mb-2">
                   <span className="gradient-text">Gallery</span>
                 </h1>
                 <p className="text-dark-400">
@@ -837,7 +834,7 @@ export default function GalleryPage() {
               </div>
             
               {images.length > 0 && (
-                <div className="flex items-center gap-4 animate-fade-in" style={{ animationDelay: '100ms' }}>
+                <div className="w-full md:w-auto flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 animate-fade-in" style={{ animationDelay: '100ms' }}>
                   {/* Search */}
                   <div className="relative group">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-500 transition-colors group-focus-within:text-primary-400" />
@@ -846,7 +843,7 @@ export default function GalleryPage() {
                       placeholder="Search images..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-11 pr-4 py-3 bg-dark-800/50 border border-white/5 rounded-xl text-sm focus:outline-none focus:border-primary-500/50 focus:bg-dark-800 w-64 transition-all duration-300 focus:w-80 focus:shadow-lg focus:shadow-primary-500/10"
+                      className="pl-11 pr-4 py-3 bg-dark-800/50 border border-white/5 rounded-xl text-sm focus:outline-none focus:border-primary-500/50 focus:bg-dark-800 w-full sm:w-64 transition-all duration-300 sm:focus:w-80 focus:shadow-lg focus:shadow-primary-500/10"
                     />
                     {searchQuery && (
                       <button 

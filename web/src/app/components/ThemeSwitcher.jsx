@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Palette } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Check, Palette } from 'lucide-react'
 
 const STORAGE_KEY = 'imgvault-theme'
 
@@ -51,24 +51,9 @@ function formatThemeName(themeName) {
 }
 
 export default function ThemeSwitcher({ className = '' }) {
+	const rootRef = useRef(null)
+	const [open, setOpen] = useState(false)
 	const [theme, setTheme] = useState('dark')
-
-	const selectStyle = useMemo(
-		() => ({
-			backgroundColor: 'var(--color-base-200)',
-			color: 'var(--color-base-content)',
-			borderColor: 'color-mix(in oklab, var(--color-base-content) 24%, transparent)',
-		}),
-		[],
-	)
-
-	const optionStyle = useMemo(
-		() => ({
-			backgroundColor: 'var(--color-base-200)',
-			color: 'var(--color-base-content)',
-		}),
-		[],
-	)
 
 	const applyTheme = (nextTheme) => {
 		if (!nextTheme) return
@@ -76,6 +61,7 @@ export default function ThemeSwitcher({ className = '' }) {
 		document.documentElement.setAttribute('data-theme', nextTheme)
 		localStorage.setItem(STORAGE_KEY, nextTheme)
 		setTheme(nextTheme)
+		setOpen(false)
 	}
 
 	useEffect(() => {
@@ -87,23 +73,76 @@ export default function ThemeSwitcher({ className = '' }) {
 		applyTheme(currentTheme)
 	}, [])
 
+	useEffect(() => {
+		const handleOutsideClick = (event) => {
+			if (!rootRef.current?.contains(event.target)) {
+				setOpen(false)
+			}
+		}
+
+		const handleEscape = (event) => {
+			if (event.key === 'Escape') {
+				setOpen(false)
+			}
+		}
+
+		document.addEventListener('mousedown', handleOutsideClick)
+		document.addEventListener('keydown', handleEscape)
+
+		return () => {
+			document.removeEventListener('mousedown', handleOutsideClick)
+			document.removeEventListener('keydown', handleEscape)
+		}
+	}, [])
+
 	return (
-		<label className={`relative flex items-center ${className}`}>
-			<Palette className="pointer-events-none absolute left-2 z-10 w-4 h-4 opacity-70" />
-			<select
-				value={theme}
-				onChange={(event) => applyTheme(event.target.value)}
-				className="w-40 pl-8 pr-2 py-1.5 rounded-lg border text-xs"
-				style={selectStyle}
-				aria-label="Select theme"
-				title="Select theme"
+		<div ref={rootRef} className={`relative ${className}`}>
+			<button
+				type="button"
+				onClick={() => setOpen((prev) => !prev)}
+				className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-dark-300 hover:text-white hover:bg-white/5 transition-colors"
+				aria-haspopup="menu"
+				aria-expanded={open}
+				title="Theme settings"
 			>
-				{THEMES.map((themeName) => (
-					<option key={themeName} value={themeName} style={optionStyle}>
-						{formatThemeName(themeName)}
-					</option>
-				))}
-			</select>
-		</label>
+				<Palette className="w-4 h-4" />
+			</button>
+
+			{open && (
+				<div
+					className="absolute right-0 mt-2 w-56 rounded-xl border border-white/20 bg-base-100 shadow-2xl p-2 z-[9999] overflow-hidden"
+					style={{
+						backgroundColor: 'var(--color-base-100)',
+						opacity: 1,
+					}}
+				>
+					<div className="px-2 py-2 mb-1 border-b border-white/10">
+						<p className="text-xs text-dark-400">Current theme</p>
+						<p className="text-sm font-medium">{formatThemeName(theme)}</p>
+					</div>
+
+					<div className="max-h-64 overflow-y-auto pr-1 space-y-0.5">
+						{THEMES.map((themeName) => {
+							const isActive = themeName === theme
+							return (
+								<button
+									key={themeName}
+									type="button"
+									onClick={() => applyTheme(themeName)}
+									className={`w-full flex items-center justify-between gap-2 px-2 py-2 rounded-lg text-sm transition-colors ${
+										isActive
+											? 'bg-primary-500/20 text-primary-300'
+											: 'text-dark-300 hover:text-white hover:bg-white/5'
+									}`}
+								>
+									<span>{formatThemeName(themeName)}</span>
+									{isActive && <Check className="w-4 h-4" />}
+								</button>
+							)
+						})}
+					</div>
+				</div>
+			)}
+		</div>
 	)
 }

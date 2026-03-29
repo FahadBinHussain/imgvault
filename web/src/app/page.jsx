@@ -24,8 +24,9 @@ import {
   X,
   LogIn
 } from 'lucide-react'
-import UserAvatar from './components/UserAvatar'
 import ThemeSwitcher from './components/ThemeSwitcher'
+import UserDropdown from './components/UserDropdown'
+import BrandLogo from './components/BrandLogo'
 
 function Navbar() {
   const { data: session } = useSession()
@@ -40,17 +41,15 @@ function Navbar() {
 
   return (
     <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'glass py-3' : 'py-6'}`}>
-      <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-lg shadow-primary-500/25">
-            <Image className="w-5 h-5 text-white" />
-          </div>
-          <span className="text-xl font-bold">
+          <BrandLogo href="/" className="w-10 h-10" />
+          <span className="text-lg sm:text-xl font-bold">
             Img<span className="gradient-text">Vault</span>
           </span>
         </div>
         
-        <div className="hidden md:flex items-center gap-8">
+        <div className="hidden lg:flex items-center gap-4 xl:gap-8">
           <a href="#features" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">Features</a>
           <a href="#demo" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">Demo</a>
           <a href="#download" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">Download</a>
@@ -59,15 +58,12 @@ function Navbar() {
             <Github className="w-5 h-5" />
           </a>
           {session ? (
-            <a href="/gallery" className="flex items-center gap-2 text-dark-300 hover:text-white transition-colors text-sm font-medium">
-              <UserAvatar
+            <>
+              <UserDropdown
                 user={session.user}
-                className="w-6 h-6 rounded-full"
-                alt="Profile"
-                title={session.user?.name || session.user?.email || 'Profile'}
+                avatarClassName="w-8 h-8 rounded-full"
               />
-              Gallery
-            </a>
+            </>
           ) : (
             <button 
               onClick={() => signIn('google')}
@@ -80,7 +76,7 @@ function Navbar() {
         </div>
 
         <button 
-          className="md:hidden text-white"
+          className="lg:hidden text-white"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
         >
           {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -88,21 +84,19 @@ function Navbar() {
       </div>
 
       {mobileMenuOpen && (
-        <div className="md:hidden glass mt-3 mx-6 rounded-2xl p-6 flex flex-col gap-4">
+        <div className="lg:hidden glass mt-3 mx-4 sm:mx-6 rounded-2xl p-4 sm:p-6 flex flex-col gap-4">
           <a href="#features" className="text-dark-300 hover:text-white transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>Features</a>
           <a href="#demo" className="text-dark-300 hover:text-white transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>Demo</a>
           <a href="#download" className="text-dark-300 hover:text-white transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>Download</a>
-          <ThemeSwitcher className="max-w-[180px]" />
+          <ThemeSwitcher className="w-full max-w-[220px]" />
           {session ? (
-            <a href="/gallery" className="flex items-center gap-2 text-dark-300 hover:text-white transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>
-              <UserAvatar
+            <>
+              <UserDropdown
                 user={session.user}
-                className="w-6 h-6 rounded-full"
-                alt="Profile"
-                title={session.user?.name || session.user?.email || 'Profile'}
+                className="ml-auto"
+                avatarClassName="w-8 h-8 rounded-full"
               />
-              Gallery
-            </a>
+            </>
           ) : (
             <button 
               onClick={() => signIn('google')}
@@ -120,24 +114,24 @@ function Navbar() {
 
 function HeroSection() {
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-20">
+    <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-24 sm:pt-20">
       {/* Background effects */}
       <div className="absolute inset-0 bg-grid-pattern bg-grid opacity-30"></div>
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary-500/20 rounded-full blur-[128px] animate-pulse-slow"></div>
-      <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-primary-600/15 rounded-full blur-[100px] animate-pulse-slow" style={{ animationDelay: '2s' }}></div>
+      <div className="hidden sm:block absolute top-1/4 left-1/4 w-96 h-96 bg-primary-500/20 rounded-full blur-[128px] animate-pulse-slow"></div>
+      <div className="hidden sm:block absolute bottom-1/4 right-1/4 w-80 h-80 bg-primary-600/15 rounded-full blur-[100px] animate-pulse-slow" style={{ animationDelay: '2s' }}></div>
       
-      <div className="relative z-10 max-w-7xl mx-auto px-6 text-center">
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 text-center">
         <div className="inline-flex items-center gap-2 glass rounded-full px-5 py-2 mb-8 animate-float">
           <Sparkles className="w-4 h-4 text-primary-400" />
           <span className="text-sm text-dark-200">Next-Gen Image Management</span>
         </div>
 
-        <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold mb-6 leading-tight">
+  <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-bold mb-6 leading-tight">
           Save Images <br />
           <span className="gradient-text">With Context</span>
         </h1>
 
-        <p className="text-lg md:text-xl text-dark-400 max-w-2xl mx-auto mb-12 leading-relaxed">
+  <p className="text-base sm:text-lg md:text-xl text-dark-400 max-w-2xl mx-auto mb-10 sm:mb-12 leading-relaxed">
           A modern Chrome extension that captures images with their full context, 
           detects duplicates intelligently, and organizes everything beautifully.
         </p>
@@ -145,7 +139,7 @@ function HeroSection() {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
           <a 
             href="#download" 
-            className="group relative px-8 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-2xl font-semibold text-lg overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/25 hover:-translate-y-0.5"
+            className="group relative w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-2xl font-semibold text-lg overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/25 hover:-translate-y-0.5"
           >
             <span className="relative z-10 flex items-center gap-2">
               <Download className="w-5 h-5" />
@@ -157,7 +151,7 @@ function HeroSection() {
           
           <a 
             href="#demo" 
-            className="px-8 py-4 glass rounded-2xl font-semibold text-lg hover:bg-white/10 transition-all duration-300 flex items-center gap-2"
+            className="w-full sm:w-auto px-8 py-4 glass rounded-2xl font-semibold text-lg hover:bg-white/10 transition-all duration-300 flex items-center justify-center gap-2"
           >
             <Eye className="w-5 h-5" />
             See in Action
@@ -244,8 +238,8 @@ function FeaturesSection() {
   ]
 
   return (
-    <section id="features" className="py-32 relative">
-      <div className="max-w-7xl mx-auto px-6">
+    <section id="features" className="py-20 md:py-32 relative">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="text-center mb-20">
           <div className="inline-flex items-center gap-2 glass rounded-full px-5 py-2 mb-6">
             <Layers className="w-4 h-4 text-primary-400" />
@@ -263,7 +257,7 @@ function FeaturesSection() {
           {features.map((feature, i) => (
             <div 
               key={i}
-              className="group glass rounded-2xl p-8 hover-lift gradient-border"
+              className="group glass rounded-2xl p-6 sm:p-8 hover-lift gradient-border"
             >
               <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${feature.color} flex items-center justify-center mb-6`}>
                 <feature.icon className={`w-7 h-7 ${feature.iconColor}`} />
@@ -300,10 +294,10 @@ function DemoSection() {
   ]
 
   return (
-    <section id="demo" className="py-32 relative">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary-500/10 rounded-full blur-[150px]"></div>
+    <section id="demo" className="py-20 md:py-32 relative">
+      <div className="hidden md:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary-500/10 rounded-full blur-[150px]"></div>
       
-      <div className="max-w-7xl mx-auto px-6 relative z-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10">
         <div className="text-center mb-20">
           <div className="inline-flex items-center gap-2 glass rounded-full px-5 py-2 mb-6">
             <Eye className="w-4 h-4 text-primary-400" />
@@ -376,11 +370,11 @@ function DownloadSection() {
   ]
 
   return (
-    <section id="download" className="py-32 relative">
-      <div className="max-w-7xl mx-auto px-6">
+    <section id="download" className="py-20 md:py-32 relative">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="glass rounded-3xl p-8 md:p-16 gradient-border relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-primary-500/10 rounded-full blur-[100px]"></div>
-          <div className="absolute bottom-0 left-0 w-80 h-80 bg-primary-600/10 rounded-full blur-[80px]"></div>
+          <div className="hidden sm:block absolute top-0 right-0 w-96 h-96 bg-primary-500/10 rounded-full blur-[100px]"></div>
+          <div className="hidden sm:block absolute bottom-0 left-0 w-80 h-80 bg-primary-600/10 rounded-full blur-[80px]"></div>
           
           <div className="relative z-10 grid lg:grid-cols-2 gap-12 items-center">
             <div>
@@ -433,7 +427,7 @@ function DownloadSection() {
                 <div className="w-3 h-3 rounded-full bg-yellow-500/80"></div>
                 <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
               </div>
-              <pre className="text-sm text-dark-300 font-mono overflow-x-auto">
+              <pre className="text-xs sm:text-sm text-dark-300 font-mono overflow-x-auto">
                 <code>{`# Clone the repository
 git clone https://github.com/FahadBinHussain/ImgVault.git
 
@@ -459,7 +453,7 @@ pnpm build
 function Footer() {
   return (
     <footer className="py-12 border-t border-white/5">
-      <div className="max-w-7xl mx-auto px-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center">
@@ -468,7 +462,7 @@ function Footer() {
             <span className="font-semibold">ImgVault Next-Gen</span>
           </div>
 
-          <div className="flex items-center gap-6 text-sm text-dark-500">
+          <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-sm text-dark-500">
             <a href="https://github.com/FahadBinHussain/ImgVault" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">GitHub</a>
             <a href="#features" className="hover:text-white transition-colors">Features</a>
             <a href="#download" className="hover:text-white transition-colors">Download</a>
