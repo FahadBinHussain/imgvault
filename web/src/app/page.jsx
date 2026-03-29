@@ -25,6 +25,7 @@ import {
   LogIn
 } from 'lucide-react'
 import UserAvatar from './components/UserAvatar'
+import ThemeSwitcher from './components/ThemeSwitcher'
 
 function Navbar() {
   const { data: session } = useSession()
@@ -53,6 +54,7 @@ function Navbar() {
           <a href="#features" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">Features</a>
           <a href="#demo" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">Demo</a>
           <a href="#download" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">Download</a>
+          <ThemeSwitcher />
           <a href="https://github.com/FahadBinHussain/ImgVault" target="_blank" rel="noopener noreferrer" className="text-dark-300 hover:text-white transition-colors">
             <Github className="w-5 h-5" />
           </a>
@@ -90,6 +92,7 @@ function Navbar() {
           <a href="#features" className="text-dark-300 hover:text-white transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>Features</a>
           <a href="#demo" className="text-dark-300 hover:text-white transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>Demo</a>
           <a href="#download" className="text-dark-300 hover:text-white transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>Download</a>
+          <ThemeSwitcher className="max-w-[180px]" />
           {session ? (
             <a href="/gallery" className="flex items-center gap-2 text-dark-300 hover:text-white transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>
               <UserAvatar

@@ -22,6 +22,7 @@ import {
   Save
 } from 'lucide-react'
 import UserAvatar from '../components/UserAvatar'
+import ThemeSwitcher from '../components/ThemeSwitcher'
 
 // Skeleton Loader Component with Shimmer
 function SkeletonCard({ viewMode }) {
@@ -69,6 +70,7 @@ function Navbar() {
             Gallery
             <span className="absolute -bottom-1 left-0 w-full h-0.5 bg-primary-500" />
           </a>
+          <ThemeSwitcher />
           <a href="/settings" className="text-dark-300 hover:text-white transition-all duration-300 p-2 rounded-lg hover:bg-white/5">
             <Settings className="w-5 h-5" />
           </a>
@@ -795,7 +797,7 @@ export default function GalleryPage() {
 
   if (status === 'loading' || loading) {
     return (
-      <main className="min-h-screen bg-dark-950">
+  <main className="min-h-screen theme-surface">
         <Navbar />
         <section className="pt-28 pb-12 px-6">
           <div className="max-w-7xl mx-auto">
@@ -816,7 +818,7 @@ export default function GalleryPage() {
 
   return (
     <>
-      <main className="min-h-screen bg-dark-950">
+  <main className="min-h-screen theme-surface">
         <Navbar />
         
         <section className="pt-28 pb-12 px-6">

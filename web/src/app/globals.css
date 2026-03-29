@@ -1,18 +1,67 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import 'daisyui/themes.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 255, 255, 255;
-  --background-rgb: 13, 17, 23;
+body {
+  background-color: var(--color-base-100, #0d1117);
+  color: var(--color-base-content, #ffffff);
+  font-family: 'Inter', system-ui, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-body {
-  color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-rgb));
-  font-family: 'Inter', system-ui, sans-serif;
+.theme-surface {
+  background-color: var(--color-base-100, #0d1117);
+  color: var(--color-base-content, #ffffff);
+}
+
+html[data-theme] [class*='bg-dark-'] {
+  background-color: var(--color-base-200, #f3f4f6) !important;
+}
+
+html[data-theme] [class='text-white'],
+html[data-theme] [class^='text-white '],
+html[data-theme] [class*=' text-white '],
+html[data-theme] [class*=' text-white'] {
+  color: var(--color-base-content, #111827) !important;
+}
+
+html[data-theme] [class*='hover:text-white']:hover {
+  color: var(--color-base-content, #111827) !important;
+}
+
+html[data-theme] [class*='text-dark-300'] {
+  color: color-mix(in oklab, var(--color-base-content, #111827) 78%, transparent) !important;
+}
+
+html[data-theme] [class*='text-dark-400'] {
+  color: color-mix(in oklab, var(--color-base-content, #111827) 68%, transparent) !important;
+}
+
+html[data-theme] [class*='text-dark-500'] {
+  color: color-mix(in oklab, var(--color-base-content, #111827) 56%, transparent) !important;
+}
+
+html[data-theme] [class*='text-dark-600'] {
+  color: color-mix(in oklab, var(--color-base-content, #111827) 46%, transparent) !important;
+}
+
+html[data-theme] [class*='text-dark-700'],
+html[data-theme] [class*='text-dark-800'],
+html[data-theme] [class*='text-dark-900'] {
+  color: color-mix(in oklab, var(--color-base-content, #111827) 34%, transparent) !important;
+}
+
+html[data-theme] [class*='border-white'] {
+  border-color: color-mix(in oklab, var(--color-base-content, #111827) 20%, transparent) !important;
+}
+
+html[data-theme] .glass,
+html[data-theme] .glass-dark {
+  background-color: color-mix(in oklab, var(--color-base-content, #111827) 8%, transparent) !important;
+  border-color: color-mix(in oklab, var(--color-base-content, #111827) 20%, transparent) !important;
 }
 
 @layer utilities {
