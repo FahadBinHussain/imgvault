@@ -209,6 +209,113 @@ const messageHandlers = {
     
     console.log('❌ No background image found');
     return { imageUrl: null };
+  },
+
+  /**
+   * Capture YouTube frame or artwork image
+   * @returns {{imageUrl: string | null, error?: string}}
+   */
+  getYouTubeCaptureImage() {
+    const currentHost = window.location.hostname;
+    const isYouTubeHost = currentHost.includes('youtube.com') || currentHost.includes('youtu.be');
+    const isYouTubeMusic = currentHost.includes('music.youtube.com');
+
+    if (!isYouTubeHost) {
+      return { imageUrl: null, error: 'Not a YouTube page' };
+    }
+
+    const getVideoFromElement = (element) => {
+      if (!element) return null;
+      if (element.tagName === 'VIDEO') return element;
+      if (typeof element.closest === 'function') {
+        const parentVideo = element.closest('video');
+        if (parentVideo) return parentVideo;
+      }
+      if (typeof element.querySelector === 'function') {
+        return element.querySelector('video');
+      }
+      return null;
+    };
+
+    const clickedVideo = getVideoFromElement(lastRightClickElement);
+    const activeVideo = clickedVideo || document.querySelector('video');
+
+    if (activeVideo && activeVideo.readyState >= 2) {
+      const width = activeVideo.videoWidth;
+      const height = activeVideo.videoHeight;
+
+      if (width && height) {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(activeVideo, 0, 0, width, height);
+            const imageUrl = canvas.toDataURL('image/png');
+            return { imageUrl };
+          }
+        } catch (error) {
+          // On some YouTube surfaces (notably music.youtube.com), canvas extraction can fail.
+          // Fall back to artwork URLs.
+          console.log('⚠️ Video frame capture failed, trying artwork fallback:', error?.message);
+        }
+      }
+    }
+
+    if (isYouTubeMusic) {
+      const getArtworkFromElement = (element) => {
+        if (!element) return null;
+        if (element.tagName === 'IMG') return element.src || null;
+        if (typeof element.closest === 'function') {
+          const imgParent = element.closest('img');
+          if (imgParent?.src) return imgParent.src;
+        }
+        if (typeof element.querySelector === 'function') {
+          const imgChild = element.querySelector('img');
+          if (imgChild?.src) return imgChild.src;
+        }
+        return null;
+      };
+
+      const fromClicked = getArtworkFromElement(lastRightClickElement);
+      if (fromClicked) return { imageUrl: fromClicked };
+
+      const specificSelectors = [
+        'yt-img-shadow#thumbnail img#img',
+        'ytmusic-player yt-img-shadow#thumbnail img',
+        'ytmusic-player-bar yt-img-shadow#thumbnail img',
+        'ytmusic-player #thumbnail img#img',
+        'ytmusic-player-bar img#thumbnail',
+        'ytmusic-player-bar img',
+        'ytmusic-player img',
+        'ytmusic-player-page img',
+        'ytmusic-av-toggle img'
+      ];
+      for (const selector of specificSelectors) {
+        const img = document.querySelector(selector);
+        if (img?.src) return { imageUrl: img.src };
+      }
+
+      const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute('content');
+      if (ogImage) return { imageUrl: ogImage };
+
+      const candidates = Array.from(document.querySelectorAll('img[src*="ytimg.com"], img[src]'))
+        .filter((img) => (img.naturalWidth || 0) >= 120 && (img.naturalHeight || 0) >= 120 && !!img.src)
+        .sort((a, b) => ((b.naturalWidth || 0) * (b.naturalHeight || 0)) - ((a.naturalWidth || 0) * (a.naturalHeight || 0)));
+
+      if (candidates.length > 0) {
+        return { imageUrl: candidates[0].src };
+      }
+    }
+
+    return { imageUrl: null, error: 'Failed to capture YouTube media image' };
+  },
+
+  // Backward-compatible alias (if any caller still uses old action)
+  getYouTubePausedFrame() {
+    return this.getYouTubeCaptureImage();
   }
 };
 
