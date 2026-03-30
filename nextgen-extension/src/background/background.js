@@ -80,6 +80,24 @@ class ImgVaultServiceWorker {
           console.log('✅ Background context menu created successfully');
         }
       });
+
+      // Add menu item for paused YouTube video frame capture
+      chrome.contextMenus.create({
+        id: 'saveYouTubeFrameToImgVault',
+        title: 'Save YouTube Frame to ImgVault',
+        contexts: ['all'],
+        documentUrlPatterns: [
+          '*://*.youtube.com/*',
+          '*://youtube.com/*',
+          '*://youtu.be/*'
+        ]
+      }, () => {
+        if (chrome.runtime.lastError) {
+          console.log('YouTube frame context menu creation:', chrome.runtime.lastError.message);
+        } else {
+          console.log('✅ YouTube frame context menu created successfully');
+        }
+      });
     });
   }
 
@@ -226,6 +244,114 @@ class ImgVaultServiceWorker {
         });
       } else {
         console.log('❌ No background image found');
+      }
+    } else if (info.menuItemId === 'saveYouTubeFrameToImgVault') {
+      console.log('🎬 YouTube frame context menu clicked!');
+
+      try {
+        const frameId = Number.isInteger(info.frameId) ? info.frameId : undefined;
+        let response = null;
+
+        try {
+          response = await chrome.tabs.sendMessage(
+            tab.id,
+            { action: 'getYouTubeCaptureImage' },
+            frameId !== undefined ? { frameId } : undefined
+          );
+        } catch (messageError) {
+          console.log('⚠️ Content script message failed, trying script injection fallback:', messageError.message);
+        }
+
+        // Fallback when content script is unavailable in the clicked frame
+        if (!response?.imageUrl) {
+          const executionTarget = { tabId: tab.id };
+          if (frameId !== undefined && frameId >= 0) {
+            executionTarget.frameIds = [frameId];
+          }
+
+          const scriptResults = await chrome.scripting.executeScript({
+            target: executionTarget,
+            func: () => {
+              const host = window.location.hostname;
+              const isYouTubeMusic = host.includes('music.youtube.com');
+
+              const active = document.activeElement;
+              const fromActive =
+                active?.tagName === 'VIDEO'
+                  ? active
+                  : typeof active?.closest === 'function'
+                    ? active.closest('video')
+                    : null;
+              const video = fromActive || document.querySelector('video');
+
+              if (video) {
+                if (video.readyState >= 2) {
+                  const width = video.videoWidth;
+                  const height = video.videoHeight;
+
+                  if (width && height) {
+                    try {
+                      const canvas = document.createElement('canvas');
+                      canvas.width = width;
+                      canvas.height = height;
+                      const ctx = canvas.getContext('2d');
+                      if (ctx) {
+                        ctx.drawImage(video, 0, 0, width, height);
+                        return { imageUrl: canvas.toDataURL('image/png') };
+                      }
+                    } catch (error) {
+                      console.log('YouTube frame draw failed, trying artwork fallback:', error?.message);
+                    }
+                  }
+                }
+              }
+
+              if (isYouTubeMusic) {
+                const directArtwork = document.querySelector('yt-img-shadow#thumbnail img#img, ytmusic-player yt-img-shadow#thumbnail img, ytmusic-player-bar yt-img-shadow#thumbnail img, ytmusic-player #thumbnail img#img');
+                if (directArtwork?.src) return { imageUrl: directArtwork.src };
+
+                const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute('content');
+                if (ogImage) return { imageUrl: ogImage };
+
+                const candidates = Array.from(document.querySelectorAll('img[src*="ytimg.com"], img[src]'))
+                  .filter((img) => (img.naturalWidth || 0) >= 120 && (img.naturalHeight || 0) >= 120 && !!img.src)
+                  .sort((a, b) => ((b.naturalWidth || 0) * (b.naturalHeight || 0)) - ((a.naturalWidth || 0) * (a.naturalHeight || 0)));
+
+                if (candidates.length > 0) {
+                  return { imageUrl: candidates[0].src };
+                }
+              }
+
+              return { imageUrl: null, error: 'No capture source found' };
+            }
+          });
+
+          response = scriptResults?.[0]?.result || null;
+        }
+
+        if (!response?.imageUrl) {
+          console.log('❌ No paused YouTube frame available:', response?.error || 'Unknown reason');
+          return;
+        }
+
+        const pageUrl = info.pageUrl || tab.url;
+        const pendingData = {
+          srcUrl: response.imageUrl,
+          originalSourceUrl: info.srcUrl || pageUrl,
+          pageUrl,
+          pageTitle: tab.title,
+          timestamp: Date.now(),
+          isYouTubeFrame: true
+        };
+
+        console.log('💾 Storing YouTube frame image data:', pendingData);
+        await chrome.storage.local.set({ pendingImage: pendingData });
+
+        chrome.tabs.create({
+          url: chrome.runtime.getURL('index.html')
+        });
+      } catch (error) {
+        console.error('❌ Failed to capture YouTube frame:', error);
       }
     }
   }

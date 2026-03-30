@@ -26,6 +26,7 @@ export const sitesConfig = {
     { url: 'note.com', displayName: 'Note' },
     { url: 'goodfon.com', displayName: 'GoodFon' },
     { url: 'reddit.com', displayName: 'Reddit' },
+    { url: 'youtube.com', displayName: 'YouTube' },
     { url: 'wallpapersden.com', displayName: 'WallpapersDen' },
     { url: 'glampinghub.com', displayName: 'Glamping Hub' },
     { url: 'etsy.com', displayName: 'Etsy' },
