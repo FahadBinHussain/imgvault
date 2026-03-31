@@ -22,6 +22,18 @@ import {
   Save
 } from 'lucide-react'
 import AppNavbar from '../components/AppNavbar'
+import GalleryLightbox from '../components/GalleryLightbox'
+
+async function readJsonSafely(res) {
+  const text = await res.text()
+  if (!text) return {}
+
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { error: text }
+  }
+}
 
 // Skeleton Loader Component with Shimmer
 function SkeletonCard({ viewMode }) {
@@ -654,6 +666,7 @@ export default function GalleryPage() {
   const [viewMode, setViewMode] = useState('grid')
   const [selectedImage, setSelectedImage] = useState(null)
   const [selectedIndex, setSelectedIndex] = useState(-1)
+  const [shareStatus, setShareStatus] = useState('')
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -711,16 +724,19 @@ export default function GalleryPage() {
   })
 
   const handleImageClick = useCallback((image, index) => {
+    setShareStatus('')
     setSelectedImage(image)
     setSelectedIndex(index)
   }, [])
 
   const handleCloseLightbox = useCallback(() => {
+    setShareStatus('')
     setSelectedImage(null)
     setSelectedIndex(-1)
   }, [])
 
   const handleNavigate = useCallback((index) => {
+    setShareStatus('')
     setSelectedImage(filteredImages[index])
     setSelectedIndex(index)
   }, [filteredImages])
@@ -749,6 +765,35 @@ export default function GalleryPage() {
     setSelectedImage((prevSelected) =>
       prevSelected?.id === imageId ? { ...prevSelected, ...updatedImage } : prevSelected
     )
+  }, [])
+
+  const handleShareImage = useCallback(async (image) => {
+    try {
+      setShareStatus('Creating share link...')
+
+      const res = await fetch('/api/share', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageId: image.id,
+          imageData: image,
+        }),
+      })
+
+      const data = await readJsonSafely(res)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to create share link')
+      }
+
+      const shareUrl = new URL(data.url, window.location.origin).toString()
+      await navigator.clipboard.writeText(shareUrl)
+      setShareStatus('Share link copied to clipboard.')
+    } catch (error) {
+      setShareStatus(error?.message || 'Failed to create share link')
+    }
   }, [])
 
   if (status === 'loading' || loading) {
@@ -899,13 +944,15 @@ export default function GalleryPage() {
 
       {/* Lightbox */}
       {selectedImage && (
-        <Lightbox
+        <GalleryLightbox
           image={selectedImage}
           images={filteredImages}
           currentIndex={selectedIndex}
           onClose={handleCloseLightbox}
           onNavigate={handleNavigate}
           onSaveEdits={handleSaveImageEdits}
+          onShare={handleShareImage}
+          shareStatus={shareStatus}
         />
       )}
 

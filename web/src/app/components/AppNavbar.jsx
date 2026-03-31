@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { signIn, useSession } from 'next-auth/react'
-import { Github, LogIn, Menu, Settings, Trash2, X } from 'lucide-react'
+import { Github, Images, Link2, LogIn, Menu, Settings, Trash2, X } from 'lucide-react'
 import ThemeSwitcher from './ThemeSwitcher'
 import UserDropdown from './UserDropdown'
 import BrandLogo from './BrandLogo'
@@ -96,6 +96,20 @@ export default function AppNavbar({ mode = 'dashboard', activeRoute }) {
 
         <div className="flex items-center gap-2 sm:gap-4">
           <ThemeSwitcher className="shrink-0" />
+          <a
+            href="/gallery"
+            className={`transition-colors p-2 rounded-lg ${activeRoute === 'gallery' ? 'text-white' : 'text-dark-300 hover:text-white hover:bg-white/5'}`}
+            title="Gallery"
+          >
+            <Images className="w-5 h-5" />
+          </a>
+          <a
+            href="/links"
+            className={`transition-colors p-2 rounded-lg ${activeRoute === 'links' ? 'text-white' : 'text-dark-300 hover:text-white hover:bg-white/5'}`}
+            title="Shared Links"
+          >
+            <Link2 className="w-5 h-5" />
+          </a>
           <a
             href="/settings"
             className={`transition-colors p-2 rounded-lg ${activeRoute === 'settings' ? 'text-white' : 'text-dark-300 hover:text-white hover:bg-white/5'}`}

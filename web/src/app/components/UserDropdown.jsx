@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { signOut } from 'next-auth/react'
-import { ChevronDown, Images, LogOut } from 'lucide-react'
+import { ChevronDown, Images, Link2, LogOut } from 'lucide-react'
 import UserAvatar from './UserAvatar'
 
 export default function UserDropdown({
@@ -78,6 +78,15 @@ export default function UserDropdown({
           >
             <Images className="w-4 h-4" />
             Gallery
+          </a>
+
+          <a
+            href="/links"
+            onClick={() => setOpen(false)}
+            className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-dark-300 hover:text-white hover:bg-white/5 transition-colors"
+          >
+            <Link2 className="w-4 h-4" />
+            Shared Links
           </a>
 
           <button

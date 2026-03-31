@@ -41,3 +41,14 @@ export const userConfigs = pgTable('user_configs', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
+
+export const shareLinks = pgTable('share_links', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  imageId: varchar('image_id', { length: 255 }).notNull(),
+  token: varchar('token', { length: 255 }).notNull().unique(),
+  imageData: json('image_data').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  revokedAt: timestamp('revoked_at'),
+})
