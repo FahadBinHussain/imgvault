@@ -189,6 +189,19 @@ export default function GalleryLightbox({
 
   useEffect(() => {
     const handleKeyDown = (e) => {
+      const target = e.target
+      const isEditableTarget =
+        target instanceof HTMLElement &&
+        (
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable
+        )
+
+      if (isEditableTarget) {
+        return
+      }
+
       if (e.key === 'Escape') onClose()
       if (e.key === 'ArrowLeft' && currentIndex > 0) onNavigate(currentIndex - 1)
       if (e.key === 'ArrowRight' && currentIndex < images.length - 1) onNavigate(currentIndex + 1)
@@ -441,7 +454,7 @@ export default function GalleryLightbox({
               e.stopPropagation()
               onNavigate(currentIndex - 1)
             }}
-            className="absolute left-2 sm:left-6 p-2 sm:p-4 glass rounded-full hover:bg-white/20 transition-all duration-300 hover:-translate-x-1"
+            className="hidden lg:block absolute left-2 sm:left-6 p-2 sm:p-4 glass rounded-full hover:bg-white/20 transition-all duration-300 hover:-translate-x-1"
           >
             <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
@@ -453,7 +466,7 @@ export default function GalleryLightbox({
               e.stopPropagation()
               onNavigate(currentIndex + 1)
             }}
-            className="absolute right-2 sm:right-6 p-2 sm:p-4 glass rounded-full hover:bg-white/20 transition-all duration-300 hover:translate-x-1"
+            className="hidden lg:block absolute right-2 sm:right-6 p-2 sm:p-4 glass rounded-full hover:bg-white/20 transition-all duration-300 hover:translate-x-1"
           >
             <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
