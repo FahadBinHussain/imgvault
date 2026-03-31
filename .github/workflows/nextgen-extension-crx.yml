@@ -29,6 +29,7 @@ jobs:
       ARTIFACT_DIR: artifacts
       KEY_PATH: .ci/extension.pem
       EXTENSION_NAME: imgvault-nextgen
+      ROLLING_TAG: nextgen-extension-latest
 
     steps:
       - name: Check out repository
@@ -109,10 +110,23 @@ jobs:
           path: nextgen-extension/artifacts/*.crx
           if-no-files-found: error
 
+      - name: Update rolling release tag
+        if: github.event_name == 'push'
+        working-directory: .
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "$ROLLING_TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$ROLLING_TAG" --force
+
       - name: Attach artifacts to GitHub release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'push' && env.ROLLING_TAG || github.event.release.tag_name }}
+          name: ${{ github.event_name == 'push' && 'Latest extension build' || github.event.release.name }}
+          body: ${{ github.event_name == 'push' && format('Automated build from `{0}` at commit `{1}`.', github.ref_name, github.sha) || '' }}
+          prerelease: ${{ github.event_name == 'push' }}
           files: |
             nextgen-extension/artifacts/*.zip
             nextgen-extension/artifacts/*.crx
