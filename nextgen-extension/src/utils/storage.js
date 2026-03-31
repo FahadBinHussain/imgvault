@@ -117,6 +117,41 @@ export class StorageManager {
   }
 
   /**
+   * Fetch all Firestore list pages for a collection path
+   * @private
+   * @param {string} path
+   * @param {Object} [params]
+   * @returns {Promise<Array>} Raw Firestore documents
+   */
+  async fetchAllDocuments(path, params = {}) {
+    const allDocuments = [];
+    let pageToken = null;
+
+    do {
+      const requestParams = { ...params };
+      if (pageToken) {
+        requestParams.pageToken = pageToken;
+      }
+
+      const url = this.buildUrl(path, requestParams);
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch documents for ${path}`);
+      }
+
+      const result = await response.json();
+      if (result.documents?.length) {
+        allDocuments.push(...result.documents);
+      }
+
+      pageToken = result.nextPageToken || null;
+    } while (pageToken);
+
+    return allDocuments;
+  }
+
+  /**
    * Convert JavaScript object to Firestore document format
    * @private
    * @param {Object} data - JavaScript object
@@ -300,50 +335,34 @@ export class StorageManager {
       const startTime = performance.now();
       
       // Fetch active images
-      const imagesUrl = this.buildUrl('images', { orderBy: 'internalAddedTimestamp desc' });
-      const imagesResponse = await fetch(imagesUrl);
-      
-      if (!imagesResponse.ok) {
-        throw new Error('Failed to fetch active images');
-      }
-
-      const imagesResult = await imagesResponse.json();
-      const activeImages = imagesResult.documents 
-        ? imagesResult.documents.map(doc => this.fromFirestoreDoc(doc))
-        : [];
+      const activeDocs = await this.fetchAllDocuments('images', { orderBy: 'internalAddedTimestamp desc' });
+      const activeImages = activeDocs.map(doc => this.fromFirestoreDoc(doc));
 
       console.log(`🔍 [DUPLICATE CHECK] Found ${activeImages.length} active images`);
 
       // Fetch trashed images
-      const trashUrl = this.buildUrl('trash', { orderBy: 'deletedAt desc' });
-      const trashResponse = await fetch(trashUrl);
-      
       let trashedImages = [];
-      if (trashResponse.ok) {
-        const trashResult = await trashResponse.json();
-        if (trashResult.documents) {
-          trashedImages = trashResult.documents.map(doc => {
-            const id = doc.name.split('/').pop();
-            const fields = doc.fields;
-            
-            return {
-              id,
-              pixvidUrl: fields.pixvidUrl?.stringValue || '',
-              imgbbUrl: fields.imgbbUrl?.stringValue || '',
-              imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
-              filemoonUrl: fields.filemoonUrl?.stringValue || '',
-              sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
-              sha256: fields.sha256?.stringValue || '',
-              pHash: fields.pHash?.stringValue || '',
-              aHash: fields.aHash?.stringValue || '',
-              dHash: fields.dHash?.stringValue || '',
-              internalAddedTimestamp: fields.internalAddedTimestamp?.timestampValue || fields.internalAddedTimestamp?.stringValue || '',
-              deletedAt: fields.deletedAt?.timestampValue || fields.deletedAt?.stringValue || '',
-              _isTrash: true  // Mark as trashed for duplicate error message
-            };
-          });
-        }
-      }
+      const trashDocs = await this.fetchAllDocuments('trash', { orderBy: 'deletedAt desc' });
+      trashedImages = trashDocs.map(doc => {
+        const id = doc.name.split('/').pop();
+        const fields = doc.fields;
+        
+        return {
+          id,
+          pixvidUrl: fields.pixvidUrl?.stringValue || '',
+          imgbbUrl: fields.imgbbUrl?.stringValue || '',
+          imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
+          filemoonUrl: fields.filemoonUrl?.stringValue || '',
+          sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
+          sha256: fields.sha256?.stringValue || '',
+          pHash: fields.pHash?.stringValue || '',
+          aHash: fields.aHash?.stringValue || '',
+          dHash: fields.dHash?.stringValue || '',
+          internalAddedTimestamp: fields.internalAddedTimestamp?.timestampValue || fields.internalAddedTimestamp?.stringValue || '',
+          deletedAt: fields.deletedAt?.timestampValue || fields.deletedAt?.stringValue || '',
+          _isTrash: true
+        };
+      });
 
       console.log(`🔍 [DUPLICATE CHECK] Found ${trashedImages.length} trashed images`);
 
@@ -378,26 +397,19 @@ export class StorageManager {
         'collectionId' // Include collectionId for filtering and display
       ];
       
-      const url = this.buildUrl('images', {
+      const requestParams = {
         orderBy: 'internalAddedTimestamp desc',
         'mask.fieldPaths': maskFields
-      });
-      
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch images');
-      }
-
-      const result = await response.json();
+      };
+      const docs = await this.fetchAllDocuments('images', requestParams);
       const endTime = performance.now();
-      
-      if (!result.documents) {
+
+      if (!docs.length) {
         console.log('📊 [OPTIMIZE] No images found in gallery');
         return [];
       }
 
-      const images = result.documents.map(doc => this.fromFirestoreDoc(doc));
+      const images = docs.map(doc => this.fromFirestoreDoc(doc));
       
       console.log(`✅ [OPTIMIZE] Loaded ${images.length} images in ${(endTime - startTime).toFixed(2)}ms (lightweight mode)`);
       
@@ -520,21 +532,14 @@ export class StorageManager {
     try {
       console.log('🗑️ [TRASH] Fetching trashed images...');
       
-      const url = this.buildUrl('trash', { orderBy: 'deletedAt desc' });
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch trashed images');
-      }
+      const docs = await this.fetchAllDocuments('trash', { orderBy: 'deletedAt desc' });
 
-      const result = await response.json();
-      
-      if (!result.documents) {
+      if (!docs.length) {
         console.log('🗑️ [TRASH] No trashed images found');
         return [];
       }
 
-      const trashedImages = result.documents.map(doc => {
+      const trashedImages = docs.map(doc => {
         const id = doc.name.split('/').pop();
         const fields = doc.fields;
         
@@ -1151,20 +1156,8 @@ export class StorageManager {
     try {
       // Note: Firestore REST API doesn't support complex queries like "where collectionId ==",
       // so we fetch all images and filter client-side
-      const url = this.buildUrl('images', { orderBy: 'internalAddedTimestamp desc' });
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          return [];
-        }
-        throw new Error('Failed to fetch images');
-      }
-
-      const result = await response.json();
-      const allImages = result.documents 
-        ? result.documents.map(doc => this.fromFirestoreDoc(doc))
-        : [];
+      const docs = await this.fetchAllDocuments('images', { orderBy: 'internalAddedTimestamp desc' });
+      const allImages = docs.map(doc => this.fromFirestoreDoc(doc));
 
       // Filter by collectionId
       return allImages.filter(img => img.collectionId === collectionId);
