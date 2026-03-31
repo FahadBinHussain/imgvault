@@ -110,7 +110,7 @@ export default function ThemeSwitcher({ className = '' }) {
 
 			{open && (
 				<div
-					className="absolute right-0 mt-2 w-56 rounded-xl border border-white/20 bg-base-100 shadow-2xl p-2 z-[9999] overflow-hidden"
+					className="fixed left-2 right-2 top-14 rounded-xl border border-white/20 bg-base-100 shadow-2xl p-2 z-[9999] overflow-hidden sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-56 sm:max-w-none"
 					style={{
 						backgroundColor: 'var(--color-base-100)',
 						opacity: 1,
