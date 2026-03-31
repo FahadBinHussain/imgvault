@@ -50,27 +50,53 @@ function formatThemeName(themeName) {
 		.replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
+function getSystemTheme() {
+	if (typeof window === 'undefined') return 'dark'
+	return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
 export default function ThemeSwitcher({ className = '' }) {
 	const rootRef = useRef(null)
 	const [open, setOpen] = useState(false)
 	const [theme, setTheme] = useState('dark')
 
-	const applyTheme = (nextTheme) => {
+	const applyTheme = (nextTheme, { persist = true } = {}) => {
 		if (!nextTheme) return
 
 		document.documentElement.setAttribute('data-theme', nextTheme)
-		localStorage.setItem(STORAGE_KEY, nextTheme)
+		if (persist) {
+			localStorage.setItem(STORAGE_KEY, nextTheme)
+		}
 		setTheme(nextTheme)
 		setOpen(false)
 	}
 
 	useEffect(() => {
+		const savedTheme = localStorage.getItem(STORAGE_KEY)
 		const currentTheme =
-			localStorage.getItem(STORAGE_KEY) ||
+			savedTheme ||
 			document.documentElement.getAttribute('data-theme') ||
-			'dark'
+			getSystemTheme()
 
-		applyTheme(currentTheme)
+		applyTheme(currentTheme, { persist: Boolean(savedTheme) })
+	}, [])
+
+	useEffect(() => {
+		const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+
+		const handleSystemThemeChange = () => {
+			if (localStorage.getItem(STORAGE_KEY)) {
+				return
+			}
+
+			applyTheme(mediaQuery.matches ? 'dark' : 'light', { persist: false })
+		}
+
+		mediaQuery.addEventListener('change', handleSystemThemeChange)
+
+		return () => {
+			mediaQuery.removeEventListener('change', handleSystemThemeChange)
+		}
 	}, [])
 
 	useEffect(() => {
