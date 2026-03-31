@@ -1,0 +1,101 @@
+name: Build Nextgen Extension
+
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - '.github/workflows/nextgen-extension-crx.yml'
+      - 'nextgen-extension/**'
+  release:
+    types:
+      - published
+
+jobs:
+  build-crx:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: nextgen-extension
+
+    env:
+      EXTENSION_DIR: nextgen-extension
+      DIST_DIR: nextgen-extension/dist
+      ARTIFACT_DIR: nextgen-extension/artifacts
+      KEY_PATH: nextgen-extension/.ci/extension.pem
+      EXTENSION_NAME: imgvault-nextgen
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: nextgen-extension/pnpm-lock.yaml
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build extension
+        run: pnpm build
+
+      - name: Install Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Prepare signing key
+        env:
+          EXTENSION_PRIVATE_KEY_B64: ${{ secrets.EXTENSION_PRIVATE_KEY_B64 }}
+        run: |
+          if [ -z "$EXTENSION_PRIVATE_KEY_B64" ]; then
+            echo "Missing required secret: EXTENSION_PRIVATE_KEY_B64" >&2
+            exit 1
+          fi
+
+          mkdir -p "$(dirname "$KEY_PATH")" "$ARTIFACT_DIR"
+          printf '%s' "$EXTENSION_PRIVATE_KEY_B64" | base64 --decode > "$KEY_PATH"
+
+      - name: Create ZIP package
+        run: |
+          VERSION="$(node -p "require('./manifest.json').version")"
+          ZIP_NAME="${EXTENSION_NAME}-${VERSION}.zip"
+          cd dist
+          zip -r "../artifacts/${ZIP_NAME}" .
+
+      - name: Pack CRX
+        run: |
+          VERSION="$(node -p "require('./manifest.json').version")"
+          CRX_NAME="${EXTENSION_NAME}-${VERSION}.crx"
+          "${{ steps.chrome.outputs.chrome-path }}" \
+            --pack-extension="$GITHUB_WORKSPACE/$DIST_DIR" \
+            --pack-extension-key="$GITHUB_WORKSPACE/$KEY_PATH"
+
+          mv "$GITHUB_WORKSPACE/${DIST_DIR}.crx" "$GITHUB_WORKSPACE/$ARTIFACT_DIR/$CRX_NAME"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextgen-extension-packages
+          path: nextgen-extension/artifacts/*
+          if-no-files-found: error
+
+      - name: Attach artifacts to GitHub release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            nextgen-extension/artifacts/*.zip
+            nextgen-extension/artifacts/*.crx
