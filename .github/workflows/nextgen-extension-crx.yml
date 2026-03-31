@@ -25,9 +25,9 @@ jobs:
 
     env:
       EXTENSION_DIR: nextgen-extension
-      DIST_DIR: nextgen-extension/dist
-      ARTIFACT_DIR: nextgen-extension/artifacts
-      KEY_PATH: nextgen-extension/.ci/extension.pem
+      DIST_DIR: dist
+      ARTIFACT_DIR: artifacts
+      KEY_PATH: .ci/extension.pem
       EXTENSION_NAME: imgvault-nextgen
 
     steps:
@@ -89,10 +89,10 @@ jobs:
           VERSION="$(node -p "require('./manifest.json').version")"
           CRX_NAME="${EXTENSION_NAME}-${VERSION}.crx"
           "${{ steps.chrome.outputs.chrome-path }}" \
-            --pack-extension="$GITHUB_WORKSPACE/$DIST_DIR" \
-            --pack-extension-key="$GITHUB_WORKSPACE/$KEY_PATH"
+            --pack-extension="$GITHUB_WORKSPACE/$EXTENSION_DIR/$DIST_DIR" \
+            --pack-extension-key="$GITHUB_WORKSPACE/$EXTENSION_DIR/$KEY_PATH"
 
-          mv "$GITHUB_WORKSPACE/${DIST_DIR}.crx" "$GITHUB_WORKSPACE/$ARTIFACT_DIR/$CRX_NAME"
+          mv "$GITHUB_WORKSPACE/$EXTENSION_DIR/${DIST_DIR}.crx" "$GITHUB_WORKSPACE/$EXTENSION_DIR/$ARTIFACT_DIR/$CRX_NAME"
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
