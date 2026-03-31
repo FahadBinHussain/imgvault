@@ -395,8 +395,7 @@ export default function GalleryLightbox({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex flex-col lg:flex-row bg-black/90 backdrop-blur-xl animate-fade-in"
-      onClick={onClose}
+      className="fixed inset-0 z-[100] flex flex-col lg:flex-row bg-base-100/92 text-base-content backdrop-blur-xl animate-fade-in"
     >
       <div
         className="flex-1 flex items-center justify-center p-3 sm:p-6 lg:p-8 relative min-h-[100dvh] lg:min-h-0"
@@ -405,7 +404,7 @@ export default function GalleryLightbox({
       >
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 sm:top-6 sm:right-6 p-2 sm:p-3 glass rounded-full hover:bg-white/20 transition-all duration-300 z-10"
+          className="absolute top-3 right-3 sm:top-6 sm:right-6 p-2 sm:p-3 rounded-full border border-base-content/15 bg-base-100/80 text-base-content shadow-lg backdrop-blur-xl hover:bg-base-100 transition-all duration-300 z-10"
         >
           <X className="w-5 h-5 sm:w-6 sm:h-6" />
         </button>
@@ -416,7 +415,7 @@ export default function GalleryLightbox({
             e.stopPropagation()
             setIsInfoExpanded((prev) => !prev)
           }}
-          className="lg:hidden absolute top-3 left-3 p-2.5 glass rounded-full hover:bg-white/20 transition-all duration-300 z-10"
+          className="lg:hidden absolute top-3 left-3 p-2.5 rounded-full border border-base-content/15 bg-base-100/80 text-base-content shadow-lg backdrop-blur-xl hover:bg-base-100 transition-all duration-300 z-10"
         >
           <Info className="w-5 h-5" />
         </button>
