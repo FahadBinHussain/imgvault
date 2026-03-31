@@ -22,6 +22,7 @@ export default function GalleryLightbox({
   onShare,
   shareStatus = '',
   redactedFields = [],
+  preferredProvider = 'imgbb',
 }) {
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('noobs')
@@ -178,7 +179,10 @@ export default function GalleryLightbox({
     setEditValues(toEditValues(image))
   }
 
-  const imageUrl = image.imgbbUrl || image.imgbbThumbUrl || image.pixvidUrl || image.sourceImageUrl
+  const imageUrl =
+    preferredProvider === 'pixvid'
+      ? image.pixvidUrl || image.imgbbUrl || image.imgbbThumbUrl || image.sourceImageUrl
+      : image.imgbbUrl || image.imgbbThumbUrl || image.pixvidUrl || image.sourceImageUrl
 
   const formatFileSize = (bytes) => {
     if (!bytes) return 'N/A'
