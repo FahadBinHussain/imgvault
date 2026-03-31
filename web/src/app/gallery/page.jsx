@@ -35,6 +35,14 @@ async function readJsonSafely(res) {
   }
 }
 
+function getPreferredImageUrl(image, preferredProvider = 'imgbb') {
+  if (preferredProvider === 'pixvid') {
+    return image.pixvidUrl || image.imgbbUrl || image.imgbbThumbUrl || image.sourceImageUrl || null
+  }
+
+  return image.imgbbUrl || image.imgbbThumbUrl || image.pixvidUrl || image.sourceImageUrl || null
+}
+
 // Skeleton Loader Component with Shimmer
 function SkeletonCard({ viewMode }) {
   return (
@@ -516,11 +524,11 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
 }
 
 // Image Card Component
-function ImageCard({ image, index, viewMode, onClick, className = '' }) {
+function ImageCard({ image, index, viewMode, onClick, className = '', preferredProvider = 'imgbb' }) {
   const [isLoaded, setIsLoaded] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   
-  const imageUrl = image.imgbbUrl || image.pixvidUrl || image.sourceImageUrl || image.imgbbThumbUrl
+  const imageUrl = getPreferredImageUrl(image, preferredProvider)
 
   return (
     <div 
@@ -667,6 +675,7 @@ export default function GalleryPage() {
   const [selectedImage, setSelectedImage] = useState(null)
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [shareStatus, setShareStatus] = useState('')
+  const [preferredProvider, setPreferredProvider] = useState('imgbb')
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -684,6 +693,7 @@ export default function GalleryPage() {
       const data = await res.json()
       const configured = !!data.config
       setHasConfig(configured)
+      setPreferredProvider(data?.settings?.defaultGallerySource === 'pixvid' ? 'pixvid' : 'imgbb')
 
       if (!configured) {
         setImages([])
@@ -835,6 +845,12 @@ export default function GalleryPage() {
                     ? `${images.length} image${images.length > 1 ? 's' : ''} saved`
                     : 'Your saved images from across the web'}
                 </p>
+                {images.length > 0 && (
+                  <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-primary-500/20 bg-primary-500/10 px-3 py-1 text-xs font-medium text-primary-300">
+                    <span className="inline-block h-2 w-2 rounded-full bg-primary-400" />
+                    Viewing from {preferredProvider === 'pixvid' ? 'Pixvid' : 'ImgBB'}
+                  </div>
+                )}
               </div>
             
               {images.length > 0 && (
@@ -903,6 +919,7 @@ export default function GalleryPage() {
                             image={img}
                             index={globalIndex}
                             viewMode={viewMode}
+                            preferredProvider={preferredProvider}
                             onClick={() => handleImageClick(img, globalIndex)}
                           />
                         )
@@ -929,6 +946,7 @@ export default function GalleryPage() {
                             image={img}
                             index={globalIndex}
                             viewMode={viewMode}
+                            preferredProvider={preferredProvider}
                             onClick={() => handleImageClick(img, globalIndex)}
                           />
                         )
@@ -953,6 +971,7 @@ export default function GalleryPage() {
           onSaveEdits={handleSaveImageEdits}
           onShare={handleShareImage}
           shareStatus={shareStatus}
+          preferredProvider={preferredProvider}
         />
       )}
 

@@ -38,6 +38,7 @@ export const userConfigs = pgTable('user_configs', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
   firebaseConfig: json('firebase_config').notNull(),
+  appSettings: json('app_settings'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
