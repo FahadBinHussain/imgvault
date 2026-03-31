@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   X,
   ChevronLeft,
@@ -10,6 +10,7 @@ import {
   Pencil,
   Save,
   Share2,
+  Info,
 } from 'lucide-react'
 
 export default function GalleryLightbox({
@@ -29,6 +30,14 @@ export default function GalleryLightbox({
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [isInfoExpanded, setIsInfoExpanded] = useState(false)
+  const [dragOffset, setDragOffset] = useState(0)
+  const [isDraggingMedia, setIsDraggingMedia] = useState(false)
+  const [suppressTrackTransition, setSuppressTrackTransition] = useState(false)
+  const [loadedImageUrls, setLoadedImageUrls] = useState({})
+  const gestureStartRef = useRef({ x: 0, y: 0 })
+  const pendingSwipeNavigationRef = useRef(false)
+  const mediaViewportRef = useRef(null)
   const [editValues, setEditValues] = useState({
     pageTitle: '',
     creationDate: '',
@@ -118,24 +127,6 @@ export default function GalleryLightbox({
     tags: Array.isArray(img?.tags) ? img.tags.join(', ') : '',
   }), [])
 
-  useEffect(() => {
-    setIsEditing(false)
-    setIsSaving(false)
-    setSaveError('')
-    setIsLoading(true)
-    setEditValues(toEditValues(image))
-  }, [image?.id, toEditValues])
-
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose()
-      if (e.key === 'ArrowLeft' && currentIndex > 0) onNavigate(currentIndex - 1)
-      if (e.key === 'ArrowRight' && currentIndex < images.length - 1) onNavigate(currentIndex + 1)
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentIndex, images.length, onClose, onNavigate])
-
   const toNullableString = (value) => {
     const trimmed = value.trim()
     return trimmed ? trimmed : null
@@ -183,6 +174,90 @@ export default function GalleryLightbox({
     preferredProvider === 'pixvid'
       ? image.pixvidUrl || image.imgbbUrl || image.imgbbThumbUrl || image.sourceImageUrl
       : image.imgbbUrl || image.imgbbThumbUrl || image.pixvidUrl || image.sourceImageUrl
+  const mobileSheetClass = isInfoExpanded ? 'translate-y-0' : 'translate-y-full'
+
+  useEffect(() => {
+    setIsEditing(false)
+    setIsSaving(false)
+    setSaveError('')
+    setIsLoading(imageUrl ? !loadedImageUrls[imageUrl] : false)
+    setIsInfoExpanded(false)
+    setDragOffset(0)
+    setIsDraggingMedia(false)
+    setEditValues(toEditValues(image))
+  }, [image?.id, imageUrl, loadedImageUrls, toEditValues])
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowLeft' && currentIndex > 0) onNavigate(currentIndex - 1)
+      if (e.key === 'ArrowRight' && currentIndex < images.length - 1) onNavigate(currentIndex + 1)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [currentIndex, images.length, onClose, onNavigate])
+
+  useEffect(() => {
+    if (!pendingSwipeNavigationRef.current) return
+
+    const frame = window.requestAnimationFrame(() => {
+      pendingSwipeNavigationRef.current = false
+      setSuppressTrackTransition(false)
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [currentIndex])
+
+  const handleMediaTouchStart = (e) => {
+    const touch = e.touches?.[0]
+    if (!touch) return
+    gestureStartRef.current = { x: touch.clientX, y: touch.clientY }
+    setIsDraggingMedia(true)
+  }
+
+  const handleMediaTouchMove = (e) => {
+    const touch = e.touches?.[0]
+    if (!touch) return
+
+    const deltaX = touch.clientX - gestureStartRef.current.x
+    const deltaY = touch.clientY - gestureStartRef.current.y
+
+    if (Math.abs(deltaX) < Math.abs(deltaY)) {
+      return
+    }
+
+    e.preventDefault()
+    setDragOffset(deltaX)
+  }
+
+  const handleMediaTouchEnd = (e) => {
+    const touch = e.changedTouches?.[0]
+    const deltaX = touch ? touch.clientX - gestureStartRef.current.x : dragOffset
+    const viewportWidth = mediaViewportRef.current?.clientWidth || window.innerWidth || 1
+    const threshold = Math.min(120, viewportWidth * 0.22)
+
+    setIsDraggingMedia(false)
+
+    if (deltaX <= -threshold && currentIndex < images.length - 1) {
+      pendingSwipeNavigationRef.current = true
+      setSuppressTrackTransition(true)
+      setDragOffset(0)
+      onNavigate(currentIndex + 1)
+      return
+    }
+
+    if (deltaX >= threshold && currentIndex > 0) {
+      pendingSwipeNavigationRef.current = true
+      setSuppressTrackTransition(true)
+      setDragOffset(0)
+      onNavigate(currentIndex - 1)
+      return
+    }
+
+    pendingSwipeNavigationRef.current = false
+    setSuppressTrackTransition(false)
+    setDragOffset(0)
+  }
 
   const formatFileSize = (bytes) => {
     if (!bytes) return 'N/A'
@@ -301,17 +376,49 @@ export default function GalleryLightbox({
     )
   }
 
+  const previousImage = currentIndex > 0 ? images[currentIndex - 1] : null
+  const nextImage = currentIndex < images.length - 1 ? images[currentIndex + 1] : null
+  const previousImageUrl = previousImage
+    ? preferredProvider === 'pixvid'
+      ? previousImage.pixvidUrl || previousImage.imgbbUrl || previousImage.imgbbThumbUrl || previousImage.sourceImageUrl
+      : previousImage.imgbbUrl || previousImage.imgbbThumbUrl || previousImage.pixvidUrl || previousImage.sourceImageUrl
+    : null
+  const nextImageUrl = nextImage
+    ? preferredProvider === 'pixvid'
+      ? nextImage.pixvidUrl || nextImage.imgbbUrl || nextImage.imgbbThumbUrl || nextImage.sourceImageUrl
+      : nextImage.imgbbUrl || nextImage.imgbbThumbUrl || nextImage.pixvidUrl || nextImage.sourceImageUrl
+    : null
+  const markImageLoaded = (url) => {
+    if (!url) return
+    setLoadedImageUrls((prev) => (prev[url] ? prev : { ...prev, [url]: true }))
+  }
+
   return (
     <div
       className="fixed inset-0 z-[100] flex flex-col lg:flex-row bg-black/90 backdrop-blur-xl animate-fade-in"
       onClick={onClose}
     >
-      <div className="flex-1 flex items-center justify-center p-3 sm:p-6 lg:p-8 relative min-h-[45vh] lg:min-h-0">
+      <div
+        className="flex-1 flex items-center justify-center p-3 sm:p-6 lg:p-8 relative min-h-[100dvh] lg:min-h-0"
+        onTouchStart={handleMediaTouchStart}
+        onTouchEnd={handleMediaTouchEnd}
+      >
         <button
           onClick={onClose}
           className="absolute top-3 right-3 sm:top-6 sm:right-6 p-2 sm:p-3 glass rounded-full hover:bg-white/20 transition-all duration-300 z-10"
         >
           <X className="w-5 h-5 sm:w-6 sm:h-6" />
+        </button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            setIsInfoExpanded((prev) => !prev)
+          }}
+          className="lg:hidden absolute top-3 left-3 p-2.5 glass rounded-full hover:bg-white/20 transition-all duration-300 z-10"
+        >
+          <Info className="w-5 h-5" />
         </button>
 
         {currentIndex > 0 && (
@@ -339,29 +446,89 @@ export default function GalleryLightbox({
         )}
 
         <div
-          className="relative max-w-full max-h-full animate-scale-in"
+          ref={mediaViewportRef}
+          className="relative w-full max-w-full max-h-full animate-scale-in overflow-hidden touch-pan-y"
           onClick={(e) => e.stopPropagation()}
+          onTouchStart={handleMediaTouchStart}
+          onTouchMove={handleMediaTouchMove}
+          onTouchEnd={handleMediaTouchEnd}
         >
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center">
               <Loader2 className="w-10 h-10 animate-spin text-primary-500" />
             </div>
           )}
-          <img
-            src={imageUrl}
-            alt={image.pageTitle || 'Image'}
-            className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-2xl shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
-            onLoad={() => setIsLoading(false)}
-          />
+          <div
+            className={`flex items-center ${isDraggingMedia || suppressTrackTransition ? '' : 'transition-transform duration-300 ease-out'}`}
+            style={{ transform: `translateX(calc(-100% + ${dragOffset}px))` }}
+          >
+            {previousImageUrl ? (
+              <div className="w-full shrink-0 flex items-center justify-center pr-4">
+              <img
+                src={previousImageUrl}
+                alt={previousImage?.pageTitle || 'Previous image'}
+                className="max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-2xl shadow-2xl opacity-40 scale-90"
+                draggable="false"
+                onLoad={() => markImageLoaded(previousImageUrl)}
+              />
+              </div>
+            ) : (
+              <div className="w-full shrink-0" />
+            )}
+
+            <div className="w-full shrink-0 flex items-center justify-center px-1">
+              <img
+                src={imageUrl}
+                alt={image.pageTitle || 'Image'}
+                className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-2xl shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+                onLoad={() => {
+                  markImageLoaded(imageUrl)
+                  setIsLoading(false)
+                }}
+                draggable="false"
+              />
+            </div>
+
+            {nextImageUrl ? (
+              <div className="w-full shrink-0 flex items-center justify-center pl-4">
+              <img
+                src={nextImageUrl}
+                alt={nextImage?.pageTitle || 'Next image'}
+                className="max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-2xl shadow-2xl opacity-40 scale-90"
+                draggable="false"
+                onLoad={() => markImageLoaded(nextImageUrl)}
+              />
+              </div>
+            ) : (
+              <div className="w-full shrink-0" />
+            )}
+          </div>
         </div>
 
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 glass rounded-full text-sm">
+        <div className="absolute bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 glass rounded-full text-sm">
           {currentIndex + 1} / {images.length}
         </div>
       </div>
 
-      <div className="w-full lg:w-[400px] max-h-[50vh] lg:max-h-none bg-dark-900/95 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-white/10 overflow-y-auto flex flex-col">
+      <div
+        className={`fixed lg:static left-0 right-0 bottom-0 w-full lg:w-[400px] h-[78dvh] lg:h-auto max-h-[78dvh] lg:max-h-none bg-dark-900/95 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-white/10 overflow-y-auto flex flex-col rounded-t-3xl lg:rounded-none transition-transform duration-300 ${mobileSheetClass} lg:translate-y-0`}
+      >
         <div className="p-6 flex-1">
+          <div className="lg:hidden flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-dark-200">Image Details</h3>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setIsInfoExpanded(false)
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-white/5 text-dark-100 hover:bg-white/10 transition-colors"
+            >
+              <X className="w-4 h-4" />
+              Close
+            </button>
+          </div>
+
           <div className="flex gap-2 mb-6 border-b border-white/10 pb-4">
             <button
               onClick={(e) => { e.stopPropagation(); setActiveTab('noobs') }}
