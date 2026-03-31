@@ -95,11 +95,18 @@ jobs:
 
           mv "$GITHUB_WORKSPACE/$EXTENSION_DIR/${DIST_DIR}.crx" "$GITHUB_WORKSPACE/$EXTENSION_DIR/$ARTIFACT_DIR/$CRX_NAME"
 
-      - name: Upload workflow artifacts
+      - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nextgen-extension-packages
-          path: nextgen-extension/artifacts/*
+          name: nextgen-extension-zip
+          path: nextgen-extension/artifacts/*.zip
+          if-no-files-found: error
+
+      - name: Upload CRX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextgen-extension-crx
+          path: nextgen-extension/artifacts/*.crx
           if-no-files-found: error
 
       - name: Attach artifacts to GitHub release
