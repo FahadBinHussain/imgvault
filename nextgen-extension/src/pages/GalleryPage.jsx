@@ -858,6 +858,30 @@ export default function GalleryPage() {
     }
   };
 
+  const openDuplicateMatchInNewTab = (dup) => {
+    const candidateUrls = [
+      dup?.sourcePageUrl,
+      dup?.originalSourceUrl,
+      dup?.sourceImageUrl,
+      dup?.pageUrl,
+      dup?.imgbbUrl,
+      dup?.pixvidUrl
+    ].filter(Boolean);
+
+    const jumpUrl = candidateUrls.find((url) => {
+      if (typeof url !== 'string') return false;
+      return /^https?:\/\//i.test(url);
+    });
+
+    if (!jumpUrl) {
+      showToast('❌ No valid URL found for this duplicate match', 'error', 3000);
+      return;
+    }
+
+    window.open(jumpUrl, '_blank', 'noopener,noreferrer');
+    showToast('✅ Opened duplicate match in a new tab', 'success', 2000);
+  };
+
   const groupImagesByDate = (images) => {
     const groups = {};
     images.forEach(img => {
@@ -3072,6 +3096,12 @@ export default function GalleryPage() {
                                         {matchReason}
                                         {similarity && ` - ${similarity}% similar`}
                                       </p>
+                                      <button
+                                        onClick={() => openDuplicateMatchInNewTab(dup)}
+                                        className="mt-2 px-2.5 py-1 rounded-md bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 text-blue-200 text-xs font-medium transition-colors"
+                                      >
+                                        Open Match
+                                      </button>
                                       {dup.hashResults && (
                                         <div className="flex gap-2 mt-1">
                                           {dup.hashResults.pHash?.match && (
