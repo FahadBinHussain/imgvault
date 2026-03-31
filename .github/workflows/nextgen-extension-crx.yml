@@ -89,6 +89,7 @@ jobs:
           VERSION="$(node -p "require('./manifest.json').version")"
           CRX_NAME="${EXTENSION_NAME}-${VERSION}.crx"
           "${{ steps.chrome.outputs.chrome-path }}" \
+            --no-sandbox \
             --pack-extension="$GITHUB_WORKSPACE/$EXTENSION_DIR/$DIST_DIR" \
             --pack-extension-key="$GITHUB_WORKSPACE/$EXTENSION_DIR/$KEY_PATH"
 
