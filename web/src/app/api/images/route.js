@@ -34,6 +34,46 @@ function fromFirestoreDoc(doc) {
   return result
 }
 
+async function fetchAllFirestoreDocs(baseUrl, apiKey, baseParams, maskFields) {
+  const allDocs = []
+  let pageToken = null
+
+  do {
+    const url = new URL(baseUrl)
+    url.searchParams.set('key', apiKey)
+
+    for (const [key, value] of Object.entries(baseParams)) {
+      url.searchParams.set(key, value)
+    }
+
+    for (const field of maskFields) {
+      url.searchParams.append('mask.fieldPaths', field)
+    }
+
+    if (pageToken) {
+      url.searchParams.set('pageToken', pageToken)
+    }
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      cache: 'no-store',
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Failed to fetch images from Firestore: ${errorText}`)
+    }
+
+    const result = await response.json()
+    if (Array.isArray(result.documents) && result.documents.length > 0) {
+      allDocs.push(...result.documents)
+    }
+    pageToken = result.nextPageToken || null
+  } while (pageToken)
+
+  return allDocs
+}
+
 export async function GET() {
   const session = await getSession()
 
@@ -55,9 +95,9 @@ export async function GET() {
   }
 
   const baseUrl = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/images`
-  const url = new URL(baseUrl)
-  url.searchParams.set('key', firebaseConfig.apiKey)
-  url.searchParams.set('orderBy', 'internalAddedTimestamp desc')
+  const baseParams = {
+    orderBy: 'internalAddedTimestamp desc',
+  }
   const maskFields = [
     'BlueMatrixColumn',
     'BlueTRC',
@@ -109,26 +149,14 @@ export async function GET() {
     'tags',
     'width',
   ]
-  for (const field of maskFields) {
-    url.searchParams.append('mask.fieldPaths', field)
-  }
-
   try {
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      cache: 'no-store',
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      return Response.json(
-        { error: `Failed to fetch images from Firestore: ${errorText}` },
-        { status: response.status }
-      )
-    }
-
-    const result = await response.json()
-    const images = result.documents ? result.documents.map(fromFirestoreDoc) : []
+    const documents = await fetchAllFirestoreDocs(
+      baseUrl,
+      firebaseConfig.apiKey,
+      baseParams,
+      maskFields
+    )
+    const images = documents.map(fromFirestoreDoc)
 
     return Response.json({ images })
   } catch (error) {

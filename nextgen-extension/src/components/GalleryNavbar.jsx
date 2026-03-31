@@ -22,6 +22,7 @@ export default function GalleryNavbar({
   selectedImages,
   selectAll,
   filteredImages,
+  displayCount,
   deselectAll,
   setShowBulkDeleteConfirm,
   isDeleting,
@@ -31,6 +32,9 @@ export default function GalleryNavbar({
   onEmptyTrash,
 }) {
   const navRef = useRef(null);
+  const visibleCount = Number.isFinite(displayCount)
+    ? displayCount
+    : (Array.isArray(filteredImages) ? filteredImages.length : (Array.isArray(images) ? images.length : 0));
 
   useEffect(() => {
     if (!navRef.current || !onHeightChange) return;
@@ -80,7 +84,7 @@ export default function GalleryNavbar({
                     <p className="text-xs text-base-content/60 truncate">
                       {isSettingsPage
                         ? 'Configuration'
-                        : `${images.length} ${isTrashPage ? 'item' : 'image'}${images.length !== 1 ? 's' : ''}`}
+                        : `${visibleCount} ${isTrashPage ? 'item' : 'image'}${visibleCount !== 1 ? 's' : ''}`}
                     </p>
                   </div>
                 </>
