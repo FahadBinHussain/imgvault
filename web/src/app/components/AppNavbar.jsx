@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { signIn, useSession } from 'next-auth/react'
-import { Github, LogIn, Menu, Settings, X } from 'lucide-react'
+import { Github, LogIn, Menu, Settings, Trash2, X } from 'lucide-react'
 import ThemeSwitcher from './ThemeSwitcher'
 import UserDropdown from './UserDropdown'
 import BrandLogo from './BrandLogo'
@@ -102,6 +102,13 @@ export default function AppNavbar({ mode = 'dashboard', activeRoute }) {
             title="Settings"
           >
             <Settings className="w-5 h-5" />
+          </a>
+          <a
+            href="/trash"
+            className={`transition-colors p-2 rounded-lg ${activeRoute === 'trash' ? 'text-white' : 'text-dark-300 hover:text-white hover:bg-white/5'}`}
+            title="Trash"
+          >
+            <Trash2 className="w-5 h-5" />
           </a>
           {session?.user ? (
             <UserDropdown
