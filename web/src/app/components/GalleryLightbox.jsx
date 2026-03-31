@@ -209,6 +209,11 @@ export default function GalleryLightbox({
   }, [currentIndex])
 
   const handleMediaTouchStart = (e) => {
+    if ((e.touches?.length || 0) > 1) {
+      setIsDraggingMedia(false)
+      return
+    }
+
     const touch = e.touches?.[0]
     if (!touch) return
     gestureStartRef.current = { x: touch.clientX, y: touch.clientY }
@@ -216,6 +221,12 @@ export default function GalleryLightbox({
   }
 
   const handleMediaTouchMove = (e) => {
+    if ((e.touches?.length || 0) > 1) {
+      setIsDraggingMedia(false)
+      setDragOffset(0)
+      return
+    }
+
     const touch = e.touches?.[0]
     if (!touch) return
 
@@ -231,6 +242,10 @@ export default function GalleryLightbox({
   }
 
   const handleMediaTouchEnd = (e) => {
+    if ((e.touches?.length || 0) > 0) {
+      return
+    }
+
     const touch = e.changedTouches?.[0]
     const deltaX = touch ? touch.clientX - gestureStartRef.current.x : dragOffset
     const viewportWidth = mediaViewportRef.current?.clientWidth || window.innerWidth || 1
@@ -446,7 +461,8 @@ export default function GalleryLightbox({
 
         <div
           ref={mediaViewportRef}
-          className="relative w-full max-w-full max-h-full animate-scale-in overflow-hidden touch-pan-y"
+          className="relative w-full max-w-full max-h-full animate-scale-in overflow-hidden"
+          style={{ touchAction: 'pan-y pinch-zoom' }}
           onClick={(e) => e.stopPropagation()}
           onTouchStart={handleMediaTouchStart}
           onTouchMove={handleMediaTouchMove}
