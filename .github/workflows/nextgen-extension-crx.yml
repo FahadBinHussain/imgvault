@@ -49,8 +49,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build extension
-        run: pnpm build
+      - name: Build extension bundle
+        run: pnpm exec vite build
+
+      - name: Copy extension static files
+        run: |
+          cp manifest.json dist/manifest.json
+          cp flickr-fix.css dist/flickr-fix.css
+          cp slideshare-fix.css dist/slideshare-fix.css
+          cp rajce-fix.css dist/rajce-fix.css
+          rm -rf dist/icons
+          cp -R icons dist/icons
 
       - name: Install Chrome
         id: chrome
