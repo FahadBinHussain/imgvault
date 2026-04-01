@@ -5,17 +5,24 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const sourcePath = path.join(__dirname, 'src-tauri', 'target', 'release', 'ImgVault Native Host.exe');
-const destPath = path.join(__dirname, 'ImgVault-Native-Host.exe');
+const releaseDir = path.join(__dirname, 'src-tauri', 'target', 'release');
+const filesToCopy = [
+  {
+    source: path.join(releaseDir, 'imgvault-native-host.exe'),
+    dest: path.join(__dirname, 'ImgVault-Native-Host.exe'),
+  },
+];
 
 try {
-  if (fs.existsSync(sourcePath)) {
-    fs.copyFileSync(sourcePath, destPath);
-    console.log('✅ Copied portable exe to:', destPath);
-  } else {
-    console.warn('⚠️ Source exe not found:', sourcePath);
+  for (const file of filesToCopy) {
+    if (fs.existsSync(file.source)) {
+      fs.copyFileSync(file.source, file.dest);
+      console.log('Copied portable file to:', file.dest);
+    } else {
+      console.warn('Source file not found:', file.source);
+    }
   }
 } catch (error) {
-  console.error('❌ Failed to copy exe:', error.message);
+  console.error('Failed to copy portable host files:', error.message);
   process.exit(1);
 }

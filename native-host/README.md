@@ -1,88 +1,42 @@
-# ImgVault Native Messaging Host
+# ImgVault Native Host
 
-A Tauri-based desktop application that enables native messaging between the ImgVault Chrome extension and the local system.
+Headless native messaging host for the ImgVault Chrome extension.
 
-## Features
+## How it works
 
-- **GUI Mode** (Default): Simple interface with a "Register" button to set up native messaging
-- **Headless Mode** (`--native` flag): Listens for messages from the Chrome extension via stdin/stdout
-- **Video Downloads**: Uses yt-dlp to download videos when requested by the extension
+- Run `ImgVault-Native-Host.exe` once.
+- It registers itself for the ImgVault extension and exits.
+- After that, the extension talks to it through Chrome native messaging.
 
-## Development
+When Chrome launches it for native messaging, the host runs in `--native` mode automatically.
 
-### Prerequisites
+## Build
 
-- Node.js and pnpm
+Prerequisites:
+
 - Rust and Cargo
-- yt-dlp (must be in PATH)
+- `yt-dlp` available on the machine
 
-### Install Dependencies
-
-```bash
-pnpm install
-```
-
-### Run in Development
+Build the single-file host:
 
 ```bash
-pnpm tauri dev
+pnpm portable:build
 ```
 
-### Build for Production
+That produces:
 
-```bash
-cd nextgen-extension/native-host;pnpm tauri:build
-```
+- `native-host/ImgVault-Native-Host.exe`
 
-## Usage
+## Registration
 
-### GUI Mode (Registration)
+Running the exe normally will:
 
-1. Run the application normally (double-click the .exe or run without arguments)
-2. Click the "Register" button
-3. The app will:
-   - Write a `manifest.json` file in the app directory
-   - Create a Windows registry key pointing to the manifest
-   - Enable native messaging with Chrome
-
-### Headless Mode (Native Messaging)
-
-The Chrome extension will automatically launch the app with the `--native` flag when needed.
-
-The app listens for JSON messages on stdin:
-
-```json
-{
-  "action": "download",
-  "url": "https://example.com/video",
-  "output_path": "C:\\path\\to\\output.mp4"
-}
-```
-
-And responds on stdout:
-
-```json
-{
-  "success": true,
-  "message": "Download complete",
-  "file_path": "C:\\path\\to\\output.mp4"
-}
-```
-
-## Extension Integration
-
-The extension ID must be added to the manifest.json after registration. Edit the manifest to include your extension's ID:
-
-```json
-{
-  "allowed_origins": [
-    "chrome-extension://YOUR_EXTENSION_ID_HERE/"
-  ]
-}
-```
+- write `manifest.json` next to the exe
+- register `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.imgvault.nativehost`
+- allow the extension ID `johjkjkidbedgjmogpekmlpfakccnoan`
 
 ## Notes
 
-- Currently only supports Windows
-- Requires yt-dlp to be installed and accessible in PATH
-- The registry key is written to: `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.imgvault.nativehost`
+- Windows only
+- No WebView2 UI runtime is required anymore
+- The extension is now the main UI

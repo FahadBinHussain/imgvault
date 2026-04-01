@@ -8,9 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build && node postbuild.js"
+    "cargo:build": "cargo build --release --manifest-path src-tauri/Cargo.toml",
+    "portable:build": "cargo build --release --manifest-path src-tauri/Cargo.toml && node postbuild.js"
   },
   "dependencies": {
     "@tauri-apps/api": "^1.5.3",

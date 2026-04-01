@@ -1,5 +1,3 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
@@ -12,6 +10,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use winreg::enums::*;
 #[cfg(target_os = "windows")]
 use winreg::{HKEY, RegKey};
+#[cfg(target_os = "windows")]
+use winapi::um::winuser::{MessageBoxW, MB_ICONERROR, MB_ICONINFORMATION, MB_OK};
+
+const EXTENSION_ID: &str = "johjkjkidbedgjmogpekmlpfakccnoan";
 
 #[cfg(target_os = "windows")]
 fn read_registry_string(root: HKEY, subkey: &str, value_name: &str) -> Option<String> {
@@ -159,7 +161,6 @@ fn cleanup_temp_cookies_file(path: &Option<PathBuf>) {
 }
 
 // Check if the native messaging host is registered
-#[tauri::command]
 fn check_registration() -> Result<bool, String> {
     #[cfg(target_os = "windows")]
     {
@@ -177,7 +178,6 @@ fn check_registration() -> Result<bool, String> {
 }
 
 // Register the native messaging host
-#[tauri::command]
 fn register_host(extension_id: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
@@ -223,7 +223,6 @@ fn register_host(extension_id: String) -> Result<(), String> {
 }
 
 // Unregister the native messaging host
-#[tauri::command]
 fn unregister_host() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
@@ -262,7 +261,6 @@ fn unregister_host() -> Result<(), String> {
     Err("Unregistration only supported on Windows".to_string())
 }
 
-#[tauri::command]
 fn reload_path() -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
@@ -275,7 +273,6 @@ fn reload_path() -> Result<String, String> {
     }
 }
 
-#[tauri::command]
 fn check_cookies() -> Result<String, String> {
     let cookies_path = get_cookies_path()?;
     if cookies_path.exists() {
@@ -387,7 +384,6 @@ fn download_video(url: &str, output_path: &str, cookies_data: Option<&[BrowserCo
 }
 
 // Test download with detailed output (for GUI)
-#[tauri::command]
 fn test_download(url: String, output_path: String, hide_window: bool) -> Result<serde_json::Value, String> {
     eprintln!("[yt-dlp] Starting download: {}", url);
     eprintln!("[yt-dlp] Output path: {}", output_path);
@@ -485,6 +481,30 @@ fn find_yt_dlp() -> Result<String, String> {
         })
     }
 }
+
+#[cfg(target_os = "windows")]
+fn to_wide_null(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(target_os = "windows")]
+fn show_message_box(title: &str, message: &str, is_error: bool) {
+    let title_w = to_wide_null(title);
+    let message_w = to_wide_null(message);
+    let flags = MB_OK | if is_error { MB_ICONERROR } else { MB_ICONINFORMATION };
+
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            message_w.as_ptr(),
+            title_w.as_ptr(),
+            flags,
+        );
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn show_message_box(_title: &str, _message: &str, _is_error: bool) {}
 
 // Handle native messaging (stdin/stdout communication)
 fn handle_native_messaging() {
@@ -708,10 +728,18 @@ fn main() {
             }
         }
     }
-    
-    // Otherwise, run GUI mode
-    tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![check_registration, register_host, unregister_host, reload_path, check_cookies, test_download])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+
+    match register_host(EXTENSION_ID.to_string()) {
+        Ok(()) => {
+            let message = format!(
+                "ImgVault Native Host is registered.\n\nYou can close this window and use the extension now.\n\nExtension ID: {}",
+                EXTENSION_ID
+            );
+            show_message_box("ImgVault Native Host", &message, false);
+        }
+        Err(error) => {
+            let message = format!("Failed to register ImgVault Native Host.\n\n{}", error);
+            show_message_box("ImgVault Native Host", &message, true);
+        }
+    }
 }
