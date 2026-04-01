@@ -11,7 +11,6 @@ import SettingsPage from './pages/SettingsPage';
 import TrashPage from './pages/TrashPage';
 import PopupPage from './pages/PopupPage';
 import CollectionsPage from './pages/CollectionsPage';
-import DebugPage from './pages/DebugPage';
 import HostPage from './pages/HostPage';
 import './index.css';
 
@@ -35,7 +34,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route path="/host" element={<HostPage />} />
         <Route path="/trash" element={<TrashPage />} />
         <Route path="/popup" element={<PopupPage />} />
-        <Route path="/debug" element={<DebugPage />} />
         <Route path="*" element={<Navigate to="/gallery" replace />} />
       </Routes>
     </HashRouter>
