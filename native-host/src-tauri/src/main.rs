@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
-use std::io::{self, Write, Read};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(target_os = "windows")]
@@ -58,12 +59,18 @@ struct NativeMessage {
     url: Option<String>,
     output_path: Option<String>,
     cookies_data: Option<Vec<BrowserCookie>>,
+    request_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct NativeResponse {
     success: bool,
+    event: Option<String>,
+    #[serde(rename = "requestId")]
+    request_id: Option<String>,
     message: Option<String>,
+    line: Option<String>,
+    stream: Option<String>,
     #[serde(rename = "filePath")]
     file_path: Option<String>,
     stdout: Option<String>,
@@ -179,6 +186,24 @@ fn cleanup_temp_cookies_file(path: &Option<PathBuf>) {
             }
         }
     }
+}
+
+fn send_native_response(stdout: &mut io::Stdout, response: &NativeResponse) -> Result<(), String> {
+    let response_json = serde_json::to_string(response)
+        .map_err(|e| format!("Failed to serialize response: {}", e))?;
+    let response_length = response_json.len() as u32;
+
+    stdout
+        .write_all(&response_length.to_ne_bytes())
+        .map_err(|e| format!("Failed to write response length: {}", e))?;
+    stdout
+        .write_all(response_json.as_bytes())
+        .map_err(|e| format!("Failed to write response content: {}", e))?;
+    stdout
+        .flush()
+        .map_err(|e| format!("Failed to flush stdout: {}", e))?;
+
+    Ok(())
 }
 
 // Check if the native messaging host is registered
@@ -511,6 +536,206 @@ fn find_yt_dlp() -> Result<String, String> {
     }
 }
 
+fn download_video_with_progress(
+    url: &str,
+    output_path: &str,
+    cookies_data: Option<&[BrowserCookie]>,
+    request_id: Option<&str>,
+    stdout: &mut io::Stdout,
+) -> Result<DownloadOutcome, DownloadOutcome> {
+    let output_dir = get_output_directory(output_path)
+        .map_err(|message| DownloadOutcome {
+            message,
+            file_path: None,
+            stdout: String::new(),
+            stderr: String::new(),
+        })?;
+
+    if !output_dir.exists() {
+        fs::create_dir_all(&output_dir)
+            .map_err(|e| DownloadOutcome {
+                message: format!("Failed to create download directory {}: {}", output_dir.display(), e),
+                file_path: None,
+                stdout: String::new(),
+                stderr: String::new(),
+            })?;
+    }
+
+    let mut command = Command::new("yt-dlp");
+    command
+        .arg(url)
+        .arg("--verbose")
+        .arg("-f")
+        .arg("bestvideo+bestaudio/best")
+        .arg("--merge-output-format")
+        .arg("mkv")
+        .arg("--no-playlist")
+        .arg("--progress")
+        .arg("--newline")
+        .arg("--print")
+        .arg("after_move:filepath")
+        .current_dir(&output_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let cookies_path = add_cookies_argument(&mut command, cookies_data)
+        .map_err(|e| DownloadOutcome {
+            message: e,
+            file_path: None,
+            stdout: String::new(),
+            stderr: String::new(),
+        })?;
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut child = command.spawn().map_err(|e| DownloadOutcome {
+        message: match &cookies_path {
+            Some(path) => format!("Failed to execute yt-dlp: {} (cookies: {})", e, path.display()),
+            None => format!("Failed to execute yt-dlp: {}", e),
+        },
+        file_path: None,
+        stdout: String::new(),
+        stderr: String::new(),
+    })?;
+
+    let stdout_pipe = child.stdout.take().ok_or_else(|| DownloadOutcome {
+        message: "Failed to capture yt-dlp stdout".to_string(),
+        file_path: None,
+        stdout: String::new(),
+        stderr: String::new(),
+    })?;
+    let stderr_pipe = child.stderr.take().ok_or_else(|| DownloadOutcome {
+        message: "Failed to capture yt-dlp stderr".to_string(),
+        file_path: None,
+        stdout: String::new(),
+        stderr: String::new(),
+    })?;
+
+    let (tx, rx) = mpsc::channel::<(String, String)>();
+
+    let stdout_tx = tx.clone();
+    let stdout_handle = std::thread::spawn(move || {
+        let mut collected = Vec::new();
+        let reader = BufReader::new(stdout_pipe);
+        for line_result in reader.lines() {
+            match line_result {
+                Ok(line) => {
+                    if !line.trim().is_empty() {
+                        let _ = stdout_tx.send(("stdout".to_string(), line.clone()));
+                    }
+                    collected.push(line);
+                }
+                Err(error) => {
+                    collected.push(format!("[ImgVault] Failed to read yt-dlp stdout: {}", error));
+                    break;
+                }
+            }
+        }
+        collected.join("\n")
+    });
+
+    let stderr_handle = std::thread::spawn(move || {
+        let mut collected = Vec::new();
+        let reader = BufReader::new(stderr_pipe);
+        for line_result in reader.lines() {
+            match line_result {
+                Ok(line) => {
+                    if !line.trim().is_empty() {
+                        let _ = tx.send(("stderr".to_string(), line.clone()));
+                    }
+                    collected.push(line);
+                }
+                Err(error) => {
+                    collected.push(format!("[ImgVault] Failed to read yt-dlp stderr: {}", error));
+                    break;
+                }
+            }
+        }
+        collected.join("\n")
+    });
+
+    while let Ok((stream, line)) = rx.recv() {
+        let progress_response = NativeResponse {
+            success: true,
+            event: Some("progress".to_string()),
+            request_id: request_id.map(|value| value.to_string()),
+            message: None,
+            line: Some(line),
+            stream: Some(stream),
+            file_path: None,
+            stdout: None,
+            stderr: None,
+        };
+
+        if let Err(error) = send_native_response(stdout, &progress_response) {
+            eprintln!("[NATIVE] Failed to send progress update: {}", error);
+        }
+    }
+
+    let status = child.wait().map_err(|e| DownloadOutcome {
+        message: format!("Failed while waiting for yt-dlp: {}", e),
+        file_path: None,
+        stdout: String::new(),
+        stderr: String::new(),
+    })?;
+
+    cleanup_temp_cookies_file(&cookies_path);
+
+    let stdout_text = stdout_handle.join().unwrap_or_else(|_| String::new());
+    let stderr_text = stderr_handle.join().unwrap_or_else(|_| String::new());
+    let file_path = stdout_text
+        .lines()
+        .rev()
+        .find(|line| {
+            let trimmed = line.trim();
+            !trimmed.is_empty() &&
+                !trimmed.starts_with('[') &&
+                !trimmed.starts_with("WARNING:") &&
+                !trimmed.starts_with("ERROR:")
+        })
+        .map(|line| line.trim().to_string());
+
+    if status.success() {
+        if let Some(file_path) = file_path {
+            Ok(DownloadOutcome {
+                message: "Download complete".to_string(),
+                file_path: Some(file_path),
+                stdout: stdout_text,
+                stderr: stderr_text,
+            })
+        } else {
+            Err(DownloadOutcome {
+                message: "yt-dlp did not return a file path".to_string(),
+                file_path: None,
+                stdout: stdout_text,
+                stderr: stderr_text,
+            })
+        }
+    } else {
+        let combined = [stderr_text.trim().to_string(), stdout_text.trim().to_string()]
+            .into_iter()
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Err(DownloadOutcome {
+            message: if combined.is_empty() {
+                format!("yt-dlp failed with exit code {:?}", status.code())
+            } else {
+                format!("yt-dlp failed:\n{}", combined)
+            },
+            file_path: None,
+            stdout: stdout_text,
+            stderr: stderr_text,
+        })
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn to_wide_null(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
@@ -576,17 +801,21 @@ fn handle_native_messaging() {
             Ok(native_msg) => {
                 match native_msg.action.as_str() {
                     "download" => {
-                        let NativeMessage { url, output_path, cookies_data, .. } = native_msg;
+                        let NativeMessage { url, output_path, cookies_data, request_id, .. } = native_msg;
                         if let (Some(url), Some(output_path)) = 
                             (url, output_path) 
                         {
                             eprintln!("[NATIVE] Processing download: {} -> {}", url, output_path);
-                            match download_video(&url, &output_path, cookies_data.as_deref()) {
+                            match download_video_with_progress(&url, &output_path, cookies_data.as_deref(), request_id.as_deref(), &mut stdout) {
                                 Ok(file_path) => {
                                     eprintln!("[NATIVE] Download successful: {}", file_path.file_path.as_deref().unwrap_or(""));
                                     NativeResponse {
                                         success: true,
+                                        event: Some("complete".to_string()),
+                                        request_id,
                                         message: Some(file_path.message),
+                                        line: None,
+                                        stream: None,
                                         file_path: file_path.file_path,
                                         stdout: Some(file_path.stdout),
                                         stderr: Some(file_path.stderr),
@@ -596,7 +825,11 @@ fn handle_native_messaging() {
                                     eprintln!("[NATIVE] Download failed: {}", e.message);
                                     NativeResponse {
                                         success: false,
+                                        event: Some("complete".to_string()),
+                                        request_id,
                                         message: Some(e.message),
+                                        line: None,
+                                        stream: None,
                                         file_path: None,
                                         stdout: Some(e.stdout),
                                         stderr: Some(e.stderr),
@@ -607,7 +840,11 @@ fn handle_native_messaging() {
                             eprintln!("[NATIVE] Missing url or output_path");
                             NativeResponse {
                                 success: false,
+                                event: Some("complete".to_string()),
+                                request_id,
                                 message: Some("Missing url or output_path".to_string()),
+                                line: None,
+                                stream: None,
                                 file_path: None,
                                 stdout: None,
                                 stderr: None,
@@ -618,14 +855,22 @@ fn handle_native_messaging() {
                         match reload_path() {
                             Ok(_) => NativeResponse {
                                 success: true,
+                                event: Some("complete".to_string()),
+                                request_id: native_msg.request_id.clone(),
                                 message: Some("PATH reloaded".to_string()),
+                                line: None,
+                                stream: None,
                                 file_path: None,
                                 stdout: None,
                                 stderr: None,
                             },
                             Err(e) => NativeResponse {
                                 success: false,
+                                event: Some("complete".to_string()),
+                                request_id: native_msg.request_id.clone(),
                                 message: Some(e),
+                                line: None,
+                                stream: None,
                                 file_path: None,
                                 stdout: None,
                                 stderr: None,
@@ -634,7 +879,11 @@ fn handle_native_messaging() {
                     }
                     "ping" => NativeResponse {
                         success: true,
+                        event: Some("complete".to_string()),
+                        request_id: native_msg.request_id.clone(),
                         message: Some("Native host reachable".to_string()),
+                        line: None,
+                        stream: None,
                         file_path: None,
                         stdout: None,
                         stderr: None,
@@ -643,14 +892,22 @@ fn handle_native_messaging() {
                         match find_yt_dlp() {
                             Ok(message) => NativeResponse {
                                 success: true,
+                                event: Some("complete".to_string()),
+                                request_id: native_msg.request_id.clone(),
                                 message: Some(message),
+                                line: None,
+                                stream: None,
                                 file_path: None,
                                 stdout: None,
                                 stderr: None,
                             },
                             Err(e) => NativeResponse {
                                 success: false,
+                                event: Some("complete".to_string()),
+                                request_id: native_msg.request_id.clone(),
                                 message: Some(e),
+                                line: None,
+                                stream: None,
                                 file_path: None,
                                 stdout: None,
                                 stderr: None,
@@ -661,14 +918,22 @@ fn handle_native_messaging() {
                         match check_cookies() {
                             Ok(message) => NativeResponse {
                                 success: true,
+                                event: Some("complete".to_string()),
+                                request_id: native_msg.request_id.clone(),
                                 message: Some(message),
+                                line: None,
+                                stream: None,
                                 file_path: None,
                                 stdout: None,
                                 stderr: None,
                             },
                             Err(e) => NativeResponse {
                                 success: false,
+                                event: Some("complete".to_string()),
+                                request_id: native_msg.request_id.clone(),
                                 message: Some(e),
+                                line: None,
+                                stream: None,
                                 file_path: None,
                                 stdout: None,
                                 stderr: None,
@@ -679,14 +944,22 @@ fn handle_native_messaging() {
                         match get_default_videos_directory() {
                             Ok(path) => NativeResponse {
                                 success: true,
+                                event: Some("complete".to_string()),
+                                request_id: native_msg.request_id.clone(),
                                 message: Some(path.display().to_string()),
+                                line: None,
+                                stream: None,
                                 file_path: Some(path.display().to_string()),
                                 stdout: None,
                                 stderr: None,
                             },
                             Err(e) => NativeResponse {
                                 success: false,
+                                event: Some("complete".to_string()),
+                                request_id: native_msg.request_id.clone(),
                                 message: Some(e),
+                                line: None,
+                                stream: None,
                                 file_path: None,
                                 stdout: None,
                                 stderr: None,
@@ -697,7 +970,11 @@ fn handle_native_messaging() {
                         eprintln!("[NATIVE] Unknown action: {}", native_msg.action);
                         NativeResponse {
                             success: false,
+                            event: Some("complete".to_string()),
+                            request_id: native_msg.request_id.clone(),
                             message: Some("Unknown action".to_string()),
+                            line: None,
+                            stream: None,
                             file_path: None,
                             stdout: None,
                             stderr: None,
@@ -709,7 +986,11 @@ fn handle_native_messaging() {
                 eprintln!("[NATIVE] Failed to parse message: {}", e);
                 NativeResponse {
                     success: false,
+                    event: Some("complete".to_string()),
+                    request_id: None,
                     message: Some(format!("Failed to parse message: {}", e)),
+                    line: None,
+                    stream: None,
                     file_path: None,
                     stdout: None,
                     stderr: None,
@@ -717,26 +998,11 @@ fn handle_native_messaging() {
             }
         };
         
-        // Send response with length header
-        let response_json = serde_json::to_string(&response).unwrap();
-        let response_length = response_json.len() as u32;
-        
+        let response_json = serde_json::to_string(&response).unwrap_or_default();
         eprintln!("[NATIVE] Sending response: {}", response_json);
-        
-        // Write length header (4 bytes, little-endian)
-        if stdout.write_all(&response_length.to_ne_bytes()).is_err() {
-            eprintln!("[NATIVE] Failed to write response length");
-            break;
-        }
-        
-        // Write response content
-        if stdout.write_all(response_json.as_bytes()).is_err() {
-            eprintln!("[NATIVE] Failed to write response content");
-            break;
-        }
-        
-        if stdout.flush().is_err() {
-            eprintln!("[NATIVE] Failed to flush stdout");
+
+        if let Err(error) = send_native_response(&mut stdout, &response) {
+            eprintln!("[NATIVE] {}", error);
             break;
         }
         

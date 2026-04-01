@@ -10,6 +10,8 @@ import { URLNormalizer } from '../utils/url-normalizer.js';
 import { PixvidUploader, ImgbbUploader, FilemoonUploader, UDropUploader } from '../utils/uploaders.js';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig.js';
 
+const NATIVE_DOWNLOAD_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+
 /**
  * @typedef {Object} ImageData
  * @property {string} imageUrl - The image URL or data URL
@@ -542,7 +544,7 @@ class ImgVaultServiceWorker {
         return true;
 
       case 'nativeDownload':
-        this.handleNativeDownload(request.url)
+        this.handleNativeDownload(request.url, request.requestId)
           .then(result => sendResponse({
             success: true,
             filePath: result.filePath,
@@ -969,7 +971,7 @@ class ImgVaultServiceWorker {
    * @param {string} url - URL to download
    * @returns {Promise<Object>} Download result with file path
    */
-  async handleNativeDownload(url) {
+  async handleNativeDownload(url, requestId = '') {
     try {
       console.log(`📥 [NATIVE] Sending download request for: ${url}`);
 
@@ -995,20 +997,32 @@ class ImgVaultServiceWorker {
         throw new Error('Failed to connect to native host: ' + connectError.message);
       }
       
+      const activeRequestId = requestId || `native-download-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
       return new Promise((resolve, reject) => {
         let responseReceived = false;
         
-        // Set a timeout
+        // Large yt-dlp jobs can take a long time before the native host replies.
         const timeout = setTimeout(() => {
           if (!responseReceived) {
             console.error(`⏱️ [NATIVE] Timeout waiting for response`);
             port.disconnect();
-            reject(new Error('Timeout waiting for native host response'));
+            reject(new Error('Download timed out while waiting for the native host to finish. The file may still be downloading in the background.'));
           }
-        }, 30000); // 30 second timeout
+        }, NATIVE_DOWNLOAD_TIMEOUT_MS);
         
         port.onMessage.addListener((response) => {
           console.log(`📨 [NATIVE] Response from host:`, response);
+          if (response?.event === 'progress') {
+            chrome.runtime.sendMessage({
+              action: 'nativeDownloadProgress',
+              requestId: response.requestId || activeRequestId,
+              stream: response.stream || 'stdout',
+              line: response.line || '',
+            }).catch(() => {});
+            return;
+          }
+
           responseReceived = true;
           clearTimeout(timeout);
           
@@ -1044,12 +1058,14 @@ class ImgVaultServiceWorker {
             url: url,
             output_path: outputPath,
             cookies_data: cookies,
+            request_id: activeRequestId,
           });
           console.log(`✉️ [NATIVE] Message sent to native host:`, {
             action: 'download',
             url,
             output_path: outputPath,
             cookies_count: cookies.length,
+            request_id: activeRequestId,
           });
         } catch (sendError) {
           console.error(`❌ [NATIVE] Failed to send message:`, sendError);
@@ -1437,8 +1453,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return serviceWorker.handleMessage(request, sender, sendResponse);
 });
 
-// Handle extension icon click - open gallery
-chrome.action.onClicked.addListener(() => {
+// Handle extension icon click
+chrome.action.onClicked.addListener((tab) => {
+  const currentUrl = tab?.url || '';
+
+  if (serviceWorker.isSupportedVideoPage(currentUrl)) {
+    const hostUrl = chrome.runtime.getURL(`index.html#/host?url=${encodeURIComponent(currentUrl)}`);
+    chrome.tabs.create({ url: hostUrl });
+    return;
+  }
+
   chrome.tabs.create({
     url: chrome.runtime.getURL('index.html')
   });

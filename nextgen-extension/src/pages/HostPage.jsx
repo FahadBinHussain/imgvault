@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Cable, RotateCw, Download, CheckCircle2, AlertCircle, Activity } from 'lucide-react';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { Button, Input } from '../components/UI';
@@ -41,8 +41,52 @@ function HostLog({ entry }) {
   );
 }
 
+function getVideoPreview(url) {
+  if (!url) {
+    return null;
+  }
+
+  try {
+    const parsedUrl = new URL(url);
+    const host = parsedUrl.hostname.toLowerCase();
+    const isYouTube = host === 'youtube.com' ||
+      host === 'www.youtube.com' ||
+      host === 'm.youtube.com' ||
+      host === 'youtu.be';
+
+    let videoId = '';
+
+    if (host === 'youtu.be') {
+      videoId = parsedUrl.pathname.replace(/^\/+/, '').split('/')[0];
+    } else {
+      videoId = parsedUrl.searchParams.get('v') || '';
+    }
+
+    if (isYouTube && videoId) {
+      return {
+        siteLabel: 'YouTube',
+        title: 'YouTube video detected',
+        subtitle: videoId,
+        href: url,
+        thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      };
+    }
+
+    return {
+      siteLabel: parsedUrl.hostname.replace(/^www\./, ''),
+      title: 'Video URL ready for host download',
+      subtitle: parsedUrl.pathname === '/' ? parsedUrl.hostname : `${parsedUrl.hostname}${parsedUrl.pathname}`,
+      href: url,
+      thumbnailUrl: '',
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
 export default function HostPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const browserLabel = (() => {
     const ua = navigator.userAgent || '';
 
@@ -64,6 +108,7 @@ export default function HostPage() {
   const [downloadUrl, setDownloadUrl] = useState('');
   const [logs, setLogs] = useState([]);
   const [busyAction, setBusyAction] = useState('');
+  const activeDownloadRequestIdRef = useRef('');
   const [hostStatus, setHostStatus] = useState({
     checking: true,
     reachable: false,
@@ -71,6 +116,7 @@ export default function HostPage() {
     ytDlpAvailable: false,
     ytDlpMessage: 'Checking yt-dlp...',
   });
+  const videoPreview = getVideoPreview(downloadUrl);
 
   const addLog = (message, type = 'info') => {
     setLogs((prev) => [
@@ -81,17 +127,6 @@ export default function HostPage() {
       },
       ...prev,
     ]);
-  };
-
-  const addRawLogBlock = (label, value, type = 'info') => {
-    if (!value || !String(value).trim()) {
-      return;
-    }
-
-    String(value)
-      .split(/\r?\n/)
-      .filter((line) => line.length > 0)
-      .forEach((line) => addLog(`${label}${line}`, type));
   };
 
   const runHostCommand = async (command, data = {}) => {
@@ -192,6 +227,41 @@ export default function HostPage() {
     refreshHostStatus();
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const prefillUrl = (params.get('url') || '').trim();
+
+    if (prefillUrl) {
+      setDownloadUrl(prefillUrl);
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    const handleRuntimeMessage = (message) => {
+      if (message?.action !== 'nativeDownloadProgress') {
+        return;
+      }
+
+      if (!message.requestId || message.requestId !== activeDownloadRequestIdRef.current) {
+        return;
+      }
+
+      const rawLine = String(message.line || '').trim();
+      if (!rawLine) {
+        return;
+      }
+
+      const type = message.stream === 'stderr' && /^error:/i.test(rawLine) ? 'error' : 'info';
+      const prefix = message.stream === 'stderr' ? '[yt-dlp] ' : '[yt-dlp] ';
+      addLog(`${prefix}${rawLine}`, type);
+    };
+
+    chrome.runtime.onMessage.addListener(handleRuntimeMessage);
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleRuntimeMessage);
+    };
+  }, []);
+
   const handleNativeDownload = async () => {
     if (!downloadUrl.trim()) {
       addLog('Enter a video URL first.', 'error');
@@ -202,9 +272,12 @@ export default function HostPage() {
     addLog(`Sending native download request: ${downloadUrl}`);
 
     try {
+      const requestId = `host-download-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      activeDownloadRequestIdRef.current = requestId;
       const response = await chrome.runtime.sendMessage({
         action: 'nativeDownload',
         url: downloadUrl,
+        requestId,
       });
 
       if (!response?.success) {
@@ -212,8 +285,6 @@ export default function HostPage() {
       }
 
       addLog(`Downloaded to: ${response.filePath || 'completed'}`, 'success');
-      addRawLogBlock('[yt-dlp stderr] ', response.stderr, 'info');
-      addRawLogBlock('[yt-dlp stdout] ', response.stdout, 'info');
 
       if (response.filePath) {
         addLog('Opening gallery to auto-load the downloaded file...', 'success');
@@ -226,9 +297,8 @@ export default function HostPage() {
       }
     } catch (error) {
       addLog(error?.error || error?.message || 'Download failed', 'error');
-      addRawLogBlock('[yt-dlp stderr] ', error?.stderr, 'error');
-      addRawLogBlock('[yt-dlp stdout] ', error?.stdout, 'info');
     } finally {
+      activeDownloadRequestIdRef.current = '';
       setBusyAction('');
     }
   };
@@ -314,7 +384,7 @@ export default function HostPage() {
 
       <div style={{ height: navbarHeight ? `${navbarHeight + 8}px` : '90px' }} />
 
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-5xl mx-auto space-y-5">
         <div className="bg-base-100 border border-base-content/15 rounded-2xl shadow-xl p-5 sm:p-6">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-2xl bg-primary/15 text-primary flex items-center justify-center">
@@ -329,68 +399,81 @@ export default function HostPage() {
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] items-start">
-          <div className="min-w-0 bg-base-100 border border-base-content/15 rounded-2xl shadow-xl p-5 sm:p-6 space-y-5">
-            <div className="rounded-xl border border-base-content/15 bg-base-200/60 p-4 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Activity className="w-4 h-4" />
-                  <h3 className="font-medium">Host Status</h3>
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)] items-start">
+          <div className="min-w-0 bg-base-100 border border-base-content/15 rounded-2xl shadow-xl p-5 sm:p-6 space-y-4">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(260px,0.95fr)] items-stretch">
+              <div className="rounded-xl border border-base-content/15 bg-base-200/60 p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4" />
+                    <h3 className="font-medium">Host Status</h3>
+                  </div>
+                  <button
+                    onClick={refreshHostStatus}
+                    disabled={hostStatus.checking}
+                    className="text-sm text-base-content/70 hover:text-base-content disabled:opacity-60"
+                  >
+                    {hostStatus.checking ? 'Checking...' : 'Refresh'}
+                  </button>
                 </div>
-                <button
-                  onClick={refreshHostStatus}
-                  disabled={hostStatus.checking}
-                  className="text-sm text-base-content/70 hover:text-base-content disabled:opacity-60"
-                >
-                  {hostStatus.checking ? 'Checking...' : 'Refresh'}
-                </button>
+
+                <div className={`rounded-lg border px-3 py-2 text-sm ${hostStatus.reachable ? 'border-success/20 bg-success/10 text-success' : 'border-error/20 bg-error/10 text-error'}`}>
+                  <div className="font-medium">Native Host</div>
+                  <div className="mt-1">{hostStatus.hostMessage}</div>
+                </div>
+
+                <div className={`rounded-lg border px-3 py-2 text-sm ${hostStatus.ytDlpAvailable ? 'border-success/20 bg-success/10 text-success' : 'border-warning/20 bg-warning/10 text-warning'}`}>
+                  <div className="font-medium">yt-dlp</div>
+                  <div className="mt-1 break-all">{hostStatus.ytDlpMessage}</div>
+                </div>
               </div>
 
-              <div className={`rounded-lg border px-3 py-2 text-sm ${hostStatus.reachable ? 'border-success/20 bg-success/10 text-success' : 'border-error/20 bg-error/10 text-error'}`}>
-                <div className="font-medium">Native Host</div>
-                <div className="mt-1">{hostStatus.hostMessage}</div>
-              </div>
+              {videoPreview ? (
+                <div className="overflow-hidden rounded-2xl border border-base-content/15 bg-base-200/60 shadow-sm">
+                  {videoPreview.thumbnailUrl ? (
+                    <div className="aspect-video overflow-hidden bg-base-300">
+                      <img
+                        src={videoPreview.thumbnailUrl}
+                        alt={videoPreview.title}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center aspect-video bg-gradient-to-br from-primary/15 via-base-200 to-secondary/15">
+                      <Cable className="w-12 h-12 text-primary" />
+                    </div>
+                  )}
 
-              <div className={`rounded-lg border px-3 py-2 text-sm ${hostStatus.ytDlpAvailable ? 'border-success/20 bg-success/10 text-success' : 'border-warning/20 bg-warning/10 text-warning'}`}>
-                <div className="font-medium">yt-dlp</div>
-                <div className="mt-1 break-all">{hostStatus.ytDlpMessage}</div>
-              </div>
+                  <div className="p-4 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="badge badge-outline">{videoPreview.siteLabel}</span>
+                      <a
+                        href={videoPreview.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary hover:text-primary/80 underline"
+                      >
+                        Open source
+                      </a>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-base-content">{videoPreview.title}</h3>
+                      <p className="text-sm text-base-content/65 break-all mt-1">{videoPreview.subtitle}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-base-content/15 bg-base-200/40 p-5 flex items-center justify-center min-h-[220px]">
+                  <div className="text-center max-w-xs">
+                    <Cable className="w-10 h-10 mx-auto text-primary/70 mb-3" />
+                    <h3 className="font-semibold text-base-content">Video Preview</h3>
+                    <p className="text-sm text-base-content/65 mt-2">
+                      Paste a supported video URL to get a quick preview before downloading with the native host.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
-
-            <div>
-              <h2 className="text-lg font-semibold">Host Actions</h2>
-              <p className="text-sm text-base-content/65 mt-1">
-                Quick controls for the currently registered native host.
-              </p>
-            </div>
-
-            <button
-              onClick={handleReloadPath}
-              disabled={busyAction === 'reload_path'}
-              className="w-full rounded-xl bg-base-200 hover:bg-base-300 border border-base-content/15 px-4 py-3 text-left transition-colors disabled:opacity-60"
-            >
-              <div className="flex items-center gap-3">
-                <RotateCw className={`w-5 h-5 ${busyAction === 'reload_path' ? 'animate-spin' : ''}`} />
-                <div>
-                  <div className="font-medium">Reload PATH</div>
-                  <div className="text-sm text-base-content/65">Refresh environment variables inside the host process.</div>
-                </div>
-              </div>
-            </button>
-
-            <button
-              onClick={handleExportYoutubeCookies}
-              disabled={busyAction === 'export_cookies'}
-              className="w-full rounded-xl bg-base-200 hover:bg-base-300 border border-base-content/15 px-4 py-3 text-left transition-colors disabled:opacity-60"
-            >
-              <div className="flex items-center gap-3">
-                <Download className={`w-5 h-5 ${busyAction === 'export_cookies' ? 'animate-pulse' : ''}`} />
-                <div>
-                  <div className="font-medium">Export YouTube Cookies</div>
-                  <div className="text-sm text-base-content/65">{`Download a fresh cookies.txt from the current ${browserLabel} profile.`}</div>
-                </div>
-              </div>
-            </button>
 
             <div className="rounded-xl border border-base-content/15 bg-base-200/60 p-4 space-y-3">
               <div className="flex items-center gap-2">
@@ -414,8 +497,42 @@ export default function HostPage() {
                 className="w-full justify-center gap-2 !text-base-content border border-primary/20 shadow-lg shadow-primary/10 hover:shadow-xl hover:shadow-primary/20 disabled:border-base-content/10 disabled:shadow-none"
               >
                 <Download className="w-4 h-4" />
-                {busyAction === 'download' ? 'Downloading...' : 'Download with Host'}
+                {busyAction === 'download' ? 'Downloading... this can take a few minutes' : 'Download with Host'}
               </Button>
+
+              <p className="text-xs text-base-content/60">
+                Large video downloads may take several minutes before the native host sends its final completion message.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                onClick={handleReloadPath}
+                disabled={busyAction === 'reload_path'}
+                className="w-full rounded-xl bg-base-200 hover:bg-base-300 border border-base-content/15 px-4 py-3 text-left transition-colors disabled:opacity-60"
+              >
+                <div className="flex items-center gap-3">
+                  <RotateCw className={`w-5 h-5 ${busyAction === 'reload_path' ? 'animate-spin' : ''}`} />
+                  <div>
+                    <div className="font-medium">Reload PATH</div>
+                    <div className="text-sm text-base-content/65">Refresh environment variables inside the host process.</div>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={handleExportYoutubeCookies}
+                disabled={busyAction === 'export_cookies'}
+                className="w-full rounded-xl bg-base-200 hover:bg-base-300 border border-base-content/15 px-4 py-3 text-left transition-colors disabled:opacity-60"
+              >
+                <div className="flex items-center gap-3">
+                  <Download className={`w-5 h-5 ${busyAction === 'export_cookies' ? 'animate-pulse' : ''}`} />
+                  <div>
+                    <div className="font-medium">Export YouTube Cookies</div>
+                    <div className="text-sm text-base-content/65">{`Download a fresh cookies.txt from the current ${browserLabel} profile.`}</div>
+                  </div>
+                </div>
+              </button>
             </div>
           </div>
 
@@ -434,7 +551,7 @@ export default function HostPage() {
             </div>
 
             <div className="rounded-xl border border-base-content/10 bg-base-200/40 p-3">
-              <div className="space-y-3 max-h-[min(56vh,520px)] overflow-auto pr-1">
+              <div className="space-y-3 max-h-[min(48vh,440px)] overflow-auto pr-1">
                 {logs.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-base-content/20 px-4 py-8 text-center text-sm text-base-content/60">
                     No host commands sent yet.
