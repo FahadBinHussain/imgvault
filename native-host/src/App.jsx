@@ -12,9 +12,20 @@ function App() {
   const [testUrl, setTestUrl] = useState('https://www.youtube.com/watch?v=1O0yazhqaxs');
   const [downloading, setDownloading] = useState(false);
   const [hideWindow, setHideWindow] = useState(true);
+  const [reloadingPath, setReloadingPath] = useState(false);
 
   useEffect(() => {
-    checkRegistrationStatus();
+    const initializeApp = async () => {
+      try {
+        await invoke('reload_path');
+      } catch (error) {
+        console.error('Failed to reload PATH on startup:', error);
+      }
+
+      await checkRegistrationStatus();
+    };
+
+    initializeApp();
     
     // Listen for log events from Rust backend
     const unlisten = listen('log-event', (event) => {
@@ -113,10 +124,45 @@ function App() {
 
       addLog(`✅ Download successful!`);
       addLog(`📁 File saved to: ${result.filePath || 'Downloads folder'}`);
+      if (result.stdout?.trim()) {
+        result.stdout.split(/\r?\n/).filter(Boolean).forEach((line) => addLog(`[yt-dlp stdout] ${line}`));
+      }
+      if (result.stderr?.trim()) {
+        result.stderr.split(/\r?\n/).filter(Boolean).forEach((line) => addLog(`[yt-dlp stderr] ${line}`));
+      }
     } catch (error) {
-      addLog(`❌ Download failed: ${error}`);
+      let parsedError = null;
+
+      try {
+        parsedError = typeof error === 'string' ? JSON.parse(error) : null;
+      } catch (_) {
+        parsedError = null;
+      }
+
+      addLog(`❌ Download failed: ${parsedError?.message || error}`);
+
+      if (parsedError?.stdout?.trim()) {
+        parsedError.stdout.split(/\r?\n/).filter(Boolean).forEach((line) => addLog(`[yt-dlp stdout] ${line}`));
+      }
+
+      if (parsedError?.stderr?.trim()) {
+        parsedError.stderr.split(/\r?\n/).filter(Boolean).forEach((line) => addLog(`[yt-dlp stderr] ${line}`));
+      }
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleReloadPath = async () => {
+    setReloadingPath(true);
+
+    try {
+      await invoke('reload_path');
+      addLog('Reloaded PATH from Windows environment. Try the download again.');
+    } catch (error) {
+      addLog(`Failed to reload PATH: ${error}`);
+    } finally {
+      setReloadingPath(false);
     }
   };
 
@@ -265,6 +311,16 @@ function App() {
                   }}
                 >
                   {downloading ? '⏳ Downloading...' : '📥 Test Download'}
+                </button>
+                <button
+                  onClick={handleReloadPath}
+                  disabled={reloadingPath}
+                  style={{
+                    ...styles.secondaryButton,
+                    opacity: reloadingPath ? 0.6 : 1
+                  }}
+                >
+                  {reloadingPath ? 'Reloading...' : 'Reload PATH'}
                 </button>
               </div>
             </div>
@@ -431,6 +487,18 @@ const styles = {
     fontWeight: '600',
     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
     color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    whiteSpace: 'nowrap',
+  },
+  secondaryButton: {
+    padding: '12px 16px',
+    fontSize: '14px',
+    fontWeight: '600',
+    backgroundColor: '#e5e7eb',
+    color: '#111827',
     border: 'none',
     borderRadius: '8px',
     cursor: 'pointer',
