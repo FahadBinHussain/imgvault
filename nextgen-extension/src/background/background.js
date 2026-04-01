@@ -587,6 +587,37 @@ class ImgVaultServiceWorker {
     chrome.storage.local.set({ uploadStatus: message });
   }
 
+  async appendUploadLog(message, type = 'info') {
+    const entry = {
+      timestamp: new Date().toLocaleTimeString(),
+      message,
+      type,
+    };
+
+    const result = await chrome.storage.local.get(['uploadStatusLogs']);
+    const nextLogs = [entry, ...(result.uploadStatusLogs || [])].slice(0, 200);
+    await chrome.storage.local.set({ uploadStatusLogs: nextLogs });
+  }
+
+  async updateStatusWithLog(message, type = 'info') {
+    this.updateStatus(message);
+    await this.appendUploadLog(message, type);
+  }
+
+  async archiveUploadLogRun(status, summary) {
+    const storage = await chrome.storage.local.get(['uploadStatusLogs', 'uploadLogHistory']);
+    const run = {
+      id: `upload-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: new Date().toLocaleString(),
+      status,
+      summary,
+      logs: storage.uploadStatusLogs || [],
+    };
+
+    const nextHistory = [run, ...(storage.uploadLogHistory || [])].slice(0, 20);
+    await chrome.storage.local.set({ uploadLogHistory: nextHistory });
+  }
+
   /**
    * Handle image upload
    * @param {ImageData} data - Image data to upload
@@ -599,6 +630,7 @@ class ImgVaultServiceWorker {
     }
     
     try {
+      await chrome.storage.local.set({ uploadStatusLogs: [] });
       // Get API keys from storage
       const settings = await chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey']);
       
@@ -608,12 +640,13 @@ class ImgVaultServiceWorker {
       
       const hasImgbb = !!settings.imgbbApiKey;
 
-      this.updateStatus('📥 Fetching image...');
+      await this.updateStatusWithLog('📥 Fetching image...');
       
       // Fetch the image
-      const imageBlob = await this.fetchImage(data.imageUrl);
+      const imageSource = data.fileBlob instanceof Blob ? data.fileBlob : data.imageUrl;
+      const imageBlob = await this.fetchImage(imageSource);
       
-      this.updateStatus('🔍 Extracting image metadata...');
+      await this.updateStatusWithLog('🔍 Extracting image metadata...');
       
       // Extract comprehensive metadata
       const metadata = await this.duplicateDetector.extractMetadata(
@@ -680,7 +713,7 @@ class ImgVaultServiceWorker {
       
       // Check for duplicates unless user wants to ignore
       if (!data.ignoreDuplicate) {
-        this.updateStatus('🔎 Checking for duplicates...');
+        await this.updateStatusWithLog('🔎 Checking for duplicates...');
         
         const existingImages = await this.storage.getAllImagesForDuplicateCheck();
         
@@ -699,11 +732,11 @@ class ImgVaultServiceWorker {
         }
       } else {
         console.log('⚠️ Duplicate check SKIPPED - User chose to ignore duplicates');
-        this.updateStatus('⚠️ Skipping duplicate check...');
+        await this.updateStatusWithLog('⚠️ Skipping duplicate check...', 'warning');
       }
       
       // Upload to both APIs in parallel
-      this.updateStatus(hasImgbb ? '☁️ Uploading to Pixvid and ImgBB...' : '☁️ Uploading to Pixvid...');
+      await this.updateStatusWithLog(hasImgbb ? '☁️ Uploading to Pixvid and ImgBB...' : '☁️ Uploading to Pixvid...');
       
       const uploadPromises = [
         this.pixvidUploader.upload(imageBlob, settings.pixvidApiKey, data.imageUrl)
@@ -731,12 +764,12 @@ class ImgVaultServiceWorker {
       
       if (imgbbResult && imgbbResult.error) {
         console.warn('ImgBB upload failed:', imgbbResult.error);
-        this.updateStatus('⚠️ Pixvid upload successful, ImgBB failed. Saving...');
+        await this.updateStatusWithLog('⚠️ Pixvid upload successful, ImgBB failed. Saving...', 'warning');
       } else if (imgbbResult) {
-        this.updateStatus('✅ Both uploads successful! Saving...');
+        await this.updateStatusWithLog('✅ Both uploads successful! Saving...', 'success');
       }
       
-      this.updateStatus('💾 Saving to Firebase...');
+      await this.updateStatusWithLog('💾 Saving to Firebase...');
       
       // Extract filename if not provided
       const fileName = this.extractFileName(data);
@@ -780,8 +813,10 @@ class ImgVaultServiceWorker {
       
       const savedId = await this.storage.saveImage(imageMetadata);
       
-      this.updateStatus('✅ Image saved successfully!');
+      await this.updateStatusWithLog('✅ Image saved successfully!', 'success');
       
+      await this.archiveUploadLogRun('success', 'Image upload completed successfully.');
+
       return {
         id: savedId,
         pixvidUrl: pixvidResult.url,
@@ -790,6 +825,7 @@ class ImgVaultServiceWorker {
       };
     } catch (error) {
       console.error('Upload error:', error);
+      await this.archiveUploadLogRun('error', error.message || 'Image upload failed.');
       throw error;
     }
   }
@@ -801,6 +837,7 @@ class ImgVaultServiceWorker {
    */
   async handleVideoUpload(data) {
     try {
+      await chrome.storage.local.set({ uploadStatusLogs: [] });
       // Get API keys from storage
       const settings = await chrome.storage.sync.get(['filemoonApiKey', 'udropKey1', 'udropKey2']);
       
@@ -811,10 +848,11 @@ class ImgVaultServiceWorker {
         throw new Error('No video hosting service configured. Please set Filemoon API key or UDrop API keys in settings.');
       }
 
-      this.updateStatus('📥 Fetching video...');
+      await this.updateStatusWithLog('📥 Fetching video...');
       
       // Fetch the video once
-      const videoBlob = await this.fetchImage(data.imageUrl);
+      const videoSource = data.fileBlob instanceof Blob ? data.fileBlob : data.imageUrl;
+      const videoBlob = await this.fetchImage(videoSource);
       
       // Build status message based on available services
       const services = [];
@@ -825,41 +863,71 @@ class ImgVaultServiceWorker {
         ? `☁️ Uploading to ${services.join(' and ')}...`
         : `☁️ Uploading to ${services[0]}...`;
       
-      this.updateStatus(statusMsg);
+      await this.updateStatusWithLog(statusMsg);
       
       // Upload to available services in parallel
       const uploadPromises = [];
       
       if (hasFilemoon) {
+        await this.appendUploadLog('📡 Filemoon: requesting upload server...');
         uploadPromises.push(
           this.filemoonUploader.upload(
             videoBlob, 
             settings.filemoonApiKey, 
             data.fileName || 'video.mp4'
-          ).catch(err => {
-            console.error('Filemoon upload failed:', err);
-            return null; // Don't fail entire upload if one service fails
-          })
+          )
+            .then(result => {
+              this.appendUploadLog(`✅ Filemoon: upload completed for ${result.filename || data.fileName || 'video file'}`, 'success');
+              return { type: 'filemoon', result };
+            })
+            .catch(err => {
+              console.error('Filemoon upload failed:', err);
+              this.appendUploadLog(`❌ Filemoon: ${err.message || String(err)}`, 'error');
+              return { type: 'filemoon', error: err.message || String(err) };
+            })
         );
       }
       
       if (hasUDrop) {
+        await this.appendUploadLog('📡 UDrop: authorizing and starting upload...');
         uploadPromises.push(
           this.udropUploader.upload(
             videoBlob, 
             settings.udropKey1, 
             settings.udropKey2, 
             data.fileName || 'video.mp4'
-          ).catch(err => {
-            console.error('UDrop upload failed:', err);
-            return null; // Don't fail entire upload if one service fails
-          })
+          )
+            .then(result => {
+              this.appendUploadLog(`✅ UDrop: upload completed for ${result.filename || data.fileName || 'video file'}`, 'success');
+              return { type: 'udrop', result };
+            })
+            .catch(err => {
+              console.error('UDrop upload failed:', err);
+              this.appendUploadLog(`❌ UDrop: ${err.message || String(err)}`, 'error');
+              return { type: 'udrop', error: err.message || String(err) };
+            })
         );
       }
       
-      const [filemoonResult, udropResult] = await Promise.all(uploadPromises);
+      const uploadResults = await Promise.all(uploadPromises);
+      const filemoonResult = uploadResults.find((entry) => entry.type === 'filemoon')?.result || null;
+      const udropResult = uploadResults.find((entry) => entry.type === 'udrop')?.result || null;
+      const uploadErrors = uploadResults
+        .filter((entry) => entry.error)
+        .map((entry) => `${entry.type}: ${entry.error}`);
+
+      if (!filemoonResult && !udropResult) {
+        await this.appendUploadLog('❌ No video host completed successfully.', 'error');
+        throw new Error(uploadErrors.length > 0
+          ? `Video upload failed on all configured hosts. ${uploadErrors.join(' | ')}`
+          : 'Video upload failed on all configured hosts.');
+      }
+
+      if (uploadErrors.length > 0) {
+        await this.updateStatusWithLog(`⚠️ Partial upload success. ${uploadErrors.join(' | ')}`, 'warning');
+      }
       
-      this.updateStatus('💾 Saving to Firebase...');
+      await this.updateStatusWithLog('💾 Saving to Firebase...');
       
       // Extract filename if not provided
       const fileName = this.extractFileName(data);
@@ -895,6 +963,9 @@ class ImgVaultServiceWorker {
         fileTypeSource: 'File object',
         creationDate,
         creationDateSource,
+        duration: Number.isFinite(data.duration) ? data.duration : null,
+        width: Number.isFinite(data.width) ? data.width : null,
+        height: Number.isFinite(data.height) ? data.height : null,
         tags: data.tags || [],
         description: data.description || '',
         collectionId: data.collectionId || null,
@@ -916,14 +987,22 @@ class ImgVaultServiceWorker {
       
       const savedId = await this.storage.saveImage(videoMetadata);
       
-      this.updateStatus('✅ Video saved successfully!');
+      await this.updateStatusWithLog('✅ Video saved successfully!', 'success');
       
+      await this.archiveUploadLogRun(
+        uploadErrors.length > 0 ? 'warning' : 'success',
+        uploadErrors.length > 0
+          ? `Video upload completed with partial success. ${uploadErrors.join(' | ')}`
+          : 'Video upload completed successfully.'
+      );
+
       return {
         id: savedId,
         ...videoMetadata
       };
     } catch (error) {
       console.error('Video upload error:', error);
+      await this.archiveUploadLogRun('error', error.message || 'Video upload failed.');
       throw error;
     }
   }
@@ -944,7 +1023,7 @@ class ImgVaultServiceWorker {
       
       console.log(`📸 [FILEMOON] Fetching thumbnail for filecode: ${filecode}`);
       
-      const response = await fetch(`https://filemoonapi.com/api/images/thumb?key=${apiKey}&file_code=${filecode}`);
+      const response = await fetch(`https://api.byse.sx/images/thumb?key=${apiKey}&file_code=${filecode}`);
       
       if (!response.ok) {
         throw new Error(`Thumbnail API returned ${response.status}`);
@@ -1196,6 +1275,14 @@ class ImgVaultServiceWorker {
    * @returns {Promise<Blob>} Image blob
    */
   async fetchImage(imageUrl) {
+    if (imageUrl instanceof Blob) {
+      return imageUrl;
+    }
+
+    if (typeof imageUrl !== 'string') {
+      throw new Error('Unsupported media source. Please reload the file and try again.');
+    }
+
     if (imageUrl.startsWith('data:')) {
       const response = await fetch(imageUrl);
       return response.blob();

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Upload, Search, Trash2, Settings, FolderOpen, Image, Cable } from 'lucide-react';
+import { RefreshCw, Upload, Search, Trash2, Settings, FolderOpen, Image, Cable, FileText } from 'lucide-react';
 import ThemeToggleButton from './ThemeToggleButton';
 
 export default function GalleryNavbar({
@@ -30,6 +30,7 @@ export default function GalleryNavbar({
   isTrashPage = false,
   isSettingsPage = false,
   isHostPage = false,
+  isLogsPage = false,
   onEmptyTrash,
 }) {
   const navRef = useRef(null);
@@ -46,6 +47,8 @@ export default function GalleryNavbar({
         ? 'ImgVault Trash'
         : isHostPage
           ? 'ImgVault Host'
+          : isLogsPage
+            ? 'ImgVault Logs'
           : 'ImgVault';
   const pageSubtitle = collectionId && currentCollection
     ? 'Collection view'
@@ -53,6 +56,8 @@ export default function GalleryNavbar({
       ? 'Configuration'
       : isHostPage
         ? 'Native host controls'
+        : isLogsPage
+          ? 'Upload and host history'
         : `${visibleCount} ${isTrashPage ? 'item' : 'image'}${visibleCount !== 1 ? 's' : ''}`;
 
   useEffect(() => {
@@ -108,7 +113,7 @@ export default function GalleryNavbar({
             </div>
 
             {/* Center: Search */}
-            {!isSettingsPage && !isHostPage && (
+            {!isSettingsPage && !isHostPage && !isLogsPage && (
               <div className="flex-1 max-w-md hidden md:block">
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-base-content/50" />
@@ -127,7 +132,7 @@ export default function GalleryNavbar({
             <div className="flex items-center gap-1">
               <ThemeToggleButton />
 
-              {!isSettingsPage && !isHostPage && (
+              {!isSettingsPage && !isHostPage && !isLogsPage && (
                 <button
                   onClick={reload}
                   className={iconButtonClass}
@@ -137,7 +142,7 @@ export default function GalleryNavbar({
                 </button>
               )}
 
-              {!isSettingsPage && !isHostPage && (
+              {!isSettingsPage && !isHostPage && !isLogsPage && (
                 <button
                   onClick={toggleSelectionMode}
                   className={`border transition-colors flex items-center gap-1.5 text-sm px-2 py-1.5 rounded-md ${
@@ -175,6 +180,14 @@ export default function GalleryNavbar({
               </button>
 
               <button
+                onClick={() => navigate('/logs')}
+                className={isLogsPage ? activeIconButtonClass : iconButtonClass}
+                title="Logs"
+              >
+                <FileText className="w-4 h-4" />
+              </button>
+
+              <button
                 onClick={() => navigate('/settings')}
                 className={isSettingsPage ? activeIconButtonClass : iconButtonClass}
                 title="Settings"
@@ -182,7 +195,7 @@ export default function GalleryNavbar({
                 <Settings className="w-4 h-4" />
               </button>
 
-              {(isTrashPage || isSettingsPage || isHostPage) ? (
+              {(isTrashPage || isSettingsPage || isHostPage || isLogsPage) ? (
                 <button
                   onClick={() => navigate('/gallery')}
                   className={iconButtonClass}
@@ -216,9 +229,9 @@ export default function GalleryNavbar({
                 </button>
               )}
 
-              {!isTrashPage && !isSettingsPage && !isHostPage && <div className="w-px h-4 bg-base-content/20 mx-1"></div>}
+              {!isTrashPage && !isSettingsPage && !isHostPage && !isLogsPage && <div className="w-px h-4 bg-base-content/20 mx-1"></div>}
 
-              {!isTrashPage && !isSettingsPage && !isHostPage && (
+              {!isTrashPage && !isSettingsPage && !isHostPage && !isLogsPage && (
                 <button
                   onClick={openUploadModal}
                   className="btn btn-primary btn-sm text-sm font-medium flex items-center gap-1.5"
@@ -231,7 +244,7 @@ export default function GalleryNavbar({
           </div>
 
           {/* Mobile search */}
-          {!isSettingsPage && !isHostPage && (
+          {!isSettingsPage && !isHostPage && !isLogsPage && (
             <div className="mt-2 md:hidden">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-base-content/50" />
@@ -246,7 +259,7 @@ export default function GalleryNavbar({
             </div>
           )}
 
-          {selectionMode && !isSettingsPage && !isHostPage && (
+          {selectionMode && !isSettingsPage && !isHostPage && !isLogsPage && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}

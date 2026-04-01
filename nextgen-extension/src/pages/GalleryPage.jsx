@@ -24,7 +24,7 @@ export default function GalleryPage() {
   const { collectionId } = useParams();
   const { images, loading, reload, deleteImage } = useImages();
   const { trashedImages, loading: trashLoading } = useTrash();
-  const { uploadImage, uploading, progress, error: uploadError } = useImageUpload();
+  const { uploadImage, uploading, progress, error: uploadError, logs: uploadLogs } = useImageUpload();
   const { collections, loading: collectionsLoading, createCollection, reload: reloadCollections } = useCollections();
   const [defaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
   const [searchQuery, setSearchQuery] = useState('');
@@ -72,6 +72,7 @@ export default function GalleryPage() {
   // Auto-upload state
   const [showFolderPrompt, setShowFolderPrompt] = useState(false);
   const [pendingDownloadFile, setPendingDownloadFile] = useState(null);
+  const uploadPreviewUrlRef = useRef(null);
   
   // IndexedDB helpers for storing directory handle
   const saveDirectoryHandle = async (handle) => {
@@ -262,6 +263,60 @@ export default function GalleryPage() {
     }
   };
 
+  const getUploadLogColorClass = (type) =>
+    type === 'error'
+      ? 'bg-error/10 text-error border-error/20'
+      : type === 'success'
+        ? 'bg-success/10 text-success border-success/20'
+        : type === 'warning'
+          ? 'bg-warning/10 text-warning border-warning/20'
+          : 'bg-base-200/70 text-base-content/80 border-base-content/10';
+
+  const renderUploadLog = (entry, index) => {
+    const colorClass = getUploadLogColorClass(entry.type);
+
+    return (
+      <div key={`${entry.timestamp}-${index}`} className={`rounded-box border px-3 py-2 text-sm leading-5 ${colorClass}`}>
+        <span className="mr-2 text-xs opacity-60">[{entry.timestamp}]</span>
+        <span className="whitespace-pre-wrap break-all font-mono text-[12px]">{entry.message}</span>
+      </div>
+    );
+  };
+
+  const revokeUploadPreviewUrl = () => {
+    if (uploadPreviewUrlRef.current) {
+      URL.revokeObjectURL(uploadPreviewUrlRef.current);
+      uploadPreviewUrlRef.current = null;
+    }
+  };
+
+  const extractVideoFileMetadata = (file) => {
+    return new Promise((resolve) => {
+      const video = document.createElement('video');
+      const objectUrl = URL.createObjectURL(file);
+
+      const cleanup = () => {
+        video.removeAttribute('src');
+        video.load();
+        URL.revokeObjectURL(objectUrl);
+      };
+
+      video.preload = 'metadata';
+      video.onloadedmetadata = () => {
+        const duration = Number.isFinite(video.duration) ? video.duration : null;
+        const width = Number.isFinite(video.videoWidth) ? video.videoWidth : null;
+        const height = Number.isFinite(video.videoHeight) ? video.videoHeight : null;
+        cleanup();
+        resolve({ duration, width, height });
+      };
+      video.onerror = () => {
+        cleanup();
+        resolve({ duration: null, width: null, height: null });
+      };
+      video.src = objectUrl;
+    });
+  };
+
   const handleDelete = async () => {
     if (!selectedImage) return;
     
@@ -317,7 +372,7 @@ export default function GalleryPage() {
     [SHORTCUTS.ARROW_LEFT]: navigateToPreviousImage,
     [SHORTCUTS.ESCAPE]: () => {
       if (selectedImage) closeImageModal();
-      else if (showUploadModal) setShowUploadModal(false);
+      else if (showUploadModal) closeUploadModal();
       else if (selectionMode) setSelectionMode(false);
     },
     [SHORTCUTS.DELETE]: () => {
@@ -351,6 +406,12 @@ export default function GalleryPage() {
 
   // Upload modal handlers
   const openUploadModal = () => {
+    if (uploading && uploadImageData) {
+      setShowUploadModal(true);
+      return;
+    }
+
+    revokeUploadPreviewUrl();
     setShowUploadModal(true);
     setUploadImageData(null);
     setUploadPageUrl('');
@@ -362,6 +423,14 @@ export default function GalleryPage() {
     setSelectedCollectionId('');
     setShowCreateCollection(false);
     setNewCollectionName('');
+  };
+
+  const closeUploadModal = () => {
+    setShowUploadModal(false);
+
+    if (uploading) {
+      showToast('Upload will continue in the background. You can reopen the modal to check logs later.', 'info', 3500);
+    }
   };
 
   const handleFileUpload = async (e) => {
@@ -383,51 +452,80 @@ export default function GalleryPage() {
   };
 
   const processMediaFile = async (file, preservePageUrl = null, preservePageTitle = null) => {
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      // Determine what values to use
-      const finalPageUrl = preservePageUrl && preservePageUrl !== 'Uploaded manually' 
-        ? preservePageUrl 
-        : 'Uploaded manually';
-      const finalPageTitle = preservePageTitle && preservePageTitle !== 'Uploaded manually' 
-        ? preservePageTitle 
-        : 'Uploaded manually';
-      
-      const isVideo = file.type.startsWith('video/');
-      
-      setUploadImageData({
-        srcUrl: reader.result,
+    revokeUploadPreviewUrl();
+
+    const finalPageUrl = preservePageUrl && preservePageUrl !== 'Uploaded manually'
+      ? preservePageUrl
+      : 'Uploaded manually';
+    const finalPageTitle = preservePageTitle && preservePageTitle !== 'Uploaded manually'
+      ? preservePageTitle
+      : 'Uploaded manually';
+    const isVideo = file.type.startsWith('video/');
+    const previewUrl = isVideo ? URL.createObjectURL(file) : await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+
+    if (isVideo) {
+      uploadPreviewUrlRef.current = previewUrl;
+    }
+
+    setUploadImageData({
+      srcUrl: previewUrl,
+      fileName: file.name,
+      pageTitle: finalPageTitle,
+      timestamp: Date.now(),
+      file,
+      isVideo,
+      fileType: file.type
+    });
+    setUploadPageUrl(finalPageUrl);
+
+    try {
+      const localVideoMetadata = isVideo ? await extractVideoFileMetadata(file) : null;
+      const response = await chrome.runtime.sendMessage({
+        action: 'extractMetadata',
+        imageUrl: isVideo ? null : previewUrl,
+        pageUrl: finalPageUrl,
         fileName: file.name,
-        pageTitle: finalPageTitle,
-        timestamp: Date.now(),
-        file: file, // Store the original file object for MIME and date extraction
-        isVideo: isVideo,
-        fileType: file.type
+        fileMimeType: file.type,
+        fileLastModified: file.lastModified,
+        isVideo
       });
-      setUploadPageUrl(finalPageUrl);
-      
-      // Extract metadata from the media file
-      try {
-        const response = await chrome.runtime.sendMessage({
-          action: 'extractMetadata',
-          imageUrl: isVideo ? null : reader.result, // Don't send video data for metadata extraction
-          pageUrl: finalPageUrl,
-          fileName: file.name,
-          fileMimeType: file.type,
-          fileLastModified: file.lastModified,
-          isVideo: isVideo
+
+      if (response.success && response.metadata) {
+        setUploadMetadata({
+          ...response.metadata,
+          duration: localVideoMetadata?.duration ?? response.metadata.duration ?? null,
+          width: localVideoMetadata?.width ?? response.metadata.width ?? null,
+          height: localVideoMetadata?.height ?? response.metadata.height ?? null,
         });
-        
-        if (response.success && response.metadata) {
-          setUploadMetadata(response.metadata);
-          console.log('📸 Extracted metadata:', response.metadata);
-        }
-      } catch (error) {
-        console.error('Failed to extract metadata:', error);
+        console.log('📸 Extracted metadata:', response.metadata);
+      } else if (localVideoMetadata) {
+        setUploadMetadata({
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type,
+          fileTypeSource: 'File object',
+          creationDate: file.lastModified ? new Date(file.lastModified).toISOString() : null,
+          creationDateSource: file.lastModified ? 'OS lastModified' : 'Unknown',
+          duration: localVideoMetadata.duration,
+          width: localVideoMetadata.width,
+          height: localVideoMetadata.height,
+        });
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Failed to extract metadata:', error);
+    }
   };
+
+  useEffect(() => {
+    return () => {
+      revokeUploadPreviewUrl();
+    };
+  }, []);
 
   // Drag & Drop handlers
   const handleDragEnter = (e) => {
@@ -603,6 +701,7 @@ export default function GalleryPage() {
       // Create upload data object with only serializable values
       const uploadData = {
         imageUrl: String(uploadImageData.srcUrl || ''),
+        fileBlob: uploadImageData.file || null,
         originalSourceUrl: (isLocalUpload || uploadPageUrl === 'Uploaded manually') ? 'Uploaded manually' : String(uploadPageUrl || ''),
         pageUrl: String(uploadPageUrl || ''),
         pageTitle: String(uploadImageData.pageTitle || ''),
@@ -614,11 +713,15 @@ export default function GalleryPage() {
         fileLastModified: uploadImageData.file?.lastModified || null,
         collectionId: selectedCollectionId || null,
         isVideo: Boolean(uploadImageData.isVideo),
-        fileType: uploadImageData.fileType || uploadImageData.file?.type || null
+        fileType: uploadImageData.fileType || uploadImageData.file?.type || null,
+        duration: uploadMetadata?.duration ?? null,
+        width: uploadMetadata?.width ?? null,
+        height: uploadMetadata?.height ?? null,
       };
 
       console.log('Uploading with data (keys):', Object.keys(uploadData));
       console.log('Media URL length:', uploadData.imageUrl.length);
+      console.log('Has file blob:', Boolean(uploadData.fileBlob));
       console.log('Is Video:', uploadData.isVideo);
       
       // Try to JSON.stringify to check if it's serializable
@@ -845,7 +948,7 @@ export default function GalleryPage() {
     try {
       // For Filemoon, convert embed URL to download URL
       if (source === 'filemoon') {
-        // Extract filecode from URL (format: https://filemoon.sx/e/FILECODE)
+        // Extract filecode from URL (format: https://api.byse.sx/e/FILECODE)
         const match = url.match(/\/e\/([^\/\?]+)/);
         if (match && match[1]) {
           const filecode = match[1];
@@ -2618,18 +2721,16 @@ export default function GalleryPage() {
         {/* Upload Modal */}
         <Modal
           isOpen={showUploadModal}
-          onClose={() => setShowUploadModal(false)}
+          onClose={closeUploadModal}
           fullscreen={true}
           title={
             <div className="flex items-center justify-between w-full">
               <span>Upload Image</span>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setShowUploadModal(false)}
-                  disabled={uploading}
+                  onClick={closeUploadModal}
                   className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 
-                           text-white text-sm font-medium transition-colors disabled:opacity-50 
-                           disabled:cursor-not-allowed"
+                           text-white text-sm font-medium transition-colors"
                 >
                   Cancel
                 </button>
@@ -2648,7 +2749,6 @@ export default function GalleryPage() {
           }
         >
           <div className="h-[calc(100vh-11rem)] min-h-0 overflow-hidden">
-            {/* File Upload */}
             {!uploadImageData ? (
               <div className="space-y-4 h-full overflow-y-auto pr-2">
                 {/* Manual Upload Mode Message */}
@@ -3020,6 +3120,33 @@ export default function GalleryPage() {
                                          animate-pulse"
                               />
                             </div>
+                          </div>
+                        </div>
+                        <div className="rounded-box border border-base-content/10 bg-base-100/70 p-3">
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <div>
+                              <h4 className="text-sm font-semibold text-base-content">Live Upload Log</h4>
+                              <p className="text-xs text-base-content/60">
+                                Current uploader output. Full history stays in the Logs page.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => navigate('/logs')}
+                              className="btn btn-ghost btn-xs"
+                            >
+                              Open Logs
+                            </button>
+                          </div>
+
+                          <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
+                            {uploadLogs.length === 0 ? (
+                              <div className="rounded-box border border-dashed border-base-content/15 px-4 py-6 text-center text-sm text-base-content/60">
+                                Waiting for uploader logs...
+                              </div>
+                            ) : (
+                              uploadLogs.map((entry, index) => renderUploadLog(entry, index))
+                            )}
                           </div>
                         </div>
                       </div>
