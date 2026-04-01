@@ -18,9 +18,9 @@ export const Button = ({
   ...props
 }) => {
   const variants = {
-    primary: 'btn btn-primary border-0 text-primary-content',
-    secondary: 'btn btn-secondary border-0 text-secondary-content',
-    danger: 'btn btn-error border-0 text-error-content',
+    primary: 'btn btn-primary border-0',
+    secondary: 'btn btn-secondary border-0',
+    danger: 'btn btn-error border-0',
     glass: 'glass-button text-base-content',
     outline: 'border-2 border-base-content/30 hover:border-base-content/50 text-base-content bg-transparent'
   };
@@ -257,19 +257,19 @@ export const Modal = ({ isOpen, onClose, title, children, className, fullscreen 
 export const Toast = ({ message, type = 'info', onClose }) => {
   const types = {
     info: {
-      bg: 'bg-info text-info-content',
+      bg: 'bg-info',
       glow: 'shadow-2xl shadow-base-content/10'
     },
     success: {
-      bg: 'bg-success text-success-content',
+      bg: 'bg-success',
       glow: 'shadow-2xl shadow-base-content/10'
     },
     error: {
-      bg: 'bg-error text-error-content',
+      bg: 'bg-error',
       glow: 'shadow-2xl shadow-base-content/10'
     },
     warning: {
-      bg: 'bg-warning text-warning-content',
+      bg: 'bg-warning',
       glow: 'shadow-2xl shadow-base-content/10'
     }
   };

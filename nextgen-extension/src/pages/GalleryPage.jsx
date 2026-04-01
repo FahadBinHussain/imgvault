@@ -110,15 +110,8 @@ export default function GalleryPage() {
               console.log('✅ [IDB] Permission already granted');
               return handle;
             } else if (permission === 'prompt') {
-              console.log('🔔 [IDB] Requesting permission...');
-              const newPermission = await handle.requestPermission({ mode: 'read' });
-              if (newPermission === 'granted') {
-                console.log('✅ [IDB] Permission granted after request');
-                return handle;
-              } else {
-                console.log('❌ [IDB] Permission denied');
-                await clearDirectoryHandle();
-              }
+              console.log('[IDB] Saved handle needs picker confirmation');
+              return null;
             }
           } else {
             console.log('⚠️ [IDB] queryPermission not supported, trying direct access');
@@ -133,6 +126,8 @@ export default function GalleryPage() {
     } catch (err) {
       console.error('❌ [IDB] Failed to get directory handle:', err);
       return null;
+    } finally {
+      db?.close();
     }
   };
   
@@ -146,6 +141,8 @@ export default function GalleryPage() {
       console.log('🗑️ [IDB] Directory handle cleared');
     } catch (err) {
       console.error('❌ [IDB] Failed to clear directory handle:', err);
+    } finally {
+      db?.close();
     }
   };
   
@@ -1477,7 +1474,7 @@ export default function GalleryPage() {
                             : 'bg-base-300/70 border-base-content/40 backdrop-blur-sm'
                         }`}>
                           {selectedImages.has(img.id) && (
-                            <span className="text-primary-content text-sm font-bold">✓</span>
+                            <span className="text-sm font-bold">✓</span>
                           )}
                         </div>
                       </div>
@@ -2681,19 +2678,19 @@ export default function GalleryPage() {
                 
                 <label className="block">
                   <div className="flex items-center justify-center w-full min-h-[calc(100vh-16rem)] px-4 transition 
-                                bg-slate-800/50 border-2 border-dashed border-slate-600 rounded-xl 
-                                hover:border-primary-500 hover:bg-slate-700/50 cursor-pointer
+                                bg-base-200 border-2 border-dashed border-base-content/20 rounded-xl 
+                                hover:border-primary hover:bg-base-300/60 cursor-pointer
                                 group">
                     <div className="text-center">
-                      <Upload className="w-16 h-16 mx-auto text-slate-400 group-hover:text-primary-400 
+                      <Upload className="w-16 h-16 mx-auto text-base-content/40 group-hover:text-primary 
                                        transition-colors mb-4" />
-                      <p className="text-slate-300 text-lg font-medium mb-2">
+                      <p className="text-base-content text-lg font-medium mb-2">
                         Click to select an image or video
                       </p>
-                      <p className="text-slate-400 text-sm">
+                      <p className="text-base-content/70 text-sm">
                         or drag and drop
                       </p>
-                      <p className="text-slate-500 text-xs mt-2">
+                      <p className="text-base-content/55 text-xs mt-2">
                         Images: PNG, JPG, GIF up to 10MB<br/>
                         Videos: MP4, WebM, AVI, MOV
                       </p>
@@ -2712,7 +2709,7 @@ export default function GalleryPage() {
                 {/* Left Column - Sticky Media Preview */}
                 <div className="min-h-0 xl:pr-2 xl:overflow-y-auto">
                   <div className="space-y-3">
-                    <div className="relative rounded-xl overflow-hidden bg-slate-800/50 border border-slate-700">
+                    <div className="relative rounded-xl overflow-hidden bg-base-200 border border-base-content/15">
                       {uploadImageData.isVideo ? (
                         <video
                           src={uploadImageData.srcUrl}
@@ -2728,8 +2725,8 @@ export default function GalleryPage() {
                       )}
                       <button
                         onClick={() => setUploadImageData(null)}
-                        className="absolute top-4 right-4 p-2 rounded-lg bg-red-500/80 hover:bg-red-500 
-                                 text-white transition-colors shadow-lg"
+                        className="absolute top-4 right-4 p-2 rounded-lg bg-error/85 hover:bg-error 
+                                 transition-colors shadow-lg"
                         title={`Remove ${uploadImageData.isVideo ? 'video' : 'image'}`}
                       >
                         <X className="w-5 h-5" />
@@ -3057,10 +3054,10 @@ export default function GalleryPage() {
                               const similarity = dup.similarity || null;
                               
                               return (
-                                <div key={index} className="rounded-lg overflow-hidden border border-yellow-500/30 bg-slate-800/50">
-                                  <div className="w-full flex items-center justify-center bg-slate-900/30 p-2 relative">
+                                <div key={index} className="rounded-lg overflow-hidden border border-warning/30 bg-base-200">
+                                  <div className="w-full flex items-center justify-center bg-base-300/60 p-2 relative">
                                     {/* Match badge */}
-                                    <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-slate-900/80 border border-yellow-500/50">
+                                    <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-base-100/90 border border-warning/40">
                                       <span className="text-xs font-medium text-yellow-300">
                                         {matchType === 'context' && '🔗 Context'}
                                         {matchType === 'exact' && '🔐 Exact'}
@@ -3074,23 +3071,23 @@ export default function GalleryPage() {
                                       className="max-w-full max-h-24 object-contain rounded"
                                     />
                                   </div>
-                                  <div className="p-3 bg-slate-900/50">
-                                    <p className="text-slate-300 text-sm font-medium truncate">
+                                  <div className="p-3 bg-base-300/50">
+                                    <p className="text-base-content text-sm font-medium truncate">
                                       {dup.pageTitle || 'Untitled'}
                                     </p>
                                     {dup.sourcePageUrl && (
-                                      <p className="text-slate-400 text-xs truncate mt-1">
+                                      <p className="text-base-content/60 text-xs truncate mt-1">
                                         {dup.sourcePageUrl}
                                       </p>
                                     )}
-                                    <div className="mt-2 pt-2 border-t border-slate-700">
+                                    <div className="mt-2 pt-2 border-t border-base-content/10">
                                       <p className="text-xs text-yellow-300/80">
                                         {matchReason}
                                         {similarity && ` - ${similarity}% similar`}
                                       </p>
                                       <button
                                         onClick={() => openDuplicateMatchInNewTab(dup)}
-                                        className="mt-2 px-2.5 py-1 rounded-md bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 text-blue-200 text-xs font-medium transition-colors"
+                                        className="mt-2 px-2.5 py-1 rounded-md bg-info/15 hover:bg-info/25 border border-info/30 text-info text-xs font-medium transition-colors"
                                       >
                                         Open Match
                                       </button>
@@ -3121,19 +3118,18 @@ export default function GalleryPage() {
                           </div>
 
                           {/* Action buttons */}
-                          <div className="sticky bottom-0 flex gap-3 mt-4 pt-3 bg-slate-900/95 backdrop-blur-sm border-t border-yellow-500/20">
+                            <div className="sticky bottom-0 flex gap-3 mt-4 pt-3 bg-base-100/95 backdrop-blur-sm border-t border-warning/20">
                             <button
                               onClick={() => setDuplicateData(null)}
-                              className="flex-1 px-4 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 
-                                       text-white font-medium transition-colors text-sm"
+                              className="flex-1 px-4 py-2.5 rounded-lg bg-base-300 hover:bg-base-content/15 
+                                       text-base-content font-medium transition-colors text-sm"
                             >
                               Cancel
                             </button>
                             <button
                               onClick={() => handleUploadSubmit(true)}
                               disabled={uploading}
-                              className="flex-1 px-4 py-2.5 rounded-lg bg-gradient-to-r from-yellow-500 to-orange-500 
-                                       hover:from-yellow-600 hover:to-orange-600 text-white font-medium 
+                              className="flex-1 px-4 py-2.5 rounded-lg bg-warning hover:brightness-95 font-medium 
                                        transition-all disabled:opacity-50 disabled:cursor-not-allowed
                                        shadow-lg hover:shadow-xl text-sm"
                             >
@@ -3150,7 +3146,7 @@ export default function GalleryPage() {
                   
                   {/* description */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <label className="block text-sm font-medium text-base-content/70 mb-2">
                       description
                     </label>
                     <Textarea
@@ -3158,16 +3154,16 @@ export default function GalleryPage() {
                       onChange={(e) => setUploadDescription(e.target.value)}
                       placeholder="Add a description..."
                       rows={3}
-                      className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
-                               text-white placeholder-slate-400 
-                               focus:outline-none focus:border-primary-500 focus:ring-2 
-                               focus:ring-primary-500/20 transition-all resize-none"
+                      className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/15 
+                               text-base-content placeholder-base-content/40 
+                               focus:outline-none focus:border-primary focus:ring-2 
+                               focus:ring-primary/20 transition-all resize-none"
                     />
                   </div>
 
                   {/* collection */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <label className="block text-sm font-medium text-base-content/70 mb-2">
                       collection (optional)
                     </label>
                     <select
@@ -3180,10 +3176,10 @@ export default function GalleryPage() {
                           setShowCreateCollection(false);
                         }
                       }}
-                      className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
-                               text-white 
-                               focus:outline-none focus:border-primary-500 focus:ring-2 
-                               focus:ring-primary-500/20 transition-all"
+                      className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/15 
+                               text-base-content 
+                               focus:outline-none focus:border-primary focus:ring-2 
+                               focus:ring-primary/20 transition-all"
                     >
                       <option value="">No Collection</option>
                       {collections.map(collection => (
@@ -3201,10 +3197,10 @@ export default function GalleryPage() {
                           value={newCollectionName}
                           onChange={(e) => setNewCollectionName(e.target.value)}
                           placeholder="Collection name"
-                          className="flex-1 px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-600 
-                                   text-white placeholder-slate-400 
-                                   focus:outline-none focus:border-primary-500 focus:ring-2 
-                                   focus:ring-primary-500/20 transition-all"
+                          className="flex-1 px-4 py-2 rounded-lg bg-base-200 border border-base-content/15 
+                                   text-base-content placeholder-base-content/40 
+                                   focus:outline-none focus:border-primary focus:ring-2 
+                                   focus:ring-primary/20 transition-all"
                           onKeyPress={async (e) => {
                             if (e.key === 'Enter' && newCollectionName.trim()) {
                               try {
@@ -3233,8 +3229,8 @@ export default function GalleryPage() {
                               }
                             }
                           }}
-                          className="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 
-                                   text-white font-medium transition-colors"
+                          className="px-4 py-2 rounded-lg bg-primary hover:brightness-95 
+                                   font-medium transition-colors"
                         >
                           Create
                         </button>
@@ -3244,8 +3240,8 @@ export default function GalleryPage() {
                             setNewCollectionName('');
                             setSelectedCollectionId('');
                           }}
-                          className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 
-                                   text-white font-medium transition-colors"
+                          className="px-4 py-2 rounded-lg bg-base-300 hover:bg-base-content/15 
+                                   text-base-content font-medium transition-colors"
                         >
                           Cancel
                         </button>
@@ -3255,7 +3251,7 @@ export default function GalleryPage() {
 
                   {/* pageTitle */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <label className="block text-sm font-medium text-base-content/70 mb-2">
                       pageTitle
                     </label>
                     <input
@@ -3263,21 +3259,21 @@ export default function GalleryPage() {
                       value={uploadImageData?.pageTitle || ''}
                       onChange={(e) => setUploadImageData(prev => ({ ...prev, pageTitle: e.target.value }))}
                       placeholder="Page title"
-                      className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
-                               text-white placeholder-slate-400 
-                               focus:outline-none focus:border-primary-500 focus:ring-2 
-                               focus:ring-primary-500/20 transition-all"
+                      className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/15 
+                               text-base-content placeholder-base-content/40 
+                               focus:outline-none focus:border-primary focus:ring-2 
+                               focus:ring-primary/20 transition-all"
                     />
                   </div>
 
                   {/* sourceImageUrl (Read-only) */}
                   {uploadImageData && (
                     <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-2">
+                      <label className="block text-sm font-medium text-base-content/70 mb-2">
                         sourceImageUrl
                       </label>
-                      <div className="w-full px-4 py-3 rounded-lg bg-slate-700/50 border border-slate-600 
-                                    text-slate-300 font-mono text-xs break-all">
+                      <div className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/15 
+                                    text-base-content/75 font-mono text-xs break-all">
                         {isLocalUpload || uploadPageUrl === 'Uploaded manually' 
                           ? 'Uploaded manually' 
                           : uploadImageData.srcUrl}
@@ -3287,7 +3283,7 @@ export default function GalleryPage() {
                   
                   {/* sourcePageUrl */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <label className="block text-sm font-medium text-base-content/70 mb-2">
                       sourcePageUrl
                     </label>
                     <input
@@ -3295,10 +3291,10 @@ export default function GalleryPage() {
                       value={uploadPageUrl}
                       onChange={(e) => setUploadPageUrl(e.target.value)}
                       placeholder="https://example.com/page"
-                      className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
-                               text-white placeholder-slate-400 
-                               focus:outline-none focus:border-primary-500 focus:ring-2 
-                               focus:ring-primary-500/20 transition-all"
+                      className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/15 
+                               text-base-content placeholder-base-content/40 
+                               focus:outline-none focus:border-primary focus:ring-2 
+                               focus:ring-primary/20 transition-all"
                     />
                     
                     {/* Quality Tip for specific sites */}
@@ -3474,23 +3470,27 @@ export default function GalleryPage() {
                 </div>
                 
                 <div className="flex gap-3">
-                  <button
+                  <Button
+                    variant="outline"
+                    size="lg"
                     onClick={() => {
                       setShowFolderPrompt(false);
                       setPendingDownloadFile(null);
                       showToast('❌ Auto-upload cancelled', 'error', 2000);
                     }}
-                    className="flex-1 px-6 py-3 bg-base-200 hover:bg-base-300 rounded-lg text-base-content font-medium transition-all"
+                    className="flex-1"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="lg"
                     onClick={handleSelectDownloadFolder}
-                    className="flex-1 px-6 py-3 bg-primary hover:bg-primary/90 rounded-lg text-primary-content font-medium transition-all flex items-center justify-center gap-2"
+                    className="flex-1 flex items-center justify-center gap-2"
                   >
                     <FolderOpen size={20} />
                     Select Folder
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
