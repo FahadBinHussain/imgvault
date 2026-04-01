@@ -75,23 +75,27 @@ export default function GalleryPage() {
   
   // IndexedDB helpers for storing directory handle
   const saveDirectoryHandle = async (handle) => {
+    let db = null;
     try {
-      const db = await openDB();
+      db = await openDB();
       const tx = db.transaction('handles', 'readwrite');
-      await tx.objectStore('handles').put(handle, 'downloadFolder');
-      await tx.done;
+      await waitForRequest(tx.objectStore('handles').put(handle, 'downloadFolder'));
+      await waitForTransaction(tx);
       console.log('✅ [IDB] Directory handle saved');
     } catch (err) {
       console.error('❌ [IDB] Failed to save directory handle:', err);
+    } finally {
+      db?.close();
     }
   };
   
   const getDirectoryHandle = async () => {
+    let db = null;
     try {
-      const db = await openDB();
+      db = await openDB();
       const tx = db.transaction('handles', 'readonly');
-      const handle = await tx.objectStore('handles').get('downloadFolder');
-      await tx.done;
+      const handle = await waitForRequest(tx.objectStore('handles').get('downloadFolder'));
+      await waitForTransaction(tx);
       
       if (handle) {
         console.log('✅ [IDB] Directory handle retrieved from storage');
@@ -133,17 +137,33 @@ export default function GalleryPage() {
   };
   
   const clearDirectoryHandle = async () => {
+    let db = null;
     try {
-      const db = await openDB();
+      db = await openDB();
       const tx = db.transaction('handles', 'readwrite');
-      await tx.objectStore('handles').delete('downloadFolder');
-      await tx.done;
+      await waitForRequest(tx.objectStore('handles').delete('downloadFolder'));
+      await waitForTransaction(tx);
       console.log('🗑️ [IDB] Directory handle cleared');
     } catch (err) {
       console.error('❌ [IDB] Failed to clear directory handle:', err);
     }
   };
   
+  const waitForRequest = (request) => {
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  };
+
+  const waitForTransaction = (tx) => {
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('IndexedDB transaction aborted'));
+    });
+  };
+
   const openDB = () => {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open('ImgVaultDB', 1);
@@ -1068,48 +1088,18 @@ export default function GalleryPage() {
               }
             }
             
-            // No saved handle or it failed - directly open folder picker
-            console.log('📂 [AUTO-LOAD] Opening folder picker directly...');
-            
-            try {
-              const newDirHandle = await window.showDirectoryPicker({ 
-                id: 'video-downloads',
-                startIn: 'videos',
-                mode: 'read'
-              });
-              
-              console.log('✅ [AUTO-LOAD] Folder selected:', newDirHandle.name);
-              
-              // Save for next time
-              await saveDirectoryHandle(newDirHandle);
-              
-              // Load the file
-              const fileHandle = await newDirHandle.getFileHandle(fileName);
-              const file = await fileHandle.getFile();
-              
-              console.log('✅ [AUTO-LOAD] File loaded successfully:', file.name, file.size, 'bytes');
-              
-              await processMediaFile(file, 'native-download://upload', 'Downloaded Video');
-              setIsLocalUpload(true);
-              setShowUploadModal(true);
-              showToast(`✅ Video "${fileName}" loaded successfully!`, 'success', 3000);
-              
-            } catch (pickerErr) {
-              console.error('❌ [AUTO-LOAD] Folder picker error:', pickerErr);
-              if (pickerErr.name === 'AbortError') {
-                showToast('❌ Folder selection cancelled', 'error', 2000);
-              } else if (pickerErr.name === 'NotFoundError') {
-                setShowUploadModal(true);
-                showToast(`⚠️ File "${fileName}" not found in selected folder`, 'warning', 4000);
-              } else {
-                setShowUploadModal(true);
-                showToast('⚠️ Failed to load file. Please select manually.', 'warning', 3000);
-              }
-            }
+            // No saved handle or it failed. We need a user gesture to open the picker,
+            // so hand off to the existing folder-prompt UI instead of auto-opening it here.
+            console.log('📂 [AUTO-LOAD] No usable directory handle. Prompting user to pick the download folder...');
+            setPendingDownloadFile(location.state.downloadFilePath);
+            setShowFolderPrompt(true);
+            showToast(`Select the download folder to load "${fileName}" automatically.`, 'info', 4000);
             
           } catch (err) {
             console.error('❌ [AUTO-LOAD] Unexpected error:', err);
-            showToast('⚠️ Failed to auto-load file. Please use manual upload.', 'error', 4000);
+            setPendingDownloadFile(location.state.downloadFilePath);
+            setShowFolderPrompt(true);
+            showToast('Select the download folder to finish loading the downloaded file.', 'warning', 4000);
           }
         };
         

@@ -197,6 +197,16 @@ export default function HostPage() {
       addLog(`Downloaded to: ${response.filePath || 'completed'}`, 'success');
       addRawLogBlock('[yt-dlp stderr] ', response.stderr, 'info');
       addRawLogBlock('[yt-dlp stdout] ', response.stdout, 'info');
+
+      if (response.filePath) {
+        addLog('Opening gallery to auto-load the downloaded file...', 'success');
+        navigate('/gallery', {
+          state: {
+            autoOpenUpload: true,
+            downloadFilePath: response.filePath,
+          },
+        });
+      }
     } catch (error) {
       addLog(error?.error || error?.message || 'Download failed', 'error');
       addRawLogBlock('[yt-dlp stderr] ', error?.stderr, 'error');
