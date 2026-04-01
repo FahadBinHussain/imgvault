@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Save, Check } from 'lucide-react';
+import { Save, Check, Package } from 'lucide-react';
 import { Button, Input, Textarea, Card } from '../components/UI';
 import { useChromeStorage } from '../hooks/useChromeExtension';
 import GalleryNavbar from '../components/GalleryNavbar';
@@ -527,12 +527,26 @@ export default function SettingsPage() {
               <div>
                 <strong className="text-base-content">Filemoon API Key:</strong> Get it from{' '}
                 <a
-                  href="https://filemoon.sx/api"
+                  href="https://byse.sx/settings"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:text-primary/80 underline font-medium"
                 >
-                  filemoon.sx/api
+                  byse.sx/settings
+                </a>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-base-100/60 hover:bg-base-100/80 transition-colors">
+              <Package className="w-5 h-5 flex-shrink-0 text-base-content/70" />
+              <div>
+                <strong className="text-base-content">UDrop API Keys:</strong> Get them from{' '}
+                <a
+                  href="https://www.udrop.com/account/edit"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:text-primary/80 underline font-medium"
+                >
+                  udrop.com/account/edit
                 </a>
               </div>
             </div>

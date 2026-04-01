@@ -18,11 +18,11 @@ export const Button = ({
   ...props
 }) => {
   const variants = {
-    primary: 'btn btn-primary border-0',
-    secondary: 'btn btn-secondary border-0',
-    danger: 'btn btn-error border-0',
+    primary: 'btn btn-primary',
+    secondary: 'btn btn-secondary',
+    danger: 'btn btn-error',
     glass: 'glass-button text-base-content',
-    outline: 'border-2 border-base-content/30 hover:border-base-content/50 text-base-content bg-transparent'
+    outline: 'btn btn-outline'
   };
 
   const sizes = {
@@ -36,10 +36,10 @@ export const Button = ({
   return (
     <button
       className={clsx(
-        'rounded-lg font-medium transition-all duration-200',
+        'font-medium transition-all duration-200',
         'focus:outline-none focus:ring-2 focus:ring-primary/40',
         variants[variant],
-        isDaisyButton ? 'min-h-0 h-auto' : sizes[size],
+        isDaisyButton || variant === 'outline' ? 'min-h-0 h-auto' : sizes[size],
         className
       )}
       {...props}
@@ -67,7 +67,7 @@ export const Input = ({
       )}
       <input
         className={clsx(
-          'w-full px-4 py-2 rounded-lg',
+          'input w-full',
           'bg-base-100/70 border border-base-content/20',
           'text-base-content placeholder-base-content/50',
           'focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-transparent',
@@ -102,7 +102,7 @@ export const Textarea = ({
       )}
       <textarea
         className={clsx(
-          'w-full px-4 py-2 rounded-lg',
+          'textarea w-full',
           'bg-base-100/70 border border-base-content/20',
           'text-base-content placeholder-base-content/50',
           'focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-transparent',
@@ -149,7 +149,7 @@ export const IconButton = ({
     <button
       title={title}
       className={clsx(
-        'p-2 rounded-lg',
+        'btn btn-ghost btn-square',
         'glass-button',
         'transition-all duration-200',
         'focus:outline-none focus:ring-2 focus:ring-primary/40',

@@ -31,6 +31,67 @@ class ImgVaultServiceWorker {
     this.filemoonUploader = new FilemoonUploader();
     this.udropUploader = new UDropUploader();
     this.initialized = false;
+    this.defaultActionIcon = {
+      16: 'icons/1-16.png',
+      32: 'icons/1-32.png',
+      48: 'icons/1-48.png',
+      128: 'icons/1-128.png',
+    };
+    this.supportedVideoActionIcon = {
+      16: 'icons/2-16.png',
+      32: 'icons/2-32.png',
+      48: 'icons/2-48.png',
+      128: 'icons/2-128.png',
+    };
+  }
+
+  isSupportedVideoPage(url = '') {
+    try {
+      const parsedUrl = new URL(url);
+      const host = parsedUrl.hostname.toLowerCase();
+
+      return host === 'youtube.com' ||
+        host === 'www.youtube.com' ||
+        host === 'm.youtube.com' ||
+        host === 'youtu.be';
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async updateActionIconForTab(tabId, url) {
+    if (!tabId || tabId < 0) {
+      return;
+    }
+
+    const isSupportedVideo = this.isSupportedVideoPage(url);
+
+    await chrome.action.setIcon({
+      tabId,
+      path: isSupportedVideo ? this.supportedVideoActionIcon : this.defaultActionIcon,
+    });
+
+    await chrome.action.setTitle({
+      tabId,
+      title: isSupportedVideo
+        ? 'ImgVault - Supported video page detected'
+        : 'ImgVault - Open Gallery',
+    });
+
+    await chrome.action.setBadgeText({
+      tabId,
+      text: '',
+    });
+  }
+
+  async refreshActionIconForActiveTab() {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (!activeTab?.id) {
+      return;
+    }
+
+    await this.updateActionIconForTab(activeTab.id, activeTab.url || '');
   }
 
   /**
@@ -1337,12 +1398,35 @@ const serviceWorker = new ImgVaultServiceWorker();
 chrome.runtime.onInstalled.addListener(() => {
   serviceWorker.init();
   serviceWorker.createContextMenu();
+  serviceWorker.refreshActionIconForActiveTab();
 });
 
 // Create context menu on browser startup
 chrome.runtime.onStartup.addListener(() => {
   serviceWorker.init();
   serviceWorker.createContextMenu();
+  serviceWorker.refreshActionIconForActiveTab();
+});
+
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    await serviceWorker.updateActionIconForTab(tabId, tab.url || '');
+  } catch (error) {
+    console.debug('Failed to update action icon on tab activation:', error);
+  }
+});
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (!changeInfo.url && changeInfo.status !== 'complete') {
+    return;
+  }
+
+  try {
+    await serviceWorker.updateActionIconForTab(tabId, changeInfo.url || tab.url || '');
+  } catch (error) {
+    console.debug('Failed to update action icon on tab update:', error);
+  }
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {

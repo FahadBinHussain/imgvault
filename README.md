@@ -1,232 +1,255 @@
-# ImgVault Next-Gen 🚀
+# ImgVault
 
-<p align="center">
-  <img src="extension/icons/icon.svg" alt="ImgVault Logo" width="128" height="128">
-</p>
+ImgVault is a browser-first media vault for saving images and videos with source context, metadata, duplicate detection, cloud hosting, and a native-host-assisted video workflow.
 
-**Modern browser extension for saving images with advanced duplicate detection, metadata extraction, and cloud hosting.**
+This repo currently contains:
+- `nextgen-extension`: the main browser extension built with React, Vite, Tailwind, and DaisyUI
+- `native-host`: the desktop companion used for native messaging, default video folder detection, and host-assisted downloads
+- `old extension`: older extension code kept for reference
+- `web`: the web app built with Next.js, NextAuth, Drizzle, and Neon
 
-Built with React + Vite + Tailwind CSS for a next-generation user experience.
+## What ImgVault Does
 
-## ✨ Features
+ImgVault is built around two primary save flows:
 
-### 🎯 Core Features
-- **Smart Image Saving**: Right-click any image → save to your personal vault
-- **Dual Cloud Hosting**: Uploads to Pixvid + ImgBB for redundancy
-- **Firebase Backend**: Secure cloud storage with Firestore
-- **Collections**: Organize images into custom collections
-- **Trash System**: Soft delete with restore capability (hosts preserved)
+- Images:
+  - save from the browser context menu
+  - review metadata before upload
+  - upload to image hosts
+  - store metadata and vault records in Firebase/Firestore
 
-### 🔍 Advanced Duplicate Detection
-- **Real-time Progress**: See scan progress across all images
-- **Multi-algorithm Detection**:
-  - **Context Matching**: Same source URL + page URL
-  - **Exact Matching**: SHA-256 file hash comparison
-  - **Visual Similarity**: Triple perceptual hashing (pHash, aHash, dHash)
-- **Comprehensive Results**: View all duplicate matches with similarity scores
-- **Smart UI**: Duplicate section at top of upload form with detailed match info
+- Videos:
+  - download through the native host
+  - auto-detect the default Videos folder
+  - reopen in the gallery upload flow
+  - upload to video hosts
+  - keep source and upload metadata in the vault
 
-### ⌨️ Keyboard Shortcuts
-- **Arrow Keys**: Navigate between images in modal (← →)
-- **Escape**: Close modals / exit selection mode
-- **Delete**: Delete selected image
-- **U**: Open upload modal
-- **S**: Toggle selection mode
-- **/** or **Ctrl+K**: Focus search
-- **Ctrl+S**: Save image (in modal)
+## Current Feature Set
 
-### 📊 Rich Metadata
-- **EXIF Data**: Camera info, timestamps, GPS (if available)
-- **File Details**: Type, size, dimensions, hashes
-- **Source Tracking**: Original URL, page context
-- **Custom Fields**: Title, description, tags
-- **Creation Date**: Smart detection (EXIF → file timestamp → upload date)
+- Save images from webpages with source context
+- Upload images to Pixvid and/or ImgBB
+- Upload videos to Filemoon and/or UDrop
+- Native host integration for host-assisted downloads
+- Auto handoff from downloaded file to gallery upload flow
+- Collections for organizing saved media
+- Trash flow for soft deletion and recovery
+- Duplicate detection with context and hash-based checks
+- Metadata extraction for file details and EXIF when available
+- Themeable UI with DaisyUI-based theming
+- Gallery, trash, settings, collections, and host management pages
 
-### 🎨 Modern UI/UX
-- **Timeline Scrollbar**: Visual timeline of saved images
-- **Two-Tab System**: 
-  - "For Noobs 👶": Clean, essential info
-  - "For Nerds 🤓": Complete technical details
-- **Site Quality Badges**: Warns about low-quality sources
-- **Responsive Design**: Tailwind CSS powered interface
-- **Smooth Animations**: Framer Motion transitions
+## Repo Structure
 
-## 🚀 Quick Setup
-
-### 1. Firebase Setup
-1. Create project at [Firebase Console](https://console.firebase.com)
-2. Add web app, copy config
-3. Enable **Firestore Database**
-4. Set Firestore rules:
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /images/{imageId} { allow read, write: if true; }
-    match /trash/{imageId} { allow read, write: if true; }
-    match /collections/{collectionId} { allow read, write: if true; }
-    match /userSettings/{document} { allow read, write: if true; }
-  }
-}
-```
-
-### 2. API Keys
-Get API keys from these services (works with either one or both):
-- **Pixvid**: [pixvid.org/settings/api](https://pixvid.org/settings/api)
-- **ImgBB**: [api.imgbb.com](https://api.imgbb.com/) ⭐ Recommended
-
-### 3. Build Extension
-```bash
-# Clone repository
-git clone <repo-url>
-cd ImgVault
-
-# Install dependencies
-pnpm install
-
-# Navigate to nextgen extension
-cd nextgen-extension
-
-# Build the extension (icons and manifest are automatically copied)
-pnpm run build
-
-# Extension will be ready in dist/ folder
-```
-
-> **Note**: The build process automatically copies `icons/`, `manifest.json`, and CSS fixes to the `dist/` folder via the `postbuild.ps1` script. No manual copying needed!
-
-### 4. Install in Browser
-1. Open `chrome://extensions/` (or `edge://extensions/`)
-2. Enable **Developer mode** (top-right toggle)
-3. Click **Load unpacked**
-4. Select the `nextgen-extension/dist` folder
-5. Click extension icon → **Settings**
-6. Configure:
-   - Add Firebase config (paste JSON from Firebase console)
-   - Add Pixvid and/or ImgBB API keys
-7. Start saving images! 🎉
-
-## 📖 Usage Guide
-
-### Saving Images
-1. **Right-click** any image on a webpage
-2. Select **"Save to ImgVault"**
-3. Review duplicate warnings (if any)
-4. Edit metadata (title, description, tags)
-5. Choose collection (optional)
-6. Click **Upload**
-
-### Viewing Gallery
-- Click extension icon → **Gallery**
-- Browse your saved images
-- Use **timeline scrollbar** for quick navigation
-- Click image for detailed view
-- Use **arrow keys** to navigate between images
-
-### Managing Images
-- **Edit**: Click image → modify fields → Save (Ctrl+S)
-- **Delete**: Click trash icon → moved to trash
-- **Restore**: Open trash → click restore icon
-- **Permanent Delete**: Empty trash to free up space
-
-### Collections
-- **Create**: Gallery → New Collection
-- **Add Images**: Upload modal → Select collection
-- **View**: Gallery → Filter by collection
-- **Manage**: Edit collection names, delete collections
-
-## 🛠️ Tech Stack
-
-### Frontend
-- **React 18**: Modern UI framework
-- **Vite**: Lightning-fast build tool
-- **Tailwind CSS**: Utility-first styling
-- **Framer Motion**: Smooth animations
-- **Zustand**: State management
-- **Lucide Icons**: Beautiful icon library
-
-### Backend & APIs
-- **Firebase Firestore**: Cloud database
-- **Pixvid API**: Primary image hosting
-- **ImgBB API**: Secondary image hosting
-- **Chrome Extension MV3**: Manifest V3 architecture
-
-### Image Processing
-- **Perceptual Hashing**: pHash, aHash, dHash algorithms
-- **SHA-256**: Cryptographic file hashing
-- **EXIF Reading**: exifr library for metadata extraction
-- **Canvas API**: Image analysis and hash generation
-
-## 📁 Project Structure
-
-```
+```text
 ImgVault/
-├── extension/               # Legacy extension (vanilla JS)
-├── nextgen-extension/       # Modern React extension ⭐
-│   ├── src/
-│   │   ├── pages/          # Gallery, Settings, Trash, Popup
-│   │   ├── components/     # Reusable UI components
-│   │   ├── hooks/          # Custom React hooks
-│   │   ├── utils/          # Duplicate detection, uploaders
-│   │   ├── config/         # Site quality config
-│   │   └── background/     # Service worker
-│   ├── dist/               # Built extension (after pnpm run build)
-│   └── vite.config.js      # Vite configuration
-└── README.md
+├── nextgen-extension/   # Main browser extension
+├── native-host/         # Native desktop companion
+├── web/                 # Next.js web app and APIs
+├── old extension/       # Older extension code
+├── README.md
+└── LICENSE
 ```
 
-## 🎯 Keyboard Shortcuts Reference
+## Extension Overview
 
-| Shortcut | Action | Context |
-|----------|--------|---------|
-| **← →** | Navigate images | Image modal |
-| **Escape** | Close modal | Any modal |
-| **Delete** | Delete image | Image modal |
-| **U** | Open upload | Gallery |
-| **S** | Selection mode | Gallery |
-| **/** | Focus search | Gallery |
-| **Ctrl+K** | Focus search | Gallery |
-| **Ctrl+S** | Save changes | Image modal |
+The extension is the main user-facing product.
 
-## 🌐 Supported Quality Sites
+Main areas:
+- `src/pages`
+  - `GalleryPage.jsx`
+  - `TrashPage.jsx`
+  - `SettingsPage.jsx`
+  - `CollectionsPage.jsx`
+  - `HostPage.jsx`
+  - `PopupPage.jsx` source still exists, though the action popup is not currently wired in the manifest
+- `src/components`
+  - shared UI, navbar, theme controls, timeline scrollbar
+- `src/background`
+  - service worker logic
+  - context menu handling
+  - upload orchestration
+  - native host messaging
+- `src/utils`
+  - uploaders
+  - storage
+  - metadata and duplicate-related helpers
 
-### ⭐ High Quality (Best Sources)
-10 Eastern, Axoft Global, Divnil, Etsy, Facebook, Flickr, Glamping Hub, GoodFon, Instagram, JNGSainui, Note, Reddit, SlideShare, TripAdvisor, WallpapersDen, Wallpaper Cave, Yelp
+Current extension capabilities include:
+- image save via context menu
+- gallery browsing and editing
+- host page for native-host checks and downloads
+- settings for API keys, Firebase config, and download folder
+- themed UI across pages
 
-### ⚠️ Warning Sites (Download Original)
-Airbnb, Alpha Coders, ArtStation, Backiee, Google Drive, PeakPX, Sohu, Unsplash, WallHere, Wallpaper Mob
+## Native Host Overview
 
-## 🔐 Privacy & Security
-- **Local First**: All processing happens in your browser
-- **Your Data**: You control Firebase and hosting accounts
-- **No Tracking**: Zero telemetry or analytics
-- **Open Source**: Full code transparency
+The native host is used when the browser alone is not enough, especially for video workflows.
 
-## 🤝 Contributing
+Current responsibilities include:
+- receiving native messaging commands from the extension
+- returning the default Windows Videos directory
+- running host-side download commands
+- avoiding hardcoded placeholder download paths
 
-Contributions are welcome! Areas for improvement:
-- Additional perceptual hash algorithms
-- More site-specific optimizations  
-- UI/UX enhancements
-- Performance optimizations
-- Bug fixes
+The extension now sends a real output path instead of relying on a hardcoded native-host default token.
 
-Please open an issue or submit a pull request.
+## Web App Overview
 
-## 📝 License
+The `web` folder is a separate Next.js application for the broader ImgVault platform.
 
-MIT License - See [LICENSE](LICENSE) file for details.
+Current stack:
+- Next.js App Router
+- NextAuth
+- Drizzle ORM
+- Neon serverless Postgres
+- Tailwind + DaisyUI
 
-## 🆘 Support
+Current `web/src` layout includes:
+- `src/app`
+  - main app shell and routes
+  - gallery page
+  - trash page
+  - settings page
+  - links page
+  - shared/public share page
+  - API routes for auth, config, images, media, share, trash, and brand icon
+- `src/db`
+  - database connection and schema
 
-For issues or questions:
-- **GitHub Issues**: Report bugs or request features
-- **Firebase Docs**: [firebase.google.com/docs/firestore](https://firebase.google.com/docs/firestore)
-- **Pixvid API**: Check API documentation
-- **ImgBB API**: [api.imgbb.com](https://api.imgbb.com/)
+Based on the current code, the web app is intended to support:
+- authenticated access
+- remote gallery/media views
+- share links
+- settings/config endpoints
+- database-backed media and trash APIs
 
----
+## Hosting Providers
 
-**Made with ❤️ by digital packrats, for digital packrats**
+Image hosting:
+- Pixvid
+- ImgBB
 
-*Perfect for photographers, designers, researchers, and anyone who hoards images like treasure* 🖼️✨
+Video hosting:
+- Filemoon
+- UDrop
+
+Configuration happens through the extension settings page.
+
+## Storage
+
+ImgVault uses a mix of browser storage and Firebase-backed storage:
+
+- `chrome.storage`
+  - API keys
+  - settings
+  - local extension state
+- IndexedDB
+  - persisted directory handles for download-folder reuse
+- Firebase / Firestore
+  - vault records
+  - collections
+  - trash
+  - synced user settings
+
+## Typical Workflows
+
+### Save an image
+
+1. Right-click an image on a webpage
+2. Choose `Save to ImgVault`
+3. Review metadata in the extension UI
+4. Upload to configured image hosts
+5. Store the final record in the vault
+
+### Save a video
+
+1. Open the Host page in the extension
+2. Send a video URL to the native host
+3. Download the file to the configured or detected Videos folder
+4. Reopen the gallery upload flow automatically
+5. Upload the video to configured video hosts
+
+## Local Development
+
+### Extension
+
+```powershell
+cd nextgen-extension
+pnpm install
+pnpm build
+```
+
+Build output is written to:
+- `nextgen-extension/dist`
+
+The build also runs post-build copy steps for manifest/assets.
+
+### Native Host
+
+```powershell
+cd native-host
+pnpm install
+```
+
+The native host also includes Tauri/Rust components under:
+- `native-host/src-tauri`
+
+Depending on what you are changing, you may need to rebuild both the extension and the native host.
+
+### Web App
+
+```powershell
+cd web
+pnpm install
+pnpm dev
+```
+
+Useful scripts in `web`:
+- `pnpm dev`
+- `pnpm build`
+- `pnpm start`
+- `pnpm lint`
+- `pnpm db:generate`
+- `pnpm db:migrate`
+- `pnpm db:push`
+- `pnpm db:studio`
+
+## Loading the Extension
+
+1. Open your Chromium extensions page:
+   - `chrome://extensions`
+   - or `edge://extensions`
+2. Enable Developer Mode
+3. Click `Load unpacked`
+4. Select `nextgen-extension/dist`
+
+## Settings You Will Usually Need
+
+- Pixvid API key
+- ImgBB API key
+- Filemoon API key
+- UDrop API keys
+- Firebase config
+- Default gallery source
+- Download folder
+
+## Notes About Current UX
+
+- The extension icon currently does not use a wired popup in the manifest
+- Image saving is already context-menu-based
+- Video saving currently flows through the Host page and gallery upload handoff
+- The repo still contains some older code and assets that are no longer the primary path
+
+## Build Note
+
+When working on the extension, the main verification command is:
+
+```powershell
+cd nextgen-extension
+pnpm build
+```
+
+## License
+
+MIT. See [LICENSE](C:\Users\Admin\Downloads\ImgVault\LICENSE).

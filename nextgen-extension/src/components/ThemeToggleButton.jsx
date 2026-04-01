@@ -133,7 +133,7 @@ export default function ThemeToggleButton({ className = '' }) {
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-transparent text-base-content/70 hover:text-base-content hover:bg-base-100/70 hover:border-base-content/20 transition-colors"
+        className="btn btn-ghost btn-sm border border-transparent text-base-content/70 hover:text-base-content hover:bg-base-100/70 hover:border-base-content/20"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Open theme selector"
@@ -143,7 +143,7 @@ export default function ThemeToggleButton({ className = '' }) {
       </button>
 
       {open && (
-  <div className="absolute right-0 mt-2 w-56 rounded-xl border border-base-content/20 bg-base-100 shadow-xl p-2 z-[9999] overflow-hidden">
+  <div className="absolute right-0 mt-2 w-56 border border-base-content/20 bg-base-100 shadow-xl p-2 z-[9999] overflow-hidden">
           <div className="px-2 py-2 mb-1 border-b border-base-content/15">
             <p className="text-xs text-base-content/60">Current theme</p>
             <p className="text-sm font-medium text-base-content">{formatThemeName(theme)}</p>
@@ -157,10 +157,10 @@ export default function ThemeToggleButton({ className = '' }) {
                   key={themeName}
                   type="button"
                   onClick={() => selectTheme(themeName)}
-                  className={`w-full flex items-center justify-between gap-2 px-2 py-2 rounded-lg text-sm transition-colors ${
+                  className={`btn btn-sm w-full flex items-center justify-between gap-2 px-2 py-2 text-sm transition-colors ${
                     isActive
                       ? 'bg-primary/20 text-primary'
-                      : 'text-base-content/80 hover:text-base-content hover:bg-base-200/70'
+                      : 'btn-ghost text-base-content/80 hover:text-base-content hover:bg-base-200/70'
                   }`}
                 >
                   <span>{formatThemeName(themeName)}</span>

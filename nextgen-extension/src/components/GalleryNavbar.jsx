@@ -33,8 +33,8 @@ export default function GalleryNavbar({
   onEmptyTrash,
 }) {
   const navRef = useRef(null);
-  const iconButtonClass = 'p-1.5 rounded-md border border-transparent hover:bg-base-content/10 transition-colors text-base-content/70 hover:text-base-content';
-  const activeIconButtonClass = 'p-1.5 rounded-md border border-primary/20 bg-primary/12 text-primary transition-colors';
+  const iconButtonClass = 'btn btn-ghost btn-sm border border-transparent text-base-content/70 hover:text-base-content';
+  const activeIconButtonClass = 'btn btn-sm border border-primary/20 bg-primary/12 text-primary';
   const visibleCount = Number.isFinite(displayCount)
     ? displayCount
     : (Array.isArray(filteredImages) ? filteredImages.length : (Array.isArray(images) ? images.length : 0));
@@ -81,7 +81,7 @@ export default function GalleryNavbar({
                 <>
                   <button
                     onClick={() => navigate('/gallery')}
-                    className="p-1.5 rounded-md hover:bg-base-content/10 transition-colors text-base-content/70 hover:text-base-content"
+                    className="btn btn-ghost btn-sm text-base-content/70 hover:text-base-content"
                     title="Back to All Images"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -117,7 +117,7 @@ export default function GalleryNavbar({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={isTrashPage ? 'Search trash...' : 'Search images...'}
-                  className="w-full pl-8 pr-3 py-1.5 rounded-md bg-base-100/70 border border-base-content/20 text-sm text-base-content placeholder-base-content/50 focus:outline-none focus:border-primary/50 focus:bg-base-100 transition-colors"
+                  className="input input-sm w-full pl-8 pr-3 bg-base-100/70 border border-base-content/20 text-sm text-base-content placeholder-base-content/50 focus:outline-none focus:border-primary/50 focus:bg-base-100 transition-colors"
                 />
               </div>
               </div>
@@ -159,7 +159,7 @@ export default function GalleryNavbar({
                 >
                   <FolderOpen className="w-4 h-4" />
                   {!collectionsLoading && collections.length > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 bg-base-300 text-base-content text-[10px] font-medium rounded-full min-w-[14px] h-3.5 flex items-center justify-center px-1">
+                    <span className="absolute -top-0.5 -right-0.5 badge badge-sm bg-base-300 text-base-content min-w-[14px] h-3.5 px-1">
                       {collections.length}
                     </span>
                   )}
@@ -198,7 +198,7 @@ export default function GalleryNavbar({
                 >
                   <Trash2 className="w-4 h-4" />
                   {!trashLoading && trashedImages.length > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 bg-error text-[10px] font-medium rounded-full min-w-[14px] h-3.5 flex items-center justify-center px-1">
+                    <span className="absolute -top-0.5 -right-0.5 badge badge-sm bg-error min-w-[14px] h-3.5 px-1">
                       {trashedImages.length}
                     </span>
                   )}
@@ -208,7 +208,7 @@ export default function GalleryNavbar({
               {isTrashPage && typeof onEmptyTrash === 'function' && images.length > 0 && (
                 <button
                   onClick={onEmptyTrash}
-                  className="px-2.5 py-1.5 rounded-md bg-error hover:brightness-95 text-sm font-medium transition-colors"
+                  className="btn btn-error btn-sm text-sm font-medium"
                   title="Empty Trash"
                 >
                   <span className="hidden sm:inline">Empty</span>
@@ -221,7 +221,7 @@ export default function GalleryNavbar({
               {!isTrashPage && !isSettingsPage && !isHostPage && (
                 <button
                   onClick={openUploadModal}
-                  className="px-2.5 py-1.5 rounded-md bg-primary hover:brightness-95 text-sm font-medium transition-colors flex items-center gap-1.5"
+                  className="btn btn-primary btn-sm text-sm font-medium flex items-center gap-1.5"
                 >
                   <Upload className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Upload</span>
@@ -240,7 +240,7 @@ export default function GalleryNavbar({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={isTrashPage ? 'Search trash...' : 'Search images...'}
-                className="w-full pl-8 pr-3 py-1.5 rounded-md bg-base-100/70 border border-base-content/20 text-sm text-base-content placeholder-base-content/50 focus:outline-none focus:border-primary/50 focus:bg-base-100 transition-colors"
+                className="input input-sm w-full pl-8 pr-3 bg-base-100/70 border border-base-content/20 text-sm text-base-content placeholder-base-content/50 focus:outline-none focus:border-primary/50 focus:bg-base-100 transition-colors"
               />
             </div>
             </div>
@@ -275,7 +275,7 @@ export default function GalleryNavbar({
                   <button
                     onClick={() => setShowBulkDeleteConfirm(true)}
                     disabled={isDeleting}
-                    className="px-2 py-1 rounded text-xs bg-error/10 hover:bg-error/20 text-error transition-colors disabled:opacity-50"
+                    className="btn btn-error btn-xs disabled:opacity-50"
                   >
                     Delete
                   </button>
