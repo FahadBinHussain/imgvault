@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/nextgen-extension-crx.yml'
       - 'nextgen-extension/**'
+      - 'native-host/**'
   release:
     types:
       - published
@@ -130,3 +131,45 @@ jobs:
           files: |
             nextgen-extension/artifacts/*.zip
             nextgen-extension/artifacts/*.crx
+
+  build-native-host:
+    runs-on: windows-latest
+
+    permissions:
+      contents: write
+
+    env:
+      ROLLING_TAG: nextgen-extension-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build native host
+        working-directory: native-host
+        shell: pwsh
+        run: |
+          cargo build --release --manifest-path src-tauri/Cargo.toml
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Copy-Item src-tauri/target/release/imgvault-native-host.exe artifacts/ImgVault-Native-Host.exe
+
+      - name: Upload native host artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-host-exe
+          path: native-host/artifacts/ImgVault-Native-Host.exe
+          if-no-files-found: error
+
+      - name: Attach native host to GitHub release
+        if: github.event_name == 'release' || github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'push' && env.ROLLING_TAG || github.event.release.tag_name }}
+          name: ${{ github.event_name == 'push' && 'Latest extension build' || github.event.release.name }}
+          body: ${{ github.event_name == 'push' && format('Automated build from `{0}` at commit `{1}`.', github.ref_name, github.sha) || '' }}
+          prerelease: ${{ github.event_name == 'push' }}
+          files: |
+            native-host/artifacts/ImgVault-Native-Host.exe

@@ -15,6 +15,14 @@ import DebugPage from './pages/DebugPage';
 import HostPage from './pages/HostPage';
 import './index.css';
 
+try {
+  const savedTheme = localStorage.getItem('imgvault-theme');
+  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', savedTheme || systemTheme);
+} catch (_) {
+  // Ignore theme bootstrap failures and let React handle fallback.
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <HashRouter>

@@ -14,6 +14,7 @@ use winreg::{HKEY, RegKey};
 use winapi::um::winuser::{MessageBoxW, MB_ICONERROR, MB_ICONINFORMATION, MB_OK};
 
 const EXTENSION_ID: &str = "johjkjkidbedgjmogpekmlpfakccnoan";
+const DEFAULT_VIDEO_FOLDER_TOKEN: &str = "__IMGVAULT_DEFAULT_VIDEOS__";
 
 #[cfg(target_os = "windows")]
 fn read_registry_string(root: HKEY, subkey: &str, value_name: &str) -> Option<String> {
@@ -100,6 +101,20 @@ fn get_executable_directory() -> Result<PathBuf, String> {
 
 fn get_cookies_path() -> Result<PathBuf, String> {
     Ok(get_executable_directory()?.join("cookies.txt"))
+}
+
+fn get_default_videos_directory() -> Result<PathBuf, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let user_profile = env::var("USERPROFILE")
+            .map_err(|e| format!("Failed to resolve USERPROFILE for default Videos path: {}", e))?;
+        Ok(PathBuf::from(user_profile).join("Videos"))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        env::current_dir().map_err(|e| format!("Failed to resolve default download directory: {}", e))
+    }
 }
 
 fn write_temp_cookies_file(cookies: &[BrowserCookie]) -> Result<PathBuf, String> {
@@ -284,15 +299,30 @@ fn check_cookies() -> Result<String, String> {
 
 // Download video using yt-dlp
 fn download_video(url: &str, output_path: &str, cookies_data: Option<&[BrowserCookie]>) -> Result<DownloadOutcome, DownloadOutcome> {
-    let output_dir = PathBuf::from(output_path)
-        .parent()
-        .map(|dir| dir.to_path_buf())
-        .ok_or_else(|| DownloadOutcome {
-            message: "Failed to determine download directory".to_string(),
+    let output_dir = if output_path == DEFAULT_VIDEO_FOLDER_TOKEN {
+        get_default_videos_directory()
+    } else {
+        PathBuf::from(output_path)
+            .parent()
+            .map(|dir| dir.to_path_buf())
+            .ok_or_else(|| "Failed to determine download directory".to_string())
+    }
+        .map_err(|message| DownloadOutcome {
+            message,
             file_path: None,
             stdout: String::new(),
             stderr: String::new(),
         })?;
+
+    if !output_dir.exists() {
+        fs::create_dir_all(&output_dir)
+            .map_err(|e| DownloadOutcome {
+                message: format!("Failed to create download directory {}: {}", output_dir.display(), e),
+                file_path: None,
+                stdout: String::new(),
+                stderr: String::new(),
+            })?;
+    }
 
     let mut command = Command::new("yt-dlp");
     command

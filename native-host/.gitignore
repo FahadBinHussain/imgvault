@@ -26,4 +26,4 @@ dist-ssr
 # Tauri
 src-tauri/target
 src-tauri/Cargo.lock
-native-host/manifest.json
+manifest.json

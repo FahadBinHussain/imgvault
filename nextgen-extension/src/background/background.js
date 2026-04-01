@@ -10,6 +10,8 @@ import { URLNormalizer } from '../utils/url-normalizer.js';
 import { PixvidUploader, ImgbbUploader, FilemoonUploader, UDropUploader } from '../utils/uploaders.js';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig.js';
 
+const DEFAULT_VIDEO_FOLDER_TOKEN = '__IMGVAULT_DEFAULT_VIDEOS__';
+
 /**
  * @typedef {Object} ImageData
  * @property {string} imageUrl - The image URL or data URL
@@ -919,7 +921,7 @@ class ImgVaultServiceWorker {
         });
       });
       
-      const downloadFolder = settings.downloadFolder || 'C:\\Users\\Admin\\Videos';
+      const downloadFolder = settings.downloadFolder || DEFAULT_VIDEO_FOLDER_TOKEN;
       const cookies = await this.getYouTubeCookiesForYtDlp();
       
       // Generate output path with timestamp

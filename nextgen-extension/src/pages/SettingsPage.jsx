@@ -19,7 +19,7 @@ export default function SettingsPage() {
   const [udropKey2, setUdropKey2] = useChromeStorage('udropKey2', '', 'sync');
   const [firebaseConfigRaw, setFirebaseConfigRaw] = useChromeStorage('firebaseConfigRaw', '', 'sync');
   const [defaultGallerySource, setDefaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
-  const [downloadFolder, setDownloadFolder] = useChromeStorage('downloadFolder', 'C:\\Users\\Admin\\Videos', 'sync');
+  const [downloadFolder, setDownloadFolder] = useChromeStorage('downloadFolder', '', 'sync');
   
   const [localPixvid, setLocalPixvid] = useState('');
   const [localImgbb, setLocalImgbb] = useState('');
@@ -28,7 +28,7 @@ export default function SettingsPage() {
   const [localUdropKey2, setLocalUdropKey2] = useState('');
   const [localFirebase, setLocalFirebase] = useState('');
   const [localGallerySource, setLocalGallerySource] = useState('imgbb');
-  const [localDownloadFolder, setLocalDownloadFolder] = useState('C:\\Users\\Admin\\Videos');
+  const [localDownloadFolder, setLocalDownloadFolder] = useState('');
   const [saved, setSaved] = useState(false);
   const [firebaseStatus, setFirebaseStatus] = useState('');
   const [navbarHeight, setNavbarHeight] = useState(0);
@@ -41,7 +41,7 @@ export default function SettingsPage() {
     setLocalUdropKey2(udropKey2 || '');
     setLocalFirebase(firebaseConfigRaw || '');
     setLocalGallerySource(defaultGallerySource || 'imgbb');
-    setLocalDownloadFolder(downloadFolder || 'C:\\Users\\Admin\\Videos');
+    setLocalDownloadFolder(downloadFolder || '');
   }, [pixvidApiKey, imgbbApiKey, filemoonApiKey, udropKey1, udropKey2, firebaseConfigRaw, defaultGallerySource, downloadFolder]);
 
   // Auto-load settings from Firebase
@@ -362,7 +362,7 @@ export default function SettingsPage() {
                   type="text"
                   value={localDownloadFolder}
                   onChange={(e) => setLocalDownloadFolder(e.target.value)}
-                  placeholder="C:\Users\YourName\Videos"
+                  placeholder="Leave blank to use C:\\Users\\<YourName>\\Videos automatically"
                   className="w-full px-4 py-3 rounded-lg bg-base-100/70 border border-base-content/25 
                            text-base-content placeholder-base-content/50 font-mono text-sm
                            focus:outline-none focus:border-primary focus:ring-2 
@@ -370,7 +370,7 @@ export default function SettingsPage() {
                 />
                 <p className="mt-2 text-xs text-base-content/60 flex items-start gap-2">
                   <span className="text-base">💡</span>
-                  <span>Folder where videos will be downloaded using the native host. Use double backslashes on Windows (e.g., C:\\Users\\Admin\\Videos). Avoid system folders like Downloads.</span>
+                  <span>Folder where videos will be downloaded using the native host. Leave blank to use your Windows Videos folder automatically. If you set one manually, use double backslashes on Windows, for example `C:\\Users\\YourName\\Videos`.</span>
                 </p>
               </div>
             </div>

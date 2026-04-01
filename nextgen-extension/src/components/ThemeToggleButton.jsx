@@ -48,10 +48,17 @@ function formatThemeName(themeName) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function applyTheme(theme) {
+function getSystemTheme() {
+  if (typeof window === 'undefined') return 'dark';
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(theme, { persist = true } = {}) {
   const root = document.documentElement;
   root.setAttribute('data-theme', theme);
-  localStorage.setItem(STORAGE_KEY, theme);
+  if (persist) {
+    localStorage.setItem(STORAGE_KEY, theme);
+  }
 }
 
 export default function ThemeToggleButton({ className = '' }) {
@@ -63,7 +70,7 @@ export default function ThemeToggleButton({ className = '' }) {
     if (!nextTheme) return;
 
     setTheme(nextTheme);
-    applyTheme(nextTheme);
+    applyTheme(nextTheme, { persist: true });
     setOpen(false);
   };
 
@@ -72,11 +79,31 @@ export default function ThemeToggleButton({ className = '' }) {
     const currentTheme =
       storedTheme ||
       document.documentElement.getAttribute('data-theme') ||
-      'dark';
-    const initialTheme = THEMES.includes(currentTheme) ? currentTheme : 'dark';
+      getSystemTheme();
+    const initialTheme = THEMES.includes(currentTheme) ? currentTheme : getSystemTheme();
 
     setTheme(initialTheme);
-    applyTheme(initialTheme);
+    applyTheme(initialTheme, { persist: Boolean(storedTheme) });
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+    const handleSystemThemeChange = () => {
+      if (localStorage.getItem(STORAGE_KEY)) {
+        return;
+      }
+
+      const nextTheme = mediaQuery.matches ? 'dark' : 'light';
+      setTheme(nextTheme);
+      applyTheme(nextTheme, { persist: false });
+    };
+
+    mediaQuery.addEventListener('change', handleSystemThemeChange);
+
+    return () => {
+      mediaQuery.removeEventListener('change', handleSystemThemeChange);
+    };
   }, []);
 
   useEffect(() => {

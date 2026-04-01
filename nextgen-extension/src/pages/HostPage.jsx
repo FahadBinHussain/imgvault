@@ -52,8 +52,6 @@ export default function HostPage() {
     hostMessage: 'Checking native host...',
     ytDlpAvailable: false,
     ytDlpMessage: 'Checking yt-dlp...',
-    cookiesAvailable: false,
-    cookiesMessage: 'Checking cookies.txt...',
   });
 
   const addLog = (message, type = 'info') => {
@@ -114,7 +112,6 @@ export default function HostPage() {
       checking: true,
       hostMessage: 'Checking native host...',
       ytDlpMessage: 'Checking yt-dlp...',
-      cookiesMessage: 'Checking cookies.txt...',
     }));
 
     try {
@@ -134,23 +131,14 @@ export default function HostPage() {
         hostMessage: pingResponse.data?.message || 'Native host reachable',
         ytDlpAvailable: false,
         ytDlpMessage: 'Checking yt-dlp...',
-        cookiesAvailable: false,
-        cookiesMessage: 'Checking cookies.txt...',
       };
 
       try {
-        const [ytDlpResponse, cookiesResponse] = await Promise.all([
-          chrome.runtime.sendMessage({
-            action: 'nativeHostCommand',
-            command: 'check_yt_dlp',
-            data: {},
-          }),
-          chrome.runtime.sendMessage({
-            action: 'nativeHostCommand',
-            command: 'check_cookies',
-            data: {},
-          }),
-        ]);
+        const ytDlpResponse = await chrome.runtime.sendMessage({
+          action: 'nativeHostCommand',
+          command: 'check_yt_dlp',
+          data: {},
+        });
 
         const mergedStatus = {
           ...nextStatus,
@@ -158,22 +146,15 @@ export default function HostPage() {
           ytDlpMessage: ytDlpResponse?.success
             ? ytDlpResponse.data?.message || 'yt-dlp available'
             : ytDlpResponse?.error || 'yt-dlp not available',
-          cookiesAvailable: !!cookiesResponse?.success,
-          cookiesMessage: cookiesResponse?.success
-            ? cookiesResponse.data?.message || 'cookies.txt found'
-            : cookiesResponse?.error || 'cookies.txt not found',
         };
 
         setHostStatus(mergedStatus);
         addLog(mergedStatus.ytDlpMessage, ytDlpResponse?.success ? 'success' : 'error');
-        addLog(mergedStatus.cookiesMessage, cookiesResponse?.success ? 'success' : 'error');
       } catch (error) {
         setHostStatus({
           ...nextStatus,
           ytDlpAvailable: false,
           ytDlpMessage: error.message || 'yt-dlp check failed',
-          cookiesAvailable: false,
-          cookiesMessage: error.message || 'cookies.txt check failed',
         });
         addLog(error.message || 'Host status check failed', 'error');
       }
@@ -184,8 +165,6 @@ export default function HostPage() {
         hostMessage: error.message || 'Native host unreachable',
         ytDlpAvailable: false,
         ytDlpMessage: 'yt-dlp not checked',
-        cookiesAvailable: false,
-        cookiesMessage: 'cookies.txt not checked',
       });
       addLog(error.message || 'Native host unreachable', 'error');
     }
@@ -348,11 +327,6 @@ export default function HostPage() {
                 <div className="font-medium">yt-dlp</div>
                 <div className="mt-1 break-all">{hostStatus.ytDlpMessage}</div>
               </div>
-
-              <div className={`rounded-lg border px-3 py-2 text-sm ${hostStatus.cookiesAvailable ? 'border-green-500/20 bg-green-500/10 text-green-300' : 'border-amber-500/20 bg-amber-500/10 text-amber-300'}`}>
-                <div className="font-medium">cookies.txt</div>
-                <div className="mt-1 break-all">{hostStatus.cookiesMessage}</div>
-              </div>
             </div>
 
             <div>
@@ -449,7 +423,7 @@ export default function HostPage() {
               </div>
               <div className="flex items-start gap-2 text-base-content/70">
                 <AlertCircle className="w-4 h-4 mt-0.5 text-amber-500" />
-                <span>If YouTube returns 403 on this network, place `cookies.txt` beside the native host exe and refresh this page.</span>
+                <span>The host now uses fresh Chrome YouTube cookies automatically when you download.</span>
               </div>
             </div>
           </div>
