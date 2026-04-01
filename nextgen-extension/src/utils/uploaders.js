@@ -170,7 +170,7 @@ export class ImgbbUploader extends BaseUploader {
 export class FilemoonUploader extends BaseUploader {
   constructor() {
     super('Filemoon');
-    this.apiUrl = 'https://filemoonapi.com/api/upload/server';
+    this.apiUrl = 'https://api.byse.sx/upload/server';
   }
 
   /**
@@ -238,7 +238,7 @@ export class FilemoonUploader extends BaseUploader {
       const fileData = result.files[0];
       
       // Construct the file URL from filecode
-      const fileUrl = `https://filemoon.sx/e/${fileData.filecode}`;
+      const fileUrl = `https://api.byse.sx/e/${fileData.filecode}`;
       
       console.log('🎬 [FILEMOON] File uploaded successfully, filecode:', fileData.filecode);
       console.log('🎬 [FILEMOON] Embed URL:', fileUrl);

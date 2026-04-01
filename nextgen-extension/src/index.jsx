@@ -12,6 +12,7 @@ import TrashPage from './pages/TrashPage';
 import PopupPage from './pages/PopupPage';
 import CollectionsPage from './pages/CollectionsPage';
 import HostPage from './pages/HostPage';
+import LogsPage from './pages/LogsPage';
 import './index.css';
 
 try {
@@ -32,6 +33,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route path="/collections" element={<CollectionsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/host" element={<HostPage />} />
+        <Route path="/logs" element={<LogsPage />} />
         <Route path="/trash" element={<TrashPage />} />
         <Route path="/popup" element={<PopupPage />} />
         <Route path="*" element={<Navigate to="/gallery" replace />} />
