@@ -14,7 +14,6 @@ use winreg::{HKEY, RegKey};
 use winapi::um::winuser::{MessageBoxW, MB_ICONERROR, MB_ICONINFORMATION, MB_OK};
 
 const EXTENSION_ID: &str = "johjkjkidbedgjmogpekmlpfakccnoan";
-const DEFAULT_VIDEO_FOLDER_TOKEN: &str = "__IMGVAULT_DEFAULT_VIDEOS__";
 
 #[cfg(target_os = "windows")]
 fn read_registry_string(root: HKEY, subkey: &str, value_name: &str) -> Option<String> {
@@ -115,6 +114,13 @@ fn get_default_videos_directory() -> Result<PathBuf, String> {
     {
         env::current_dir().map_err(|e| format!("Failed to resolve default download directory: {}", e))
     }
+}
+
+fn get_output_directory(output_path: &str) -> Result<PathBuf, String> {
+    PathBuf::from(output_path)
+        .parent()
+        .map(|dir| dir.to_path_buf())
+        .ok_or_else(|| "Failed to determine download directory from output_path".to_string())
 }
 
 fn write_temp_cookies_file(cookies: &[BrowserCookie]) -> Result<PathBuf, String> {
@@ -299,14 +305,7 @@ fn check_cookies() -> Result<String, String> {
 
 // Download video using yt-dlp
 fn download_video(url: &str, output_path: &str, cookies_data: Option<&[BrowserCookie]>) -> Result<DownloadOutcome, DownloadOutcome> {
-    let output_dir = if output_path == DEFAULT_VIDEO_FOLDER_TOKEN {
-        get_default_videos_directory()
-    } else {
-        PathBuf::from(output_path)
-            .parent()
-            .map(|dir| dir.to_path_buf())
-            .ok_or_else(|| "Failed to determine download directory".to_string())
-    }
+    let output_dir = get_output_directory(output_path)
         .map_err(|message| DownloadOutcome {
             message,
             file_path: None,
@@ -664,6 +663,24 @@ fn handle_native_messaging() {
                                 success: true,
                                 message: Some(message),
                                 file_path: None,
+                                stdout: None,
+                                stderr: None,
+                            },
+                            Err(e) => NativeResponse {
+                                success: false,
+                                message: Some(e),
+                                file_path: None,
+                                stdout: None,
+                                stderr: None,
+                            },
+                        }
+                    }
+                    "get_default_video_directory" => {
+                        match get_default_videos_directory() {
+                            Ok(path) => NativeResponse {
+                                success: true,
+                                message: Some(path.display().to_string()),
+                                file_path: Some(path.display().to_string()),
                                 stdout: None,
                                 stderr: None,
                             },
