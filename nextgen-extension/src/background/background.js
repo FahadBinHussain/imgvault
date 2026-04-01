@@ -482,7 +482,31 @@ class ImgVaultServiceWorker {
 
       case 'nativeDownload':
         this.handleNativeDownload(request.url)
-          .then(result => sendResponse({ success: true, filePath: result.filePath }))
+          .then(result => sendResponse({
+            success: true,
+            filePath: result.filePath,
+            message: result.message,
+            stdout: result.stdout,
+            stderr: result.stderr
+          }))
+          .catch(error => {
+            const errorPayload = error && typeof error === 'object'
+              ? error
+              : { message: error?.message || String(error) };
+
+            sendResponse({
+              success: false,
+              error: errorPayload.message || 'Download failed',
+              stdout: errorPayload.stdout,
+              stderr: errorPayload.stderr,
+              details: errorPayload
+            });
+          });
+        return true;
+
+      case 'nativeHostCommand':
+        this.handleNativeHostCommand(request.command, request.data || {})
+          .then(result => sendResponse({ success: true, data: result }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
@@ -935,7 +959,12 @@ class ImgVaultServiceWorker {
           if (response.success) {
             resolve(response);
           } else {
-            reject(new Error(response.message || 'Native host download failed'));
+            reject({
+              message: response.message || 'Native host download failed',
+              filePath: response.filePath,
+              stdout: response.stdout,
+              stderr: response.stderr
+            });
           }
           
           port.disconnect();
@@ -968,6 +997,64 @@ class ImgVaultServiceWorker {
       });
     } catch (error) {
       console.error(`❌ [NATIVE] Failed to communicate with native host:`, error);
+      throw error;
+    }
+  }
+
+  async handleNativeHostCommand(command, data = {}) {
+    try {
+      console.log(`[NATIVE] Sending host command: ${command}`, data);
+
+      let port;
+      try {
+        port = chrome.runtime.connectNative('com.imgvault.nativehost');
+      } catch (connectError) {
+        throw new Error('Failed to connect to native host: ' + connectError.message);
+      }
+
+      return new Promise((resolve, reject) => {
+        let responseReceived = false;
+
+        const timeout = setTimeout(() => {
+          if (!responseReceived) {
+            port.disconnect();
+            reject(new Error('Timeout waiting for native host response'));
+          }
+        }, 15000);
+
+        port.onMessage.addListener((response) => {
+          responseReceived = true;
+          clearTimeout(timeout);
+
+          if (response.success) {
+            resolve(response);
+          } else {
+            reject(new Error(response.message || 'Native host command failed'));
+          }
+
+          port.disconnect();
+        });
+
+        port.onDisconnect.addListener(() => {
+          clearTimeout(timeout);
+          if (!responseReceived) {
+            const error = chrome.runtime.lastError;
+            reject(new Error(error ? error.message : 'Native host disconnected unexpectedly.'));
+          }
+        });
+
+        try {
+          port.postMessage({
+            action: command,
+            ...data
+          });
+        } catch (sendError) {
+          clearTimeout(timeout);
+          reject(new Error('Failed to send message to native host: ' + sendError.message));
+        }
+      });
+    } catch (error) {
+      console.error('[NATIVE] Failed to send host command:', error);
       throw error;
     }
   }

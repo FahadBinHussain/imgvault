@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Upload, Search, Trash2, Settings, FolderOpen, Image } from 'lucide-react';
+import { RefreshCw, Upload, Search, Trash2, Settings, FolderOpen, Image, Cable } from 'lucide-react';
 import ThemeToggleButton from './ThemeToggleButton';
 
 export default function GalleryNavbar({
@@ -29,6 +29,7 @@ export default function GalleryNavbar({
   onHeightChange,
   isTrashPage = false,
   isSettingsPage = false,
+  isHostPage = false,
   onEmptyTrash,
 }) {
   const navRef = useRef(null);
@@ -84,6 +85,8 @@ export default function GalleryNavbar({
                     <p className="text-xs text-base-content/60 truncate">
                       {isSettingsPage
                         ? 'Configuration'
+                        : isHostPage
+                          ? 'Native host controls'
                         : `${visibleCount} ${isTrashPage ? 'item' : 'image'}${visibleCount !== 1 ? 's' : ''}`}
                     </p>
                   </div>
@@ -92,7 +95,7 @@ export default function GalleryNavbar({
             </div>
 
             {/* Center: Search */}
-            {!isSettingsPage && (
+            {!isSettingsPage && !isHostPage && (
               <div className="flex-1 max-w-md hidden md:block">
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-base-content/50" />
@@ -111,7 +114,7 @@ export default function GalleryNavbar({
             <div className="flex items-center gap-1">
               <ThemeToggleButton />
 
-              {!isSettingsPage && (
+              {!isSettingsPage && !isHostPage && (
                 <button
                   onClick={reload}
                   className="p-1.5 rounded-md hover:bg-base-content/10 transition-colors text-base-content/70 hover:text-base-content"
@@ -121,7 +124,7 @@ export default function GalleryNavbar({
                 </button>
               )}
 
-              {!isSettingsPage && (
+              {!isSettingsPage && !isHostPage && (
                 <button
                   onClick={toggleSelectionMode}
                   className={`p-1.5 rounded-md transition-colors flex items-center gap-1.5 text-sm ${
@@ -147,6 +150,16 @@ export default function GalleryNavbar({
                       {collections.length}
                     </span>
                   )}
+                </button>
+              )}
+
+              {!isSettingsPage && (
+                <button
+                  onClick={() => navigate('/host')}
+                  className={`p-1.5 rounded-md transition-colors ${isHostPage ? 'bg-primary-500/20 text-primary-400' : 'hover:bg-base-content/10 text-base-content/70 hover:text-base-content'}`}
+                  title="Native Host"
+                >
+                  <Cable className="w-4 h-4" />
                 </button>
               )}
 
@@ -209,7 +222,7 @@ export default function GalleryNavbar({
           </div>
 
           {/* Mobile search */}
-          {!isSettingsPage && (
+          {!isSettingsPage && !isHostPage && (
             <div className="mt-2 md:hidden">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-base-content/50" />
@@ -224,7 +237,7 @@ export default function GalleryNavbar({
             </div>
           )}
 
-          {selectionMode && !isSettingsPage && (
+          {selectionMode && !isSettingsPage && !isHostPage && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}

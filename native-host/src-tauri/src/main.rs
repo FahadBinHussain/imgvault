@@ -3,15 +3,50 @@
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
-use std::io::{self, BufRead, BufReader, Write, Read};
-use std::path::PathBuf;
+use std::io::{self, Write, Read};
 use std::process::{Command, Stdio};
-use tauri::Manager;
 
 #[cfg(target_os = "windows")]
 use winreg::enums::*;
 #[cfg(target_os = "windows")]
-use winreg::RegKey;
+use winreg::{HKEY, RegKey};
+
+#[cfg(target_os = "windows")]
+fn read_registry_string(root: HKEY, subkey: &str, value_name: &str) -> Option<String> {
+    let key = RegKey::predef(root).open_subkey(subkey).ok()?;
+    key.get_value::<String, _>(value_name).ok()
+}
+
+#[cfg(target_os = "windows")]
+fn reload_windows_path_environment() -> Result<String, String> {
+    let process_path = env::var("PATH").unwrap_or_default();
+    let user_path = read_registry_string(HKEY_CURRENT_USER, r"Environment", "Path").unwrap_or_default();
+    let machine_path = read_registry_string(
+        HKEY_LOCAL_MACHINE,
+        r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+        "Path",
+    ).unwrap_or_default();
+
+    let merged_path = [process_path, user_path, machine_path]
+        .into_iter()
+        .flat_map(|value| {
+            value
+                .split(';')
+                .map(|entry| entry.trim().to_string())
+                .collect::<Vec<String>>()
+        })
+        .filter(|entry| !entry.is_empty())
+        .fold(Vec::<String>::new(), |mut acc, entry| {
+            if !acc.iter().any(|existing| existing.eq_ignore_ascii_case(&entry)) {
+                acc.push(entry);
+            }
+            acc
+        })
+        .join(";");
+
+    env::set_var("PATH", &merged_path);
+    Ok(merged_path)
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct NativeMessage {
@@ -26,6 +61,15 @@ struct NativeResponse {
     message: Option<String>,
     #[serde(rename = "filePath")]
     file_path: Option<String>,
+    stdout: Option<String>,
+    stderr: Option<String>,
+}
+
+struct DownloadOutcome {
+    message: String,
+    file_path: Option<String>,
+    stdout: String,
+    stderr: String,
 }
 
 // Check if the native messaging host is registered
@@ -132,15 +176,34 @@ fn unregister_host() -> Result<(), String> {
     Err("Unregistration only supported on Windows".to_string())
 }
 
+#[tauri::command]
+fn reload_path() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        reload_windows_path_environment()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("PATH reload is only supported on Windows".to_string())
+    }
+}
+
 // Download video using yt-dlp
-fn download_video(url: &str, output_path: &str) -> Result<String, String> {
+fn download_video(url: &str, output_path: &str) -> Result<DownloadOutcome, DownloadOutcome> {
     let mut command = Command::new("yt-dlp");
     command
         .arg(url)
+        .arg("--verbose")
+        .arg("-f")
+        .arg("bestvideo+bestaudio/best")
+        .arg("--merge-output-format")
+        .arg("mkv")
         .arg("-o")
         .arg(output_path)
         .arg("--no-playlist")
-        .arg("--quiet")
+        .arg("--progress")
+        .arg("--newline")
         .arg("--print")
         .arg("after_move:filepath");
     
@@ -154,22 +217,54 @@ fn download_video(url: &str, output_path: &str) -> Result<String, String> {
     
     let output = command
         .output()
-        .map_err(|e| format!("Failed to execute yt-dlp: {}", e))?;
+        .map_err(|e| DownloadOutcome {
+            message: format!("Failed to execute yt-dlp: {}", e),
+            file_path: None,
+            stdout: String::new(),
+            stderr: String::new(),
+        })?;
     
+    let stdout_text = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr_text = String::from_utf8_lossy(&output.stderr).to_string();
+    let file_path = stdout_text
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .map(|line| line.trim().to_string());
+
     if output.status.success() {
-        // Get the actual file path from stdout
-        let file_path = String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .to_string();
-        
-        if file_path.is_empty() {
-            Err("yt-dlp did not return a file path".to_string())
+        if let Some(file_path) = file_path {
+            Ok(DownloadOutcome {
+                message: "Download complete".to_string(),
+                file_path: Some(file_path),
+                stdout: stdout_text,
+                stderr: stderr_text,
+            })
         } else {
-            Ok(file_path)
+            Err(DownloadOutcome {
+                message: "yt-dlp did not return a file path".to_string(),
+                file_path: None,
+                stdout: stdout_text,
+                stderr: stderr_text,
+            })
         }
     } else {
-        let error = String::from_utf8_lossy(&output.stderr);
-        Err(format!("yt-dlp failed: {}", error))
+        let combined = [stderr_text.trim().to_string(), stdout_text.trim().to_string()]
+            .into_iter()
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Err(DownloadOutcome {
+            message: if combined.is_empty() {
+                format!("yt-dlp failed with exit code {:?}", output.status.code())
+            } else {
+                format!("yt-dlp failed:\n{}", combined)
+            },
+            file_path: None,
+            stdout: stdout_text,
+            stderr: stderr_text,
+        })
     }
 }
 
@@ -183,6 +278,10 @@ fn test_download(url: String, output_path: String, hide_window: bool) -> Result<
     let mut command = Command::new("yt-dlp");
     command
         .arg(&url)
+        .arg("-f")
+        .arg("bestvideo+bestaudio/best")
+        .arg("--merge-output-format")
+        .arg("mkv")
         .arg("-o")
         .arg(&output_path)
         .arg("--no-playlist")
@@ -198,37 +297,82 @@ fn test_download(url: String, output_path: String, hide_window: bool) -> Result<
         command.creation_flags(CREATE_NO_WINDOW);
     }
     
-    let mut child = command
-        .spawn()
+    let output = command
+        .output()
         .map_err(|e| format!("Failed to execute yt-dlp: {}. Make sure yt-dlp is in the same folder or in PATH", e))?;
-    
-    // Read stdout and stderr
-    if let Some(stdout) = child.stdout.take() {
-        let reader = BufReader::new(stdout);
-        for line in reader.lines() {
-            if let Ok(line) = line {
-                eprintln!("[yt-dlp] {}", line);
-            }
-        }
+
+    let stdout_text = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr_text = String::from_utf8_lossy(&output.stderr).to_string();
+
+    for line in stdout_text.lines() {
+        eprintln!("[yt-dlp][stdout] {}", line);
+    }
+
+    for line in stderr_text.lines() {
+        eprintln!("[yt-dlp][stderr] {}", line);
     }
     
-    let status = child.wait()
-        .map_err(|e| format!("Failed to wait for yt-dlp: {}", e))?;
-    
-    if status.success() {
+    if output.status.success() {
         eprintln!("[yt-dlp] ✅ Download completed successfully");
         Ok(serde_json::json!({
             "success": true,
-            "filePath": output_path
+            "filePath": output_path,
+            "stdout": stdout_text,
+            "stderr": stderr_text
         }))
     } else {
-        eprintln!("[yt-dlp] ❌ Download failed with exit code: {:?}", status.code());
-        Err(format!("yt-dlp failed with exit code: {:?}", status.code()))
+        eprintln!("[yt-dlp] Download failed with exit code: {:?}", output.status.code());
+        Err(serde_json::json!({
+            "message": format!("yt-dlp failed with exit code: {:?}", output.status.code()),
+            "stdout": stdout_text,
+            "stderr": stderr_text
+        }).to_string())
+    }
+}
+
+fn find_yt_dlp() -> Result<String, String> {
+    let mut command = Command::new("yt-dlp");
+    command.arg("--version");
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let output = command
+        .output()
+        .map_err(|e| format!("Failed to execute yt-dlp: {}", e))?;
+
+    if output.status.success() {
+        let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok(if version.is_empty() {
+            "yt-dlp is available".to_string()
+        } else {
+            format!("yt-dlp version: {}", version)
+        })
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(if stderr.is_empty() {
+            format!("yt-dlp returned exit code {:?}", output.status.code())
+        } else {
+            stderr
+        })
     }
 }
 
 // Handle native messaging (stdin/stdout communication)
 fn handle_native_messaging() {
+    #[cfg(target_os = "windows")]
+    {
+        if let Err(e) = reload_windows_path_environment() {
+            eprintln!("[NATIVE] Failed to reload PATH on native startup: {}", e);
+        } else {
+            eprintln!("[NATIVE] Reloaded PATH on native startup");
+        }
+    }
+
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     
@@ -265,19 +409,23 @@ fn handle_native_messaging() {
                             eprintln!("[NATIVE] Processing download: {} -> {}", url, output_path);
                             match download_video(&url, &output_path) {
                                 Ok(file_path) => {
-                                    eprintln!("[NATIVE] Download successful: {}", file_path);
+                                    eprintln!("[NATIVE] Download successful: {}", file_path.file_path.as_deref().unwrap_or(""));
                                     NativeResponse {
                                         success: true,
-                                        message: Some("Download complete".to_string()),
-                                        file_path: Some(file_path),
+                                        message: Some(file_path.message),
+                                        file_path: file_path.file_path,
+                                        stdout: Some(file_path.stdout),
+                                        stderr: Some(file_path.stderr),
                                     }
                                 },
                                 Err(e) => {
-                                    eprintln!("[NATIVE] Download failed: {}", e);
+                                    eprintln!("[NATIVE] Download failed: {}", e.message);
                                     NativeResponse {
                                         success: false,
-                                        message: Some(e),
+                                        message: Some(e.message),
                                         file_path: None,
+                                        stdout: Some(e.stdout),
+                                        stderr: Some(e.stderr),
                                     }
                                 },
                             }
@@ -287,7 +435,52 @@ fn handle_native_messaging() {
                                 success: false,
                                 message: Some("Missing url or output_path".to_string()),
                                 file_path: None,
+                                stdout: None,
+                                stderr: None,
                             }
+                        }
+                    }
+                    "reload_path" => {
+                        match reload_path() {
+                            Ok(_) => NativeResponse {
+                                success: true,
+                                message: Some("PATH reloaded".to_string()),
+                                file_path: None,
+                                stdout: None,
+                                stderr: None,
+                            },
+                            Err(e) => NativeResponse {
+                                success: false,
+                                message: Some(e),
+                                file_path: None,
+                                stdout: None,
+                                stderr: None,
+                            },
+                        }
+                    }
+                    "ping" => NativeResponse {
+                        success: true,
+                        message: Some("Native host reachable".to_string()),
+                        file_path: None,
+                        stdout: None,
+                        stderr: None,
+                    },
+                    "check_yt_dlp" => {
+                        match find_yt_dlp() {
+                            Ok(message) => NativeResponse {
+                                success: true,
+                                message: Some(message),
+                                file_path: None,
+                                stdout: None,
+                                stderr: None,
+                            },
+                            Err(e) => NativeResponse {
+                                success: false,
+                                message: Some(e),
+                                file_path: None,
+                                stdout: None,
+                                stderr: None,
+                            },
                         }
                     }
                     _ => {
@@ -296,6 +489,8 @@ fn handle_native_messaging() {
                             success: false,
                             message: Some("Unknown action".to_string()),
                             file_path: None,
+                            stdout: None,
+                            stderr: None,
                         }
                     },
                 }
@@ -306,6 +501,8 @@ fn handle_native_messaging() {
                     success: false,
                     message: Some(format!("Failed to parse message: {}", e)),
                     file_path: None,
+                    stdout: None,
+                    stderr: None,
                 }
             }
         };
@@ -371,7 +568,7 @@ fn main() {
     
     // Otherwise, run GUI mode
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![check_registration, register_host, unregister_host, test_download])
+        .invoke_handler(tauri::generate_handler![check_registration, register_host, unregister_host, reload_path, test_download])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

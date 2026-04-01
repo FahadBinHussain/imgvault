@@ -1,4 +1,4 @@
-# ImgVault Next-Gen Extension
+# ImgVault
 
 A modern Chrome extension built with **React**, **Vite**, and **Tailwind CSS** for saving images with context and metadata.
 
