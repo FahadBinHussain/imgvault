@@ -89,13 +89,32 @@ export function useImageUpload() {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState('');
   const [error, setError] = useState(null);
+  const [logs, setLogs] = useState([]);
+  const [history, setHistory] = useState([]);
   const sendMessage = useChromeMessage();
 
   useEffect(() => {
+    chrome.storage.local.get(['uploadStatusLogs', 'uploadLogHistory'], (result) => {
+      setLogs(result.uploadStatusLogs || []);
+      setHistory(result.uploadLogHistory || []);
+    });
+
     // Listen for upload status updates
     const handleStorageChange = (changes, area) => {
-      if (area === 'local' && changes.uploadStatus) {
+      if (area !== 'local') {
+        return;
+      }
+
+      if (changes.uploadStatus) {
         setProgress(changes.uploadStatus.newValue || '');
+      }
+
+      if (changes.uploadStatusLogs) {
+        setLogs(changes.uploadStatusLogs.newValue || []);
+      }
+
+      if (changes.uploadLogHistory) {
+        setHistory(changes.uploadLogHistory.newValue || []);
       }
     };
 
@@ -110,6 +129,8 @@ export function useImageUpload() {
     setUploading(true);
     setError(null);
     setProgress('Starting upload...');
+    setLogs([]);
+    chrome.storage.local.set({ uploadStatusLogs: [] });
 
     try {
       const result = await sendMessage('uploadImage', imageData);
@@ -128,7 +149,9 @@ export function useImageUpload() {
     uploadImage,
     uploading,
     progress,
-    error
+    error,
+    logs,
+    history
   };
 }
 
