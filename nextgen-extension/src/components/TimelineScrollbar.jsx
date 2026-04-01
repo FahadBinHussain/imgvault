@@ -116,16 +116,16 @@ export default function TimelineScrollbar({ dateGroups, containerRef }) {
         ref={scrollbarRef}
         onClick={handleScrollbarClick}
         onMouseDown={handleDragStart}
-        className="relative h-[min(68vh,560px)] w-14 rounded-2xl border border-white/10
-                   bg-slate-900/45 backdrop-blur-xl shadow-2xl pointer-events-auto select-none"
+        className="relative h-[min(68vh,560px)] w-14 rounded-2xl border border-base-content/10
+                   bg-base-100/70 backdrop-blur-xl shadow-2xl pointer-events-auto select-none"
       >
         {/* Track */}
-        <div className="absolute top-4 bottom-4 left-1/2 -translate-x-1/2 w-[2px] rounded-full bg-white/20" />
+        <div className="absolute top-4 bottom-4 left-1/2 -translate-x-1/2 w-[2px] rounded-full bg-base-content/20" />
 
         {/* Current Position Thumb */}
         <div
-          className={`absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/40
-                     bg-primary-300/90 shadow-lg shadow-primary-500/30 transition-all duration-150
+          className={`absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary/40
+                     bg-primary shadow-lg shadow-primary/30 transition-all duration-150
                      ${isDragging ? 'w-4 h-4' : 'w-3 h-3'}`}
           style={{ top: `${Math.max(0, Math.min(scrollPercentage, 100))}%` }}
         />
@@ -154,14 +154,14 @@ export default function TimelineScrollbar({ dateGroups, containerRef }) {
               <span
                 className={`block rounded-full border transition-all duration-150
                           ${isActive || isHovered
-                            ? 'w-3 h-3 bg-white border-white/80 shadow-md shadow-white/20'
-                            : 'w-2 h-2 bg-white/40 border-white/30'}`}
+                            ? 'w-3 h-3 bg-base-content border-base-content/80 shadow-md shadow-base-content/20'
+                            : 'w-2 h-2 bg-base-content/40 border-base-content/30'}`}
               />
 
               {(isHovered || isActive) && (
                 <span className="absolute right-full top-1/2 -translate-y-1/2 mr-3 px-2.5 py-1 rounded-md
-                               text-[11px] font-semibold whitespace-nowrap text-white
-                               bg-slate-900/95 border border-white/15 shadow-xl">
+                               text-[11px] font-semibold whitespace-nowrap text-base-content
+                               bg-base-100/95 border border-base-content/15 shadow-xl">
                   {group.label}
                 </span>
               )}

@@ -538,7 +538,7 @@ export default function TrashPage() {
                             : 'bg-base-300/70 border-base-content/50 backdrop-blur-sm'
                         }`}>
                           {selectedImages.has(image.id) && (
-                            <span className="text-error-content text-sm font-bold">✓</span>
+                                <span className="text-sm font-bold">✓</span>
                           )}
                         </div>
                       </div>

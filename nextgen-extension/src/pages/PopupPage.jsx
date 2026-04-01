@@ -202,7 +202,7 @@ export default function PopupPage() {
               <button
                 onClick={() => document.getElementById('fileInput').click()}
                 className="px-6 py-3 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
-                         text-primary-content font-semibold shadow-xl hover:shadow-2xl hover:scale-105 
+                         font-semibold shadow-xl hover:shadow-2xl hover:scale-105 
                          active:scale-95 transition-all duration-300 flex items-center gap-2 mx-auto"
               >
                 <Upload className="w-5 h-5" />
@@ -496,8 +496,8 @@ export default function PopupPage() {
                         }
                       }
                     }}
-                    className="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 
-                             text-primary-content font-medium transition-colors text-sm"
+                    className="px-4 py-2 rounded-lg bg-primary hover:brightness-95 
+                             font-medium transition-colors text-sm"
                   >
                     Create
                   </button>
@@ -699,7 +699,7 @@ export default function PopupPage() {
               onClick={() => handleUpload(false)}
               disabled={uploading || !settings}
               className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
-                       hover:from-primary-600 hover:to-secondary-600 text-primary-content font-semibold text-lg
+                       hover:from-primary-600 hover:to-secondary-600 font-semibold text-lg
                        shadow-2xl hover:shadow-[0_8px_30px_rgb(99,102,241,0.4)]
                        transform transition-all duration-300 ease-out
                        hover:scale-105 active:scale-95

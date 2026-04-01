@@ -43,6 +43,23 @@ function HostLog({ entry }) {
 
 export default function HostPage() {
   const navigate = useNavigate();
+  const browserLabel = (() => {
+    const ua = navigator.userAgent || '';
+
+    if (ua.includes('Edg/')) {
+      return 'Edge';
+    }
+
+    if (ua.includes('Firefox/')) {
+      return 'Firefox';
+    }
+
+    if (ua.includes('Chrome/')) {
+      return 'Chrome';
+    }
+
+    return 'browser';
+  })();
   const [navbarHeight, setNavbarHeight] = useState(0);
   const [downloadUrl, setDownloadUrl] = useState('');
   const [logs, setLogs] = useState([]);
@@ -218,7 +235,7 @@ export default function HostPage() {
 
   const handleExportYoutubeCookies = async () => {
     setBusyAction('export_cookies');
-    addLog('Collecting YouTube cookies from Chrome...');
+    addLog(`Collecting YouTube cookies from ${browserLabel}...`);
 
     try {
       const [youtubeCookies, googleCookies] = await Promise.all([
@@ -229,7 +246,7 @@ export default function HostPage() {
       const allCookies = [...youtubeCookies, ...googleCookies];
 
       if (allCookies.length === 0) {
-        throw new Error('No YouTube/Google cookies found in Chrome.');
+        throw new Error(`No YouTube/Google cookies found in ${browserLabel}.`);
       }
 
       const uniqueCookies = Array.from(
@@ -370,7 +387,7 @@ export default function HostPage() {
                 <Download className={`w-5 h-5 ${busyAction === 'export_cookies' ? 'animate-pulse' : ''}`} />
                 <div>
                   <div className="font-medium">Export YouTube Cookies</div>
-                  <div className="text-sm text-base-content/65">Download a fresh `cookies.txt` from the current Chrome profile.</div>
+                  <div className="text-sm text-base-content/65">{`Download a fresh cookies.txt from the current ${browserLabel} profile.`}</div>
                 </div>
               </div>
             </button>

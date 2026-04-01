@@ -33,9 +33,27 @@ export default function GalleryNavbar({
   onEmptyTrash,
 }) {
   const navRef = useRef(null);
+  const iconButtonClass = 'p-1.5 rounded-md border border-transparent hover:bg-base-content/10 transition-colors text-base-content/70 hover:text-base-content';
+  const activeIconButtonClass = 'p-1.5 rounded-md border border-primary/20 bg-primary/12 text-primary transition-colors';
   const visibleCount = Number.isFinite(displayCount)
     ? displayCount
     : (Array.isArray(filteredImages) ? filteredImages.length : (Array.isArray(images) ? images.length : 0));
+  const pageTitle = collectionId && currentCollection
+    ? currentCollection.name
+    : isSettingsPage
+      ? 'ImgVault Settings'
+      : isTrashPage
+        ? 'ImgVault Trash'
+        : isHostPage
+          ? 'ImgVault Host'
+          : 'ImgVault';
+  const pageSubtitle = collectionId && currentCollection
+    ? 'Collection view'
+    : isSettingsPage
+      ? 'Configuration'
+      : isHostPage
+        ? 'Native host controls'
+        : `${visibleCount} ${isTrashPage ? 'item' : 'image'}${visibleCount !== 1 ? 's' : ''}`;
 
   useEffect(() => {
     if (!navRef.current || !onHeightChange) return;
@@ -54,8 +72,8 @@ export default function GalleryNavbar({
 
   return (
     <div ref={navRef} className="fixed top-0 left-0 right-0 z-50 w-full">
-      <div className="bg-base-200/95 backdrop-blur-sm border-b border-base-content/10">
-        <div className="px-4 sm:px-6 py-2.5">
+      <div className="border-b border-base-content/10 bg-base-200/92 backdrop-blur-xl shadow-sm">
+        <div className="px-4 sm:px-6 py-3">
           <div className="flex items-center justify-between gap-4">
             {/* Left: Logo/Title */}
             <div className="flex items-center gap-3 min-w-0">
@@ -72,23 +90,18 @@ export default function GalleryNavbar({
                   </button>
                   <div className="flex items-center gap-2 min-w-0">
                     <FolderOpen className="w-4 h-4 text-base-content/60 flex-shrink-0" />
-                    <h1 className="text-sm font-medium text-base-content truncate">{currentCollection.name}</h1>
+                    <div className="min-w-0">
+                      <h1 className="text-sm font-semibold text-base-content truncate">{pageTitle}</h1>
+                      <p className="text-xs text-base-content/60 truncate">{pageSubtitle}</p>
+                    </div>
                   </div>
                 </>
               ) : (
                 <>
                   <img src="/icons/icon48.png" alt="ImgVault" className="w-6 h-6 rounded" />
                   <div className="min-w-0 hidden sm:block">
-                    <h1 className="text-sm font-medium text-base-content truncate">
-                      {isSettingsPage ? 'ImgVault Settings' : isTrashPage ? 'ImgVault Trash' : 'ImgVault'}
-                    </h1>
-                    <p className="text-xs text-base-content/60 truncate">
-                      {isSettingsPage
-                        ? 'Configuration'
-                        : isHostPage
-                          ? 'Native host controls'
-                        : `${visibleCount} ${isTrashPage ? 'item' : 'image'}${visibleCount !== 1 ? 's' : ''}`}
-                    </p>
+                    <h1 className="text-sm font-semibold text-base-content truncate">{pageTitle}</h1>
+                    <p className="text-xs text-base-content/60 truncate">{pageSubtitle}</p>
                   </div>
                 </>
               )}
@@ -117,7 +130,7 @@ export default function GalleryNavbar({
               {!isSettingsPage && !isHostPage && (
                 <button
                   onClick={reload}
-                  className="p-1.5 rounded-md hover:bg-base-content/10 transition-colors text-base-content/70 hover:text-base-content"
+                  className={iconButtonClass}
                   title="Refresh"
                 >
                   <RefreshCw className="w-4 h-4" />
@@ -127,10 +140,10 @@ export default function GalleryNavbar({
               {!isSettingsPage && !isHostPage && (
                 <button
                   onClick={toggleSelectionMode}
-                  className={`p-1.5 rounded-md transition-colors flex items-center gap-1.5 text-sm ${
+                  className={`border transition-colors flex items-center gap-1.5 text-sm px-2 py-1.5 rounded-md ${
                     selectionMode
-                      ? 'bg-primary-500/20 text-primary-400'
-                      : 'hover:bg-base-content/10 text-base-content/70 hover:text-base-content'
+                      ? 'border-primary/20 bg-primary/12 text-primary'
+                      : 'border-transparent hover:bg-base-content/10 text-base-content/70 hover:text-base-content'
                   }`}
                   title={selectionMode ? 'Exit Selection Mode' : 'Enter Selection Mode'}
                 >
@@ -138,10 +151,10 @@ export default function GalleryNavbar({
                 </button>
               )}
 
-              {!isTrashPage && !isSettingsPage && (
+              {!isTrashPage && (
                 <button
                   onClick={() => navigate('/collections')}
-                  className="p-1.5 rounded-md hover:bg-base-content/10 transition-colors text-base-content/70 hover:text-base-content relative"
+                  className={`${iconButtonClass} relative`}
                   title="Collections"
                 >
                   <FolderOpen className="w-4 h-4" />
@@ -153,30 +166,26 @@ export default function GalleryNavbar({
                 </button>
               )}
 
-              {!isSettingsPage && (
-                <button
-                  onClick={() => navigate('/host')}
-                  className={`p-1.5 rounded-md transition-colors ${isHostPage ? 'bg-primary-500/20 text-primary-400' : 'hover:bg-base-content/10 text-base-content/70 hover:text-base-content'}`}
-                  title="Native Host"
-                >
-                  <Cable className="w-4 h-4" />
-                </button>
-              )}
+              <button
+                onClick={() => navigate('/host')}
+                className={isHostPage ? activeIconButtonClass : iconButtonClass}
+                title="Native Host"
+              >
+                <Cable className="w-4 h-4" />
+              </button>
 
-              {!isSettingsPage && (
-                <button
-                  onClick={() => navigate('/settings')}
-                  className="p-1.5 rounded-md hover:bg-base-content/10 transition-colors text-base-content/70 hover:text-base-content"
-                  title="Settings"
-                >
-                  <Settings className="w-4 h-4" />
-                </button>
-              )}
+              <button
+                onClick={() => navigate('/settings')}
+                className={isSettingsPage ? activeIconButtonClass : iconButtonClass}
+                title="Settings"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
 
-              {(isTrashPage || isSettingsPage) ? (
+              {(isTrashPage || isSettingsPage || isHostPage) ? (
                 <button
                   onClick={() => navigate('/gallery')}
-                  className="p-1.5 rounded-md hover:bg-base-content/10 transition-colors text-base-content/70 hover:text-base-content"
+                  className={iconButtonClass}
                   title="Gallery"
                 >
                   <Image className="w-4 h-4" />
@@ -184,12 +193,12 @@ export default function GalleryNavbar({
               ) : (
                 <button
                   onClick={() => navigate('/trash')}
-                  className="p-1.5 rounded-md hover:bg-base-content/10 transition-colors text-base-content/70 hover:text-base-content relative"
+                  className={`${isTrashPage ? activeIconButtonClass : iconButtonClass} relative`}
                   title="Trash"
                 >
                   <Trash2 className="w-4 h-4" />
                   {!trashLoading && trashedImages.length > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 bg-error text-error-content text-[10px] font-medium rounded-full min-w-[14px] h-3.5 flex items-center justify-center px-1">
+                    <span className="absolute -top-0.5 -right-0.5 bg-error text-[10px] font-medium rounded-full min-w-[14px] h-3.5 flex items-center justify-center px-1">
                       {trashedImages.length}
                     </span>
                   )}
@@ -199,7 +208,7 @@ export default function GalleryNavbar({
               {isTrashPage && typeof onEmptyTrash === 'function' && images.length > 0 && (
                 <button
                   onClick={onEmptyTrash}
-                  className="px-2.5 py-1.5 rounded-md bg-error hover:brightness-95 text-error-content text-sm font-medium transition-colors"
+                  className="px-2.5 py-1.5 rounded-md bg-error hover:brightness-95 text-sm font-medium transition-colors"
                   title="Empty Trash"
                 >
                   <span className="hidden sm:inline">Empty</span>
@@ -207,12 +216,12 @@ export default function GalleryNavbar({
                 </button>
               )}
 
-              {!isTrashPage && !isSettingsPage && <div className="w-px h-4 bg-base-content/20 mx-1"></div>}
+              {!isTrashPage && !isSettingsPage && !isHostPage && <div className="w-px h-4 bg-base-content/20 mx-1"></div>}
 
-              {!isTrashPage && !isSettingsPage && (
+              {!isTrashPage && !isSettingsPage && !isHostPage && (
                 <button
                   onClick={openUploadModal}
-                  className="px-2.5 py-1.5 rounded-md bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
+                  className="px-2.5 py-1.5 rounded-md bg-primary hover:brightness-95 text-sm font-medium transition-colors flex items-center gap-1.5"
                 >
                   <Upload className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Upload</span>
