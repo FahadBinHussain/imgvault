@@ -13,6 +13,10 @@ function App() {
   const [downloading, setDownloading] = useState(false);
   const [hideWindow, setHideWindow] = useState(true);
   const [reloadingPath, setReloadingPath] = useState(false);
+  const [cookieStatus, setCookieStatus] = useState({
+    available: false,
+    message: 'Checking cookies.txt...',
+  });
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -23,6 +27,7 @@ function App() {
       }
 
       await checkRegistrationStatus();
+      await refreshCookieStatus();
     };
 
     initializeApp();
@@ -166,6 +171,21 @@ function App() {
     }
   };
 
+  const refreshCookieStatus = async () => {
+    try {
+      const message = await invoke('check_cookies');
+      setCookieStatus({
+        available: true,
+        message,
+      });
+    } catch (error) {
+      setCookieStatus({
+        available: false,
+        message: String(error),
+      });
+    }
+  };
+
   return (
     <div style={styles.container}>
       <div style={styles.card}>
@@ -279,6 +299,21 @@ function App() {
             {/* Test Download Section */}
             <div style={styles.testSection}>
               <label style={styles.label}>Test Download (yt-dlp)</label>
+
+              <div style={{
+                ...styles.cookieStatus,
+                borderColor: cookieStatus.available ? '#10b981' : '#f59e0b',
+                backgroundColor: cookieStatus.available ? '#d1fae5' : '#fef3c7',
+                color: cookieStatus.available ? '#065f46' : '#92400e'
+              }}>
+                <div style={styles.cookieStatusHeader}>
+                  <span>Cookie Status</span>
+                  <button onClick={refreshCookieStatus} style={styles.cookieRefreshButton}>
+                    Refresh
+                  </button>
+                </div>
+                <div style={{ marginTop: '6px', wordBreak: 'break-all' }}>{cookieStatus.message}</div>
+              </div>
               
               {/* Hide Window Checkbox */}
               <div style={{ marginBottom: '10px' }}>
@@ -480,6 +515,28 @@ const styles = {
     backgroundColor: '#f9fafb',
     borderRadius: '8px',
     border: '1px solid #e5e7eb',
+  },
+  cookieStatus: {
+    marginBottom: '12px',
+    padding: '12px',
+    borderRadius: '8px',
+    border: '1px solid',
+    fontSize: '13px',
+  },
+  cookieStatusHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '12px',
+    fontWeight: '600',
+  },
+  cookieRefreshButton: {
+    padding: '6px 10px',
+    fontSize: '12px',
+    backgroundColor: 'transparent',
+    border: '1px solid currentColor',
+    borderRadius: '6px',
+    cursor: 'pointer',
   },
   downloadButton: {
     padding: '12px 24px',

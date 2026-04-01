@@ -920,6 +920,7 @@ class ImgVaultServiceWorker {
       });
       
       const downloadFolder = settings.downloadFolder || 'C:\\Users\\Admin\\Videos';
+      const cookies = await this.getYouTubeCookiesForYtDlp();
       
       // Generate output path with timestamp
       const timestamp = Date.now();
@@ -927,6 +928,7 @@ class ImgVaultServiceWorker {
       
       console.log(`📁 [NATIVE] Download folder: ${downloadFolder}`);
       console.log(`📝 [NATIVE] Output path template: ${outputPath}`);
+      console.log(`🍪 [NATIVE] Prepared ${cookies.length} cookies for native download`);
       console.log(`🔌 [NATIVE] Attempting to connect to native host: com.imgvault.nativehost`);
       
       // Connect to native messaging host
@@ -986,9 +988,15 @@ class ImgVaultServiceWorker {
           port.postMessage({
             action: 'download',
             url: url,
-            output_path: outputPath
+            output_path: outputPath,
+            cookies_data: cookies,
           });
-          console.log(`✉️ [NATIVE] Message sent to native host:`, { action: 'download', url, output_path: outputPath });
+          console.log(`✉️ [NATIVE] Message sent to native host:`, {
+            action: 'download',
+            url,
+            output_path: outputPath,
+            cookies_count: cookies.length,
+          });
         } catch (sendError) {
           console.error(`❌ [NATIVE] Failed to send message:`, sendError);
           clearTimeout(timeout);
@@ -1057,6 +1065,35 @@ class ImgVaultServiceWorker {
       console.error('[NATIVE] Failed to send host command:', error);
       throw error;
     }
+  }
+
+  async getYouTubeCookiesForYtDlp() {
+    const [youtubeCookies, googleCookies] = await Promise.all([
+      chrome.cookies.getAll({ domain: '.youtube.com' }),
+      chrome.cookies.getAll({ domain: '.google.com' }),
+    ]);
+
+    const allCookies = [...youtubeCookies, ...googleCookies];
+
+    return Array.from(
+      new Map(
+        allCookies.map((cookie) => [
+          `${cookie.domain}|${cookie.path}|${cookie.name}|${cookie.storeId ?? ''}`,
+          {
+            domain: cookie.domain || '',
+            host_only: !(cookie.domain || '').startsWith('.'),
+            path: cookie.path || '/',
+            secure: !!cookie.secure,
+            expiration_date:
+              typeof cookie.expirationDate === 'number'
+                ? Math.floor(cookie.expirationDate)
+                : 0,
+            name: cookie.name || '',
+            value: cookie.value || '',
+          },
+        ])
+      ).values()
+    );
   }
 
   /**

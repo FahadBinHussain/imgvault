@@ -3,6 +3,27 @@ import { useNavigate } from 'react-router-dom';
 import { Cable, RotateCw, Download, CheckCircle2, AlertCircle, Activity } from 'lucide-react';
 import GalleryNavbar from '../components/GalleryNavbar';
 
+function toNetscapeCookieLine(cookie) {
+  const domain = cookie.domain || '';
+  const includeSubdomains = domain.startsWith('.') ? 'TRUE' : 'FALSE';
+  const path = cookie.path || '/';
+  const secure = cookie.secure ? 'TRUE' : 'FALSE';
+  const expiration =
+    typeof cookie.expirationDate === 'number'
+      ? Math.floor(cookie.expirationDate).toString()
+      : '0';
+
+  return [
+    domain,
+    includeSubdomains,
+    path,
+    secure,
+    expiration,
+    cookie.name || '',
+    cookie.value || '',
+  ].join('\t');
+}
+
 function HostLog({ entry }) {
   const colorClass =
     entry.type === 'error'
@@ -31,6 +52,8 @@ export default function HostPage() {
     hostMessage: 'Checking native host...',
     ytDlpAvailable: false,
     ytDlpMessage: 'Checking yt-dlp...',
+    cookiesAvailable: false,
+    cookiesMessage: 'Checking cookies.txt...',
   });
 
   const addLog = (message, type = 'info') => {
@@ -91,6 +114,7 @@ export default function HostPage() {
       checking: true,
       hostMessage: 'Checking native host...',
       ytDlpMessage: 'Checking yt-dlp...',
+      cookiesMessage: 'Checking cookies.txt...',
     }));
 
     try {
@@ -110,37 +134,48 @@ export default function HostPage() {
         hostMessage: pingResponse.data?.message || 'Native host reachable',
         ytDlpAvailable: false,
         ytDlpMessage: 'Checking yt-dlp...',
+        cookiesAvailable: false,
+        cookiesMessage: 'Checking cookies.txt...',
       };
 
       try {
-        const ytDlpResponse = await chrome.runtime.sendMessage({
-          action: 'nativeHostCommand',
-          command: 'check_yt_dlp',
-          data: {},
-        });
+        const [ytDlpResponse, cookiesResponse] = await Promise.all([
+          chrome.runtime.sendMessage({
+            action: 'nativeHostCommand',
+            command: 'check_yt_dlp',
+            data: {},
+          }),
+          chrome.runtime.sendMessage({
+            action: 'nativeHostCommand',
+            command: 'check_cookies',
+            data: {},
+          }),
+        ]);
 
-        if (ytDlpResponse?.success) {
-          setHostStatus({
-            ...nextStatus,
-            ytDlpAvailable: true,
-            ytDlpMessage: ytDlpResponse.data?.message || 'yt-dlp available',
-          });
-          addLog(ytDlpResponse.data?.message || 'yt-dlp available', 'success');
-        } else {
-          setHostStatus({
-            ...nextStatus,
-            ytDlpAvailable: false,
-            ytDlpMessage: ytDlpResponse?.error || 'yt-dlp not available',
-          });
-          addLog(ytDlpResponse?.error || 'yt-dlp not available', 'error');
-        }
+        const mergedStatus = {
+          ...nextStatus,
+          ytDlpAvailable: !!ytDlpResponse?.success,
+          ytDlpMessage: ytDlpResponse?.success
+            ? ytDlpResponse.data?.message || 'yt-dlp available'
+            : ytDlpResponse?.error || 'yt-dlp not available',
+          cookiesAvailable: !!cookiesResponse?.success,
+          cookiesMessage: cookiesResponse?.success
+            ? cookiesResponse.data?.message || 'cookies.txt found'
+            : cookiesResponse?.error || 'cookies.txt not found',
+        };
+
+        setHostStatus(mergedStatus);
+        addLog(mergedStatus.ytDlpMessage, ytDlpResponse?.success ? 'success' : 'error');
+        addLog(mergedStatus.cookiesMessage, cookiesResponse?.success ? 'success' : 'error');
       } catch (error) {
         setHostStatus({
           ...nextStatus,
           ytDlpAvailable: false,
           ytDlpMessage: error.message || 'yt-dlp check failed',
+          cookiesAvailable: false,
+          cookiesMessage: error.message || 'cookies.txt check failed',
         });
-        addLog(error.message || 'yt-dlp check failed', 'error');
+        addLog(error.message || 'Host status check failed', 'error');
       }
     } catch (error) {
       setHostStatus({
@@ -149,6 +184,8 @@ export default function HostPage() {
         hostMessage: error.message || 'Native host unreachable',
         ytDlpAvailable: false,
         ytDlpMessage: 'yt-dlp not checked',
+        cookiesAvailable: false,
+        cookiesMessage: 'cookies.txt not checked',
       });
       addLog(error.message || 'Native host unreachable', 'error');
     }
@@ -184,6 +221,60 @@ export default function HostPage() {
       addLog(error?.error || error?.message || 'Download failed', 'error');
       addRawLogBlock('[yt-dlp stderr] ', error?.stderr, 'error');
       addRawLogBlock('[yt-dlp stdout] ', error?.stdout, 'info');
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const handleExportYoutubeCookies = async () => {
+    setBusyAction('export_cookies');
+    addLog('Collecting YouTube cookies from Chrome...');
+
+    try {
+      const [youtubeCookies, googleCookies] = await Promise.all([
+        chrome.cookies.getAll({ domain: '.youtube.com' }),
+        chrome.cookies.getAll({ domain: '.google.com' }),
+      ]);
+
+      const allCookies = [...youtubeCookies, ...googleCookies];
+
+      if (allCookies.length === 0) {
+        throw new Error('No YouTube/Google cookies found in Chrome.');
+      }
+
+      const uniqueCookies = Array.from(
+        new Map(
+          allCookies.map((cookie) => [
+            `${cookie.domain}|${cookie.path}|${cookie.name}|${cookie.storeId ?? ''}`,
+            cookie,
+          ])
+        ).values()
+      );
+
+      const contents = [
+        '# Netscape HTTP Cookie File',
+        '# Exported by ImgVault',
+        ...uniqueCookies.map(toNetscapeCookieLine),
+        '',
+      ].join('\n');
+
+      const blob = new Blob([contents], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+
+      try {
+        const downloadId = await chrome.downloads.download({
+          url,
+          filename: 'cookies.txt',
+          saveAs: true,
+          conflictAction: 'overwrite',
+        });
+
+        addLog(`cookies.txt exported successfully (download ${downloadId})`, 'success');
+      } finally {
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+      }
+    } catch (error) {
+      addLog(error.message || 'Failed to export YouTube cookies.', 'error');
     } finally {
       setBusyAction('');
     }
@@ -257,6 +348,11 @@ export default function HostPage() {
                 <div className="font-medium">yt-dlp</div>
                 <div className="mt-1 break-all">{hostStatus.ytDlpMessage}</div>
               </div>
+
+              <div className={`rounded-lg border px-3 py-2 text-sm ${hostStatus.cookiesAvailable ? 'border-green-500/20 bg-green-500/10 text-green-300' : 'border-amber-500/20 bg-amber-500/10 text-amber-300'}`}>
+                <div className="font-medium">cookies.txt</div>
+                <div className="mt-1 break-all">{hostStatus.cookiesMessage}</div>
+              </div>
             </div>
 
             <div>
@@ -276,6 +372,20 @@ export default function HostPage() {
                 <div>
                   <div className="font-medium">Reload PATH</div>
                   <div className="text-sm text-base-content/65">Refresh environment variables inside the host process.</div>
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={handleExportYoutubeCookies}
+              disabled={busyAction === 'export_cookies'}
+              className="w-full rounded-xl bg-base-200 hover:bg-base-300 border border-base-content/15 px-4 py-3 text-left transition-colors disabled:opacity-60"
+            >
+              <div className="flex items-center gap-3">
+                <Download className={`w-5 h-5 ${busyAction === 'export_cookies' ? 'animate-pulse' : ''}`} />
+                <div>
+                  <div className="font-medium">Export YouTube Cookies</div>
+                  <div className="text-sm text-base-content/65">Download a fresh `cookies.txt` from the current Chrome profile.</div>
                 </div>
               </div>
             </button>
@@ -322,24 +432,24 @@ export default function HostPage() {
 
             <div className="rounded-xl border border-base-content/10 bg-base-200/40 p-3">
               <div className="space-y-3 max-h-[min(56vh,520px)] overflow-auto pr-1">
-              {logs.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-base-content/20 px-4 py-8 text-center text-sm text-base-content/60">
-                  No host commands sent yet.
-                </div>
-              ) : (
-                logs.map((entry, index) => <HostLog key={`${entry.timestamp}-${index}`} entry={entry} />)
-              )}
+                {logs.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-base-content/20 px-4 py-8 text-center text-sm text-base-content/60">
+                    No host commands sent yet.
+                  </div>
+                ) : (
+                  logs.map((entry, index) => <HostLog key={`${entry.timestamp}-${index}`} entry={entry} />)
+                )}
               </div>
             </div>
 
             <div className="mt-5 grid gap-3 text-sm">
               <div className="flex items-start gap-2 text-base-content/70">
                 <CheckCircle2 className="w-4 h-4 mt-0.5 text-green-500" />
-                <span>`Download with Host` uses the same native messaging path as the extension’s video downloads.</span>
+                <span>`Download with Host` uses the same native messaging path as the extension's video downloads.</span>
               </div>
               <div className="flex items-start gap-2 text-base-content/70">
                 <AlertCircle className="w-4 h-4 mt-0.5 text-amber-500" />
-                <span>If commands fail, make sure the native host is registered and reachable.</span>
+                <span>If YouTube returns 403 on this network, place `cookies.txt` beside the native host exe and refresh this page.</span>
               </div>
             </div>
           </div>

@@ -10,7 +10,9 @@
     "activeTab",
     "storage",
     "scripting",
-    "nativeMessaging"
+    "nativeMessaging",
+    "cookies",
+    "downloads"
   ],
   
   "host_permissions": [
