@@ -459,6 +459,22 @@ export default function GalleryPage() {
       
       // Extract filename from path
       const fileName = pendingDownloadFile.split('\\').pop();
+      const savedHandle = await getDirectoryHandle();
+      if (savedHandle) {
+        try {
+          const fileHandle = await savedHandle.getFileHandle(fileName);
+          const file = await fileHandle.getFile();
+          setShowFolderPrompt(false);
+          setPendingDownloadFile(null);
+          await processMediaFile(file, 'native-download://upload', 'Downloaded Video');
+          setIsLocalUpload(true);
+          setShowUploadModal(true);
+          showToast(`Loaded "${fileName}" from saved folder.`, 'success', 3000);
+          return;
+        } catch (savedHandleErr) {
+          await clearDirectoryHandle();
+        }
+      }
       console.log('📁 [AUTO-LOAD] Extracted filename:', fileName);
       
       console.log('📂 [AUTO-LOAD] Showing directory picker...');
