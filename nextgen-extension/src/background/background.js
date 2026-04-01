@@ -10,8 +10,6 @@ import { URLNormalizer } from '../utils/url-normalizer.js';
 import { PixvidUploader, ImgbbUploader, FilemoonUploader, UDropUploader } from '../utils/uploaders.js';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig.js';
 
-const DEFAULT_VIDEO_FOLDER_TOKEN = '__IMGVAULT_DEFAULT_VIDEOS__';
-
 /**
  * @typedef {Object} ImageData
  * @property {string} imageUrl - The image URL or data URL
@@ -913,17 +911,10 @@ class ImgVaultServiceWorker {
   async handleNativeDownload(url) {
     try {
       console.log(`📥 [NATIVE] Sending download request for: ${url}`);
-      
-      // Get download folder from settings
-      const settings = await new Promise((resolve) => {
-        chrome.storage.sync.get(['downloadFolder'], (result) => {
-          resolve(result);
-        });
-      });
-      
-      const downloadFolder = settings.downloadFolder || DEFAULT_VIDEO_FOLDER_TOKEN;
+
+      const downloadFolder = await this.resolveNativeDownloadFolder();
       const cookies = await this.getYouTubeCookiesForYtDlp();
-      
+
       // Generate output path with timestamp
       const timestamp = Date.now();
       const outputPath = `${downloadFolder}\\yt-dlp-${timestamp}.%(ext)s`;
@@ -1009,6 +1000,30 @@ class ImgVaultServiceWorker {
       console.error(`❌ [NATIVE] Failed to communicate with native host:`, error);
       throw error;
     }
+  }
+
+  async resolveNativeDownloadFolder() {
+    const settings = await new Promise((resolve) => {
+      chrome.storage.sync.get(['downloadFolder'], (result) => {
+        resolve(result);
+      });
+    });
+
+    const configuredFolder = (settings.downloadFolder || '').trim();
+    if (configuredFolder) {
+      return configuredFolder;
+    }
+
+    const response = await this.handleNativeHostCommand('get_default_video_directory');
+    const detectedFolder = (response?.filePath || response?.message || '').trim();
+
+    if (!detectedFolder) {
+      throw new Error('Native host did not return a default Videos folder.');
+    }
+
+    await chrome.storage.sync.set({ downloadFolder: detectedFolder });
+    console.log(`📁 [NATIVE] Auto-detected default video folder: ${detectedFolder}`);
+    return detectedFolder;
   }
 
   async handleNativeHostCommand(command, data = {}) {

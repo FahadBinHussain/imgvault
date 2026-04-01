@@ -44,6 +44,44 @@ export default function SettingsPage() {
     setLocalDownloadFolder(downloadFolder || '');
   }, [pixvidApiKey, imgbbApiKey, filemoonApiKey, udropKey1, udropKey2, firebaseConfigRaw, defaultGallerySource, downloadFolder]);
 
+  useEffect(() => {
+    if ((downloadFolder || '').trim()) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const detectDefaultVideoFolder = async () => {
+      try {
+        const response = await chrome.runtime.sendMessage({
+          action: 'nativeHostCommand',
+          command: 'get_default_video_directory',
+          data: {},
+        });
+
+        if (!response?.success) {
+          return;
+        }
+
+        const detectedFolder = (response.data?.filePath || response.data?.message || '').trim();
+        if (!detectedFolder || cancelled) {
+          return;
+        }
+
+        setLocalDownloadFolder(detectedFolder);
+        setDownloadFolder(detectedFolder);
+      } catch (error) {
+        console.debug('Default video folder auto-detect skipped:', error);
+      }
+    };
+
+    detectDefaultVideoFolder();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [downloadFolder, setDownloadFolder]);
+
   // Auto-load settings from Firebase
   useEffect(() => {
     const loadFromFirebase = async () => {
@@ -278,15 +316,12 @@ export default function SettingsPage() {
                   <span className="text-lg">⚡</span>
                   Pixvid API Key (Required)
                 </label>
-                <input
+                <Input
                   type="password"
                   value={localPixvid}
                   onChange={(e) => setLocalPixvid(e.target.value)}
                   placeholder="Enter your Pixvid API key"
-                  className="w-full px-4 py-3 rounded-lg bg-base-100/70 border border-base-content/25 
-                           text-base-content placeholder-base-content/50 
-                           focus:outline-none focus:border-primary focus:ring-2 
-                           focus:ring-primary/20 transition-all shadow-lg"
+                  className="shadow-lg"
                 />
               </div>
               <div>
@@ -294,15 +329,12 @@ export default function SettingsPage() {
                   <span className="text-lg">🖼️</span>
                   ImgBB API Key (Optional)
                 </label>
-                <input
+                <Input
                   type="password"
                   value={localImgbb}
                   onChange={(e) => setLocalImgbb(e.target.value)}
                   placeholder="Enter your ImgBB API key"
-                  className="w-full px-4 py-3 rounded-lg bg-base-100/70 border border-base-content/25 
-                           text-base-content placeholder-base-content/50 
-                           focus:outline-none focus:border-primary focus:ring-2 
-                           focus:ring-primary/20 transition-all shadow-lg"
+                  className="shadow-lg"
                 />
               </div>
               <div>
@@ -310,15 +342,12 @@ export default function SettingsPage() {
                   <span className="text-lg">🎬</span>
                   Filemoon API Key (For Videos)
                 </label>
-                <input
+                <Input
                   type="password"
                   value={localFilemoon}
                   onChange={(e) => setLocalFilemoon(e.target.value)}
                   placeholder="Enter your Filemoon API key"
-                  className="w-full px-4 py-3 rounded-lg bg-base-100/70 border border-base-content/25 
-                           text-base-content placeholder-base-content/50 
-                           focus:outline-none focus:border-primary focus:ring-2 
-                           focus:ring-primary/20 transition-all shadow-lg"
+                  className="shadow-lg"
                 />
               </div>
               <div>
@@ -326,15 +355,12 @@ export default function SettingsPage() {
                   <span className="text-lg">📦</span>
                   UDrop API Key 1 (For Videos)
                 </label>
-                <input
+                <Input
                   type="password"
                   value={localUdropKey1}
                   onChange={(e) => setLocalUdropKey1(e.target.value)}
                   placeholder="Enter your UDrop API Key 1 (64 characters)"
-                  className="w-full px-4 py-3 rounded-lg bg-base-100/70 border border-base-content/25 
-                           text-base-content placeholder-base-content/50 
-                           focus:outline-none focus:border-primary focus:ring-2 
-                           focus:ring-primary/20 transition-all shadow-lg"
+                  className="shadow-lg"
                 />
               </div>
               <div>
@@ -342,15 +368,12 @@ export default function SettingsPage() {
                   <span className="text-lg">🔑</span>
                   UDrop API Key 2 (For Videos)
                 </label>
-                <input
+                <Input
                   type="password"
                   value={localUdropKey2}
                   onChange={(e) => setLocalUdropKey2(e.target.value)}
                   placeholder="Enter your UDrop API Key 2 (64 characters)"
-                  className="w-full px-4 py-3 rounded-lg bg-base-100/70 border border-base-content/25 
-                           text-base-content placeholder-base-content/50 
-                           focus:outline-none focus:border-primary focus:ring-2 
-                           focus:ring-primary/20 transition-all shadow-lg"
+                  className="shadow-lg"
                 />
               </div>
               <div>
@@ -358,15 +381,12 @@ export default function SettingsPage() {
                   <span className="text-lg">📂</span>
                   Video Download Folder (yt-dlp)
                 </label>
-                <input
+                <Input
                   type="text"
                   value={localDownloadFolder}
                   onChange={(e) => setLocalDownloadFolder(e.target.value)}
                   placeholder="Leave blank to use C:\\Users\\<YourName>\\Videos automatically"
-                  className="w-full px-4 py-3 rounded-lg bg-base-100/70 border border-base-content/25 
-                           text-base-content placeholder-base-content/50 font-mono text-sm
-                           focus:outline-none focus:border-primary focus:ring-2 
-                           focus:ring-primary/20 transition-all shadow-lg"
+                  className="font-mono text-sm shadow-lg"
                 />
                 <p className="mt-2 text-xs text-base-content/60 flex items-start gap-2">
                   <span className="text-base">💡</span>
@@ -395,7 +415,7 @@ export default function SettingsPage() {
                 <span className="text-lg">📝</span>
                 Firebase Config (Paste from Firebase Console)
               </label>
-              <textarea
+              <Textarea
                 value={localFirebase}
                 onChange={(e) => setLocalFirebase(e.target.value)}
                 placeholder={`{
@@ -407,10 +427,7 @@ export default function SettingsPage() {
   "appId": "your-app-id"
 }`}
                 rows={8}
-                className="w-full px-4 py-3 rounded-lg bg-base-100/70 border border-base-content/25 
-                         text-base-content placeholder-base-content/50 font-mono text-sm
-                         focus:outline-none focus:border-primary focus:ring-2 
-                         focus:ring-primary/20 transition-all resize-none shadow-lg"
+                className="font-mono text-sm shadow-lg"
               />
               <p className="mt-3 text-xs text-base-content/60 flex items-start gap-2">
                 <span className="text-base">💡</span>
@@ -450,14 +467,10 @@ export default function SettingsPage() {
 
           {/* Save Button */}
           <div className="pt-4">
-            <button
+            <Button
               onClick={handleSave}
-              className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-primary to-secondary 
-                       hover:from-primary/90 hover:to-secondary/90 text-primary-content font-semibold text-lg
-                       shadow-2xl hover:shadow-primary/30
-                       transform transition-all duration-300 ease-out
-                       hover:scale-105 active:scale-95
-                       flex items-center justify-center gap-3"
+              variant="primary"
+              className="w-full min-h-0 rounded-xl px-6 py-4 text-lg !text-base-content shadow-2xl shadow-primary/10 hover:shadow-primary/25 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-3"
             >
               {saved ? (
                 <>
@@ -470,7 +483,7 @@ export default function SettingsPage() {
                   <span>Save Settings</span>
                 </>
               )}
-            </button>
+            </Button>
           </div>
         </div>
 
