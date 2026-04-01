@@ -2445,24 +2445,14 @@ export default function GalleryPage() {
                       setShowDeleteConfirm(true);
                     }}
                     className="group relative px-6 py-2.5 rounded-xl overflow-hidden
-                             bg-gradient-to-r from-red-500 to-rose-600
-                             border border-red-400/30 
+                             bg-error text-error-content
+                             border border-error/30 
                              transform transition-all duration-300
-                             hover:scale-110 hover:shadow-2xl hover:shadow-red-500/50
+                             hover:scale-105 hover:shadow-xl
                              active:scale-95
                              disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                   >
-                    {/* Animated background glow */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-red-400 to-rose-500 opacity-0 
-                                  group-hover:opacity-100 blur-xl transition-opacity duration-300" />
-                    
-                    {/* Shimmer effect */}
-                    <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
-                                  bg-gradient-to-r from-transparent via-white/20 to-transparent 
-                                  transition-transform duration-700" />
-                    
-                    {/* Button content */}
-                    <div className="relative flex items-center gap-2 text-white font-semibold">
+                    <div className="relative flex items-center gap-2 font-semibold">
                       <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
                       <span>Delete</span>
                     </div>
@@ -2480,24 +2470,23 @@ export default function GalleryPage() {
             {/* Animated warning icon */}
             <div className="text-7xl animate-bounce">🗑️</div>
             
-            <h3 className="text-2xl font-bold bg-gradient-to-r from-yellow-400 to-orange-500 
-                         bg-clip-text text-transparent">
+            <h3 className="text-2xl font-bold text-warning">
               Move to Trash?
             </h3>
             
-            <p className="text-slate-300 text-lg leading-relaxed">
+            <p className="text-base-content/80 text-lg leading-relaxed">
               This will move the image to trash. The image will remain accessible on hosting providers.
               <br />
-              <span className="font-semibold text-yellow-400">You can restore it later from the trash.</span>
+              <span className="font-semibold text-warning">You can restore it later from the trash.</span>
             </p>
             
             <div className="flex gap-4 justify-center pt-4">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
                 disabled={isDeleting}
-                className="px-6 py-3 rounded-xl bg-white/10 border border-white/20
-                         text-white font-medium
-                         hover:bg-white/20 hover:scale-105
+                className="px-6 py-3 rounded-xl bg-base-200 border border-base-content/10
+                         text-base-content font-medium
+                         hover:bg-base-300 hover:scale-105
                          active:scale-95
                          transition-all duration-200
                          disabled:opacity-50 disabled:cursor-not-allowed"
@@ -2509,28 +2498,21 @@ export default function GalleryPage() {
                 onClick={handleDelete}
                 disabled={isDeleting}
                 className="group relative px-8 py-3 rounded-xl overflow-hidden
-                         bg-gradient-to-r from-orange-600 to-yellow-700
-                         border border-orange-400/50
+                         bg-warning text-warning-content
+                         border border-warning/40
                          transform transition-all duration-300
-                         hover:scale-105 hover:shadow-2xl hover:shadow-orange-500/50
+                         hover:scale-105 hover:shadow-xl
                          active:scale-95
                          disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
               >
                 {/* Animated pulse effect when deleting */}
                 {isDeleting && (
-                  <div className="absolute inset-0 bg-orange-400 animate-ping opacity-25" />
+                  <div className="absolute inset-0 bg-warning-content animate-ping opacity-10" />
                 )}
-                
-                {/* Shimmer effect */}
-                <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
-                              bg-gradient-to-r from-transparent via-white/20 to-transparent 
-                              transition-transform duration-700" />
-                
-                {/* Button content */}
-                <div className="relative flex items-center gap-2 text-white font-bold text-lg">
+                <div className="relative flex items-center gap-2 font-bold text-lg">
                   {isDeleting ? (
                     <>
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <div className="w-5 h-5 border-2 border-warning-content/30 border-t-warning-content rounded-full animate-spin" />
                       <span>Moving...</span>
                     </>
                   ) : (
@@ -2551,24 +2533,23 @@ export default function GalleryPage() {
             {/* Animated warning icon */}
             <div className="text-7xl animate-bounce">🗑️</div>
             
-            <h3 className="text-2xl font-bold bg-gradient-to-r from-yellow-400 to-orange-500 
-                         bg-clip-text text-transparent">
+            <h3 className="text-2xl font-bold text-warning">
               Move {selectedImages.size} Image{selectedImages.size > 1 ? 's' : ''} to Trash?
             </h3>
             
-            <p className="text-slate-300 text-lg leading-relaxed">
+            <p className="text-base-content/80 text-lg leading-relaxed">
               This will move {selectedImages.size} image{selectedImages.size > 1 ? 's' : ''} to trash. The images will remain accessible on hosting providers.
               <br />
-              <span className="font-semibold text-yellow-400">You can restore them later from the trash.</span>
+              <span className="font-semibold text-warning">You can restore them later from the trash.</span>
             </p>
             
             <div className="flex gap-4 justify-center pt-4">
               <button
                 onClick={() => setShowBulkDeleteConfirm(false)}
                 disabled={isDeleting}
-                className="px-6 py-3 rounded-xl bg-white/10 border border-white/20
-                         text-white font-medium
-                         hover:bg-white/20 hover:scale-105
+                className="px-6 py-3 rounded-xl bg-base-200 border border-base-content/10
+                         text-base-content font-medium
+                         hover:bg-base-300 hover:scale-105
                          active:scale-95
                          transition-all duration-200
                          disabled:opacity-50 disabled:cursor-not-allowed"
@@ -2580,28 +2561,21 @@ export default function GalleryPage() {
                 onClick={handleBulkDelete}
                 disabled={isDeleting}
                 className="group relative px-8 py-3 rounded-xl overflow-hidden
-                         bg-gradient-to-r from-orange-600 to-yellow-700
-                         border border-orange-400/50
+                         bg-warning text-warning-content
+                         border border-warning/40
                          transform transition-all duration-300
-                         hover:scale-105 hover:shadow-2xl hover:shadow-orange-500/50
+                         hover:scale-105 hover:shadow-xl
                          active:scale-95
                          disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
               >
                 {/* Animated pulse effect when deleting */}
                 {isDeleting && (
-                  <div className="absolute inset-0 bg-orange-400 animate-ping opacity-25" />
+                  <div className="absolute inset-0 bg-warning-content animate-ping opacity-10" />
                 )}
-                
-                {/* Shimmer effect */}
-                <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
-                              bg-gradient-to-r from-transparent via-white/20 to-transparent 
-                              transition-transform duration-700" />
-                
-                {/* Button content */}
-                <div className="relative flex items-center gap-2 text-white font-bold text-lg">
+                <div className="relative flex items-center gap-2 font-bold text-lg">
                   {isDeleting ? (
                     <>
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <div className="w-5 h-5 border-2 border-warning-content/30 border-t-warning-content rounded-full animate-spin" />
                       <span>Moving...</span>
                     </>
                   ) : (
@@ -2622,7 +2596,7 @@ export default function GalleryPage() {
             onClick={openUploadModal}
             className="fixed bottom-8 right-8 z-50 w-16 h-16 rounded-full 
                      bg-gradient-to-r from-primary-500 to-secondary-500
-                     text-white shadow-2xl hover:shadow-[0_8px_30px_rgb(99,102,241,0.4)]
+                     text-primary-content shadow-2xl hover:shadow-[0_8px_30px_rgb(99,102,241,0.4)]
                      transform transition-all duration-300 ease-out
                      hover:scale-110 active:scale-95
                      flex items-center justify-center
@@ -3329,14 +3303,14 @@ export default function GalleryPage() {
                       if (shouldShowWarning) {
                         const siteName = getSiteDisplayName(uploadPageUrl, sitesConfig.warningSites);
                         return (
-                          <div className="mt-3 p-3 rounded-lg bg-red-500/20 border-2 border-red-500/50 shadow-lg shadow-red-500/30 animate-pulse-slow">
+                          <div className="mt-3 p-3 rounded-lg bg-warning/10 border-2 border-warning/30 shadow-lg animate-pulse-slow">
                             <div className="flex items-start gap-2">
                               <div className="flex-shrink-0 text-red-400 text-lg mt-0.5 animate-bounce">⚠️</div>
                               <div className="flex-1">
-                                <p className="text-red-100 font-bold text-sm mb-1">
+                                <p className="text-warning font-bold text-sm mb-1">
                                   🔥 Quality Warning
                                 </p>
-                                <p className="text-red-100/90 text-xs mb-2">
+                                <p className="text-base-content/80 text-xs mb-2">
                                   For best quality, download the image first from {siteName} instead of saving directly from the page. This ensures you get the highest quality version.
                                 </p>
                                 <input
@@ -3348,11 +3322,10 @@ export default function GalleryPage() {
                                 />
                                 <button
                                   onClick={() => document.getElementById('replaceUploadFile').click()}
-                                  className="mt-1 px-3 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-600 
-                                           border-2 border-red-400 text-white text-xs font-bold
+                                  className="mt-1 px-3 py-1.5 rounded-lg bg-warning hover:bg-warning/90 
+                                           border-2 border-warning/40 text-warning-content text-xs font-bold
                                            transition-all duration-200 hover:scale-105 active:scale-95
-                                           flex items-center gap-1.5 shadow-lg shadow-red-500/40
-                                           hover:shadow-xl hover:shadow-red-500/60"
+                                           flex items-center gap-1.5 shadow-lg hover:shadow-xl"
                                 >
                                   <Upload className="w-3.5 h-3.5" />
                                   Replace with Downloaded Image
@@ -3366,14 +3339,14 @@ export default function GalleryPage() {
                       if (shouldShowGoodQuality) {
                         const siteName = getSiteDisplayName(uploadPageUrl, sitesConfig.goodQualitySites);
                         return (
-                          <div className="mt-3 p-3 rounded-lg bg-green-500/20 border-2 border-green-500/50 shadow-lg shadow-green-500/30">
+                          <div className="mt-3 p-3 rounded-lg bg-success/10 border-2 border-success/30 shadow-lg">
                             <div className="flex items-start gap-2">
                               <div className="flex-shrink-0 text-green-400 text-lg mt-0.5">✓</div>
                               <div className="flex-1">
-                                <p className="text-green-100 font-bold text-sm mb-1">
+                                <p className="text-success font-bold text-sm mb-1">
                                   ✨ Best Quality
                                 </p>
-                                <p className="text-green-100/90 text-xs">
+                                <p className="text-base-content/80 text-xs">
                                   This image from {siteName} is already in the best available quality. You're all set!
                                 </p>
                               </div>
@@ -3388,7 +3361,7 @@ export default function GalleryPage() {
 
                   {/* tags */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <label className="block text-sm font-medium text-base-content/70 mb-2">
                       tags
                     </label>
                     <input
@@ -3396,8 +3369,8 @@ export default function GalleryPage() {
                       value={uploadTags}
                       onChange={(e) => setUploadTags(e.target.value)}
                       placeholder="nature, sunset, photography"
-                      className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
-                               text-white placeholder-slate-400 
+                      className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/10 
+                               text-base-content placeholder-base-content/40 
                                focus:outline-none focus:border-primary-500 focus:ring-2 
                                focus:ring-primary-500/20 transition-all"
                     />
@@ -3431,16 +3404,16 @@ export default function GalleryPage() {
                     );
                     
                     return (
-                      <details className="space-y-3 rounded-xl bg-slate-900/40 border border-slate-700 p-4" open={false}>
-                        <summary className="cursor-pointer list-none text-sm font-medium text-slate-300 mb-3">
+                      <details className="space-y-3 rounded-xl bg-base-200 border border-base-content/10 p-4" open={false}>
+                        <summary className="cursor-pointer list-none text-sm font-medium text-base-content/80 mb-3">
                           Raw Metadata Fields ({sortedFields.length})
                         </summary>
                         {sortedFields.map(([key, value]) => (
                           <div key={key}>
-                            <label className="block text-xs font-medium text-slate-400 mb-1">
+                            <label className="block text-xs font-medium text-base-content/60 mb-1">
                               {key}
                             </label>
-                            <div className="px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-600 text-white text-xs break-all font-mono">
+                            <div className="px-3 py-2 rounded-lg bg-base-100 border border-base-content/10 text-base-content text-xs break-all font-mono">
                               {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                             </div>
                           </div>
@@ -3452,7 +3425,7 @@ export default function GalleryPage() {
 
                 {/* Error Message */}
                 {uploadError && !duplicateData && (
-                  <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
+                  <div className="p-4 rounded-lg bg-error/10 border border-error/30 text-error text-sm">
                     {uploadError?.message || String(uploadError)}
                   </div>
                 )}
@@ -3473,22 +3446,22 @@ export default function GalleryPage() {
         
         {/* Folder Selection Prompt for Auto-Upload */}
         {showFolderPrompt && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-purple-500/50 rounded-2xl p-8 max-w-md w-full shadow-2xl">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-base-content/50 backdrop-blur-sm">
+            <div className="bg-base-100 border border-base-content/10 rounded-2xl p-8 max-w-md w-full shadow-2xl text-base-content">
               <div className="text-center space-y-6">
-                <div className="w-16 h-16 mx-auto bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
-                  <FolderOpen className="w-8 h-8 text-white" />
+                <div className="w-16 h-16 mx-auto bg-primary text-primary-content rounded-full flex items-center justify-center">
+                  <FolderOpen className="w-8 h-8" />
                 </div>
                 
                 <div>
-                  <h2 className="text-2xl font-bold text-white mb-2">
+                  <h2 className="text-2xl font-bold text-base-content mb-2">
                     📂 Select Download Folder
                   </h2>
-                  <p className="text-slate-300">
+                  <p className="text-base-content/70">
                     Your video has been downloaded! Please select the folder where it was saved to automatically load it.
                   </p>
                   {pendingDownloadFile && (
-                    <p className="mt-3 text-sm text-purple-300 font-mono bg-slate-900/50 p-2 rounded">
+                    <p className="mt-3 text-sm text-base-content/80 font-mono bg-base-200 p-2 rounded">
                       {pendingDownloadFile.split('\\').pop()}
                     </p>
                   )}
@@ -3501,13 +3474,13 @@ export default function GalleryPage() {
                       setPendingDownloadFile(null);
                       showToast('❌ Auto-upload cancelled', 'error', 2000);
                     }}
-                    className="flex-1 px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-medium transition-all"
+                    className="flex-1 px-6 py-3 bg-base-200 hover:bg-base-300 rounded-lg text-base-content font-medium transition-all"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleSelectDownloadFolder}
-                    className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-lg text-white font-medium transition-all flex items-center justify-center gap-2"
+                    className="flex-1 px-6 py-3 bg-primary hover:bg-primary/90 rounded-lg text-primary-content font-medium transition-all flex items-center justify-center gap-2"
                   >
                     <FolderOpen size={20} />
                     Select Folder
