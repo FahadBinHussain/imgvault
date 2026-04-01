@@ -189,7 +189,7 @@ export default function GalleryNavbar({
                 >
                   <Trash2 className="w-4 h-4" />
                   {!trashLoading && trashedImages.length > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 bg-red-500/90 text-white text-[10px] font-medium rounded-full min-w-[14px] h-3.5 flex items-center justify-center px-1">
+                    <span className="absolute -top-0.5 -right-0.5 bg-error text-error-content text-[10px] font-medium rounded-full min-w-[14px] h-3.5 flex items-center justify-center px-1">
                       {trashedImages.length}
                     </span>
                   )}
@@ -199,7 +199,7 @@ export default function GalleryNavbar({
               {isTrashPage && typeof onEmptyTrash === 'function' && images.length > 0 && (
                 <button
                   onClick={onEmptyTrash}
-                  className="px-2.5 py-1.5 rounded-md bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition-colors"
+                  className="px-2.5 py-1.5 rounded-md bg-error hover:brightness-95 text-error-content text-sm font-medium transition-colors"
                   title="Empty Trash"
                 >
                   <span className="hidden sm:inline">Empty</span>
@@ -266,7 +266,7 @@ export default function GalleryNavbar({
                   <button
                     onClick={() => setShowBulkDeleteConfirm(true)}
                     disabled={isDeleting}
-                    className="px-2 py-1 rounded text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors disabled:opacity-50"
+                    className="px-2 py-1 rounded text-xs bg-error/10 hover:bg-error/20 text-error transition-colors disabled:opacity-50"
                   >
                     Delete
                   </button>

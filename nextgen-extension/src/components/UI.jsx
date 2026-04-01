@@ -10,17 +10,17 @@ import { X } from 'lucide-react';
 /**
  * Button component
  */
-export const Button = ({ 
-  children, 
-  variant = 'primary', 
+export const Button = ({
+  children,
+  variant = 'primary',
   size = 'md',
   className,
-  ...props 
+  ...props
 }) => {
   const variants = {
-    primary: 'bg-primary-600 hover:bg-primary-700 text-white',
-    secondary: 'bg-secondary-500 hover:bg-secondary-600 text-white',
-    danger: 'bg-red-600 hover:bg-red-700 text-white',
+    primary: 'btn btn-primary border-0 text-primary-content',
+    secondary: 'btn btn-secondary border-0 text-secondary-content',
+    danger: 'btn btn-error border-0 text-error-content',
     glass: 'glass-button text-base-content',
     outline: 'border-2 border-base-content/30 hover:border-base-content/50 text-base-content bg-transparent'
   };
@@ -31,13 +31,15 @@ export const Button = ({
     lg: 'px-6 py-3 text-lg'
   };
 
+  const isDaisyButton = variant === 'primary' || variant === 'secondary' || variant === 'danger';
+
   return (
     <button
       className={clsx(
         'rounded-lg font-medium transition-all duration-200',
-        'focus:outline-none focus:ring-2 focus:ring-primary-400',
+        'focus:outline-none focus:ring-2 focus:ring-primary/40',
         variants[variant],
-        sizes[size],
+        isDaisyButton ? 'min-h-0 h-auto' : sizes[size],
         className
       )}
       {...props}
@@ -50,11 +52,11 @@ export const Button = ({
 /**
  * Input component
  */
-export const Input = ({ 
-  label, 
+export const Input = ({
+  label,
   error,
   className,
-  ...props 
+  ...props
 }) => {
   return (
     <div className="w-full">
@@ -68,15 +70,15 @@ export const Input = ({
           'w-full px-4 py-2 rounded-lg',
           'bg-base-100/70 border border-base-content/20',
           'text-base-content placeholder-base-content/50',
-          'focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent',
+          'focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-transparent',
           'transition-all duration-200',
-          error && 'border-red-400',
+          error && 'border-error text-error',
           className
         )}
         {...props}
       />
       {error && (
-        <p className="mt-1 text-sm text-red-400">{error}</p>
+        <p className="mt-1 text-sm text-error">{error}</p>
       )}
     </div>
   );
@@ -85,11 +87,11 @@ export const Input = ({
 /**
  * Textarea component
  */
-export const Textarea = ({ 
-  label, 
+export const Textarea = ({
+  label,
   error,
   className,
-  ...props 
+  ...props
 }) => {
   return (
     <div className="w-full">
@@ -103,15 +105,15 @@ export const Textarea = ({
           'w-full px-4 py-2 rounded-lg',
           'bg-base-100/70 border border-base-content/20',
           'text-base-content placeholder-base-content/50',
-          'focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent',
+          'focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-transparent',
           'transition-all duration-200 resize-none',
-          error && 'border-red-400',
+          error && 'border-error text-error',
           className
         )}
         {...props}
       />
       {error && (
-        <p className="mt-1 text-sm text-red-400">{error}</p>
+        <p className="mt-1 text-sm text-error">{error}</p>
       )}
     </div>
   );
@@ -137,11 +139,11 @@ export const Card = ({ children, className, ...props }) => {
 /**
  * IconButton component
  */
-export const IconButton = ({ 
-  icon: Icon, 
+export const IconButton = ({
+  icon: Icon,
   title,
   className,
-  ...props 
+  ...props
 }) => {
   return (
     <button
@@ -150,7 +152,7 @@ export const IconButton = ({
         'p-2 rounded-lg',
         'glass-button',
         'transition-all duration-200',
-        'focus:outline-none focus:ring-2 focus:ring-primary-400',
+        'focus:outline-none focus:ring-2 focus:ring-primary/40',
         className
       )}
       {...props}
@@ -166,9 +168,9 @@ export const IconButton = ({
 export const Badge = ({ children, variant = 'default', className }) => {
   const variants = {
     default: 'bg-base-300 text-base-content',
-    primary: 'bg-primary-500/30 text-primary-200',
-    success: 'bg-green-500/30 text-green-200',
-    error: 'bg-red-500/30 text-red-200'
+    primary: 'bg-primary/15 text-primary',
+    success: 'bg-success/15 text-success',
+    error: 'bg-error/15 text-error'
   };
 
   return (
@@ -214,14 +216,14 @@ export const Modal = ({ isOpen, onClose, title, children, className, fullscreen 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-base-content/40 backdrop-blur-sm"
         onClick={onClose}
       />
       <div
         className={clsx(
           'relative z-10 glass-card rounded-2xl p-6 w-full overflow-y-auto',
-          fullscreen 
-            ? 'max-w-7xl max-h-[95vh] h-full' 
+          fullscreen
+            ? 'max-w-7xl max-h-[95vh] h-full'
             : 'max-w-lg max-h-[90vh]',
           className
         )}
@@ -250,29 +252,25 @@ export const Modal = ({ isOpen, onClose, title, children, className, fullscreen 
 };
 
 /**
- * Toast component with enhanced styling
+ * Toast component
  */
 export const Toast = ({ message, type = 'info', onClose }) => {
   const types = {
     info: {
-      bg: 'bg-gradient-to-r from-blue-500 to-cyan-500',
-      shadow: 'shadow-blue-500/50',
-      glow: 'shadow-2xl shadow-blue-500/50'
+      bg: 'bg-info text-info-content',
+      glow: 'shadow-2xl shadow-base-content/10'
     },
     success: {
-      bg: 'bg-gradient-to-r from-green-500 to-emerald-500',
-      shadow: 'shadow-green-500/50',
-      glow: 'shadow-2xl shadow-green-500/50'
+      bg: 'bg-success text-success-content',
+      glow: 'shadow-2xl shadow-base-content/10'
     },
     error: {
-      bg: 'bg-gradient-to-r from-red-500 to-rose-500',
-      shadow: 'shadow-red-500/50',
-      glow: 'shadow-2xl shadow-red-500/50'
+      bg: 'bg-error text-error-content',
+      glow: 'shadow-2xl shadow-base-content/10'
     },
     warning: {
-      bg: 'bg-gradient-to-r from-yellow-500 to-orange-500',
-      shadow: 'shadow-yellow-500/50',
-      glow: 'shadow-2xl shadow-yellow-500/50'
+      bg: 'bg-warning text-warning-content',
+      glow: 'shadow-2xl shadow-base-content/10'
     }
   };
 
@@ -282,9 +280,9 @@ export const Toast = ({ message, type = 'info', onClose }) => {
     <div
       className={clsx(
         'fixed bottom-4 right-4 z-50',
-        'px-6 py-4 rounded-2xl text-white',
+        'px-6 py-4 rounded-2xl',
         'animate-slide-in-bottom',
-        'border border-white/20',
+        'border border-base-content/10',
         config.bg,
         config.glow,
         'backdrop-blur-xl',
@@ -297,9 +295,9 @@ export const Toast = ({ message, type = 'info', onClose }) => {
         {onClose && (
           <button
             onClick={onClose}
-            className="ml-2 text-white/80 hover:text-white transition-all hover:rotate-90 transform duration-200"
+            className="ml-2 opacity-80 hover:opacity-100 transition-all hover:rotate-90 transform duration-200"
           >
-            ✕
+            x
           </button>
         )}
       </div>
@@ -308,15 +306,15 @@ export const Toast = ({ message, type = 'info', onClose }) => {
 };
 
 /**
- * Close Button component with animation
+ * Close Button component
  */
 export const CloseButton = ({ onClick, className, ...props }) => {
   return (
     <button
       onClick={onClick}
       className={clsx(
-        'w-11 h-11 rounded-full bg-red-500/20 hover:bg-red-500/40',
-        'border border-red-500/50 hover:border-red-500',
+        'w-11 h-11 rounded-full bg-error/10 hover:bg-error/20',
+        'border border-error/30 hover:border-error/50',
         'flex items-center justify-center',
         'transition-all duration-300 hover:scale-110 hover:rotate-90',
         'group shadow-xl',
@@ -325,7 +323,7 @@ export const CloseButton = ({ onClick, className, ...props }) => {
       title="Close"
       {...props}
     >
-      <span className="text-red-300 group-hover:text-red-100 text-2xl font-bold">✕</span>
+      <span className="text-error group-hover:opacity-80 text-2xl font-bold">x</span>
     </button>
   );
 };
