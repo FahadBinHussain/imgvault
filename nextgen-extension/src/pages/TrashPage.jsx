@@ -692,7 +692,7 @@ export default function TrashPage() {
                   </h2>
 
                   {/* Tab Navigation */}
-                  <div className="flex gap-2 mb-4 border-b border-white/10 overflow-x-auto whitespace-nowrap">
+                  <div className="flex gap-2 mb-4 border-b border-base-content/10 overflow-x-auto whitespace-nowrap">
                     <button
                       onClick={() => handleTabSwitch('noobs')}
                       className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${
@@ -723,15 +723,15 @@ export default function TrashPage() {
                       onClick={() => handleTabSwitch('nerds')}
                       className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${
                         activeTab === 'nerds'
-                          ? 'text-green-300 border-b-2 border-green-300'
-                          : 'text-slate-400 hover:text-slate-300'
+                          ? 'text-success border-b-2 border-success'
+                          : 'text-base-content/60 hover:text-base-content/85'
                       }`}
                     >
                       <span>For Nerds 🤓</span>
                       <span className={`text-xs px-2 py-0.5 rounded-full ${
                         activeTab === 'nerds' 
-                          ? 'bg-green-500/20 text-green-200' 
-                          : 'bg-slate-500/20 text-slate-400'
+                          ? 'bg-success/20 text-success' 
+                          : 'bg-base-300/70 text-base-content/60'
                       }`}>
                         {fullImageDetails ? (() => {
                           // Count base technical fields (excluding Document ID)
@@ -772,15 +772,15 @@ export default function TrashPage() {
                         return (
                       <div className="space-y-3">
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Title</div>
-                          <div className="text-white font-medium">
+                          <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Title</div>
+                          <div className="text-base-content font-medium">
                             {selectedImage.pageTitle || 'Untitled'}
                           </div>
                         </div>
 
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Deleted At</div>
-                          <div className="text-white">
+                          <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Deleted At</div>
+                          <div className="text-base-content">
                             {selectedImage.deletedAt
                               ? new Date(selectedImage.deletedAt).toLocaleString('en-US', {
                                   weekday: 'short',
@@ -795,8 +795,8 @@ export default function TrashPage() {
                         </div>
 
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Added To Vault</div>
-                          <div className="text-white">
+                          <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Added To Vault</div>
+                          <div className="text-base-content">
                             {selectedImage.internalAddedTimestamp
                               ? new Date(selectedImage.internalAddedTimestamp).toLocaleString('en-US', {
                                   weekday: 'short',
@@ -822,13 +822,13 @@ export default function TrashPage() {
                         {/* Pixvid URL - Only show for images (not videos) */}
                         {selectedImage.pixvidUrl && !selectedImage.filemoonUrl && !selectedImage.udropUrl && (
                           <div>
-                            <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Pixvid URL</div>
-                            <div className="bg-white/5 rounded p-2">
+                            <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Pixvid URL</div>
+                            <div className="bg-base-200 rounded p-2">
                               <a
                                 href={selectedImage.pixvidUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-blue-300 hover:text-blue-200 break-all text-sm"
+                                className="text-info hover:opacity-80 break-all text-sm"
                               >
                                 {selectedImage.pixvidUrl}
                               </a>
@@ -838,13 +838,13 @@ export default function TrashPage() {
 
                         {selectedImage.imgbbUrl && (
                           <div>
-                            <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} ImgBB URL</div>
-                            <div className="bg-white/5 rounded p-2">
+                            <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} ImgBB URL</div>
+                            <div className="bg-base-200 rounded p-2">
                               <a
                                 href={selectedImage.imgbbUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-green-300 hover:text-green-200 break-all text-sm"
+                                className="text-success hover:opacity-80 break-all text-sm"
                               >
                                 {selectedImage.imgbbUrl}
                               </a>
@@ -854,13 +854,13 @@ export default function TrashPage() {
 
                         {selectedImage.filemoonUrl && (
                           <div>
-                            <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Filemoon URL</div>
-                            <div className="bg-white/5 rounded p-2">
+                            <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Filemoon URL</div>
+                            <div className="bg-base-200 rounded p-2">
                               <a
                                 href={selectedImage.filemoonUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-purple-300 hover:text-purple-200 break-all text-sm"
+                                className="text-primary hover:opacity-80 break-all text-sm"
                               >
                                 {selectedImage.filemoonUrl}
                               </a>
@@ -870,13 +870,13 @@ export default function TrashPage() {
 
                         {selectedImage.udropUrl && (
                           <div>
-                            <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} UDrop URL</div>
-                            <div className="bg-white/5 rounded p-2">
+                            <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} UDrop URL</div>
+                            <div className="bg-base-200 rounded p-2">
                               <a
                                 href={selectedImage.udropUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-orange-300 hover:text-orange-200 break-all text-sm"
+                                className="text-secondary hover:opacity-80 break-all text-sm"
                               >
                                 {selectedImage.udropUrl}
                               </a>
@@ -885,13 +885,13 @@ export default function TrashPage() {
                         )}
 
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Source URL</div>
-                          <div className="bg-white/5 rounded p-2">
+                          <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Source URL</div>
+                          <div className="bg-base-200 rounded p-2">
                             <a
                               href={selectedImage.sourceImageUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-red-300 hover:text-red-200 break-all text-sm"
+                              className="text-error hover:opacity-80 break-all text-sm"
                             >
                               {selectedImage.sourceImageUrl || 'N/A'}
                             </a>
@@ -899,13 +899,13 @@ export default function TrashPage() {
                         </div>
 
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Page URL</div>
-                          <div className="bg-white/5 rounded p-2">
+                          <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Page URL</div>
+                          <div className="bg-base-200 rounded p-2">
                             <a
                               href={selectedImage.sourcePageUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-red-300 hover:text-red-200 break-all text-sm"
+                              className="text-error hover:opacity-80 break-all text-sm"
                             >
                               {selectedImage.sourcePageUrl || 'N/A'}
                             </a>
@@ -913,27 +913,27 @@ export default function TrashPage() {
                         </div>
 
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Description</div>
-                          <div className="text-slate-300 text-sm">
+                          <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Description</div>
+                          <div className="text-base-content/80 text-sm">
                             {selectedImage.description || 'No description'}
                           </div>
                         </div>
 
                         <div>
-                          <div className="text-xs font-semibold text-slate-400 mb-1">{fieldNo()} Tags</div>
+                          <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Tags</div>
                           {selectedImage.tags && selectedImage.tags.length > 0 ? (
                             <div className="flex flex-wrap gap-2">
                               {selectedImage.tags.map(tag => (
                                 <span
                                   key={tag}
-                                  className="px-3 py-1 rounded-full bg-red-500/20 text-red-200 text-sm"
+                                  className="px-3 py-1 rounded-full bg-primary/15 text-primary text-sm"
                                 >
                                   {tag}
                                 </span>
                               ))}
                             </div>
                           ) : (
-                            <div className="text-slate-500 italic text-sm">No tags</div>
+                            <div className="text-base-content/50 italic text-sm">No tags</div>
                           )}
                         </div>
                       </div>
@@ -941,12 +941,12 @@ export default function TrashPage() {
                       })()}
 
                       {/* Warning Box */}
-                      <div className="mt-4 p-4 bg-yellow-900/30 border border-yellow-600/50 rounded-xl">
+                      <div className="mt-4 p-4 bg-warning/10 border border-warning/30 rounded-xl">
                         <div className="flex items-start gap-3">
-                          <AlertTriangle className="text-yellow-500 mt-0.5 flex-shrink-0" size={18} />
+                          <AlertTriangle className="text-warning mt-0.5 flex-shrink-0" size={18} />
                           <div className="text-sm">
-                            <p className="font-medium text-yellow-300">Item Still Hosted</p>
-                            <p className="text-yellow-400/80 mt-1">
+                            <p className="font-medium text-warning">Item Still Hosted</p>
+                            <p className="text-base-content/80 mt-1">
                               This item remains accessible via its URLs. Use "Delete Permanently" to remove it from all hosts.
                             </p>
                           </div>
@@ -961,18 +961,18 @@ export default function TrashPage() {
                       {loadingNerdsTab && !fullImageDetails ? (
                         <div className="flex justify-center items-center py-10">
                           <Spinner size="md" />
-                          <span className="ml-3 text-slate-300">Loading technical details...</span>
+                          <span className="ml-3 text-base-content/80">Loading technical details...</span>
                         </div>
                       ) : (
                         <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                           {/* Document ID */}
                           <div>
-                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                               <Database className="w-3.5 h-3.5" />
                               Document ID
                             </div>
-                            <div className="bg-white/5 rounded p-2">
-                              <p className="text-white font-mono text-sm break-all">
+                            <div className="bg-base-200 rounded p-2">
+                              <p className="text-base-content font-mono text-sm break-all">
                                 {selectedImage.id || 'N/A'}
                               </p>
                             </div>
@@ -980,12 +980,12 @@ export default function TrashPage() {
 
                           {/* File Name */}
                           <div>
-                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                               <File className="w-3.5 h-3.5" />
                               File Name
                             </div>
-                            <div className="bg-white/5 rounded p-2">
-                              <p className="text-white font-mono text-sm break-all">
+                            <div className="bg-base-200 rounded p-2">
+                              <p className="text-base-content font-mono text-sm break-all">
                                 {fullImageDetails?.fileName || (loadingNerdsTab ? 'Loading...' : 'N/A')}
                               </p>
                             </div>
@@ -993,12 +993,12 @@ export default function TrashPage() {
 
                           {/* File Type */}
                           <div>
-                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                               <FileText className="w-3.5 h-3.5" />
                               File Type
                             </div>
-                            <div className="bg-white/5 rounded p-2">
-                              <p className="text-white font-mono text-sm">
+                            <div className="bg-base-200 rounded p-2">
+                              <p className="text-base-content font-mono text-sm">
                                 {fullImageDetails?.fileType || (loadingNerdsTab ? 'Loading...' : 'N/A')}
                               </p>
                             </div>
@@ -1007,12 +1007,12 @@ export default function TrashPage() {
                           {/* File Type Source */}
                           {fullImageDetails?.fileTypeSource && (
                             <div>
-                              <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                              <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                                 <FileText className="w-3.5 h-3.5" />
                                 File Type Source
                               </div>
-                              <div className="bg-white/5 rounded p-2">
-                                <p className="text-white font-mono text-sm">
+                              <div className="bg-base-200 rounded p-2">
+                                <p className="text-base-content font-mono text-sm">
                                   {fullImageDetails.fileTypeSource}
                                 </p>
                               </div>
@@ -1021,12 +1021,12 @@ export default function TrashPage() {
 
                           {/* File Size */}
                           <div>
-                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                               <Database className="w-3.5 h-3.5" />
                               File Size
                             </div>
-                            <div className="bg-white/5 rounded p-2">
-                              <p className="text-white font-mono text-sm">
+                            <div className="bg-base-200 rounded p-2">
+                              <p className="text-base-content font-mono text-sm">
                                 {fullImageDetails?.fileSize 
                                   ? `${(fullImageDetails.fileSize / 1024).toFixed(2)} KB` 
                                   : loadingNerdsTab ? 'Loading...' : 'N/A'}
@@ -1037,12 +1037,12 @@ export default function TrashPage() {
                           {/* Creation Date */}
                           {fullImageDetails?.creationDate && (
                             <div>
-                              <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                              <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                                 <Calendar className="w-3.5 h-3.5" />
                                 Creation Date
                               </div>
-                              <div className="bg-white/5 rounded p-2">
-                                <p className="text-white font-mono text-sm">
+                              <div className="bg-base-200 rounded p-2">
+                                <p className="text-base-content font-mono text-sm">
                                   {new Date(fullImageDetails.creationDate).toLocaleString()}
                                 </p>
                               </div>
@@ -1052,12 +1052,12 @@ export default function TrashPage() {
                           {/* Creation Date Source */}
                           {fullImageDetails?.creationDateSource && (
                             <div>
-                              <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                              <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                                 <Calendar className="w-3.5 h-3.5" />
                                 Creation Date Source
                               </div>
-                              <div className="bg-white/5 rounded p-2">
-                                <p className="text-white font-mono text-sm">
+                              <div className="bg-base-200 rounded p-2">
+                                <p className="text-base-content font-mono text-sm">
                                   {fullImageDetails.creationDateSource}
                                 </p>
                               </div>
@@ -1067,12 +1067,12 @@ export default function TrashPage() {
                           {/* Width */}
                           {fullImageDetails?.width && (
                             <div>
-                              <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                              <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                                 <Ruler className="w-3.5 h-3.5" />
                                 Width
                               </div>
-                              <div className="bg-white/5 rounded p-2">
-                                <p className="text-white font-mono text-sm">
+                              <div className="bg-base-200 rounded p-2">
+                                <p className="text-base-content font-mono text-sm">
                                   {fullImageDetails.width}
                                 </p>
                               </div>
@@ -1082,12 +1082,12 @@ export default function TrashPage() {
                           {/* Height */}
                           {fullImageDetails?.height && (
                             <div>
-                              <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                              <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                                 <Ruler className="w-3.5 h-3.5" />
                                 Height
                               </div>
-                              <div className="bg-white/5 rounded p-2">
-                                <p className="text-white font-mono text-sm">
+                              <div className="bg-base-200 rounded p-2">
+                                <p className="text-base-content font-mono text-sm">
                                   {fullImageDetails.height}
                                 </p>
                               </div>
@@ -1096,12 +1096,12 @@ export default function TrashPage() {
 
                           {/* SHA-256 */}
                           <div>
-                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                               <Fingerprint className="w-3.5 h-3.5" />
                               SHA-256
                             </div>
-                            <div className="bg-white/5 rounded p-2">
-                              <p className="text-white font-mono text-sm break-all">
+                            <div className="bg-base-200 rounded p-2">
+                              <p className="text-base-content font-mono text-sm break-all">
                                 {fullImageDetails?.sha256 || (loadingNerdsTab ? 'Loading...' : 'N/A')}
                               </p>
                             </div>
@@ -1109,12 +1109,12 @@ export default function TrashPage() {
 
                           {/* pHash */}
                           <div>
-                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                               <Hash className="w-3.5 h-3.5" />
                               pHash
                             </div>
-                            <div className="bg-white/5 rounded p-2">
-                              <p className="text-white font-mono text-sm break-all">
+                            <div className="bg-base-200 rounded p-2">
+                              <p className="text-base-content font-mono text-sm break-all">
                                 {fullImageDetails?.pHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
                               </p>
                             </div>
@@ -1122,12 +1122,12 @@ export default function TrashPage() {
 
                           {/* aHash */}
                           <div>
-                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                               <Hash className="w-3.5 h-3.5" />
                               aHash
                             </div>
-                            <div className="bg-white/5 rounded p-2">
-                              <p className="text-white font-mono text-sm break-all">
+                            <div className="bg-base-200 rounded p-2">
+                              <p className="text-base-content font-mono text-sm break-all">
                                 {fullImageDetails?.aHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
                               </p>
                             </div>
@@ -1135,12 +1135,12 @@ export default function TrashPage() {
 
                           {/* dHash */}
                           <div>
-                            <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                               <Hash className="w-3.5 h-3.5" />
                               dHash
                             </div>
-                            <div className="bg-white/5 rounded p-2">
-                              <p className="text-white font-mono text-sm break-all">
+                            <div className="bg-base-200 rounded p-2">
+                              <p className="text-base-content font-mono text-sm break-all">
                                 {fullImageDetails?.dHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
                               </p>
                             </div>
@@ -1163,12 +1163,12 @@ export default function TrashPage() {
                             
                             return exifFields.map(([key, value]) => (
                               <div key={key}>
-                                <div className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-2">
+                                <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                                   <FileText className="w-3.5 h-3.5" />
                                   {key}
                                 </div>
-                                <div className="bg-white/5 rounded p-2">
-                                  <p className="text-white font-mono text-sm break-all">
+                                <div className="bg-base-200 rounded p-2">
+                                  <p className="text-base-content font-mono text-sm break-all">
                                     {typeof value === 'object' ? JSON.stringify(value) : String(value || 'N/A')}
                                   </p>
                                 </div>
@@ -1181,29 +1181,19 @@ export default function TrashPage() {
                   )}
 
                   {/* Action Buttons */}
-                  <div className="flex gap-2 pt-6 border-t border-white/10 mt-6">
+                  <div className="flex gap-2 pt-6 border-t border-base-content/10 mt-6">
                     <button
                       onClick={() => setShowRestoreConfirm(true)}
                       disabled={isProcessing}
                       className="group relative flex-1 px-6 py-2.5 rounded-xl overflow-hidden
-                               bg-gradient-to-r from-green-500 to-emerald-600
-                               border border-green-400/30 
+                               bg-success text-success-content
+                               border border-success/30 
                                transform transition-all duration-300
-                               hover:scale-110 hover:shadow-2xl hover:shadow-green-500/50
+                               hover:scale-105 hover:shadow-xl
                                active:scale-95
                                disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                     >
-                      {/* Animated background glow */}
-                      <div className="absolute inset-0 bg-gradient-to-r from-green-400 to-emerald-500 opacity-0 
-                                    group-hover:opacity-100 blur-xl transition-opacity duration-300" />
-                      
-                      {/* Shimmer effect */}
-                      <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
-                                    bg-gradient-to-r from-transparent via-white/20 to-transparent 
-                                    transition-transform duration-700" />
-                      
-                      {/* Button content */}
-                      <div className="relative flex items-center justify-center gap-2 text-white font-semibold">
+                      <div className="relative flex items-center justify-center gap-2 font-semibold">
                         <Undo2 className="w-5 h-5 group-hover:-rotate-12 transition-transform duration-300" />
                         <span>Restore</span>
                       </div>
@@ -1213,24 +1203,14 @@ export default function TrashPage() {
                       onClick={() => setShowDeleteConfirm(true)}
                       disabled={isProcessing}
                       className="group relative flex-1 px-6 py-2.5 rounded-xl overflow-hidden
-                               bg-gradient-to-r from-red-500 to-rose-600
-                               border border-red-400/30 
+                               bg-error text-error-content
+                               border border-error/30 
                                transform transition-all duration-300
-                               hover:scale-110 hover:shadow-2xl hover:shadow-red-500/50
+                               hover:scale-105 hover:shadow-xl
                                active:scale-95
                                disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                     >
-                      {/* Animated background glow */}
-                      <div className="absolute inset-0 bg-gradient-to-r from-red-400 to-rose-500 opacity-0 
-                                    group-hover:opacity-100 blur-xl transition-opacity duration-300" />
-                      
-                      {/* Shimmer effect */}
-                      <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
-                                    bg-gradient-to-r from-transparent via-white/20 to-transparent 
-                                    transition-transform duration-700" />
-                      
-                      {/* Button content */}
-                      <div className="relative flex items-center justify-center gap-2 text-white font-semibold">
+                      <div className="relative flex items-center justify-center gap-2 font-semibold">
                         <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
                         <span>Delete Forever</span>
                       </div>
@@ -1248,24 +1228,23 @@ export default function TrashPage() {
           {/* Animated icon */}
           <div className="text-7xl animate-bounce">♻️</div>
           
-          <h3 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-emerald-500 
-                       bg-clip-text text-transparent">
+          <h3 className="text-2xl font-bold text-success">
             Restore Image?
           </h3>
           
-          <p className="text-slate-300 text-lg leading-relaxed">
+          <p className="text-base-content/80 text-lg leading-relaxed">
             This will restore the image back to your gallery.
             <br />
-            <span className="font-semibold text-green-400">You can access it normally again.</span>
+            <span className="font-semibold text-success">You can access it normally again.</span>
           </p>
           
           <div className="flex gap-4 justify-center pt-4">
             <button
               onClick={() => setShowRestoreConfirm(false)}
               disabled={isProcessing}
-              className="px-6 py-3 rounded-xl bg-white/10 border border-white/20
-                       text-white font-medium
-                       hover:bg-white/20 hover:scale-105
+              className="px-6 py-3 rounded-xl bg-base-200 border border-base-content/10
+                       text-base-content font-medium
+                       hover:bg-base-300 hover:scale-105
                        active:scale-95
                        transition-all duration-200
                        disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1277,28 +1256,21 @@ export default function TrashPage() {
               onClick={handleRestore}
               disabled={isProcessing}
               className="group relative px-8 py-3 rounded-xl overflow-hidden
-                       bg-gradient-to-r from-green-600 to-emerald-700
-                       border border-green-400/50
+                       bg-success text-success-content
+                       border border-success/40
                        transform transition-all duration-300
-                       hover:scale-105 hover:shadow-2xl hover:shadow-green-500/50
+                       hover:scale-105 hover:shadow-xl
                        active:scale-95
                        disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
               {/* Animated pulse effect when restoring */}
               {isProcessing && (
-                <div className="absolute inset-0 bg-green-400 animate-ping opacity-25" />
+                <div className="absolute inset-0 bg-success-content animate-ping opacity-10" />
               )}
-              
-              {/* Shimmer effect */}
-              <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
-                            bg-gradient-to-r from-transparent via-white/20 to-transparent 
-                            transition-transform duration-700" />
-              
-              {/* Button content */}
-              <div className="relative flex items-center gap-2 text-white font-bold text-lg">
+              <div className="relative flex items-center gap-2 font-bold text-lg">
                 {isProcessing ? (
                   <>
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <div className="w-5 h-5 border-2 border-success-content/30 border-t-success-content rounded-full animate-spin" />
                     <span>Restoring...</span>
                   </>
                 ) : (
@@ -1319,16 +1291,15 @@ export default function TrashPage() {
           {/* Animated warning icon */}
           <div className="text-7xl animate-bounce">🔥</div>
           
-          <h3 className="text-2xl font-bold bg-gradient-to-r from-red-400 to-rose-500 
-                       bg-clip-text text-transparent">
+          <h3 className="text-2xl font-bold text-error">
             Permanently Delete?
           </h3>
           
-          <div className="text-left bg-red-900/20 border border-red-500/30 rounded-xl p-4 space-y-2">
-            <p className="text-slate-300 leading-relaxed">
+          <div className="text-left bg-error/10 border border-error/30 rounded-xl p-4 space-y-2">
+            <p className="text-base-content/80 leading-relaxed">
               This will permanently delete the item from:
             </p>
-            <ul className="list-disc list-inside text-slate-300 space-y-1 ml-2">
+            <ul className="list-disc list-inside text-base-content/80 space-y-1 ml-2">
               {selectedImage?.imgbbUrl && <li>ImgBB hosting</li>}
               {selectedImage?.pixvidUrl && !selectedImage?.filemoonUrl && !selectedImage?.udropUrl && <li>Pixvid hosting</li>}
               {selectedImage?.filemoonUrl && <li className="text-yellow-400">⚠️ Filemoon video (must be manually deleted from dashboard)</li>}
@@ -1337,7 +1308,7 @@ export default function TrashPage() {
             </ul>
           </div>
           
-          <p className="text-yellow-400 font-semibold text-lg flex items-center justify-center gap-2">
+          <p className="text-warning font-semibold text-lg flex items-center justify-center gap-2">
             <AlertTriangle size={20} />
             This action cannot be undone!
           </p>
@@ -1346,9 +1317,9 @@ export default function TrashPage() {
             <button
               onClick={() => setShowDeleteConfirm(false)}
               disabled={isProcessing}
-              className="px-6 py-3 rounded-xl bg-white/10 border border-white/20
-                       text-white font-medium
-                       hover:bg-white/20 hover:scale-105
+              className="px-6 py-3 rounded-xl bg-base-200 border border-base-content/10
+                       text-base-content font-medium
+                       hover:bg-base-300 hover:scale-105
                        active:scale-95
                        transition-all duration-200
                        disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1360,28 +1331,21 @@ export default function TrashPage() {
               onClick={handlePermanentDelete}
               disabled={isProcessing}
               className="group relative px-8 py-3 rounded-xl overflow-hidden
-                       bg-gradient-to-r from-red-600 to-rose-700
-                       border border-red-400/50
+                       bg-error text-error-content
+                       border border-error/40
                        transform transition-all duration-300
-                       hover:scale-105 hover:shadow-2xl hover:shadow-red-500/50
+                       hover:scale-105 hover:shadow-xl
                        active:scale-95
                        disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
               {/* Animated pulse effect when deleting */}
               {isProcessing && (
-                <div className="absolute inset-0 bg-red-400 animate-ping opacity-25" />
+                <div className="absolute inset-0 bg-error-content animate-ping opacity-10" />
               )}
-              
-              {/* Shimmer effect */}
-              <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
-                            bg-gradient-to-r from-transparent via-white/20 to-transparent 
-                            transition-transform duration-700" />
-              
-              {/* Button content */}
-              <div className="relative flex items-center gap-2 text-white font-bold text-lg">
+              <div className="relative flex items-center gap-2 font-bold text-lg">
                 {isProcessing ? (
                   <>
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <div className="w-5 h-5 border-2 border-error-content/30 border-t-error-content rounded-full animate-spin" />
                     <span>Deleting...</span>
                   </>
                 ) : (
@@ -1402,24 +1366,23 @@ export default function TrashPage() {
           {/* Animated icon */}
           <div className="text-7xl animate-bounce">♻️</div>
           
-          <h3 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-emerald-500 
-                       bg-clip-text text-transparent">
+          <h3 className="text-2xl font-bold text-success">
             Restore {selectedImages.size} Image{selectedImages.size > 1 ? 's' : ''}?
           </h3>
           
-          <p className="text-slate-300 text-lg leading-relaxed">
+          <p className="text-base-content/80 text-lg leading-relaxed">
             This will restore {selectedImages.size} image{selectedImages.size > 1 ? 's' : ''} back to your gallery.
             <br />
-            <span className="font-semibold text-green-400">They will be removed from trash.</span>
+            <span className="font-semibold text-success">They will be removed from trash.</span>
           </p>
           
           <div className="flex gap-4 justify-center pt-4">
             <button
               onClick={() => setShowBulkRestoreConfirm(false)}
               disabled={isProcessing}
-              className="px-6 py-3 rounded-xl bg-white/10 border border-white/20
-                       text-white font-medium
-                       hover:bg-white/20 hover:scale-105
+              className="px-6 py-3 rounded-xl bg-base-200 border border-base-content/10
+                       text-base-content font-medium
+                       hover:bg-base-300 hover:scale-105
                        active:scale-95
                        transition-all duration-200
                        disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1431,25 +1394,20 @@ export default function TrashPage() {
               onClick={handleBulkRestore}
               disabled={isProcessing}
               className="group relative px-8 py-3 rounded-xl overflow-hidden
-                       bg-gradient-to-r from-green-600 to-emerald-700
-                       border border-green-400/50
+                       bg-success text-success-content
+                       border border-success/40
                        transform transition-all duration-300
-                       hover:scale-105 hover:shadow-2xl hover:shadow-green-500/50
+                       hover:scale-105 hover:shadow-xl
                        active:scale-95
                        disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
               {isProcessing && (
-                <div className="absolute inset-0 bg-green-400 animate-ping opacity-25" />
+                <div className="absolute inset-0 bg-success-content animate-ping opacity-10" />
               )}
-              
-              <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
-                            bg-gradient-to-r from-transparent via-white/20 to-transparent 
-                            transition-transform duration-700" />
-              
-              <div className="relative flex items-center gap-2 text-white font-bold text-lg">
+              <div className="relative flex items-center gap-2 font-bold text-lg">
                 {isProcessing ? (
                   <>
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <div className="w-5 h-5 border-2 border-success-content/30 border-t-success-content rounded-full animate-spin" />
                     <span>Restoring...</span>
                   </>
                 ) : (
@@ -1470,22 +1428,21 @@ export default function TrashPage() {
           {/* Animated warning icon */}
           <div className="text-7xl animate-bounce">💥</div>
           
-          <h3 className="text-2xl font-bold bg-gradient-to-r from-red-400 to-rose-500 
-                       bg-clip-text text-transparent">
+          <h3 className="text-2xl font-bold text-error">
             Permanently Delete {selectedImages.size} Item{selectedImages.size > 1 ? 's' : ''}?
           </h3>
           
-          <div className="text-left bg-red-900/20 border border-red-500/30 rounded-xl p-4 space-y-2">
-            <p className="text-slate-300 leading-relaxed">
-              This will permanently delete <span className="font-bold text-red-300">{selectedImages.size} item{selectedImages.size > 1 ? 's' : ''}</span> from:
+          <div className="text-left bg-error/10 border border-error/30 rounded-xl p-4 space-y-2">
+            <p className="text-base-content/80 leading-relaxed">
+              This will permanently delete <span className="font-bold text-error">{selectedImages.size} item{selectedImages.size > 1 ? 's' : ''}</span> from:
             </p>
-            <ul className="list-disc list-inside text-slate-300 space-y-1 ml-2">
+            <ul className="list-disc list-inside text-base-content/80 space-y-1 ml-2">
               <li>All hosting providers (ImgBB, Pixvid, Filemoon, UDrop)</li>
               <li>Your trash bin</li>
             </ul>
           </div>
           
-          <p className="text-yellow-400 font-semibold text-lg flex items-center justify-center gap-2">
+          <p className="text-warning font-semibold text-lg flex items-center justify-center gap-2">
             <AlertTriangle size={20} />
             This action cannot be undone!
           </p>
@@ -1494,9 +1451,9 @@ export default function TrashPage() {
             <button
               onClick={() => setShowBulkDeleteConfirm(false)}
               disabled={isProcessing}
-              className="px-6 py-3 rounded-xl bg-white/10 border border-white/20
-                       text-white font-medium
-                       hover:bg-white/20 hover:scale-105
+              className="px-6 py-3 rounded-xl bg-base-200 border border-base-content/10
+                       text-base-content font-medium
+                       hover:bg-base-300 hover:scale-105
                        active:scale-95
                        transition-all duration-200
                        disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1508,25 +1465,20 @@ export default function TrashPage() {
               onClick={handleBulkDelete}
               disabled={isProcessing}
               className="group relative px-8 py-3 rounded-xl overflow-hidden
-                       bg-gradient-to-r from-red-600 to-rose-700
-                       border border-red-400/50
+                       bg-error text-error-content
+                       border border-error/40
                        transform transition-all duration-300
-                       hover:scale-105 hover:shadow-2xl hover:shadow-red-500/50
+                       hover:scale-105 hover:shadow-xl
                        active:scale-95
                        disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
               {isProcessing && (
-                <div className="absolute inset-0 bg-red-400 animate-ping opacity-25" />
+                <div className="absolute inset-0 bg-error-content animate-ping opacity-10" />
               )}
-              
-              <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
-                            bg-gradient-to-r from-transparent via-white/20 to-transparent 
-                            transition-transform duration-700" />
-              
-              <div className="relative flex items-center gap-2 text-white font-bold text-lg">
+              <div className="relative flex items-center gap-2 font-bold text-lg">
                 {isProcessing ? (
                   <>
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <div className="w-5 h-5 border-2 border-error-content/30 border-t-error-content rounded-full animate-spin" />
                     <span>Deleting...</span>
                   </>
                 ) : (
@@ -1547,22 +1499,21 @@ export default function TrashPage() {
           {/* Animated warning icon */}
           <div className="text-7xl animate-bounce">💥</div>
           
-          <h3 className="text-2xl font-bold bg-gradient-to-r from-red-400 to-rose-500 
-                       bg-clip-text text-transparent">
+          <h3 className="text-2xl font-bold text-error">
             Empty Entire Trash?
           </h3>
           
-          <div className="text-left bg-red-900/20 border border-red-500/30 rounded-xl p-4 space-y-2">
-            <p className="text-slate-300 leading-relaxed">
-              This will permanently delete <span className="font-bold text-red-300">{trashedImages.length} item{trashedImages.length !== 1 ? 's' : ''}</span> from:
+          <div className="text-left bg-error/10 border border-error/30 rounded-xl p-4 space-y-2">
+            <p className="text-base-content/80 leading-relaxed">
+              This will permanently delete <span className="font-bold text-error">{trashedImages.length} item{trashedImages.length !== 1 ? 's' : ''}</span> from:
             </p>
-            <ul className="list-disc list-inside text-slate-300 space-y-1 ml-2">
+            <ul className="list-disc list-inside text-base-content/80 space-y-1 ml-2">
               <li>All hosting providers (ImgBB, Pixvid, Filemoon, UDrop)</li>
               <li>Your trash bin</li>
             </ul>
           </div>
           
-          <p className="text-yellow-400 font-semibold text-lg flex items-center justify-center gap-2">
+          <p className="text-warning font-semibold text-lg flex items-center justify-center gap-2">
             <AlertTriangle size={20} />
             This action cannot be undone!
           </p>
@@ -1571,9 +1522,9 @@ export default function TrashPage() {
             <button
               onClick={() => setShowEmptyTrashConfirm(false)}
               disabled={isProcessing}
-              className="px-6 py-3 rounded-xl bg-white/10 border border-white/20
-                       text-white font-medium
-                       hover:bg-white/20 hover:scale-105
+              className="px-6 py-3 rounded-xl bg-base-200 border border-base-content/10
+                       text-base-content font-medium
+                       hover:bg-base-300 hover:scale-105
                        active:scale-95
                        transition-all duration-200
                        disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1585,28 +1536,21 @@ export default function TrashPage() {
               onClick={handleEmptyTrash}
               disabled={isProcessing}
               className="group relative px-8 py-3 rounded-xl overflow-hidden
-                       bg-gradient-to-r from-red-600 to-rose-700
-                       border border-red-400/50
+                       bg-error text-error-content
+                       border border-error/40
                        transform transition-all duration-300
-                       hover:scale-105 hover:shadow-2xl hover:shadow-red-500/50
+                       hover:scale-105 hover:shadow-xl
                        active:scale-95
                        disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
               {/* Animated pulse effect when deleting */}
               {isProcessing && (
-                <div className="absolute inset-0 bg-red-400 animate-ping opacity-25" />
+                <div className="absolute inset-0 bg-error-content animate-ping opacity-10" />
               )}
-              
-              {/* Shimmer effect */}
-              <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full 
-                            bg-gradient-to-r from-transparent via-white/20 to-transparent 
-                            transition-transform duration-700" />
-              
-              {/* Button content */}
-              <div className="relative flex items-center gap-2 text-white font-bold text-lg">
+              <div className="relative flex items-center gap-2 font-bold text-lg">
                 {isProcessing ? (
                   <>
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <div className="w-5 h-5 border-2 border-error-content/30 border-t-error-content rounded-full animate-spin" />
                     <span>Emptying...</span>
                   </>
                 ) : (

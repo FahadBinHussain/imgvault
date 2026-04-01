@@ -145,10 +145,10 @@ export default function PopupPage() {
   // No image view
   if (!imageData) {
     return (
-      <div className="w-full max-w-[420px] min-h-screen sm:min-h-[400px] mx-auto bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-        <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl">
+      <div className="w-full max-w-[420px] min-h-screen sm:min-h-[400px] mx-auto bg-base-200 text-base-content">
+        <div className="backdrop-blur-2xl bg-base-100/90 border border-base-content/10 shadow-2xl">
           {/* Header with glassmorphism */}
-          <div className="p-6 border-b border-white/10 backdrop-blur-xl bg-white/5">
+          <div className="p-6 border-b border-base-content/10 backdrop-blur-xl bg-base-100/70">
             <div className="flex items-center gap-3">
               <div className="relative">
                 <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-lg blur-md opacity-50"></div>
@@ -156,23 +156,23 @@ export default function PopupPage() {
               </div>
               <div className="flex-1">
                 <h2 className="text-xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent">ImgVault</h2>
-                <p className="text-sm text-slate-300">Your personal image vault</p>
+                <p className="text-sm text-base-content/70">Your personal image vault</p>
               </div>
               <button
                 onClick={openGallery}
-                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 
+                className="p-2 rounded-lg bg-base-200 hover:bg-base-300 border border-base-content/10 
                          backdrop-blur-sm transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
                 title="Gallery"
               >
-                <ImageIcon className="w-5 h-5 text-white" />
+                <ImageIcon className="w-5 h-5 text-base-content" />
               </button>
               <button
                 onClick={openSettings}
-                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 
+                className="p-2 rounded-lg bg-base-200 hover:bg-base-300 border border-base-content/10 
                          backdrop-blur-sm transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
                 title="Settings"
               >
-                <Settings className="w-5 h-5 text-white" />
+                <Settings className="w-5 h-5 text-base-content" />
               </button>
             </div>
           </div>
@@ -183,13 +183,13 @@ export default function PopupPage() {
               <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-full blur-2xl opacity-30 animate-pulse"></div>
               <div className="relative text-7xl">🖼️</div>
             </div>
-            <h3 className="text-lg font-semibold text-white mb-2">No Image Selected</h3>
-            <p className="text-slate-300 mb-4">
+            <h3 className="text-lg font-semibold text-base-content mb-2">No Image Selected</h3>
+            <p className="text-base-content/70 mb-4">
               Right-click any image on a webpage and select "Save to ImgVault"
             </p>
             <div className="relative inline-block my-4">
-              <div className="absolute left-0 right-0 top-1/2 h-px bg-gradient-to-r from-transparent via-slate-600 to-transparent"></div>
-              <span className="relative px-4 bg-slate-900 text-slate-400 text-sm">or</span>
+              <div className="absolute left-0 right-0 top-1/2 h-px bg-base-content/10"></div>
+              <span className="relative px-4 bg-base-200 text-base-content/50 text-sm">or</span>
             </div>
             <div className="mt-4">
               <input
@@ -202,7 +202,7 @@ export default function PopupPage() {
               <button
                 onClick={() => document.getElementById('fileInput').click()}
                 className="px-6 py-3 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
-                         text-white font-semibold shadow-xl hover:shadow-2xl hover:scale-105 
+                         text-primary-content font-semibold shadow-xl hover:shadow-2xl hover:scale-105 
                          active:scale-95 transition-all duration-300 flex items-center gap-2 mx-auto"
               >
                 <Upload className="w-5 h-5" />
@@ -218,16 +218,16 @@ export default function PopupPage() {
   // Success view
   if (showSuccess) {
     return (
-      <div className="w-full max-w-[420px] min-h-screen sm:min-h-[400px] mx-auto bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center px-4">
-        <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl rounded-2xl p-8 text-center">
+      <div className="w-full max-w-[420px] min-h-screen sm:min-h-[400px] mx-auto bg-base-200 text-base-content flex items-center justify-center px-4">
+        <div className="backdrop-blur-2xl bg-base-100/90 border border-base-content/10 shadow-2xl rounded-2xl p-8 text-center">
           <div className="relative inline-block mb-6">
-            <div className="absolute inset-0 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full blur-3xl opacity-50 animate-pulse"></div>
+            <div className="absolute inset-0 bg-success rounded-full blur-3xl opacity-30 animate-pulse"></div>
             <div className="relative text-7xl">✅</div>
           </div>
-          <h3 className="text-2xl font-bold bg-gradient-to-r from-green-300 to-emerald-300 bg-clip-text text-transparent mb-2">
+          <h3 className="text-2xl font-bold text-success mb-2">
             Image Saved!
           </h3>
-          <p className="text-slate-300">Successfully uploaded to your vault</p>
+          <p className="text-base-content/70">Successfully uploaded to your vault</p>
         </div>
       </div>
     );
@@ -237,11 +237,11 @@ export default function PopupPage() {
   const WarningTip = ({ siteName }) => {
     const fileId = `replace${siteName.replace(/\s+/g, '')}File`;
     return (
-      <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/20 border-2 border-red-500/50 
-                    shadow-lg shadow-red-500/30 animate-pulse-slow">
+      <div className="flex items-start gap-3 p-4 rounded-xl bg-warning/10 border-2 border-warning/30 
+                    shadow-lg animate-pulse-slow">
         <span className="text-2xl flex-shrink-0 animate-bounce">⚠️</span>
         <div className="flex-1">
-          <p className="text-sm text-red-100 font-semibold leading-relaxed mb-3">
+          <p className="text-sm text-warning font-semibold leading-relaxed mb-3">
             🔥 For maximum quality from {siteName}, download the file first then use the button below
           </p>
           <input
@@ -253,11 +253,10 @@ export default function PopupPage() {
           />
           <button
             onClick={() => document.getElementById(fileId).click()}
-            className="px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 
-                     border-2 border-red-400 text-white text-sm font-bold
+            className="px-4 py-2 rounded-lg bg-warning hover:bg-warning/90 
+                     border-2 border-warning/40 text-warning-content text-sm font-bold
                      transition-all duration-200 hover:scale-105 active:scale-95
-                     flex items-center gap-2 shadow-lg shadow-red-500/40
-                     hover:shadow-xl hover:shadow-red-500/60"
+                     flex items-center gap-2 shadow-lg hover:shadow-xl"
           >
             <Upload className="w-4 h-4" />
             Replace with Downloaded Image
@@ -268,10 +267,10 @@ export default function PopupPage() {
   };
 
   return (
-    <div className="w-full max-w-[420px] mx-auto min-h-screen sm:min-h-0 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <div className="backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl">
+    <div className="w-full max-w-[420px] mx-auto min-h-screen sm:min-h-0 bg-base-200 text-base-content">
+      <div className="backdrop-blur-2xl bg-base-100/90 border border-base-content/10 shadow-2xl">
         {/* Header with glassmorphism */}
-  <div className="p-4 sm:p-6 border-b border-white/10 backdrop-blur-xl bg-white/5">
+  <div className="p-4 sm:p-6 border-b border-base-content/10 backdrop-blur-xl bg-base-100/70">
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-lg blur-md opacity-50"></div>
@@ -279,22 +278,22 @@ export default function PopupPage() {
             </div>
             <div className="flex-1">
               <h2 className="text-xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent">Save to Vault</h2>
-              <p className="text-sm text-slate-300">Preserve with context</p>
+              <p className="text-sm text-base-content/70">Preserve with context</p>
             </div>
             <button
               onClick={openSettings}
-              className="p-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 
+              className="p-2 rounded-lg bg-base-200 hover:bg-base-300 border border-base-content/10 
                        backdrop-blur-sm transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
               title="Settings"
             >
-              <Settings className="w-5 h-5 text-white" />
+              <Settings className="w-5 h-5 text-base-content" />
             </button>
           </div>
         </div>
 
         {/* Image Preview with soft shadows */}
   <div className="p-4 sm:p-6 space-y-4">
-          <div className="relative rounded-xl overflow-hidden bg-slate-800/50 border border-white/10 shadow-xl group">
+          <div className="relative rounded-xl overflow-hidden bg-base-200 border border-base-content/10 shadow-xl group">
             <div className="absolute -inset-1 bg-gradient-to-r from-primary-500/40 to-secondary-500/40 
                           rounded-xl opacity-0 group-hover:opacity-100 blur-xl transition-all duration-500"></div>
             <div className="relative">
@@ -313,8 +312,8 @@ export default function PopupPage() {
                 />
                 <button
                   onClick={() => document.getElementById('replaceFile').click()}
-                  className="px-4 py-2 rounded-lg bg-slate-800/90 hover:bg-slate-700 border border-white/20 
-                           backdrop-blur-sm text-white text-sm font-medium shadow-lg hover:shadow-xl 
+                  className="px-4 py-2 rounded-lg bg-base-300 hover:bg-base-content/10 border border-base-content/10 
+                           backdrop-blur-sm text-base-content text-sm font-medium shadow-lg hover:shadow-xl 
                            transition-all duration-300 hover:scale-105 flex items-center gap-2"
                 >
                   <Upload className="w-4 h-4" />
@@ -326,10 +325,10 @@ export default function PopupPage() {
 
           {/* Image Replaced Banner */}
           {showReplaced && (
-            <div className="flex items-center gap-3 p-4 rounded-xl bg-green-500/10 border-2 border-green-500/30 
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-success/10 border-2 border-success/30 
                           shadow-lg animate-pulse">
               <span className="text-2xl flex-shrink-0">✅</span>
-              <p className="text-sm text-green-200 font-medium">
+              <p className="text-sm text-success font-medium">
                 Image replaced! Ready to upload higher quality version
               </p>
             </div>
@@ -368,7 +367,7 @@ export default function PopupPage() {
           {/* Form Fields with enhanced styling */}
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+              <label className="block text-sm font-medium text-base-content/70 mb-2 flex items-center gap-2">
                 <span className="text-lg">🌐</span>
                 Source Page URL
               </label>
@@ -378,24 +377,24 @@ export default function PopupPage() {
                   value={pageUrl}
                   onChange={(e) => setPageUrl(e.target.value)}
                   readOnly={!isPageUrlEditable}
-                  className="flex-1 px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
-                           text-white placeholder-slate-400 
+                  className="flex-1 px-4 py-3 rounded-lg bg-base-200 border border-base-content/10 
+                           text-base-content placeholder-base-content/40 
                            focus:outline-none focus:border-primary-500 focus:ring-2 
                            focus:ring-primary-500/20 transition-all shadow-lg"
                 />
                 <button
                   onClick={() => setIsPageUrlEditable(!isPageUrlEditable)}
-                  className="p-3 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 
+                  className="p-3 rounded-lg bg-base-200 hover:bg-base-300 border border-base-content/10 
                            backdrop-blur-sm transition-all duration-300 hover:scale-105 shadow-lg"
                   title={isPageUrlEditable ? 'Lock' : 'Edit'}
                 >
-                  {isPageUrlEditable ? <X className="w-5 h-5 text-white" /> : <Settings className="w-5 h-5 text-white" />}
+                  {isPageUrlEditable ? <X className="w-5 h-5 text-base-content" /> : <Settings className="w-5 h-5 text-base-content" />}
                 </button>
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+              <label className="block text-sm font-medium text-base-content/70 mb-2 flex items-center gap-2">
                 <span className="text-lg">📝</span>
                 Description
               </label>
@@ -404,15 +403,15 @@ export default function PopupPage() {
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={`From: ${imageData.pageTitle || 'Unknown'}`}
                 rows={3}
-                className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
-                         text-white placeholder-slate-400 
+                className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/10 
+                         text-base-content placeholder-base-content/40 
                          focus:outline-none focus:border-primary-500 focus:ring-2 
                          focus:ring-primary-500/20 transition-all resize-none shadow-lg"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+              <label className="block text-sm font-medium text-base-content/70 mb-2 flex items-center gap-2">
                 <span className="text-lg">🏷️</span>
                 Tags
               </label>
@@ -421,8 +420,8 @@ export default function PopupPage() {
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
                 placeholder="design, inspiration, reference"
-                className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
-                         text-white placeholder-slate-400 
+                className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/10 
+                         text-base-content placeholder-base-content/40 
                          focus:outline-none focus:border-primary-500 focus:ring-2 
                          focus:ring-primary-500/20 transition-all shadow-lg"
               />
@@ -430,7 +429,7 @@ export default function PopupPage() {
 
             {/* Collection Selector */}
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+              <label className="block text-sm font-medium text-base-content/70 mb-2 flex items-center gap-2">
                 <span className="text-lg">📁</span>
                 Collection (optional)
               </label>
@@ -444,8 +443,8 @@ export default function PopupPage() {
                     setShowCreateCollection(false);
                   }
                 }}
-                className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-600 
-                         text-white 
+                className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/10 
+                         text-base-content 
                          focus:outline-none focus:border-primary-500 focus:ring-2 
                          focus:ring-primary-500/20 transition-all shadow-lg"
               >
@@ -465,8 +464,8 @@ export default function PopupPage() {
                     value={newCollectionName}
                     onChange={(e) => setNewCollectionName(e.target.value)}
                     placeholder="Collection name"
-                    className="flex-1 px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-600 
-                             text-white placeholder-slate-400 
+                    className="flex-1 px-4 py-2 rounded-lg bg-base-200 border border-base-content/10 
+                             text-base-content placeholder-base-content/40 
                              focus:outline-none focus:border-primary-500 focus:ring-2 
                              focus:ring-primary-500/20 transition-all"
                     onKeyPress={async (e) => {
@@ -498,7 +497,7 @@ export default function PopupPage() {
                       }
                     }}
                     className="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 
-                             text-white font-medium transition-colors text-sm"
+                             text-primary-content font-medium transition-colors text-sm"
                   >
                     Create
                   </button>
@@ -508,8 +507,8 @@ export default function PopupPage() {
                       setNewCollectionName('');
                       setSelectedCollectionId('');
                     }}
-                    className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 
-                             text-white font-medium transition-colors text-sm"
+                    className="px-4 py-2 rounded-lg bg-base-300 hover:bg-base-content/10 
+                             text-base-content font-medium transition-colors text-sm"
                   >
                     Cancel
                   </button>
@@ -520,31 +519,31 @@ export default function PopupPage() {
             {/* Display ALL metadata fields that will be saved */}
             {/* Metadata Computation Details */}
             {uploadMetadata && (
-              <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/30 space-y-3 mb-4">
-                <h4 className="text-blue-300 font-semibold text-sm flex items-center gap-2">
+              <div className="p-4 rounded-xl bg-info/10 border border-info/30 space-y-3 mb-4">
+                <h4 className="text-info font-semibold text-sm flex items-center gap-2">
                   <span>🔍</span>
                   Metadata Computation
                 </h4>
                 
                 {/* MIME Type */}
                 <div className="space-y-2">
-                  <div className="text-xs font-medium text-blue-200/70">MIME Type:</div>
+                  <div className="text-xs font-medium text-base-content/70">MIME Type:</div>
                   <div className="space-y-1.5 text-xs">
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-400">File Object:</span>
-                      <span className="text-slate-200 font-mono bg-slate-800/50 px-2 py-0.5 rounded">
+                      <span className="text-base-content/60">File Object:</span>
+                      <span className="text-base-content font-mono bg-base-200 px-2 py-0.5 rounded">
                         N/A (right-click upload)
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-400">EXIF:</span>
-                      <span className="text-slate-200 font-mono bg-slate-800/50 px-2 py-0.5 rounded">
+                      <span className="text-base-content/60">EXIF:</span>
+                      <span className="text-base-content font-mono bg-base-200 px-2 py-0.5 rounded">
                         {uploadMetadata.exifMetadata?.MIMEType || uploadMetadata.exifMetadata?.FileType || 'Not present'}
                       </span>
                     </div>
-                    <div className="pt-1 border-t border-blue-500/20">
-                      <div className="text-blue-300 font-medium">Logic:</div>
-                      <div className="text-blue-200/80 mt-1">
+                    <div className="pt-1 border-t border-info/20">
+                      <div className="text-info font-medium">Logic:</div>
+                      <div className="text-base-content/80 mt-1">
                         Use File object, verify against EXIF if present
                       </div>
                     </div>
@@ -552,27 +551,27 @@ export default function PopupPage() {
                 </div>
                 
                 {/* Creation Date */}
-                <div className="space-y-2 pt-2 border-t border-blue-500/20">
-                  <div className="text-xs font-medium text-blue-200/70">Creation Date:</div>
+                <div className="space-y-2 pt-2 border-t border-info/20">
+                  <div className="text-xs font-medium text-base-content/70">Creation Date:</div>
                   <div className="space-y-1.5 text-xs">
                     <div className="flex justify-between items-start gap-2">
-                      <span className="text-slate-400 flex-shrink-0">File Object:</span>
-                      <span className="text-slate-200 font-mono bg-slate-800/50 px-2 py-0.5 rounded text-right">
+                      <span className="text-base-content/60 flex-shrink-0">File Object:</span>
+                      <span className="text-base-content font-mono bg-base-200 px-2 py-0.5 rounded text-right">
                         N/A (right-click upload)
                       </span>
                     </div>
                     <div className="flex justify-between items-start gap-2">
-                      <span className="text-slate-400 flex-shrink-0">EXIF:</span>
-                      <span className="text-slate-200 font-mono bg-slate-800/50 px-2 py-0.5 rounded text-right">
+                      <span className="text-base-content/60 flex-shrink-0">EXIF:</span>
+                      <span className="text-base-content font-mono bg-base-200 px-2 py-0.5 rounded text-right">
                         {uploadMetadata.exifMetadata?.DateTimeOriginal || 
                          uploadMetadata.exifMetadata?.DateTime || 
                          uploadMetadata.exifMetadata?.CreateDate || 
                          'Not present'}
                       </span>
                     </div>
-                    <div className="pt-1 border-t border-blue-500/20">
-                      <div className="text-blue-300 font-medium">Logic:</div>
-                      <div className="text-blue-200/80 mt-1">
+                    <div className="pt-1 border-t border-info/20">
+                      <div className="text-info font-medium">Logic:</div>
+                      <div className="text-base-content/80 mt-1">
                         Prefer EXIF if exists, fallback to OS lastModified
                       </div>
                     </div>
@@ -604,10 +603,10 @@ export default function PopupPage() {
                 <div className="space-y-2">
                   {Object.entries(allFields).map(([key, value]) => (
                     <div key={key}>
-                      <label className="block text-xs font-medium text-slate-400 mb-1">
+                      <label className="block text-xs font-medium text-base-content/60 mb-1">
                         {key}
                       </label>
-                      <div className="px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-600 text-white text-xs break-all font-mono">
+                      <div className="px-3 py-2 rounded-lg bg-base-200 border border-base-content/10 text-base-content text-xs break-all font-mono">
                         {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                       </div>
                     </div>
@@ -619,43 +618,43 @@ export default function PopupPage() {
 
           {/* Upload Progress with glow */}
           {progress && (
-            <div className="flex items-center gap-3 p-4 rounded-xl bg-primary-500/10 border border-primary-500/30 shadow-xl">
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-primary/10 border border-primary/30 shadow-xl">
               {uploading && (
                 <div className="relative">
                   <div className="absolute inset-0 bg-primary-400 rounded-full blur-lg opacity-50 animate-pulse"></div>
                   <Spinner size="sm" className="relative z-10" />
                 </div>
               )}
-              <span className="text-sm text-primary-200 font-medium">{progress}</span>
+              <span className="text-sm text-primary font-medium">{progress}</span>
             </div>
           )}
 
           {/* Duplicate Detection */}
           {duplicateData && (
-            <div className="space-y-4 p-4 rounded-xl bg-yellow-500/10 border-2 border-yellow-500/30">
+            <div className="space-y-4 p-4 rounded-xl bg-warning/10 border-2 border-warning/30">
               <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 text-yellow-400 text-2xl">⚠️</div>
+                <div className="flex-shrink-0 text-warning text-2xl">⚠️</div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-yellow-300 font-semibold text-base mb-2">Duplicate Image Found!</h4>
-                  <p className="text-yellow-200/80 text-sm mb-3">
+                  <h4 className="text-warning font-semibold text-base mb-2">Duplicate Image Found!</h4>
+                  <p className="text-base-content/80 text-sm mb-3">
                     This image already exists in your vault. Do you want to upload it anyway?
                   </p>
                   
                   {/* Show duplicate image */}
-                  <div className="rounded-lg overflow-hidden border border-yellow-500/30 bg-slate-800/50 max-w-full mb-3">
-                    <div className="w-full flex items-center justify-center bg-slate-900/30 p-2">
+                  <div className="rounded-lg overflow-hidden border border-warning/30 bg-base-200 max-w-full mb-3">
+                    <div className="w-full flex items-center justify-center bg-base-300 p-2">
                       <img
                         src={duplicateData.imgbbUrl || duplicateData.pixvidUrl}
                         alt="Duplicate"
                         className="max-w-full max-h-32 object-contain rounded"
                       />
                     </div>
-                    <div className="p-2 bg-slate-900/50">
-                      <p className="text-slate-300 text-xs font-medium truncate">
+                    <div className="p-2 bg-base-300">
+                      <p className="text-base-content text-xs font-medium truncate">
                         {duplicateData.pageTitle || 'Untitled'}
                       </p>
                       {duplicateData.sourcePageUrl && (
-                        <p className="text-slate-400 text-xs truncate mt-0.5">
+                        <p className="text-base-content/60 text-xs truncate mt-0.5">
                           {duplicateData.sourcePageUrl}
                         </p>
                       )}
@@ -666,16 +665,16 @@ export default function PopupPage() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => setDuplicateData(null)}
-                      className="flex-1 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 
-                               text-white font-medium transition-colors text-sm"
+                      className="flex-1 px-3 py-2 rounded-lg bg-base-300 hover:bg-base-content/10 
+                               text-base-content font-medium transition-colors text-sm"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={() => handleUpload(true)}
                       disabled={uploading}
-                      className="flex-1 px-3 py-2 rounded-lg bg-gradient-to-r from-yellow-500 to-orange-500 
-                               hover:from-yellow-600 hover:to-orange-600 text-white font-medium 
+                      className="flex-1 px-3 py-2 rounded-lg bg-warning hover:bg-warning/90 
+                               text-warning-content font-medium 
                                transition-all disabled:opacity-50 disabled:cursor-not-allowed
                                shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 text-sm"
                     >
@@ -689,8 +688,8 @@ export default function PopupPage() {
 
           {/* Error Message with animation */}
           {uploadError && !duplicateData && (
-            <div className="p-4 rounded-xl bg-red-500/10 border-2 border-red-500/30 shadow-xl animate-shake">
-              <p className="text-sm text-red-300">{uploadError.message}</p>
+            <div className="p-4 rounded-xl bg-error/10 border-2 border-error/30 shadow-xl animate-shake">
+              <p className="text-sm text-error">{uploadError.message}</p>
             </div>
           )}
 
@@ -700,7 +699,7 @@ export default function PopupPage() {
               onClick={() => handleUpload(false)}
               disabled={uploading || !settings}
               className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
-                       hover:from-primary-600 hover:to-secondary-600 text-white font-semibold text-lg
+                       hover:from-primary-600 hover:to-secondary-600 text-primary-content font-semibold text-lg
                        shadow-2xl hover:shadow-[0_8px_30px_rgb(99,102,241,0.4)]
                        transform transition-all duration-300 ease-out
                        hover:scale-105 active:scale-95
@@ -710,7 +709,7 @@ export default function PopupPage() {
               {uploading ? (
                 <>
                   <div className="relative">
-                    <div className="absolute inset-0 bg-white rounded-full blur-md opacity-50 animate-pulse"></div>
+                    <div className="absolute inset-0 bg-primary-content rounded-full blur-md opacity-30 animate-pulse"></div>
                     <Spinner size="sm" className="relative z-10" />
                   </div>
                   <span>Uploading...</span>
@@ -725,8 +724,8 @@ export default function PopupPage() {
           )}
 
           {!settings && (
-            <div className="p-4 rounded-xl bg-yellow-500/10 border-2 border-yellow-500/30 text-center">
-              <p className="text-sm text-yellow-300 font-medium">
+            <div className="p-4 rounded-xl bg-warning/10 border-2 border-warning/30 text-center">
+              <p className="text-sm text-warning font-medium">
                 ⚠️ Please configure API keys in settings first
               </p>
             </div>

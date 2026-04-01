@@ -27,9 +27,9 @@ function toNetscapeCookieLine(cookie) {
 function HostLog({ entry }) {
   const colorClass =
     entry.type === 'error'
-      ? 'bg-red-500/10 text-red-300 border-red-500/20'
+      ? 'bg-error/10 text-error border-error/20'
       : entry.type === 'success'
-        ? 'bg-green-500/10 text-green-300 border-green-500/20'
+        ? 'bg-success/10 text-success border-success/20'
         : 'bg-base-200/70 text-base-content/80 border-base-content/10';
 
   return (
@@ -318,12 +318,12 @@ export default function HostPage() {
                 </button>
               </div>
 
-              <div className={`rounded-lg border px-3 py-2 text-sm ${hostStatus.reachable ? 'border-green-500/20 bg-green-500/10 text-green-300' : 'border-red-500/20 bg-red-500/10 text-red-300'}`}>
+              <div className={`rounded-lg border px-3 py-2 text-sm ${hostStatus.reachable ? 'border-success/20 bg-success/10 text-success' : 'border-error/20 bg-error/10 text-error'}`}>
                 <div className="font-medium">Native Host</div>
                 <div className="mt-1">{hostStatus.hostMessage}</div>
               </div>
 
-              <div className={`rounded-lg border px-3 py-2 text-sm ${hostStatus.ytDlpAvailable ? 'border-green-500/20 bg-green-500/10 text-green-300' : 'border-amber-500/20 bg-amber-500/10 text-amber-300'}`}>
+              <div className={`rounded-lg border px-3 py-2 text-sm ${hostStatus.ytDlpAvailable ? 'border-success/20 bg-success/10 text-success' : 'border-warning/20 bg-warning/10 text-warning'}`}>
                 <div className="font-medium">yt-dlp</div>
                 <div className="mt-1 break-all">{hostStatus.ytDlpMessage}</div>
               </div>
@@ -418,11 +418,11 @@ export default function HostPage() {
 
             <div className="mt-5 grid gap-3 text-sm">
               <div className="flex items-start gap-2 text-base-content/70">
-                <CheckCircle2 className="w-4 h-4 mt-0.5 text-green-500" />
+                <CheckCircle2 className="w-4 h-4 mt-0.5 text-success" />
                 <span>`Download with Host` uses the same native messaging path as the extension's video downloads.</span>
               </div>
               <div className="flex items-start gap-2 text-base-content/70">
-                <AlertCircle className="w-4 h-4 mt-0.5 text-amber-500" />
+                <AlertCircle className="w-4 h-4 mt-0.5 text-warning" />
                 <span>The host now uses fresh Chrome YouTube cookies automatically when you download.</span>
               </div>
             </div>
