@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Cable, RotateCw, Download, CheckCircle2, AlertCircle, Activity } from 'lucide-react';
 import GalleryNavbar from '../components/GalleryNavbar';
+import { Button, Input } from '../components/UI';
 
 function toNetscapeCookieLine(cookie) {
   const domain = cookie.domain || '';
@@ -370,23 +371,24 @@ export default function HostPage() {
                 <h3 className="font-medium">Native Download</h3>
               </div>
 
-              <input
+              <Input
                 type="text"
                 value={downloadUrl}
                 onChange={(e) => setDownloadUrl(e.target.value)}
                 placeholder="https://www.youtube.com/watch?v=..."
-                className="w-full rounded-lg border border-base-content/20 bg-base-100 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                className="bg-base-100 border-base-content/15 shadow-sm"
                 disabled={busyAction === 'download'}
               />
 
-              <button
+              <Button
                 onClick={handleNativeDownload}
                 disabled={busyAction === 'download' || !downloadUrl.trim()}
-                className="inline-flex items-center gap-2 rounded-lg bg-primary text-primary-content px-4 py-2.5 text-sm font-medium hover:opacity-90 disabled:opacity-60"
+                variant="primary"
+                className="w-full justify-center gap-2 !text-base-content border border-primary/20 shadow-lg shadow-primary/10 hover:shadow-xl hover:shadow-primary/20 disabled:border-base-content/10 disabled:shadow-none"
               >
                 <Download className="w-4 h-4" />
                 {busyAction === 'download' ? 'Downloading...' : 'Download with Host'}
-              </button>
+              </Button>
             </div>
           </div>
 
