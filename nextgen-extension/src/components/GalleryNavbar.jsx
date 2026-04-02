@@ -103,7 +103,7 @@ export default function GalleryNavbar({
                 </>
               ) : (
                 <>
-                  <img src="/icons/icon48.png" alt="ImgVault" className="w-6 h-6 rounded" />
+                  <img src="/icons/1.png" alt="ImgVault" className="w-6 h-6 rounded" />
                   <div className="min-w-0 hidden sm:block">
                     <h1 className="text-sm font-semibold text-base-content truncate">{pageTitle}</h1>
                     <p className="text-xs text-base-content/60 truncate">{pageSubtitle}</p>

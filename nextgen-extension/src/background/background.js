@@ -35,10 +35,10 @@ class ImgVaultServiceWorker {
     this.activeUploadController = null;
     this.initialized = false;
     this.defaultActionIcon = {
-      16: 'icons/1-16.png',
-      32: 'icons/1-32.png',
-      48: 'icons/1-48.png',
-      128: 'icons/1-128.png',
+      16: 'icons/1.png',
+      32: 'icons/1.png',
+      48: 'icons/1.png',
+      128: 'icons/1.png',
     };
     this.supportedVideoActionIcon = {
       16: 'icons/2-16.png',
