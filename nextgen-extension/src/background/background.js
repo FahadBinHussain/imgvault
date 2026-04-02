@@ -1060,15 +1060,13 @@ class ImgVaultServiceWorker {
       
       // Add Filemoon URLs if uploaded successfully
       if (filemoonResult) {
-        videoMetadata.filemoonUrl = filemoonResult.url;
-        videoMetadata.filemoonThumbUrl = filemoonResult.thumbUrl || '';
+        videoMetadata.filemoonWatchUrl = filemoonResult.watchUrl || filemoonResult.url || '';
+        videoMetadata.filemoonDirectUrl = filemoonResult.directUrl || '';
       }
       
-      // Add UDrop URLs if uploaded successfully
       if (udropResult) {
-        videoMetadata.udropUrl = udropResult.url;
-        videoMetadata.udropShortUrl = udropResult.shortUrl;
-        videoMetadata.udropFileId = udropResult.fileId;
+        videoMetadata.udropWatchUrl = udropResult.watchUrl || udropResult.displayUrl || '';
+        videoMetadata.udropDirectUrl = udropResult.directUrl || udropResult.url || '';
       }
       
       if (udropResult) {
@@ -1632,11 +1630,10 @@ class ImgVaultServiceWorker {
       description: data.description || '',
       collectionId: data.collectionId || null,
       isVideo: true,
-      filemoonUrl: data.filemoonResult?.url || '',
-      filemoonThumbUrl: data.filemoonResult?.thumbUrl || '',
-      udropUrl: data.udropResult?.url || '',
-      udropShortUrl: data.udropResult?.shortUrl || '',
-      udropFileId: data.udropResult?.fileId || '',
+      filemoonWatchUrl: data.filemoonResult?.watchUrl || data.filemoonResult?.url || '',
+      filemoonDirectUrl: data.filemoonResult?.directUrl || '',
+      udropWatchUrl: data.udropResult?.watchUrl || data.udropResult?.displayUrl || '',
+      udropDirectUrl: data.udropResult?.directUrl || data.udropResult?.url || '',
     };
 
     await this.updateStatusWithLog('Saving video metadata...');

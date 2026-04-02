@@ -278,20 +278,23 @@ export class FilemoonUploader extends BaseUploader {
 
       const fileData = result.files[0];
       
-      // Construct the file URL from filecode
-      const fileUrl = `https://api.byse.sx/e/${fileData.filecode}`;
+      const watchUrl = `https://api.byse.sx/e/${fileData.filecode}`;
+      const directUrl = `https://api.byse.sx/d/${fileData.filecode}`;
       
       console.log('🎬 [FILEMOON] File uploaded successfully, filecode:', fileData.filecode);
-      console.log('🎬 [FILEMOON] Embed URL:', fileUrl);
+      console.log('🎬 [FILEMOON] Watch URL:', watchUrl);
+      console.log('🎬 [FILEMOON] Direct URL:', directUrl);
       console.log('ℹ️ [FILEMOON] Thumbnail will be fetched later when gallery loads (video needs time to process)');
       
       return {
-        url: fileUrl,
+        url: watchUrl,
         deleteUrl: null,
-        displayUrl: fileUrl,
+        displayUrl: watchUrl,
         thumbUrl: null, // Will be fetched later when gallery loads
         filecode: fileData.filecode,
-        filename: fileData.filename
+        filename: fileData.filename,
+        watchUrl,
+        directUrl
       };
     } catch (error) {
       console.error('Filemoon API error:', error);
@@ -315,15 +318,18 @@ export class FilemoonUploader extends BaseUploader {
       }
 
       const fileData = result.files[0];
-      const fileUrl = `https://api.byse.sx/e/${fileData.filecode}`;
+      const watchUrl = `https://api.byse.sx/e/${fileData.filecode}`;
+      const directUrl = `https://api.byse.sx/d/${fileData.filecode}`;
 
       return {
-        url: fileUrl,
+        url: watchUrl,
         deleteUrl: null,
-        displayUrl: fileUrl,
+        displayUrl: watchUrl,
         thumbUrl: null,
         filecode: fileData.filecode,
         filename: fileData.filename,
+        watchUrl,
+        directUrl,
         apiStatus: result.status || '',
         apiMessage: result.msg || '',
       };
@@ -463,7 +469,9 @@ export class UDropUploader extends BaseUploader {
         accountId: auth.account_id,
         apiStatus: result._status || '',
         apiResponse: result.response || '',
-        downloadApiStatus: downloadUrl !== fileData.url ? 'success' : 'fallback'
+        downloadApiStatus: downloadUrl !== fileData.url ? 'success' : 'fallback',
+        watchUrl: fileData.url,
+        directUrl: downloadUrl
       };
     } catch (error) {
       console.error('UDrop API error:', error);
@@ -523,7 +531,9 @@ export class UDropUploader extends BaseUploader {
         accountId: auth.account_id,
         apiStatus: result._status || '',
         apiResponse: result.response || '',
-        downloadApiStatus: downloadUrl !== fileData.url ? 'success' : 'fallback'
+        downloadApiStatus: downloadUrl !== fileData.url ? 'success' : 'fallback',
+        watchUrl: fileData.url,
+        directUrl: downloadUrl
       };
     } catch (error) {
       throw new Error(`Failed to upload to UDrop: ${error.message}`);
