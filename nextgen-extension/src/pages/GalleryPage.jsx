@@ -17,7 +17,7 @@ import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import TimelineScrollbar from '../components/TimelineScrollbar';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig';
-import { UDropUploader } from '../utils/uploaders';
+import { FilemoonUploader, UDropUploader } from '../utils/uploaders';
 
 export default function GalleryPage() {
   const navigate = useNavigate();
@@ -312,63 +312,124 @@ export default function GalleryPage() {
       uploadStatusLogs: [],
     });
 
-    await appendClientUploadLog('Attempting direct UDrop upload from the extension page...');
+    await appendClientUploadLog('Attempting direct video uploads from the extension page...');
 
     try {
       const settings = await sendMessage('getVideoHostSettings');
-      if (!settings?.udropKey1 || !settings?.udropKey2) {
-        throw new Error('UDrop keys are not available for direct upload.');
-      }
-
-      const uploader = new UDropUploader();
       await appendClientUploadLog(`Video payload ready: ${formatBytes(uploadData.fileSize || uploadData.fileBlob?.size || 0)}.`);
-      await appendClientUploadLog('Authorizing with UDrop...');
-      await chrome.storage.local.set({ uploadStatus: 'Uploading video directly to UDrop...' });
+      let udropResult = null;
+      let filemoonResult = null;
+      let hostSucceeded = false;
 
-      const udropResult = await uploader.uploadWithProgress(
-        uploadData.fileBlob,
-        settings.udropKey1,
-        settings.udropKey2,
-        uploadData.fileName || 'video.mp4',
-        async ({ loaded, total, percent }) => {
-          const totalLabel = total ? formatBytes(total) : formatBytes(uploadData.fileBlob?.size || 0);
-          const loadedLabel = formatBytes(loaded);
-          const message = percent !== null
-            ? `UDrop direct upload progress: ${percent}% (${loadedLabel} / ${totalLabel})`
-            : `UDrop direct upload progress: ${loadedLabel} sent`;
-          await chrome.storage.local.set({ uploadStatus: message });
-          await appendClientUploadLog(message);
+      if (settings?.udropKey1 && settings?.udropKey2) {
+        const udropUploader = new UDropUploader();
+        await appendClientUploadLog('Starting UDrop XHR upload...');
+        await chrome.storage.local.set({ uploadStatus: 'Uploading video to UDrop...' });
+
+        try {
+          udropResult = await udropUploader.uploadWithProgress(
+            uploadData.fileBlob,
+            settings.udropKey1,
+            settings.udropKey2,
+            uploadData.fileName || 'video.mp4',
+            async ({ loaded, total, percent }) => {
+              const totalLabel = total ? formatBytes(total) : formatBytes(uploadData.fileBlob?.size || 0);
+              const loadedLabel = formatBytes(loaded);
+              const message = percent !== null
+                ? `UDrop upload progress: ${percent}% (${loadedLabel} / ${totalLabel})`
+                : `UDrop upload progress: ${loadedLabel} sent`;
+              await chrome.storage.local.set({ uploadStatus: message });
+              await appendClientUploadLog(message);
+            }
+          );
+        } catch (error) {
+          await appendClientUploadLog(`UDrop XHR upload failed: ${error.message || String(error)}`, 'error');
+          await appendClientUploadLog('Falling back to normal UDrop upload...', 'warning');
+          udropResult = await udropUploader.upload(
+            uploadData.fileBlob,
+            settings.udropKey1,
+            settings.udropKey2,
+            uploadData.fileName || 'video.mp4'
+          );
         }
-      );
 
-      await appendClientUploadLog(`UDrop API status: ${udropResult.apiStatus || 'unknown'}`);
-      if (udropResult.apiResponse) {
-        await appendClientUploadLog(`UDrop API message: ${udropResult.apiResponse}`);
+        await appendClientUploadLog(`UDrop API status: ${udropResult.apiStatus || 'unknown'}`);
+        if (udropResult.apiResponse) {
+          await appendClientUploadLog(`UDrop API message: ${udropResult.apiResponse}`);
+        }
+        await appendClientUploadLog(`UDrop authorized, account: ${udropResult.accountId || 'unknown'}`);
+        await appendClientUploadLog('[UDROP] File uploaded successfully', 'success');
+        await appendClientUploadLog(`[UDROP] URL: ${udropResult.displayUrl || udropResult.url || ''}`);
+        if (udropResult.shortUrl) {
+          await appendClientUploadLog(`[UDROP] Short URL: ${udropResult.shortUrl}`);
+        }
+        if (udropResult.fileId) {
+          await appendClientUploadLog(`[UDROP] File ID: ${udropResult.fileId}`);
+        }
+        if (udropResult.url) {
+          await appendClientUploadLog(`[UDROP] Download URL: ${udropResult.url}`);
+        }
+        hostSucceeded = true;
       }
-      await appendClientUploadLog(`UDrop authorized, account: ${udropResult.accountId || 'unknown'}`);
-      await appendClientUploadLog('[UDROP] File uploaded successfully', 'success');
-      await appendClientUploadLog(`[UDROP] URL: ${udropResult.displayUrl || udropResult.url || ''}`);
-      if (udropResult.shortUrl) {
-        await appendClientUploadLog(`[UDROP] Short URL: ${udropResult.shortUrl}`);
+
+      if (settings?.filemoonApiKey) {
+        const filemoonUploader = new FilemoonUploader();
+        await appendClientUploadLog('Starting Filemoon upload after UDrop finished...');
+        await chrome.storage.local.set({ uploadStatus: 'Uploading video to Filemoon...' });
+
+        try {
+          filemoonResult = await filemoonUploader.uploadWithProgress(
+            uploadData.fileBlob,
+            settings.filemoonApiKey,
+            uploadData.fileName || 'video.mp4',
+            async ({ loaded, total, percent }) => {
+              const totalLabel = total ? formatBytes(total) : formatBytes(uploadData.fileBlob?.size || 0);
+              const loadedLabel = formatBytes(loaded);
+              const message = percent !== null
+                ? `Filemoon upload progress: ${percent}% (${loadedLabel} / ${totalLabel})`
+                : `Filemoon upload progress: ${loadedLabel} sent`;
+              await chrome.storage.local.set({ uploadStatus: message });
+              await appendClientUploadLog(message);
+            }
+          );
+        } catch (error) {
+          await appendClientUploadLog(`Filemoon XHR upload failed: ${error.message || String(error)}`, 'error');
+          await appendClientUploadLog('Falling back to normal Filemoon upload...', 'warning');
+          filemoonResult = await filemoonUploader.upload(
+            uploadData.fileBlob,
+            settings.filemoonApiKey,
+            uploadData.fileName || 'video.mp4'
+          );
+        }
+
+        await appendClientUploadLog(`Filemoon API status: ${filemoonResult.apiStatus || 'unknown'}`);
+        if (filemoonResult.apiMessage) {
+          await appendClientUploadLog(`Filemoon API message: ${filemoonResult.apiMessage}`);
+        }
+        if (filemoonResult.filecode) {
+          await appendClientUploadLog(`Filemoon filecode: ${filemoonResult.filecode}`);
+        }
+        if (filemoonResult.url) {
+          await appendClientUploadLog(`Filemoon embed URL: ${filemoonResult.url}`);
+        }
+        await appendClientUploadLog('[FILEMOON] File uploaded successfully', 'success');
+        hostSucceeded = true;
       }
-      if (udropResult.fileId) {
-        await appendClientUploadLog(`[UDROP] File ID: ${udropResult.fileId}`);
-      }
-      if (udropResult.url) {
-        await appendClientUploadLog(`[UDROP] Download URL: ${udropResult.url}`);
+
+      if (!hostSucceeded) {
+        throw new Error('No video host is configured for direct upload.');
       }
 
       await chrome.storage.local.set({ uploadStatus: 'Saving video metadata...' });
       const saved = await sendMessage('saveUploadedVideo', {
         ...uploadData,
         udropResult,
+        filemoonResult,
       });
       await appendClientUploadLog(`[SAVE VIDEO] Saved successfully with ID: ${saved.id}`, 'success');
       return saved;
     } catch (error) {
       await appendClientUploadLog(`Direct video upload failed: ${error.message || String(error)}`, 'error');
-      await appendClientUploadLog('Falling back to background upload...', 'warning');
-      await chrome.storage.local.set({ uploadStatus: 'Falling back to background upload...' });
       throw error;
     } finally {
       await chrome.storage.local.set({ uploadActive: false });
@@ -827,11 +888,7 @@ export default function GalleryPage() {
       }
 
       if (uploadData.isVideo && uploadData.fileBlob) {
-        try {
-          await uploadVideoDirectly(uploadData);
-        } catch (_) {
-          await uploadImage(uploadData);
-        }
+        await uploadVideoDirectly(uploadData);
       } else {
         await uploadImage(uploadData);
       }

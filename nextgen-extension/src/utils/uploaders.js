@@ -298,6 +298,39 @@ export class FilemoonUploader extends BaseUploader {
       throw new Error(`Failed to upload to Filemoon: ${error.message}`);
     }
   }
+
+  async uploadWithProgress(blob, apiKey, filename = 'video.mp4', onProgress) {
+    try {
+      const uploadServerUrl = await this.getUploadServer(apiKey);
+
+      const formData = new FormData();
+      const videoFilename = filename.split('/').pop().split('?')[0] || 'video.mp4';
+      formData.append('file', blob, videoFilename);
+      formData.append('key', apiKey);
+
+      const result = await this.xhrUpload(uploadServerUrl, formData, onProgress);
+
+      if (result.status !== 200 || !result.files || result.files.length === 0) {
+        throw new Error(result.msg || result.error?.message || 'Upload failed');
+      }
+
+      const fileData = result.files[0];
+      const fileUrl = `https://api.byse.sx/e/${fileData.filecode}`;
+
+      return {
+        url: fileUrl,
+        deleteUrl: null,
+        displayUrl: fileUrl,
+        thumbUrl: null,
+        filecode: fileData.filecode,
+        filename: fileData.filename,
+        apiStatus: result.status || '',
+        apiMessage: result.msg || '',
+      };
+    } catch (error) {
+      throw new Error(`Failed to upload to Filemoon: ${error.message}`);
+    }
+  }
 }
 
 /**

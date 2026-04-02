@@ -635,12 +635,16 @@ class ImgVaultServiceWorker {
     const syncSettings = await chrome.storage.sync.get(['filemoonApiKey', 'udropKey1', 'udropKey2']);
     const merged = { ...syncSettings };
 
-    if (merged.udropKey1 && merged.udropKey2) {
+    if (merged.filemoonApiKey && merged.udropKey1 && merged.udropKey2) {
       return merged;
     }
 
     try {
       const firebaseSettings = await this.storage.getUserSettings();
+
+      if (!merged.filemoonApiKey && firebaseSettings?.filemoonApiKey) {
+        merged.filemoonApiKey = firebaseSettings.filemoonApiKey;
+      }
 
       if (!merged.udropKey1 && firebaseSettings?.udropKey1) {
         merged.udropKey1 = firebaseSettings.udropKey1;
@@ -650,8 +654,13 @@ class ImgVaultServiceWorker {
         merged.udropKey2 = firebaseSettings.udropKey2;
       }
 
-      if ((!syncSettings.udropKey1 && merged.udropKey1) || (!syncSettings.udropKey2 && merged.udropKey2)) {
+      if (
+        (!syncSettings.filemoonApiKey && merged.filemoonApiKey) ||
+        (!syncSettings.udropKey1 && merged.udropKey1) ||
+        (!syncSettings.udropKey2 && merged.udropKey2)
+      ) {
         await chrome.storage.sync.set({
+          ...(merged.filemoonApiKey ? { filemoonApiKey: merged.filemoonApiKey } : {}),
           ...(merged.udropKey1 ? { udropKey1: merged.udropKey1 } : {}),
           ...(merged.udropKey2 ? { udropKey2: merged.udropKey2 } : {}),
         });
@@ -900,11 +909,11 @@ class ImgVaultServiceWorker {
       // Get API keys from storage
       const settings = await this.getMergedVideoHostSettings();
       
-      const hasFilemoon = false;
+      const hasFilemoon = !!settings.filemoonApiKey;
       const hasUDrop = settings.udropKey1 && settings.udropKey2;
       
-      if (!hasUDrop) {
-        throw new Error('No video hosting service configured. Please set UDrop API keys in settings.');
+      if (!hasFilemoon && !hasUDrop) {
+        throw new Error('No video hosting service configured. Please set Filemoon API key or UDrop API keys in settings.');
       }
 
       await this.updateStatusWithLog('📥 Fetching video...');
@@ -929,6 +938,7 @@ class ImgVaultServiceWorker {
       
       // Build status message based on available services
       const services = [];
+      if (hasFilemoon) services.push('Filemoon');
       if (hasUDrop) services.push('UDrop');
       
       const statusMsg = services.length > 1 
@@ -937,88 +947,60 @@ class ImgVaultServiceWorker {
       
       await this.updateStatusWithLog(statusMsg);
       
-      // Upload to available services in parallel
-      const uploadPromises = [];
-      
-      if (hasFilemoon) {
-        await this.appendUploadLog('📡 Filemoon: requesting upload server...');
-        uploadPromises.push(
-          this.filemoonUploader.upload(
-            videoBlob, 
-            settings.filemoonApiKey, 
-            data.fileName || 'video.mp4',
-            ({ loaded, total, percent }) => {
-              const totalLabel = total ? this.formatBytes(total) : this.formatBytes(videoBlob.size);
-              const loadedLabel = this.formatBytes(loaded);
-              const message = percent !== null
-                ? `☁️ Filemoon upload progress: ${percent}% (${loadedLabel} / ${totalLabel})`
-                : `☁️ Filemoon upload progress: ${loadedLabel} sent`;
-              this.appendUploadLog(message);
-            }
-          )
-            .then(async (result) => {
-              this.appendUploadLog(`✅ Filemoon: upload completed for ${result.filename || data.fileName || 'video file'}`, 'success');
-              return { type: 'filemoon', result };
-            })
-            .catch(err => {
-              console.error('Filemoon upload failed:', err);
-              this.appendUploadLog(`❌ Filemoon: ${err.message || String(err)}`, 'error');
-              return { type: 'filemoon', error: err.message || String(err) };
-            })
-        );
-      }
-      
+      // Upload to available services sequentially: UDrop first, then Filemoon.
+      let udropResult = null;
+      let filemoonResult = null;
+      const uploadErrors = [];
+
       if (hasUDrop) {
-        await this.appendUploadLog('📡 UDrop: authorizing and starting upload...');
-        uploadPromises.push(
-          this.udropUploader.upload(
-            videoBlob, 
-            settings.udropKey1, 
-            settings.udropKey2, 
-            data.fileName || 'video.mp4',
-            ({ loaded, total, percent }) => {
-              const totalLabel = total ? this.formatBytes(total) : this.formatBytes(videoBlob.size);
-              const loadedLabel = this.formatBytes(loaded);
-              const message = percent !== null
-                ? `☁️ UDrop upload progress: ${percent}% (${loadedLabel} / ${totalLabel})`
-                : `☁️ UDrop upload progress: ${loadedLabel} sent`;
-              this.appendUploadLog(message);
-            }
-          )
-            .then(result => {
-              this.appendUploadLog(`✅ UDrop: upload completed for ${result.filename || data.fileName || 'video file'}`, 'success');
-              this.appendUploadLog(`📨 UDrop API status: ${result.apiStatus || 'unknown'}`);
-              if (result.apiResponse) {
-                this.appendUploadLog(`📨 UDrop API message: ${result.apiResponse}`);
-              }
-              if (result.fileId) {
-                this.appendUploadLog(`🆔 UDrop file_id: ${result.fileId}`);
-              }
-              if (result.accountId) {
-                this.appendUploadLog(`👤 UDrop account_id: ${result.accountId}`);
-              }
-              if (result.shortUrl) {
-                this.appendUploadLog(`🔗 UDrop short URL: ${result.shortUrl}`);
-              }
-              if (result.url) {
-                this.appendUploadLog(`🔗 UDrop download URL: ${result.url}`);
-              }
-              return { type: 'udrop', result };
-            })
-            .catch(err => {
-              console.error('UDrop upload failed:', err);
-              this.appendUploadLog(`❌ UDrop: ${err.message || String(err)}`, 'error');
-              return { type: 'udrop', error: err.message || String(err) };
-            })
-        );
+        await this.appendUploadLog('UDrop: authorizing and starting upload...');
+        try {
+          udropResult = await this.udropUploader.upload(
+            videoBlob,
+            settings.udropKey1,
+            settings.udropKey2,
+            data.fileName || 'video.mp4'
+          );
+          await this.appendUploadLog(`UDrop: upload completed for ${udropResult.filename || data.fileName || 'video file'}`, 'success');
+          await this.appendUploadLog(`UDrop API status: ${udropResult.apiStatus || 'unknown'}`);
+          if (udropResult.apiResponse) {
+            await this.appendUploadLog(`UDrop API message: ${udropResult.apiResponse}`);
+          }
+          if (udropResult.fileId) {
+            await this.appendUploadLog(`UDrop file_id: ${udropResult.fileId}`);
+          }
+          if (udropResult.accountId) {
+            await this.appendUploadLog(`UDrop account_id: ${udropResult.accountId}`);
+          }
+          if (udropResult.shortUrl) {
+            await this.appendUploadLog(`UDrop short URL: ${udropResult.shortUrl}`);
+          }
+          if (udropResult.url) {
+            await this.appendUploadLog(`UDrop download URL: ${udropResult.url}`);
+          }
+        } catch (err) {
+          console.error('UDrop upload failed:', err);
+          uploadErrors.push(`udrop: ${err.message || String(err)}`);
+          await this.appendUploadLog(`UDrop failed: ${err.message || String(err)}`, 'error');
+        }
       }
-      
-      const uploadResults = await Promise.all(uploadPromises);
-      const filemoonResult = uploadResults.find((entry) => entry.type === 'filemoon')?.result || null;
-      const udropResult = uploadResults.find((entry) => entry.type === 'udrop')?.result || null;
-      const uploadErrors = uploadResults
-        .filter((entry) => entry.error)
-        .map((entry) => `${entry.type}: ${entry.error}`);
+
+      if (hasFilemoon) {
+        await this.appendUploadLog('Starting Filemoon upload after UDrop finished...');
+        await this.appendUploadLog('Filemoon: requesting upload server...');
+        try {
+          filemoonResult = await this.filemoonUploader.upload(
+            videoBlob,
+            settings.filemoonApiKey,
+            data.fileName || 'video.mp4'
+          );
+          await this.appendUploadLog(`Filemoon: upload completed for ${filemoonResult.filename || data.fileName || 'video file'}`, 'success');
+        } catch (err) {
+          console.error('Filemoon upload failed:', err);
+          uploadErrors.push(`filemoon: ${err.message || String(err)}`);
+          await this.appendUploadLog(`Filemoon failed: ${err.message || String(err)}`, 'error');
+        }
+      }
 
       if (!filemoonResult && !udropResult) {
         await this.appendUploadLog('❌ No video host completed successfully.', 'error');
@@ -1650,6 +1632,8 @@ class ImgVaultServiceWorker {
       description: data.description || '',
       collectionId: data.collectionId || null,
       isVideo: true,
+      filemoonUrl: data.filemoonResult?.url || '',
+      filemoonThumbUrl: data.filemoonResult?.thumbUrl || '',
       udropUrl: data.udropResult?.url || '',
       udropShortUrl: data.udropResult?.shortUrl || '',
       udropFileId: data.udropResult?.fileId || '',
