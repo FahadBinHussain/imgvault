@@ -2,9 +2,9 @@ import { readFile } from 'fs/promises'
 import path from 'path'
 
 const ICON_BY_SIZE = {
-  16: 'icon16.png',
-  48: 'icon48.png',
-  128: 'icon128.png',
+  16: '1.png',
+  48: '1.png',
+  128: '1.png',
 }
 
 export async function GET(request) {

@@ -303,7 +303,7 @@ export default function SettingsPage() {
           <div className="flex items-start sm:items-center gap-3 sm:gap-4">
             <div className="relative">
               <div className="absolute inset-0 bg-gradient-to-r from-primary to-secondary rounded-xl blur-md opacity-50"></div>
-              <img src="/icons/icon48.png" alt="ImgVault" className="w-12 h-12 relative z-10 rounded-xl shadow-lg" />
+              <img src="/icons/1.png" alt="ImgVault" className="w-12 h-12 relative z-10 rounded-xl shadow-lg" />
             </div>
             <div className="flex-1">
               <h1 className="text-2xl sm:text-3xl font-bold text-base-content">Settings</h1>

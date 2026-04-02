@@ -152,7 +152,7 @@ export default function PopupPage() {
             <div className="flex items-center gap-3">
               <div className="relative">
                 <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-lg blur-md opacity-50"></div>
-                <img src="/icons/icon48.png" alt="ImgVault" className="w-10 h-10 relative z-10 rounded-lg shadow-lg" />
+                <img src="/icons/1.png" alt="ImgVault" className="w-10 h-10 relative z-10 rounded-lg shadow-lg" />
               </div>
               <div className="flex-1">
                 <h2 className="text-xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent">ImgVault</h2>
@@ -274,7 +274,7 @@ export default function PopupPage() {
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-lg blur-md opacity-50"></div>
-              <img src="/icons/icon48.png" alt="ImgVault" className="w-10 h-10 relative z-10 rounded-lg shadow-lg" />
+              <img src="/icons/1.png" alt="ImgVault" className="w-10 h-10 relative z-10 rounded-lg shadow-lg" />
             </div>
             <div className="flex-1">
               <h2 className="text-xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent">Save to Vault</h2>
