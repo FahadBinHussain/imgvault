@@ -151,8 +151,8 @@ export default function PopupPage() {
           <div className="p-6 border-b border-base-content/10 backdrop-blur-xl bg-base-100/70">
             <div className="flex items-center gap-3">
               <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-lg blur-md opacity-50"></div>
-                <img src="/icons/1.png" alt="ImgVault" className="w-10 h-10 relative z-10 rounded-lg shadow-lg" />
+                <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-[var(--radius-box)] blur-md opacity-50"></div>
+                <img src="/icons/1.png" alt="ImgVault" className="w-10 h-10 relative z-10 rounded-[var(--radius-box)] shadow-lg" />
               </div>
               <div className="flex-1">
                 <h2 className="text-xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent">ImgVault</h2>
@@ -160,7 +160,7 @@ export default function PopupPage() {
               </div>
               <button
                 onClick={openGallery}
-                className="p-2 rounded-lg bg-base-200 hover:bg-base-300 border border-base-content/10 
+                className="p-2 rounded-[var(--radius-box)] bg-base-200 hover:bg-base-300 border border-base-content/10 
                          backdrop-blur-sm transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
                 title="Gallery"
               >
@@ -168,7 +168,7 @@ export default function PopupPage() {
               </button>
               <button
                 onClick={openSettings}
-                className="p-2 rounded-lg bg-base-200 hover:bg-base-300 border border-base-content/10 
+                className="p-2 rounded-[var(--radius-box)] bg-base-200 hover:bg-base-300 border border-base-content/10 
                          backdrop-blur-sm transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
                 title="Settings"
               >
@@ -201,7 +201,7 @@ export default function PopupPage() {
               />
               <button
                 onClick={() => document.getElementById('fileInput').click()}
-                className="px-6 py-3 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
+                className="px-6 py-3 rounded-[var(--radius-box)] bg-gradient-to-r from-primary-500 to-secondary-500 
                          font-semibold shadow-xl hover:shadow-2xl hover:scale-105 
                          active:scale-95 transition-all duration-300 flex items-center gap-2 mx-auto"
               >
@@ -219,7 +219,7 @@ export default function PopupPage() {
   if (showSuccess) {
     return (
       <div className="w-full max-w-[420px] min-h-screen sm:min-h-[400px] mx-auto bg-base-200 text-base-content flex items-center justify-center px-4">
-        <div className="backdrop-blur-2xl bg-base-100/90 border border-base-content/10 shadow-2xl rounded-2xl p-8 text-center">
+        <div className="backdrop-blur-2xl bg-base-100/90 border border-base-content/10 shadow-2xl rounded-[var(--radius-box)] p-8 text-center">
           <div className="relative inline-block mb-6">
             <div className="absolute inset-0 bg-success rounded-full blur-3xl opacity-30 animate-pulse"></div>
             <div className="relative text-7xl">✅</div>
@@ -237,7 +237,7 @@ export default function PopupPage() {
   const WarningTip = ({ siteName }) => {
     const fileId = `replace${siteName.replace(/\s+/g, '')}File`;
     return (
-      <div className="flex items-start gap-3 p-4 rounded-xl bg-warning/10 border-2 border-warning/30 
+      <div className="flex items-start gap-3 p-4 rounded-[var(--radius-box)] bg-warning/10 border-2 border-warning/30 
                     shadow-lg animate-pulse-slow">
         <span className="text-2xl flex-shrink-0 animate-bounce">⚠️</span>
         <div className="flex-1">
@@ -253,7 +253,7 @@ export default function PopupPage() {
           />
           <button
             onClick={() => document.getElementById(fileId).click()}
-            className="px-4 py-2 rounded-lg bg-warning hover:bg-warning/90 
+            className="px-4 py-2 rounded-[var(--radius-box)] bg-warning hover:bg-warning/90 
                      border-2 border-warning/40 text-warning-content text-sm font-bold
                      transition-all duration-200 hover:scale-105 active:scale-95
                      flex items-center gap-2 shadow-lg hover:shadow-xl"
@@ -273,8 +273,8 @@ export default function PopupPage() {
   <div className="p-4 sm:p-6 border-b border-base-content/10 backdrop-blur-xl bg-base-100/70">
           <div className="flex items-center gap-3">
             <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-lg blur-md opacity-50"></div>
-              <img src="/icons/1.png" alt="ImgVault" className="w-10 h-10 relative z-10 rounded-lg shadow-lg" />
+              <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-[var(--radius-box)] blur-md opacity-50"></div>
+              <img src="/icons/1.png" alt="ImgVault" className="w-10 h-10 relative z-10 rounded-[var(--radius-box)] shadow-lg" />
             </div>
             <div className="flex-1">
               <h2 className="text-xl font-bold bg-gradient-to-r from-primary-300 to-secondary-300 bg-clip-text text-transparent">Save to Vault</h2>
@@ -282,7 +282,7 @@ export default function PopupPage() {
             </div>
             <button
               onClick={openSettings}
-              className="p-2 rounded-lg bg-base-200 hover:bg-base-300 border border-base-content/10 
+              className="p-2 rounded-[var(--radius-box)] bg-base-200 hover:bg-base-300 border border-base-content/10 
                        backdrop-blur-sm transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
               title="Settings"
             >
@@ -293,9 +293,9 @@ export default function PopupPage() {
 
         {/* Image Preview with soft shadows */}
   <div className="p-4 sm:p-6 space-y-4">
-          <div className="relative rounded-xl overflow-hidden bg-base-200 border border-base-content/10 shadow-xl group">
+          <div className="relative rounded-[var(--radius-box)] overflow-hidden bg-base-200 border border-base-content/10 shadow-xl group">
             <div className="absolute -inset-1 bg-gradient-to-r from-primary-500/40 to-secondary-500/40 
-                          rounded-xl opacity-0 group-hover:opacity-100 blur-xl transition-all duration-500"></div>
+                          rounded-[var(--radius-box)] opacity-0 group-hover:opacity-100 blur-xl transition-all duration-500"></div>
             <div className="relative">
               <img
                 src={imageData.srcUrl}
@@ -312,7 +312,7 @@ export default function PopupPage() {
                 />
                 <button
                   onClick={() => document.getElementById('replaceFile').click()}
-                  className="px-4 py-2 rounded-lg bg-base-300 hover:bg-base-content/10 border border-base-content/10 
+                  className="px-4 py-2 rounded-[var(--radius-box)] bg-base-300 hover:bg-base-content/10 border border-base-content/10 
                            backdrop-blur-sm text-base-content text-sm font-medium shadow-lg hover:shadow-xl 
                            transition-all duration-300 hover:scale-105 flex items-center gap-2"
                 >
@@ -325,7 +325,7 @@ export default function PopupPage() {
 
           {/* Image Replaced Banner */}
           {showReplaced && (
-            <div className="flex items-center gap-3 p-4 rounded-xl bg-success/10 border-2 border-success/30 
+            <div className="flex items-center gap-3 p-4 rounded-[var(--radius-box)] bg-success/10 border-2 border-success/30 
                           shadow-lg animate-pulse">
               <span className="text-2xl flex-shrink-0">✅</span>
               <p className="text-sm text-success font-medium">
@@ -377,14 +377,14 @@ export default function PopupPage() {
                   value={pageUrl}
                   onChange={(e) => setPageUrl(e.target.value)}
                   readOnly={!isPageUrlEditable}
-                  className="flex-1 px-4 py-3 rounded-lg bg-base-200 border border-base-content/10 
+                  className="flex-1 px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 
                            text-base-content placeholder-base-content/40 
                            focus:outline-none focus:border-primary-500 focus:ring-2 
                            focus:ring-primary-500/20 transition-all shadow-lg"
                 />
                 <button
                   onClick={() => setIsPageUrlEditable(!isPageUrlEditable)}
-                  className="p-3 rounded-lg bg-base-200 hover:bg-base-300 border border-base-content/10 
+                  className="p-3 rounded-[var(--radius-box)] bg-base-200 hover:bg-base-300 border border-base-content/10 
                            backdrop-blur-sm transition-all duration-300 hover:scale-105 shadow-lg"
                   title={isPageUrlEditable ? 'Lock' : 'Edit'}
                 >
@@ -403,7 +403,7 @@ export default function PopupPage() {
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={`From: ${imageData.pageTitle || 'Unknown'}`}
                 rows={3}
-                className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/10 
+                className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 
                          text-base-content placeholder-base-content/40 
                          focus:outline-none focus:border-primary-500 focus:ring-2 
                          focus:ring-primary-500/20 transition-all resize-none shadow-lg"
@@ -420,7 +420,7 @@ export default function PopupPage() {
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
                 placeholder="design, inspiration, reference"
-                className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/10 
+                className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 
                          text-base-content placeholder-base-content/40 
                          focus:outline-none focus:border-primary-500 focus:ring-2 
                          focus:ring-primary-500/20 transition-all shadow-lg"
@@ -443,7 +443,7 @@ export default function PopupPage() {
                     setShowCreateCollection(false);
                   }
                 }}
-                className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/10 
+                className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 
                          text-base-content 
                          focus:outline-none focus:border-primary-500 focus:ring-2 
                          focus:ring-primary-500/20 transition-all shadow-lg"
@@ -464,7 +464,7 @@ export default function PopupPage() {
                     value={newCollectionName}
                     onChange={(e) => setNewCollectionName(e.target.value)}
                     placeholder="Collection name"
-                    className="flex-1 px-4 py-2 rounded-lg bg-base-200 border border-base-content/10 
+                    className="flex-1 px-4 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 
                              text-base-content placeholder-base-content/40 
                              focus:outline-none focus:border-primary-500 focus:ring-2 
                              focus:ring-primary-500/20 transition-all"
@@ -496,7 +496,7 @@ export default function PopupPage() {
                         }
                       }
                     }}
-                    className="px-4 py-2 rounded-lg bg-primary hover:brightness-95 
+                    className="px-4 py-2 rounded-[var(--radius-box)] bg-primary hover:brightness-95 
                              font-medium transition-colors text-sm"
                   >
                     Create
@@ -507,7 +507,7 @@ export default function PopupPage() {
                       setNewCollectionName('');
                       setSelectedCollectionId('');
                     }}
-                    className="px-4 py-2 rounded-lg bg-base-300 hover:bg-base-content/10 
+                    className="px-4 py-2 rounded-[var(--radius-box)] bg-base-300 hover:bg-base-content/10 
                              text-base-content font-medium transition-colors text-sm"
                   >
                     Cancel
@@ -519,7 +519,7 @@ export default function PopupPage() {
             {/* Display ALL metadata fields that will be saved */}
             {/* Metadata Computation Details */}
             {uploadMetadata && (
-              <div className="p-4 rounded-xl bg-info/10 border border-info/30 space-y-3 mb-4">
+              <div className="p-4 rounded-[var(--radius-box)] bg-info/10 border border-info/30 space-y-3 mb-4">
                 <h4 className="text-info font-semibold text-sm flex items-center gap-2">
                   <span>🔍</span>
                   Metadata Computation
@@ -606,7 +606,7 @@ export default function PopupPage() {
                       <label className="block text-xs font-medium text-base-content/60 mb-1">
                         {key}
                       </label>
-                      <div className="px-3 py-2 rounded-lg bg-base-200 border border-base-content/10 text-base-content text-xs break-all font-mono">
+                      <div className="px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 text-base-content text-xs break-all font-mono">
                         {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                       </div>
                     </div>
@@ -618,7 +618,7 @@ export default function PopupPage() {
 
           {/* Upload Progress with glow */}
           {progress && (
-            <div className="flex items-center gap-3 p-4 rounded-xl bg-primary/10 border border-primary/30 shadow-xl">
+            <div className="flex items-center gap-3 p-4 rounded-[var(--radius-box)] bg-primary/10 border border-primary/30 shadow-xl">
               {uploading && (
                 <div className="relative">
                   <div className="absolute inset-0 bg-primary-400 rounded-full blur-lg opacity-50 animate-pulse"></div>
@@ -631,7 +631,7 @@ export default function PopupPage() {
 
           {/* Duplicate Detection */}
           {duplicateData && (
-            <div className="space-y-4 p-4 rounded-xl bg-warning/10 border-2 border-warning/30">
+            <div className="space-y-4 p-4 rounded-[var(--radius-box)] bg-warning/10 border-2 border-warning/30">
               <div className="flex items-start gap-3">
                 <div className="flex-shrink-0 text-warning text-2xl">⚠️</div>
                 <div className="flex-1 min-w-0">
@@ -641,7 +641,7 @@ export default function PopupPage() {
                   </p>
                   
                   {/* Show duplicate image */}
-                  <div className="rounded-lg overflow-hidden border border-warning/30 bg-base-200 max-w-full mb-3">
+                  <div className="rounded-[var(--radius-box)] overflow-hidden border border-warning/30 bg-base-200 max-w-full mb-3">
                     <div className="w-full flex items-center justify-center bg-base-300 p-2">
                       <img
                         src={duplicateData.imgbbUrl || duplicateData.pixvidUrl}
@@ -665,7 +665,7 @@ export default function PopupPage() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => setDuplicateData(null)}
-                      className="flex-1 px-3 py-2 rounded-lg bg-base-300 hover:bg-base-content/10 
+                      className="flex-1 px-3 py-2 rounded-[var(--radius-box)] bg-base-300 hover:bg-base-content/10 
                                text-base-content font-medium transition-colors text-sm"
                     >
                       Cancel
@@ -673,7 +673,7 @@ export default function PopupPage() {
                     <button
                       onClick={() => handleUpload(true)}
                       disabled={uploading}
-                      className="flex-1 px-3 py-2 rounded-lg bg-warning hover:bg-warning/90 
+                      className="flex-1 px-3 py-2 rounded-[var(--radius-box)] bg-warning hover:bg-warning/90 
                                text-warning-content font-medium 
                                transition-all disabled:opacity-50 disabled:cursor-not-allowed
                                shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 text-sm"
@@ -688,7 +688,7 @@ export default function PopupPage() {
 
           {/* Error Message with animation */}
           {uploadError && !duplicateData && (
-            <div className="p-4 rounded-xl bg-error/10 border-2 border-error/30 shadow-xl animate-shake">
+            <div className="p-4 rounded-[var(--radius-box)] bg-error/10 border-2 border-error/30 shadow-xl animate-shake">
               <p className="text-sm text-error">{uploadError.message}</p>
             </div>
           )}
@@ -698,7 +698,7 @@ export default function PopupPage() {
             <button
               onClick={() => handleUpload(false)}
               disabled={uploading || !settings}
-              className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 
+              className="w-full px-6 py-4 rounded-[var(--radius-box)] bg-gradient-to-r from-primary-500 to-secondary-500 
                        hover:from-primary-600 hover:to-secondary-600 font-semibold text-lg
                        shadow-2xl hover:shadow-[0_8px_30px_rgb(99,102,241,0.4)]
                        transform transition-all duration-300 ease-out
@@ -724,7 +724,7 @@ export default function PopupPage() {
           )}
 
           {!settings && (
-            <div className="p-4 rounded-xl bg-warning/10 border-2 border-warning/30 text-center">
+            <div className="p-4 rounded-[var(--radius-box)] bg-warning/10 border-2 border-warning/30 text-center">
               <p className="text-sm text-warning font-medium">
                 ⚠️ Please configure API keys in settings first
               </p>
@@ -735,3 +735,4 @@ export default function PopupPage() {
     </div>
   );
 }
+

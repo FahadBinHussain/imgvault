@@ -34,7 +34,7 @@ function HostLog({ entry }) {
         : 'bg-base-200/70 text-base-content/80 border-base-content/10';
 
   return (
-    <div className={`rounded-lg border px-3 py-2 text-sm leading-5 ${colorClass}`}>
+    <div className={`rounded-[var(--radius-box)] border px-3 py-2 text-sm leading-5 ${colorClass}`}>
       <span className="mr-2 text-xs opacity-60">[{entry.timestamp}]</span>
       <span className="whitespace-pre-wrap break-all font-mono text-[12px]">{entry.message}</span>
     </div>
@@ -385,9 +385,9 @@ export default function HostPage() {
       <div style={{ height: navbarHeight ? `${navbarHeight + 8}px` : '90px' }} />
 
       <div className="max-w-5xl mx-auto space-y-5">
-        <div className="bg-base-100 border border-base-content/15 rounded-2xl shadow-xl p-5 sm:p-6">
+        <div className="bg-base-100 border border-base-content/15 rounded-[var(--radius-box)] shadow-xl p-5 sm:p-6">
           <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-primary/15 text-primary flex items-center justify-center">
+            <div className="w-12 h-12 rounded-[var(--radius-box)] bg-primary/15 text-primary flex items-center justify-center">
               <Cable className="w-6 h-6" />
             </div>
             <div>
@@ -400,9 +400,9 @@ export default function HostPage() {
         </div>
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)] items-start">
-          <div className="min-w-0 bg-base-100 border border-base-content/15 rounded-2xl shadow-xl p-5 sm:p-6 space-y-4">
+          <div className="min-w-0 bg-base-100 border border-base-content/15 rounded-[var(--radius-box)] shadow-xl p-5 sm:p-6 space-y-4">
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(260px,0.95fr)] items-stretch">
-              <div className="rounded-xl border border-base-content/15 bg-base-200/60 p-4 space-y-3">
+              <div className="rounded-[var(--radius-box)] border border-base-content/15 bg-base-200/60 p-4 space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <Activity className="w-4 h-4" />
@@ -417,19 +417,19 @@ export default function HostPage() {
                   </button>
                 </div>
 
-                <div className={`rounded-lg border px-3 py-2 text-sm ${hostStatus.reachable ? 'border-success/20 bg-success/10 text-success' : 'border-error/20 bg-error/10 text-error'}`}>
+                <div className={`rounded-[var(--radius-box)] border px-3 py-2 text-sm ${hostStatus.reachable ? 'border-success/20 bg-success/10 text-success' : 'border-error/20 bg-error/10 text-error'}`}>
                   <div className="font-medium">Native Host</div>
                   <div className="mt-1">{hostStatus.hostMessage}</div>
                 </div>
 
-                <div className={`rounded-lg border px-3 py-2 text-sm ${hostStatus.ytDlpAvailable ? 'border-success/20 bg-success/10 text-success' : 'border-warning/20 bg-warning/10 text-warning'}`}>
+                <div className={`rounded-[var(--radius-box)] border px-3 py-2 text-sm ${hostStatus.ytDlpAvailable ? 'border-success/20 bg-success/10 text-success' : 'border-warning/20 bg-warning/10 text-warning'}`}>
                   <div className="font-medium">yt-dlp</div>
                   <div className="mt-1 break-all">{hostStatus.ytDlpMessage}</div>
                 </div>
               </div>
 
               {videoPreview ? (
-                <div className="overflow-hidden rounded-2xl border border-base-content/15 bg-base-200/60 shadow-sm">
+                <div className="overflow-hidden rounded-[var(--radius-box)] border border-base-content/15 bg-base-200/60 shadow-sm">
                   {videoPreview.thumbnailUrl ? (
                     <div className="aspect-video overflow-hidden bg-base-300">
                       <img
@@ -463,7 +463,7 @@ export default function HostPage() {
                   </div>
                 </div>
               ) : (
-                <div className="rounded-2xl border border-dashed border-base-content/15 bg-base-200/40 p-5 flex items-center justify-center min-h-[220px]">
+                <div className="rounded-[var(--radius-box)] border border-dashed border-base-content/15 bg-base-200/40 p-5 flex items-center justify-center min-h-[220px]">
                   <div className="text-center max-w-xs">
                     <Cable className="w-10 h-10 mx-auto text-primary/70 mb-3" />
                     <h3 className="font-semibold text-base-content">Video Preview</h3>
@@ -475,7 +475,7 @@ export default function HostPage() {
               )}
             </div>
 
-            <div className="rounded-xl border border-base-content/15 bg-base-200/60 p-4 space-y-3">
+            <div className="rounded-[var(--radius-box)] border border-base-content/15 bg-base-200/60 p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <Download className="w-4 h-4" />
                 <h3 className="font-medium">Native Download</h3>
@@ -509,7 +509,7 @@ export default function HostPage() {
               <button
                 onClick={handleReloadPath}
                 disabled={busyAction === 'reload_path'}
-                className="w-full rounded-xl bg-base-200 hover:bg-base-300 border border-base-content/15 px-4 py-3 text-left transition-colors disabled:opacity-60"
+                className="w-full rounded-[var(--radius-box)] bg-base-200 hover:bg-base-300 border border-base-content/15 px-4 py-3 text-left transition-colors disabled:opacity-60"
               >
                 <div className="flex items-center gap-3">
                   <RotateCw className={`w-5 h-5 ${busyAction === 'reload_path' ? 'animate-spin' : ''}`} />
@@ -523,7 +523,7 @@ export default function HostPage() {
               <button
                 onClick={handleExportYoutubeCookies}
                 disabled={busyAction === 'export_cookies'}
-                className="w-full rounded-xl bg-base-200 hover:bg-base-300 border border-base-content/15 px-4 py-3 text-left transition-colors disabled:opacity-60"
+                className="w-full rounded-[var(--radius-box)] bg-base-200 hover:bg-base-300 border border-base-content/15 px-4 py-3 text-left transition-colors disabled:opacity-60"
               >
                 <div className="flex items-center gap-3">
                   <Download className={`w-5 h-5 ${busyAction === 'export_cookies' ? 'animate-pulse' : ''}`} />
@@ -536,7 +536,7 @@ export default function HostPage() {
             </div>
           </div>
 
-          <div className="min-w-0 bg-base-100 border border-base-content/15 rounded-2xl shadow-xl p-5 sm:p-6 overflow-hidden">
+          <div className="min-w-0 bg-base-100 border border-base-content/15 rounded-[var(--radius-box)] shadow-xl p-5 sm:p-6 overflow-hidden">
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
                 <h2 className="text-lg font-semibold">Host Log</h2>
@@ -550,10 +550,10 @@ export default function HostPage() {
               </button>
             </div>
 
-            <div className="rounded-xl border border-base-content/10 bg-base-200/40 p-3">
+            <div className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-200/40 p-3">
               <div className="space-y-3 max-h-[min(48vh,440px)] overflow-auto pr-1">
                 {logs.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-base-content/20 px-4 py-8 text-center text-sm text-base-content/60">
+                  <div className="rounded-[var(--radius-box)] border border-dashed border-base-content/20 px-4 py-8 text-center text-sm text-base-content/60">
                     No host commands sent yet.
                   </div>
                 ) : (
@@ -578,3 +578,4 @@ export default function HostPage() {
     </div>
   );
 }
+

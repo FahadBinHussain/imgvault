@@ -399,7 +399,7 @@ export default function GalleryPage() {
     const colorClass = getUploadLogColorClass(entry.type);
 
     return (
-      <div key={`${entry.timestamp}-${index}`} className={`rounded-box border px-3 py-2 text-sm leading-5 ${colorClass}`}>
+      <div key={`${entry.timestamp}-${index}`} className={`rounded-[var(--radius-box)] border px-3 py-2 text-sm leading-5 ${colorClass}`}>
         <span className="mr-2 text-xs opacity-60">[{entry.timestamp}]</span>
         <span className="whitespace-pre-wrap break-all font-mono text-[12px]">{entry.message}</span>
       </div>
@@ -1567,7 +1567,7 @@ export default function GalleryPage() {
                   repeat: Infinity,
                   ease: "easeInOut"
                 }}
-                className="w-full h-full rounded-3xl border-4 border-dashed border-base-content/40"
+                className="w-full h-full rounded-[var(--radius-box)] border-4 border-dashed border-base-content/40"
               />
               
               {/* Center content */}
@@ -1698,7 +1698,7 @@ export default function GalleryPage() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
-            className="glass-card rounded-3xl backdrop-blur-xl bg-base-100/80 border border-base-content/20 
+            className="glass-card rounded-[var(--radius-box)] backdrop-blur-xl bg-base-100/80 border border-base-content/20 
                       shadow-2xl p-16 text-center relative overflow-hidden"
             style={{ willChange: 'transform, opacity' }}
           >
@@ -1771,7 +1771,7 @@ export default function GalleryPage() {
               whileHover={{ scale: 1.05, y: -2 }}
               whileTap={{ scale: 0.95 }}
               style={{ willChange: 'transform' }}
-              className="group relative px-10 py-5 rounded-2xl bg-gradient-to-r from-primary-500 to-secondary-500 
+              className="group relative px-10 py-5 rounded-[var(--radius-box)] bg-gradient-to-r from-primary-500 to-secondary-500 
                        text-primary-content font-bold text-lg shadow-2xl overflow-hidden
                        transition-all duration-150"
             >
@@ -1857,18 +1857,18 @@ export default function GalleryPage() {
                 >
                   {/* Soft glow effect on hover */}
                   <div className="absolute -inset-1 bg-gradient-to-r from-primary-500/40 to-secondary-500/40 
-                                rounded-xl opacity-0 group-hover:opacity-100 blur-xl 
+                                rounded-[var(--radius-box)] opacity-0 group-hover:opacity-100 blur-xl 
                                 transition-all duration-700 ease-out"></div>
                   
                   {/* Card with soft shadows and smooth animations */}
                   <div className="relative bg-base-100/80 backdrop-blur-sm border border-base-content/20 
-                                rounded-xl overflow-hidden shadow-lg group-hover:shadow-2xl
+                                rounded-[var(--radius-box)] overflow-hidden shadow-lg group-hover:shadow-2xl
                                 transform transition-all duration-500 ease-out 
                                 group-hover:scale-[1.04] group-hover:-translate-y-2">
                     {/* Selection Checkbox - shown in selection mode */}
                     {selectionMode && (
                       <div className="absolute top-2 right-2 z-20">
-                        <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center
+                        <div className={`w-6 h-6 rounded-[var(--radius-box)] border-2 flex items-center justify-center
                                       transition-all duration-200 ${
                           selectedImages.has(img.id)
                             ? 'bg-primary-500 border-primary-400'
@@ -1937,14 +1937,14 @@ export default function GalleryPage() {
                             {img.tags.slice(0, 2).map(tag => (
                               <span
                                 key={tag}
-                                className="text-xs px-2.5 py-1 rounded-lg bg-base-100/70 backdrop-blur-sm 
+                                className="text-xs px-2.5 py-1 rounded-[var(--radius-box)] bg-base-100/70 backdrop-blur-sm 
                                          text-base-content border border-base-content/30 font-medium shadow-lg"
                               >
                                 {tag}
                               </span>
                             ))}
                             {img.tags.length > 2 && (
-                              <span className="text-xs px-2.5 py-1 rounded-lg bg-base-100/70 backdrop-blur-sm 
+                              <span className="text-xs px-2.5 py-1 rounded-[var(--radius-box)] bg-base-100/70 backdrop-blur-sm 
                                              text-base-content border border-base-content/30 font-medium shadow-lg">
                                 +{img.tags.length - 2}
                               </span>
@@ -1990,7 +1990,7 @@ export default function GalleryPage() {
                 {shouldRenderModalVideoPlayer(modalImage) ? (
                   <video
                     src={getPreferredVideoDirectUrl(modalImage)}
-                    className={`w-full h-full rounded-2xl shadow-2xl relative z-10 bg-black object-contain
+                    className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain
                              transition-all duration-700 ease-out
                              ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
                     controls
@@ -2000,7 +2000,7 @@ export default function GalleryPage() {
                 ) : getPreferredVideoWatchUrl(modalImage) ? (
                   <iframe
                     src={getPreferredVideoWatchUrl(modalImage)}
-                    className={`w-full h-full rounded-2xl shadow-2xl relative z-10
+                    className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10
                              transition-all duration-700 ease-out
                              ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
                     frameBorder="0"
@@ -2008,7 +2008,7 @@ export default function GalleryPage() {
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   />
                 ) : isResolvingModalMediaType ? (
-                  <div className={`w-full h-full rounded-2xl shadow-2xl relative z-10 flex items-center justify-center bg-base-200/60
+                  <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 flex items-center justify-center bg-base-200/60
                              transition-all duration-700 ease-out
                              ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
                     <div className="text-center space-y-3">
@@ -2020,7 +2020,7 @@ export default function GalleryPage() {
                   <img
                     src={modalImage.imgbbUrl || modalImage.pixvidUrl}
                     alt={modalImage.pageTitle}
-                    className={`max-w-full max-h-full object-contain rounded-2xl shadow-2xl relative z-10
+                    className={`max-w-full max-h-full object-contain rounded-[var(--radius-box)] shadow-2xl relative z-10
                              transition-all duration-700 ease-out
                              hover:scale-[1.02] hover:shadow-primary/30
                              ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
@@ -2100,7 +2100,7 @@ export default function GalleryPage() {
                   onClick={() => {
                     setShowDeleteConfirm(true);
                   }}
-                  className="group relative shrink-0 px-4 py-2 rounded-xl overflow-hidden
+                  className="group relative shrink-0 px-4 py-2 rounded-[var(--radius-box)] overflow-hidden
                            bg-error text-error-content
                            border border-error/30
                            transition-all duration-300
@@ -2152,7 +2152,7 @@ export default function GalleryPage() {
                                 <select
                                   value={editValues.collectionId ?? (modalImage?.collectionId || '')}
                                   onChange={(e) => setEditValues({ ...editValues, collectionId: e.target.value })}
-                                  className="w-full px-3 py-2 rounded-lg bg-base-200 border border-base-content/15 text-base-content focus:outline-none focus:border-primary"
+                                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 text-base-content focus:outline-none focus:border-primary"
                                 >
                                   <option value="">No Collection</option>
                                   {collections.map((collection) => (
@@ -2317,7 +2317,7 @@ export default function GalleryPage() {
               <button
                 onClick={() => setShowDeleteConfirm(false)}
                 disabled={isDeleting}
-                className="px-6 py-3 rounded-xl bg-base-200 border border-base-content/10
+                className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10
                          text-base-content font-medium
                          hover:bg-base-300 hover:scale-105
                          active:scale-95
@@ -2330,7 +2330,7 @@ export default function GalleryPage() {
               <button
                 onClick={handleDelete}
                 disabled={isDeleting}
-                className="group relative px-8 py-3 rounded-xl overflow-hidden
+                className="group relative px-8 py-3 rounded-[var(--radius-box)] overflow-hidden
                          bg-warning text-warning-content
                          border border-warning/40
                          transform transition-all duration-300
@@ -2380,7 +2380,7 @@ export default function GalleryPage() {
               <button
                 onClick={() => setShowBulkDeleteConfirm(false)}
                 disabled={isDeleting}
-                className="px-6 py-3 rounded-xl bg-base-200 border border-base-content/10
+                className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10
                          text-base-content font-medium
                          hover:bg-base-300 hover:scale-105
                          active:scale-95
@@ -2393,7 +2393,7 @@ export default function GalleryPage() {
               <button
                 onClick={handleBulkDelete}
                 disabled={isDeleting}
-                className="group relative px-8 py-3 rounded-xl overflow-hidden
+                className="group relative px-8 py-3 rounded-[var(--radius-box)] overflow-hidden
                          bg-warning text-warning-content
                          border border-warning/40
                          transform transition-all duration-300
@@ -2457,7 +2457,7 @@ export default function GalleryPage() {
               <div className="flex gap-2">
                 <button
                   onClick={uploading ? terminateUploadJob : closeUploadModal}
-                  className="px-4 py-2 rounded-lg border border-base-content/15 bg-base-200 hover:bg-base-300
+                  className="px-4 py-2 rounded-[var(--radius-box)] border border-base-content/15 bg-base-200 hover:bg-base-300
                            text-base-content text-sm font-medium transition-colors"
                 >
                   {uploading ? 'Terminate Upload' : 'Cancel'}
@@ -2465,7 +2465,7 @@ export default function GalleryPage() {
                 <button
                   onClick={() => handleUploadSubmit(false)}
                   disabled={uploading || !uploadImageData}
-                  className="px-4 py-2 rounded-lg bg-gradient-to-r from-primary-500 to-secondary-500 
+                  className="px-4 py-2 rounded-[var(--radius-box)] bg-gradient-to-r from-primary-500 to-secondary-500 
                            hover:from-primary-600 hover:to-secondary-600 text-primary-content text-sm font-medium 
                            transition-all disabled:opacity-50 disabled:cursor-not-allowed
                            shadow-lg hover:shadow-xl"
@@ -2481,7 +2481,7 @@ export default function GalleryPage() {
               <div className="space-y-4 h-full overflow-y-auto pr-2">
                 {/* Manual Upload Mode Message */}
                 {isManualUploadMode && (
-                  <div className="p-6 rounded-xl bg-orange-500/20 border-2 border-orange-500/50">
+                  <div className="p-6 rounded-[var(--radius-box)] bg-orange-500/20 border-2 border-orange-500/50">
                     <div className="flex items-start gap-4">
                       <span className="text-3xl flex-shrink-0">⚠️</span>
                       <div className="flex-1">
@@ -2506,7 +2506,7 @@ export default function GalleryPage() {
                 
                 <label className="block">
                   <div className="flex items-center justify-center w-full min-h-[calc(100vh-16rem)] px-4 transition 
-                                bg-base-200 border-2 border-dashed border-base-content/20 rounded-xl 
+                                bg-base-200 border-2 border-dashed border-base-content/20 rounded-[var(--radius-box)] 
                                 hover:border-primary hover:bg-base-300/60 cursor-pointer
                                 group">
                     <div className="text-center">
@@ -2537,7 +2537,7 @@ export default function GalleryPage() {
                 {/* Left Column - Sticky Media Preview */}
                 <div className="min-h-0 xl:pr-2 xl:overflow-y-auto">
                   <div className="space-y-3">
-                    <div className="relative rounded-xl overflow-hidden bg-base-200 border border-base-content/15">
+                    <div className="relative rounded-[var(--radius-box)] overflow-hidden bg-base-200 border border-base-content/15">
                       {uploadImageData.isVideo ? (
                         <video
                           src={uploadImageData.srcUrl}
@@ -2553,7 +2553,7 @@ export default function GalleryPage() {
                       )}
                       <button
                         onClick={() => setUploadImageData(null)}
-                        className="absolute top-4 right-4 p-2 rounded-lg bg-error/85 hover:bg-error 
+                        className="absolute top-4 right-4 p-2 rounded-[var(--radius-box)] bg-error/85 hover:bg-error 
                                  transition-colors shadow-lg"
                         title={`Remove ${uploadImageData.isVideo ? 'video' : 'image'}`}
                       >
@@ -2563,7 +2563,7 @@ export default function GalleryPage() {
                     
                     {/* Base64 Warning */}
                     {uploadImageData?.isBase64 && !uploadImageData.isVideo && (
-                      <div className="p-4 rounded-xl bg-orange-500/20 border-2 border-orange-500/50">
+                      <div className="p-4 rounded-[var(--radius-box)] bg-orange-500/20 border-2 border-orange-500/50">
                         <div className="flex items-start gap-3">
                           <span className="text-2xl flex-shrink-0">⚠️</span>
                           <div className="flex-1">
@@ -2582,7 +2582,7 @@ export default function GalleryPage() {
                             />
                             <button
                               onClick={() => document.getElementById('replaceBase64Upload').click()}
-                              className="mt-3 w-full px-4 py-2 rounded-lg bg-warning hover:brightness-95 
+                              className="mt-3 w-full px-4 py-2 rounded-[var(--radius-box)] bg-warning hover:brightness-95 
                                        text-warning-content text-sm font-bold transition-colors
                                        flex items-center justify-center gap-2"
                             >
@@ -2596,7 +2596,7 @@ export default function GalleryPage() {
                     
                     {/* Site-specific replace tips */}
                     {uploadImageData?.isWallHere && !uploadImageData?.isBase64 && (
-                      <div className="p-3 rounded-xl bg-error/20 border-2 border-error/50 shadow-lg animate-pulse-slow">
+                      <div className="p-3 rounded-[var(--radius-box)] bg-error/20 border-2 border-error/50 shadow-lg animate-pulse-slow">
                         <div className="flex items-start gap-2">
                           <div className="flex-shrink-0 text-error text-lg animate-bounce">⚠️</div>
                           <div className="flex-1">
@@ -2615,7 +2615,7 @@ export default function GalleryPage() {
                             />
                             <button
                               onClick={() => document.getElementById('replaceWallHereFile').click()}
-                              className="w-full px-3 py-1.5 rounded-lg bg-error hover:brightness-95 
+                              className="w-full px-3 py-1.5 rounded-[var(--radius-box)] bg-error hover:brightness-95 
                                        border-2 border-error/40 text-error-content text-xs font-bold
                                        transition-all duration-200 hover:scale-105 active:scale-95
                                        flex items-center justify-center gap-1.5 shadow-lg"
@@ -2630,7 +2630,7 @@ export default function GalleryPage() {
                     
                     {/* Sohu replace tip */}
                     {uploadImageData?.isSohu && !uploadImageData?.isBase64 && (
-                      <div className="p-3 rounded-xl bg-error/20 border-2 border-error/50 shadow-lg animate-pulse-slow">
+                      <div className="p-3 rounded-[var(--radius-box)] bg-error/20 border-2 border-error/50 shadow-lg animate-pulse-slow">
                         <div className="flex items-start gap-2">
                           <div className="flex-shrink-0 text-error text-lg animate-bounce">⚠️</div>
                           <div className="flex-1">
@@ -2649,7 +2649,7 @@ export default function GalleryPage() {
                             />
                             <button
                               onClick={() => document.getElementById('replaceSohuFile').click()}
-                              className="w-full px-3 py-1.5 rounded-lg bg-error hover:brightness-95 
+                              className="w-full px-3 py-1.5 rounded-[var(--radius-box)] bg-error hover:brightness-95 
                                        border-2 border-error/40 text-error-content text-xs font-bold
                                        transition-all duration-200 hover:scale-105 active:scale-95
                                        flex items-center justify-center gap-1.5 shadow-lg"
@@ -2664,7 +2664,7 @@ export default function GalleryPage() {
                     
                     {/* Airbnb replace tip */}
                     {uploadImageData?.isAirbnb && !uploadImageData?.isBase64 && (
-                      <div className="p-3 rounded-xl bg-error/20 border-2 border-error/50 shadow-lg animate-pulse-slow">
+                      <div className="p-3 rounded-[var(--radius-box)] bg-error/20 border-2 border-error/50 shadow-lg animate-pulse-slow">
                         <div className="flex items-start gap-2">
                           <div className="flex-shrink-0 text-error text-lg animate-bounce">⚠️</div>
                           <div className="flex-1">
@@ -2683,7 +2683,7 @@ export default function GalleryPage() {
                             />
                             <button
                               onClick={() => document.getElementById('replaceAirbnbFile').click()}
-                              className="w-full px-3 py-1.5 rounded-lg bg-error hover:brightness-95 
+                              className="w-full px-3 py-1.5 rounded-[var(--radius-box)] bg-error hover:brightness-95 
                                        border-2 border-error/40 text-error-content text-xs font-bold
                                        transition-all duration-200 hover:scale-105 active:scale-95
                                        flex items-center justify-center gap-1.5 shadow-lg"
@@ -2698,7 +2698,7 @@ export default function GalleryPage() {
                     
                     {/* Metadata field count */}
                     {uploadMetadata && (
-                      <details className="rounded-xl bg-success/10 border border-success/30 p-4" open={false}>
+                      <details className="rounded-[var(--radius-box)] bg-success/10 border border-success/30 p-4" open={false}>
                         <summary className="cursor-pointer list-none flex items-center justify-between">
                           <span className="text-success font-semibold text-sm">📊 Total Firestore Fields</span>
                           <span className="text-success font-bold text-2xl">
@@ -2763,7 +2763,7 @@ export default function GalleryPage() {
                     
                     {/* Metadata Computation Details */}
                     {uploadMetadata && (
-                      <details className="p-4 rounded-xl bg-info/10 border border-info/30 space-y-3" open={false}>
+                      <details className="p-4 rounded-[var(--radius-box)] bg-info/10 border border-info/30 space-y-3" open={false}>
                         <summary className="cursor-pointer list-none text-info font-semibold text-sm flex items-center gap-2">
                           <span>🔍</span>
                           Metadata Computation
@@ -2828,7 +2828,7 @@ export default function GalleryPage() {
                     
                     {/* Upload Progress */}
                     {uploading && (
-                      <div className="p-4 rounded-xl bg-primary-500/10 border border-primary-500/30 space-y-3">
+                      <div className="p-4 rounded-[var(--radius-box)] bg-primary-500/10 border border-primary-500/30 space-y-3">
                         <div className="flex items-center gap-3">
                           <span className="text-2xl animate-pulse">{uploadImageData?.isVideo ? '🎬' : '🖼️'}</span>
                           <div className="flex-1">
@@ -2847,7 +2847,7 @@ export default function GalleryPage() {
                             </div>
                           </div>
                         </div>
-                        <div className="rounded-box border border-base-content/10 bg-base-100/70 p-3">
+                        <div className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-100/70 p-3">
                           <div className="mb-3 flex items-center justify-between gap-3">
                             <div>
                               <h4 className="text-sm font-semibold text-base-content">Live Upload Log</h4>
@@ -2866,7 +2866,7 @@ export default function GalleryPage() {
 
                           <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
                             {uploadLogs.length === 0 ? (
-                              <div className="rounded-box border border-dashed border-base-content/15 px-4 py-6 text-center text-sm text-base-content/60">
+                              <div className="rounded-[var(--radius-box)] border border-dashed border-base-content/15 px-4 py-6 text-center text-sm text-base-content/60">
                                 Waiting for uploader logs...
                               </div>
                             ) : (
@@ -2885,7 +2885,7 @@ export default function GalleryPage() {
                   
                   {/* Duplicate Detection - Enhanced UI - Moved to top of right column */}
                   {duplicateData && (
-                    <div className="space-y-4 p-5 rounded-xl bg-warning/10 border-2 border-warning/30">
+                    <div className="space-y-4 p-5 rounded-[var(--radius-box)] bg-warning/10 border-2 border-warning/30">
                       <div className="flex items-start gap-3">
                         <div className="flex-shrink-0 text-warning text-2xl">⚠️</div>
                         <div className="flex-1 min-w-0">
@@ -2906,10 +2906,10 @@ export default function GalleryPage() {
                               const similarity = dup.similarity || null;
                               
                               return (
-                                <div key={index} className="rounded-lg overflow-hidden border border-warning/30 bg-base-200">
+                                <div key={index} className="rounded-[var(--radius-box)] overflow-hidden border border-warning/30 bg-base-200">
                                   <div className="w-full flex items-center justify-center bg-base-300/60 p-2 relative">
                                     {/* Match badge */}
-                                    <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-base-100/90 border border-warning/40">
+                                    <div className="absolute top-2 left-2 px-2 py-1 rounded-[var(--radius-box)] bg-base-100/90 border border-warning/40">
                                       <span className="text-xs font-medium text-warning">
                                         {matchType === 'context' && '🔗 Context'}
                                         {matchType === 'exact' && '🔐 Exact'}
@@ -2939,7 +2939,7 @@ export default function GalleryPage() {
                                       </p>
                                       <button
                                         onClick={() => openDuplicateMatchInNewTab(dup)}
-                                        className="mt-2 px-2.5 py-1 rounded-md bg-info/15 hover:bg-info/25 border border-info/30 text-info text-xs font-medium transition-colors"
+                                        className="mt-2 px-2.5 py-1 rounded-[var(--radius-box)] bg-info/15 hover:bg-info/25 border border-info/30 text-info text-xs font-medium transition-colors"
                                       >
                                         Open Match
                                       </button>
@@ -2973,7 +2973,7 @@ export default function GalleryPage() {
                             <div className="sticky bottom-0 flex gap-3 mt-4 pt-3 bg-base-100/95 backdrop-blur-sm border-t border-warning/20">
                             <button
                               onClick={() => setDuplicateData(null)}
-                              className="flex-1 px-4 py-2.5 rounded-lg bg-base-300 hover:bg-base-content/15 
+                              className="flex-1 px-4 py-2.5 rounded-[var(--radius-box)] bg-base-300 hover:bg-base-content/15 
                                        text-base-content font-medium transition-colors text-sm"
                             >
                               Cancel
@@ -2981,7 +2981,7 @@ export default function GalleryPage() {
                             <button
                               onClick={() => handleUploadSubmit(true)}
                               disabled={uploading}
-                              className="flex-1 px-4 py-2.5 rounded-lg bg-warning hover:brightness-95 font-medium 
+                              className="flex-1 px-4 py-2.5 rounded-[var(--radius-box)] bg-warning hover:brightness-95 font-medium 
                                        transition-all disabled:opacity-50 disabled:cursor-not-allowed
                                        shadow-lg hover:shadow-xl text-sm"
                             >
@@ -3006,7 +3006,7 @@ export default function GalleryPage() {
                       onChange={(e) => setUploadDescription(e.target.value)}
                       placeholder="Add a description..."
                       rows={3}
-                      className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/15 
+                      className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 
                                text-base-content placeholder-base-content/40 
                                focus:outline-none focus:border-primary focus:ring-2 
                                focus:ring-primary/20 transition-all resize-none"
@@ -3028,7 +3028,7 @@ export default function GalleryPage() {
                           setShowCreateCollection(false);
                         }
                       }}
-                      className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/15 
+                      className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 
                                text-base-content 
                                focus:outline-none focus:border-primary focus:ring-2 
                                focus:ring-primary/20 transition-all"
@@ -3049,7 +3049,7 @@ export default function GalleryPage() {
                           value={newCollectionName}
                           onChange={(e) => setNewCollectionName(e.target.value)}
                           placeholder="Collection name"
-                          className="flex-1 px-4 py-2 rounded-lg bg-base-200 border border-base-content/15 
+                          className="flex-1 px-4 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 
                                    text-base-content placeholder-base-content/40 
                                    focus:outline-none focus:border-primary focus:ring-2 
                                    focus:ring-primary/20 transition-all"
@@ -3081,7 +3081,7 @@ export default function GalleryPage() {
                               }
                             }
                           }}
-                          className="px-4 py-2 rounded-lg bg-primary hover:brightness-95 
+                          className="px-4 py-2 rounded-[var(--radius-box)] bg-primary hover:brightness-95 
                                    font-medium transition-colors"
                         >
                           Create
@@ -3092,7 +3092,7 @@ export default function GalleryPage() {
                             setNewCollectionName('');
                             setSelectedCollectionId('');
                           }}
-                          className="px-4 py-2 rounded-lg bg-base-300 hover:bg-base-content/15 
+                          className="px-4 py-2 rounded-[var(--radius-box)] bg-base-300 hover:bg-base-content/15 
                                    text-base-content font-medium transition-colors"
                         >
                           Cancel
@@ -3111,7 +3111,7 @@ export default function GalleryPage() {
                       value={uploadImageData?.pageTitle || ''}
                       onChange={(e) => setUploadImageData(prev => ({ ...prev, pageTitle: e.target.value }))}
                       placeholder="Page title"
-                      className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/15 
+                      className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 
                                text-base-content placeholder-base-content/40 
                                focus:outline-none focus:border-primary focus:ring-2 
                                focus:ring-primary/20 transition-all"
@@ -3124,7 +3124,7 @@ export default function GalleryPage() {
                       <label className="block text-sm font-medium text-base-content/70 mb-2">
                         sourceImageUrl
                       </label>
-                      <div className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/15 
+                      <div className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 
                                     text-base-content/75 font-mono text-xs break-all">
                         {isLocalUpload || uploadPageUrl === 'Uploaded manually' 
                           ? 'Uploaded manually' 
@@ -3143,7 +3143,7 @@ export default function GalleryPage() {
                       value={uploadPageUrl}
                       onChange={(e) => setUploadPageUrl(e.target.value)}
                       placeholder="https://example.com/page"
-                      className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/15 
+                      className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 
                                text-base-content placeholder-base-content/40 
                                focus:outline-none focus:border-primary focus:ring-2 
                                focus:ring-primary/20 transition-all"
@@ -3157,7 +3157,7 @@ export default function GalleryPage() {
                       if (shouldShowWarning) {
                         const siteName = getSiteDisplayName(uploadPageUrl, sitesConfig.warningSites);
                         return (
-                          <div className="mt-3 p-3 rounded-lg bg-warning/10 border-2 border-warning/30 shadow-lg animate-pulse-slow">
+                          <div className="mt-3 p-3 rounded-[var(--radius-box)] bg-warning/10 border-2 border-warning/30 shadow-lg animate-pulse-slow">
                             <div className="flex items-start gap-2">
                               <div className="flex-shrink-0 text-error text-lg mt-0.5 animate-bounce">⚠️</div>
                               <div className="flex-1">
@@ -3176,7 +3176,7 @@ export default function GalleryPage() {
                                 />
                                 <button
                                   onClick={() => document.getElementById('replaceUploadFile').click()}
-                                  className="mt-1 px-3 py-1.5 rounded-lg bg-warning hover:bg-warning/90 
+                                  className="mt-1 px-3 py-1.5 rounded-[var(--radius-box)] bg-warning hover:bg-warning/90 
                                            border-2 border-warning/40 text-warning-content text-xs font-bold
                                            transition-all duration-200 hover:scale-105 active:scale-95
                                            flex items-center gap-1.5 shadow-lg hover:shadow-xl"
@@ -3193,7 +3193,7 @@ export default function GalleryPage() {
                       if (shouldShowGoodQuality) {
                         const siteName = getSiteDisplayName(uploadPageUrl, sitesConfig.goodQualitySites);
                         return (
-                          <div className="mt-3 p-3 rounded-lg bg-success/10 border-2 border-success/30 shadow-lg">
+                          <div className="mt-3 p-3 rounded-[var(--radius-box)] bg-success/10 border-2 border-success/30 shadow-lg">
                             <div className="flex items-start gap-2">
                               <div className="flex-shrink-0 text-success text-lg mt-0.5">✓</div>
                               <div className="flex-1">
@@ -3223,7 +3223,7 @@ export default function GalleryPage() {
                       value={uploadTags}
                       onChange={(e) => setUploadTags(e.target.value)}
                       placeholder="nature, sunset, photography"
-                      className="w-full px-4 py-3 rounded-lg bg-base-200 border border-base-content/10 
+                      className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 
                                text-base-content placeholder-base-content/40 
                                focus:outline-none focus:border-primary-500 focus:ring-2 
                                focus:ring-primary-500/20 transition-all"
@@ -3258,7 +3258,7 @@ export default function GalleryPage() {
                     );
                     
                     return (
-                      <details className="space-y-3 rounded-xl bg-base-200 border border-base-content/10 p-4" open={false}>
+                      <details className="space-y-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 p-4" open={false}>
                         <summary className="cursor-pointer list-none text-sm font-medium text-base-content/80 mb-3">
                           Raw Metadata Fields ({sortedFields.length})
                         </summary>
@@ -3267,7 +3267,7 @@ export default function GalleryPage() {
                             <label className="block text-xs font-medium text-base-content/60 mb-1">
                               {key}
                             </label>
-                            <div className="px-3 py-2 rounded-lg bg-base-100 border border-base-content/10 text-base-content text-xs break-all font-mono">
+                            <div className="px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-content/10 text-base-content text-xs break-all font-mono">
                               {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                             </div>
                           </div>
@@ -3279,7 +3279,7 @@ export default function GalleryPage() {
 
                 {/* Error Message */}
                 {uploadError && !duplicateData && (
-                  <div className="p-4 rounded-lg bg-error/10 border border-error/30 text-error text-sm">
+                  <div className="p-4 rounded-[var(--radius-box)] bg-error/10 border border-error/30 text-error text-sm">
                     {uploadError?.message || String(uploadError)}
                   </div>
                 )}
@@ -3301,7 +3301,7 @@ export default function GalleryPage() {
         {/* Folder Selection Prompt for Auto-Upload */}
         {showFolderPrompt && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-base-content/50 backdrop-blur-sm">
-            <div className="bg-base-100 border border-base-content/10 rounded-2xl p-8 max-w-md w-full shadow-2xl text-base-content">
+            <div className="bg-base-100 border border-base-content/10 rounded-[var(--radius-box)] p-8 max-w-md w-full shadow-2xl text-base-content">
               <div className="text-center space-y-6">
                 <div className="w-16 h-16 mx-auto bg-primary text-primary-content rounded-full flex items-center justify-center">
                   <FolderOpen className="w-8 h-8" />
@@ -3353,5 +3353,6 @@ export default function GalleryPage() {
     </div>
   );
 }
+
 
 

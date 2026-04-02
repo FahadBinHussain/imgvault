@@ -136,7 +136,7 @@ html[data-theme] .glass-dark {
 
 ::-webkit-scrollbar-thumb {
   background: rgba(92, 124, 250, 0.5);
-  border-radius: 4px;
+  border-radius: var(--radius-box, 1rem);
 }
 
 ::-webkit-scrollbar-thumb:hover {

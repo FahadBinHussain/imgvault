@@ -27,7 +27,7 @@ async function readJsonSafely(res) {
 function EmptyState() {
   return (
     <div className="text-center py-20 animate-fade-in">
-      <div className="w-24 h-24 mx-auto rounded-3xl bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center mb-8 animate-float">
+      <div className="w-24 h-24 mx-auto rounded-[var(--radius-box)] bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center mb-8 animate-float">
         <Link2 className="w-12 h-12 text-primary-400" />
       </div>
       <h3 className="text-2xl font-bold mb-3">No Shared Links Yet</h3>
@@ -139,13 +139,13 @@ export default function LinksPage() {
           </div>
 
           {actionMessage && (
-            <div className="glass rounded-2xl p-4 mb-6 text-sm text-primary-200">
+            <div className="glass rounded-[var(--radius-box)] p-4 mb-6 text-sm text-primary-200">
               {actionMessage}
             </div>
           )}
 
           {loadError ? (
-            <div className="glass rounded-2xl p-8 text-error text-center">
+            <div className="glass rounded-[var(--radius-box)] p-8 text-error text-center">
               <p className="font-medium">{loadError}</p>
             </div>
           ) : links.length === 0 ? (
@@ -158,7 +158,7 @@ export default function LinksPage() {
                   image.imgbbUrl || image.imgbbThumbUrl || image.pixvidUrl || image.sourceImageUrl || null
 
                 return (
-                  <div key={link.id} className="glass rounded-2xl overflow-hidden">
+                  <div key={link.id} className="glass rounded-[var(--radius-box)] overflow-hidden">
                     <div className="flex flex-col sm:flex-row">
                       <div className="w-full sm:w-48 h-48 bg-base-100 flex items-center justify-center overflow-hidden">
                         {imageUrl ? (
@@ -183,14 +183,14 @@ export default function LinksPage() {
                           </span>
                         </div>
 
-                        <div className="mt-4 bg-base-200/60 rounded-xl px-3 py-2 text-xs text-base-content/75 break-all">
+                        <div className="mt-4 bg-base-200/60 rounded-[var(--radius-box)] px-3 py-2 text-xs text-base-content/75 break-all">
                           {new URL(link.url, 'https://placeholder.local').pathname}
                         </div>
 
                         <div className="mt-4 flex flex-wrap gap-2">
                           <button
                             onClick={() => copyLink(link.url)}
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-primary-500/15 text-primary-300 hover:bg-primary-500/25 transition-colors text-sm"
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-[var(--radius-box)] bg-primary-500/15 text-primary-300 hover:bg-primary-500/25 transition-colors text-sm"
                           >
                             <Copy className="w-4 h-4" />
                             Copy
@@ -200,7 +200,7 @@ export default function LinksPage() {
                             href={link.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors text-sm"
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-[var(--radius-box)] bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors text-sm"
                           >
                             <ExternalLink className="w-4 h-4" />
                             Open
@@ -209,7 +209,7 @@ export default function LinksPage() {
                           <button
                             onClick={() => deleteLink(link.token)}
                             disabled={deletingToken === link.token}
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-error/15 text-error hover:bg-error/25 transition-colors text-sm disabled:opacity-50"
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-[var(--radius-box)] bg-error/15 text-error hover:bg-error/25 transition-colors text-sm disabled:opacity-50"
                           >
                             {deletingToken === link.token ? (
                               <Loader2 className="w-4 h-4 animate-spin" />

@@ -126,7 +126,7 @@ export const Card = ({ children, className, ...props }) => {
   return (
     <div
       className={clsx(
-        'glass-card rounded-xl p-6',
+        'glass-card rounded-[var(--radius-box)] p-6',
         className
       )}
       {...props}
@@ -221,7 +221,7 @@ export const Modal = ({ isOpen, onClose, title, children, className, fullscreen 
       />
       <div
         className={clsx(
-          'relative z-10 rounded-2xl p-6 w-full overflow-y-auto border border-base-content/20 bg-base-100 shadow-2xl',
+          'relative z-10 rounded-[var(--radius-box)] p-6 w-full overflow-y-auto border border-base-content/20 bg-base-100 shadow-2xl',
           fullscreen
             ? 'max-w-7xl max-h-[95vh] h-full'
             : 'max-w-lg max-h-[90vh]',
@@ -238,7 +238,7 @@ export const Modal = ({ isOpen, onClose, title, children, className, fullscreen 
             {!fullscreen && (
               <button
                 onClick={onClose}
-                className="p-2 rounded-lg hover:bg-base-content/10 transition-colors text-base-content/70 hover:text-base-content"
+                className="p-2 rounded-[var(--radius-box)] hover:bg-base-content/10 transition-colors text-base-content/70 hover:text-base-content"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -280,7 +280,7 @@ export const Toast = ({ message, type = 'info', onClose }) => {
     <div
       className={clsx(
         'fixed bottom-4 right-4 z-50',
-        'px-6 py-4 rounded-2xl',
+        'px-6 py-4 rounded-[var(--radius-box)]',
         'animate-slide-in-bottom',
         'border border-base-content/10',
         config.bg,
@@ -327,3 +327,4 @@ export const CloseButton = ({ onClick, className, ...props }) => {
     </button>
   );
 };
+

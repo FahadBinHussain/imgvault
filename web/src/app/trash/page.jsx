@@ -280,7 +280,7 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
             <iframe
               src={filemoonUrl}
               title={item.pageTitle || 'Trashed video'}
-              className="w-full max-w-5xl aspect-video rounded-2xl shadow-2xl"
+              className="w-full max-w-5xl aspect-video rounded-[var(--radius-box)] shadow-2xl"
               frameBorder="0"
               scrolling="no"
               onLoad={() => setIsLoading(false)}
@@ -289,19 +289,19 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
             <video
               src={udropUrl}
               controls
-              className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] rounded-2xl shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+              className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
               onLoadedMetadata={() => setIsLoading(false)}
             />
           ) : imageUrl ? (
             <img
               src={imageUrl}
               alt={item.pageTitle || 'Trashed image'}
-              className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-2xl shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+              className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
               onLoad={() => setIsLoading(false)}
               onError={() => setIsLoading(false)}
             />
           ) : (
-            <div className="w-72 h-72 rounded-3xl bg-base-100/80 flex flex-col items-center justify-center gap-3">
+            <div className="w-72 h-72 rounded-[var(--radius-box)] bg-base-100/80 flex flex-col items-center justify-center gap-3">
               <Film className="w-12 h-12 text-error" />
               <p className="text-base-content/75">Preview unavailable</p>
             </div>
@@ -321,7 +321,7 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
                 e.stopPropagation()
                 setActiveTab('noobs')
               }}
-              className={`px-4 py-2 font-semibold transition-all rounded-lg ${
+              className={`px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] ${
                 activeTab === 'noobs'
                   ? 'bg-error/20 text-error'
                   : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'
@@ -334,7 +334,7 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
                 e.stopPropagation()
                 setActiveTab('nerds')
               }}
-              className={`px-4 py-2 font-semibold transition-all rounded-lg ${
+              className={`px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] ${
                 activeTab === 'nerds'
                   ? 'bg-error/20 text-error'
                   : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'
@@ -358,7 +358,7 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
 function EmptyState() {
   return (
     <div className="text-center py-20 animate-fade-in">
-      <div className="w-24 h-24 mx-auto rounded-3xl bg-gradient-to-br from-red-500/20 to-red-700/20 flex items-center justify-center mb-8 animate-float">
+      <div className="w-24 h-24 mx-auto rounded-[var(--radius-box)] bg-gradient-to-br from-red-500/20 to-red-700/20 flex items-center justify-center mb-8 animate-float">
         <Trash2 className="w-12 h-12 text-error" />
       </div>
       <h3 className="text-2xl font-bold mb-3">Trash is Empty</h3>
@@ -467,14 +467,14 @@ export default function TrashPage() {
                     placeholder="Search trash..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-11 pr-4 py-3 bg-base-200/60 border border-base-content/10 rounded-xl text-sm focus:outline-none focus:border-red-500/50 w-full"
+                    className="pl-11 pr-4 py-3 bg-base-200/60 border border-base-content/10 rounded-[var(--radius-box)] text-sm focus:outline-none focus:border-red-500/50 w-full"
                   />
                 </div>
               )}
             </div>
 
             {loadError ? (
-              <div className="glass rounded-2xl p-8 text-error text-center">
+              <div className="glass rounded-[var(--radius-box)] p-8 text-error text-center">
                 <p className="font-medium">{loadError}</p>
               </div>
             ) : filteredItems.length === 0 ? (
@@ -487,7 +487,7 @@ export default function TrashPage() {
                       key={item.id}
                       type="button"
                       onClick={() => handleItemClick(item, index)}
-                      className="glass rounded-2xl overflow-hidden text-left transition-transform duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-red-500/10"
+                      className="glass rounded-[var(--radius-box)] overflow-hidden text-left transition-transform duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-red-500/10"
                     >
                       <div className="h-48 bg-base-100 relative overflow-hidden flex items-center justify-center">
                         <TrashThumbnail item={item} />
@@ -548,3 +548,4 @@ export default function TrashPage() {
     </>
   )
 }
+

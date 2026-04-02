@@ -381,7 +381,7 @@ export default function TrashPage() {
         {/* Warning Message */}
         {trashedImages.length > 0 && !selectionMode && (
           <div className="px-6 mb-6">
-            <div className="p-4 bg-warning/15 border border-warning/40 rounded-xl backdrop-blur-sm flex items-start gap-3">
+            <div className="p-4 bg-warning/15 border border-warning/40 rounded-[var(--radius-box)] backdrop-blur-sm flex items-start gap-3">
               <AlertTriangle className="text-warning mt-1 flex-shrink-0" size={20} />
               <div className="text-sm">
                 <p className="font-medium text-warning">Items in trash are still hosted</p>
@@ -401,7 +401,7 @@ export default function TrashPage() {
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="p-4 rounded-xl bg-error/15 border border-error/40 backdrop-blur-sm"
+              className="p-4 rounded-[var(--radius-box)] bg-error/15 border border-error/40 backdrop-blur-sm"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -410,7 +410,7 @@ export default function TrashPage() {
                   </span>
                   <button
                     onClick={selectAll}
-                    className="px-3 py-1.5 text-sm rounded-lg bg-base-100/70 hover:bg-base-100 
+                    className="px-3 py-1.5 text-sm rounded-[var(--radius-box)] bg-base-100/70 hover:bg-base-100 
                              text-base-content transition-all duration-200"
                   >
                     Select All ({trashedImages.length})
@@ -418,7 +418,7 @@ export default function TrashPage() {
                   {selectedImages.size > 0 && (
                     <button
                       onClick={deselectAll}
-                      className="px-3 py-1.5 text-sm rounded-lg bg-base-100/70 hover:bg-base-100 
+                      className="px-3 py-1.5 text-sm rounded-[var(--radius-box)] bg-base-100/70 hover:bg-base-100 
                                text-base-content transition-all duration-200"
                     >
                       Deselect All
@@ -431,7 +431,7 @@ export default function TrashPage() {
                       <button
                         onClick={() => setShowBulkRestoreConfirm(true)}
                         disabled={isProcessing}
-                        className="px-4 py-2 rounded-lg bg-success/20 hover:bg-success/30 
+                        className="px-4 py-2 rounded-[var(--radius-box)] bg-success/20 hover:bg-success/30 
                                  text-success-content font-medium flex items-center gap-2
                                  transition-all duration-200 disabled:opacity-50"
                       >
@@ -441,7 +441,7 @@ export default function TrashPage() {
                       <button
                         onClick={() => setShowBulkDeleteConfirm(true)}
                         disabled={isProcessing}
-                        className="px-4 py-2 rounded-lg bg-error/20 hover:bg-error/30 
+                        className="px-4 py-2 rounded-[var(--radius-box)] bg-error/20 hover:bg-error/30 
                                  text-error-content font-medium flex items-center gap-2
                                  transition-all duration-200 disabled:opacity-50"
                       >
@@ -470,7 +470,7 @@ export default function TrashPage() {
 
         {/* Empty State */}
         {!loading && trashedImages.length === 0 && (
-          <div className="glass-card rounded-xl backdrop-blur-xl bg-base-100/70 border border-base-content/20 
+          <div className="glass-card rounded-[var(--radius-box)] backdrop-blur-xl bg-base-100/70 border border-base-content/20 
                         shadow-2xl p-16 text-center">
             <div className="relative inline-block mb-6">
               <div className="absolute inset-0 bg-gradient-to-r from-error to-warning rounded-full blur-3xl opacity-30"></div>
@@ -520,18 +520,18 @@ export default function TrashPage() {
                 >
                   {/* Soft glow effect on hover */}
                   <div className="absolute -inset-1 bg-gradient-to-r from-error/40 to-warning/40 
-                                rounded-xl opacity-0 group-hover:opacity-100 blur-xl 
+                                rounded-[var(--radius-box)] opacity-0 group-hover:opacity-100 blur-xl 
                                 transition-all duration-700 ease-out"></div>
                   
                   {/* Card with soft shadows and smooth animations */}
                   <div className="relative bg-base-100/80 backdrop-blur-sm border border-base-content/20 
-                                rounded-xl overflow-hidden shadow-lg group-hover:shadow-2xl
+                                rounded-[var(--radius-box)] overflow-hidden shadow-lg group-hover:shadow-2xl
                                 transform transition-all duration-500 ease-out 
                                 group-hover:scale-[1.04] group-hover:-translate-y-2">
                     {/* Selection Checkbox - shown in selection mode */}
                     {selectionMode && (
                       <div className="absolute top-2 right-2 z-20">
-                        <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center
+                        <div className={`w-6 h-6 rounded-[var(--radius-box)] border-2 flex items-center justify-center
                                       transition-all duration-200 ${
                           selectedImages.has(image.id)
                             ? 'bg-error border-error/80'
@@ -599,14 +599,14 @@ export default function TrashPage() {
                             {image.tags.slice(0, 2).map(tag => (
                               <span
                                 key={tag}
-                                className="text-xs px-2.5 py-1 rounded-lg bg-base-100/70 backdrop-blur-sm 
+                                className="text-xs px-2.5 py-1 rounded-[var(--radius-box)] bg-base-100/70 backdrop-blur-sm 
                                          text-base-content border border-base-content/30 font-medium shadow-lg"
                               >
                                 {tag}
                               </span>
                             ))}
                             {image.tags.length > 2 && (
-                              <span className="text-xs px-2.5 py-1 rounded-lg bg-base-100/70 backdrop-blur-sm 
+                              <span className="text-xs px-2.5 py-1 rounded-[var(--radius-box)] bg-base-100/70 backdrop-blur-sm 
                                              text-base-content border border-base-content/30 font-medium shadow-lg">
                                 +{image.tags.length - 2}
                               </span>
@@ -646,7 +646,7 @@ export default function TrashPage() {
                 {selectedImage.filemoonUrl ? (
                   <iframe
                     src={selectedImage.filemoonUrl}
-                    className="w-full h-full rounded-2xl shadow-2xl relative z-10"
+                    className="w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10"
                     frameBorder="0"
                     allowFullScreen
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -655,13 +655,13 @@ export default function TrashPage() {
                   <video
                     src={selectedImage.udropUrl}
                     controls
-                    className="w-full h-full rounded-2xl shadow-2xl relative z-10"
+                    className="w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10"
                   />
                 ) : (
                   <img
                     src={getImageUrl(selectedImage, true)}
                     alt={selectedImage.pageTitle}
-                    className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl relative z-10
+                    className="max-w-full max-h-full object-contain rounded-[var(--radius-box)] shadow-2xl relative z-10
                              hover:scale-[1.02] hover:shadow-[0_0_80px_rgba(239,68,68,0.3)]
                              transition-all duration-700"
                   />
@@ -941,7 +941,7 @@ export default function TrashPage() {
                       })()}
 
                       {/* Warning Box */}
-                      <div className="mt-4 p-4 bg-warning/10 border border-warning/30 rounded-xl">
+                      <div className="mt-4 p-4 bg-warning/10 border border-warning/30 rounded-[var(--radius-box)]">
                         <div className="flex items-start gap-3">
                           <AlertTriangle className="text-warning mt-0.5 flex-shrink-0" size={18} />
                           <div className="text-sm">
@@ -1185,7 +1185,7 @@ export default function TrashPage() {
                     <button
                       onClick={() => setShowRestoreConfirm(true)}
                       disabled={isProcessing}
-                      className="group relative flex-1 px-6 py-2.5 rounded-xl overflow-hidden
+                      className="group relative flex-1 px-6 py-2.5 rounded-[var(--radius-box)] overflow-hidden
                                bg-success text-success-content
                                border border-success/30 
                                transform transition-all duration-300
@@ -1202,7 +1202,7 @@ export default function TrashPage() {
                     <button
                       onClick={() => setShowDeleteConfirm(true)}
                       disabled={isProcessing}
-                      className="group relative flex-1 px-6 py-2.5 rounded-xl overflow-hidden
+                      className="group relative flex-1 px-6 py-2.5 rounded-[var(--radius-box)] overflow-hidden
                                bg-error text-error-content
                                border border-error/30 
                                transform transition-all duration-300
@@ -1242,7 +1242,7 @@ export default function TrashPage() {
             <button
               onClick={() => setShowRestoreConfirm(false)}
               disabled={isProcessing}
-              className="px-6 py-3 rounded-xl bg-base-200 border border-base-content/10
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10
                        text-base-content font-medium
                        hover:bg-base-300 hover:scale-105
                        active:scale-95
@@ -1255,7 +1255,7 @@ export default function TrashPage() {
             <button
               onClick={handleRestore}
               disabled={isProcessing}
-              className="group relative px-8 py-3 rounded-xl overflow-hidden
+              className="group relative px-8 py-3 rounded-[var(--radius-box)] overflow-hidden
                        bg-success text-success-content
                        border border-success/40
                        transform transition-all duration-300
@@ -1295,7 +1295,7 @@ export default function TrashPage() {
             Permanently Delete?
           </h3>
           
-          <div className="text-left bg-error/10 border border-error/30 rounded-xl p-4 space-y-2">
+          <div className="text-left bg-error/10 border border-error/30 rounded-[var(--radius-box)] p-4 space-y-2">
             <p className="text-base-content/80 leading-relaxed">
               This will permanently delete the item from:
             </p>
@@ -1317,7 +1317,7 @@ export default function TrashPage() {
             <button
               onClick={() => setShowDeleteConfirm(false)}
               disabled={isProcessing}
-              className="px-6 py-3 rounded-xl bg-base-200 border border-base-content/10
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10
                        text-base-content font-medium
                        hover:bg-base-300 hover:scale-105
                        active:scale-95
@@ -1330,7 +1330,7 @@ export default function TrashPage() {
             <button
               onClick={handlePermanentDelete}
               disabled={isProcessing}
-              className="group relative px-8 py-3 rounded-xl overflow-hidden
+              className="group relative px-8 py-3 rounded-[var(--radius-box)] overflow-hidden
                        bg-error text-error-content
                        border border-error/40
                        transform transition-all duration-300
@@ -1380,7 +1380,7 @@ export default function TrashPage() {
             <button
               onClick={() => setShowBulkRestoreConfirm(false)}
               disabled={isProcessing}
-              className="px-6 py-3 rounded-xl bg-base-200 border border-base-content/10
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10
                        text-base-content font-medium
                        hover:bg-base-300 hover:scale-105
                        active:scale-95
@@ -1393,7 +1393,7 @@ export default function TrashPage() {
             <button
               onClick={handleBulkRestore}
               disabled={isProcessing}
-              className="group relative px-8 py-3 rounded-xl overflow-hidden
+              className="group relative px-8 py-3 rounded-[var(--radius-box)] overflow-hidden
                        bg-success text-success-content
                        border border-success/40
                        transform transition-all duration-300
@@ -1432,7 +1432,7 @@ export default function TrashPage() {
             Permanently Delete {selectedImages.size} Item{selectedImages.size > 1 ? 's' : ''}?
           </h3>
           
-          <div className="text-left bg-error/10 border border-error/30 rounded-xl p-4 space-y-2">
+          <div className="text-left bg-error/10 border border-error/30 rounded-[var(--radius-box)] p-4 space-y-2">
             <p className="text-base-content/80 leading-relaxed">
               This will permanently delete <span className="font-bold text-error">{selectedImages.size} item{selectedImages.size > 1 ? 's' : ''}</span> from:
             </p>
@@ -1451,7 +1451,7 @@ export default function TrashPage() {
             <button
               onClick={() => setShowBulkDeleteConfirm(false)}
               disabled={isProcessing}
-              className="px-6 py-3 rounded-xl bg-base-200 border border-base-content/10
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10
                        text-base-content font-medium
                        hover:bg-base-300 hover:scale-105
                        active:scale-95
@@ -1464,7 +1464,7 @@ export default function TrashPage() {
             <button
               onClick={handleBulkDelete}
               disabled={isProcessing}
-              className="group relative px-8 py-3 rounded-xl overflow-hidden
+              className="group relative px-8 py-3 rounded-[var(--radius-box)] overflow-hidden
                        bg-error text-error-content
                        border border-error/40
                        transform transition-all duration-300
@@ -1503,7 +1503,7 @@ export default function TrashPage() {
             Empty Entire Trash?
           </h3>
           
-          <div className="text-left bg-error/10 border border-error/30 rounded-xl p-4 space-y-2">
+          <div className="text-left bg-error/10 border border-error/30 rounded-[var(--radius-box)] p-4 space-y-2">
             <p className="text-base-content/80 leading-relaxed">
               This will permanently delete <span className="font-bold text-error">{trashedImages.length} item{trashedImages.length !== 1 ? 's' : ''}</span> from:
             </p>
@@ -1522,7 +1522,7 @@ export default function TrashPage() {
             <button
               onClick={() => setShowEmptyTrashConfirm(false)}
               disabled={isProcessing}
-              className="px-6 py-3 rounded-xl bg-base-200 border border-base-content/10
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10
                        text-base-content font-medium
                        hover:bg-base-300 hover:scale-105
                        active:scale-95
@@ -1535,7 +1535,7 @@ export default function TrashPage() {
             <button
               onClick={handleEmptyTrash}
               disabled={isProcessing}
-              className="group relative px-8 py-3 rounded-xl overflow-hidden
+              className="group relative px-8 py-3 rounded-[var(--radius-box)] overflow-hidden
                        bg-error text-error-content
                        border border-error/40
                        transform transition-all duration-300
@@ -1576,3 +1576,4 @@ export default function TrashPage() {
     </div>
   );
 }
+

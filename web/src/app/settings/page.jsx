@@ -167,7 +167,7 @@ export default function SettingsPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="glass rounded-2xl p-5 sm:p-8">
+            <div className="glass rounded-[var(--radius-box)] p-5 sm:p-8">
               <div className="flex items-center gap-3 mb-6">
                 <KeyRound className="w-5 h-5 text-primary-400" />
                 <h2 className="text-xl font-semibold">API Keys</h2>
@@ -181,7 +181,7 @@ export default function SettingsPage() {
                     value={settings.pixvidApiKey}
                     onChange={(e) => updateSetting('pixvidApiKey', e.target.value)}
                     placeholder="Enter your Pixvid API key"
-                    className="w-full rounded-xl border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                    className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                   />
                 </div>
 
@@ -192,7 +192,7 @@ export default function SettingsPage() {
                     value={settings.imgbbApiKey}
                     onChange={(e) => updateSetting('imgbbApiKey', e.target.value)}
                     placeholder="Enter your ImgBB API key"
-                    className="w-full rounded-xl border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                    className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                   />
                 </div>
 
@@ -203,7 +203,7 @@ export default function SettingsPage() {
                     value={settings.filemoonApiKey}
                     onChange={(e) => updateSetting('filemoonApiKey', e.target.value)}
                     placeholder="Enter your Filemoon API key"
-                    className="w-full rounded-xl border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                    className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                   />
                 </div>
 
@@ -215,7 +215,7 @@ export default function SettingsPage() {
                       value={settings.udropKey1}
                       onChange={(e) => updateSetting('udropKey1', e.target.value)}
                       placeholder="Enter UDrop API Key 1"
-                      className="w-full rounded-xl border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                      className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                     />
                   </div>
 
@@ -226,14 +226,14 @@ export default function SettingsPage() {
                       value={settings.udropKey2}
                       onChange={(e) => updateSetting('udropKey2', e.target.value)}
                       placeholder="Enter UDrop API Key 2"
-                      className="w-full rounded-xl border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                      className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                     />
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="glass rounded-2xl p-5 sm:p-8">
+            <div className="glass rounded-[var(--radius-box)] p-5 sm:p-8">
               <div className="flex items-center justify-between gap-3 mb-6">
                 <div className="flex items-center gap-3">
                   <Cloud className="w-5 h-5 text-primary-400" />
@@ -253,14 +253,14 @@ export default function SettingsPage() {
                 value={configText}
                 onChange={(e) => handleConfigChange(e.target.value)}
                 placeholder='{"apiKey":"...","authDomain":"..."}'
-                className="mt-2 w-full min-h-[220px] sm:min-h-[260px] rounded-xl border border-base-content/15 bg-base-100/70 p-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                className="mt-2 w-full min-h-[220px] sm:min-h-[260px] rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 p-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
               />
               <p className="mt-2 text-xs text-base-content/65">
                 Paste the full Firebase config JSON. It will be parsed automatically.
               </p>
             </div>
 
-            <div className="glass rounded-2xl p-5 sm:p-8">
+            <div className="glass rounded-[var(--radius-box)] p-5 sm:p-8">
               <div className="flex items-center gap-3 mb-6">
                 <ImageIcon className="w-5 h-5 text-primary-400" />
                 <h2 className="text-xl font-semibold">Gallery Preferences</h2>
@@ -271,7 +271,7 @@ export default function SettingsPage() {
                 <select
                   value={settings.defaultGallerySource}
                   onChange={(e) => updateSetting('defaultGallerySource', e.target.value)}
-                  className="w-full rounded-xl border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                  className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                 >
                   <option value="imgbb">ImgBB (Original Quality)</option>
                   <option value="pixvid">Pixvid (Compressed Quality)</option>
@@ -279,7 +279,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="glass rounded-2xl p-5 sm:p-8">
+            <div className="glass rounded-[var(--radius-box)] p-5 sm:p-8">
               <div className="flex items-center gap-3 mb-6">
                 <Folder className="w-5 h-5 text-primary-400" />
                 <h2 className="text-xl font-semibold">Video Download Folder</h2>
@@ -292,7 +292,7 @@ export default function SettingsPage() {
                   value={settings.downloadFolder}
                   onChange={(e) => updateSetting('downloadFolder', e.target.value)}
                   placeholder="C:\Users\Admin\Videos"
-                  className="w-full rounded-xl border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                  className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                 />
                 <p className="mt-2 text-xs text-base-content/65">
                   Stored for parity with the extension settings page.
@@ -324,7 +324,7 @@ export default function SettingsPage() {
             <button
               type="submit"
               disabled={saving}
-              className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-xl font-semibold hover:shadow-lg hover:shadow-primary-500/25 transition-all disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-[var(--radius-box)] font-semibold hover:shadow-lg hover:shadow-primary-500/25 transition-all disabled:opacity-50"
             >
               {saving ? (
                 <Loader2 className="w-5 h-5 animate-spin" />

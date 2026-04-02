@@ -61,7 +61,7 @@ function HeroSection() {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
           <a 
             href="#download" 
-            className="group relative w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-2xl font-semibold text-lg overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/25 hover:-translate-y-0.5"
+            className="group relative w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-[var(--radius-box)] font-semibold text-lg overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/25 hover:-translate-y-0.5"
           >
             <span className="relative z-10 flex w-full items-center justify-center gap-2">
               <Download className="w-5 h-5" />
@@ -73,7 +73,7 @@ function HeroSection() {
           
           <a 
             href="#demo" 
-            className="w-full sm:w-auto px-8 py-4 glass rounded-2xl font-semibold text-lg hover:bg-base-content/10 transition-all duration-300 flex items-center justify-center gap-2"
+            className="w-full sm:w-auto px-8 py-4 glass rounded-[var(--radius-box)] font-semibold text-lg hover:bg-base-content/10 transition-all duration-300 flex items-center justify-center gap-2"
           >
             <Eye className="w-5 h-5" />
             See in Action
@@ -82,27 +82,27 @@ function HeroSection() {
 
         {/* Floating UI mockup */}
         <div className="relative max-w-4xl mx-auto">
-          <div className="glass rounded-3xl p-2 glow-effect animate-float-slow">
-            <div className="bg-base-100/80 rounded-2xl p-6 md:p-8">
+          <div className="glass rounded-[var(--radius-box)] p-2 glow-effect animate-float-slow">
+            <div className="bg-base-100/80 rounded-[var(--radius-box)] p-6 md:p-8">
               <div className="flex items-center gap-2 mb-6">
                 <div className="w-3 h-3 rounded-full bg-error/80"></div>
                 <div className="w-3 h-3 rounded-full bg-warning/80"></div>
                 <div className="w-3 h-3 rounded-full bg-success/80"></div>
                 <div className="flex-1 text-center">
-                  <div className="inline-block glass rounded-lg px-4 py-1 text-xs text-base-content/65">ImgVault Gallery</div>
+                  <div className="inline-block glass rounded-[var(--radius-box)] px-4 py-1 text-xs text-base-content/65">ImgVault Gallery</div>
                 </div>
               </div>
               <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
                 {mockGalleryImages.map((imageUrl, i) => (
                   <div 
                     key={i} 
-                    className="aspect-square rounded-xl bg-gradient-to-br from-primary-500/20 to-primary-700/20 border border-base-content/10 hover:border-primary-500/30 transition-all duration-300 hover:scale-105 cursor-pointer group"
+                    className="aspect-square rounded-[var(--radius-box)] bg-gradient-to-br from-primary-500/20 to-primary-700/20 border border-base-content/10 hover:border-primary-500/30 transition-all duration-300 hover:scale-105 cursor-pointer group"
                     style={{ animationDelay: `${i * 0.1}s` }}
                   >
                     <img
                       src={imageUrl}
                       alt={`Sample gallery image ${i + 1}`}
-                      className="w-full h-full object-cover rounded-xl"
+                      className="w-full h-full object-cover rounded-[var(--radius-box)]"
                       loading="lazy"
                     />
                   </div>
@@ -182,9 +182,9 @@ function FeaturesSection() {
           {features.map((feature, i) => (
             <div 
               key={i}
-              className="group glass rounded-2xl p-6 sm:p-8 hover-lift gradient-border"
+              className="group glass rounded-[var(--radius-box)] p-6 sm:p-8 hover-lift gradient-border"
             >
-              <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${feature.color} flex items-center justify-center mb-6`}>
+              <div className={`w-14 h-14 rounded-[var(--radius-box)] bg-gradient-to-br ${feature.color} flex items-center justify-center mb-6`}>
                 <feature.icon className={`w-7 h-7 ${feature.iconColor}`} />
               </div>
               <h3 className="text-xl font-semibold mb-3">{feature.title}</h3>
@@ -242,14 +242,14 @@ function DemoSection() {
               <button
                 key={i}
                 onClick={() => setActiveTab(i)}
-                className={`text-left p-6 rounded-2xl transition-all duration-300 ${
+                className={`text-left p-6 rounded-[var(--radius-box)] transition-all duration-300 ${
                   activeTab === i 
                     ? 'glass border border-primary-500/30 shadow-lg shadow-primary-500/10' 
                     : 'hover:bg-base-content/5'
                 }`}
               >
                 <div className="flex items-start gap-4">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
+                  <div className={`w-12 h-12 rounded-[var(--radius-box)] flex items-center justify-center shrink-0 ${
                     activeTab === i 
                       ? 'bg-primary-500/20 text-primary-400' 
                       : 'bg-base-200 text-base-content/55'
@@ -267,10 +267,10 @@ function DemoSection() {
             ))}
           </div>
 
-          <div className="glass rounded-3xl p-2 glow-effect">
-            <div className="bg-base-100/80 rounded-2xl p-6 aspect-video flex items-center justify-center">
+          <div className="glass rounded-[var(--radius-box)] p-2 glow-effect">
+            <div className="bg-base-100/80 rounded-[var(--radius-box)] p-6 aspect-video flex items-center justify-center">
               <div className="text-center">
-                <div className="w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br from-primary-500/30 to-primary-700/30 flex items-center justify-center mb-4 animate-pulse-slow">
+                <div className="w-20 h-20 mx-auto rounded-[var(--radius-box)] bg-gradient-to-br from-primary-500/30 to-primary-700/30 flex items-center justify-center mb-4 animate-pulse-slow">
                   {(() => {
                     const Icon = tabs[activeTab].icon
                     return <Icon className="w-10 h-10 text-primary-400" />
@@ -297,7 +297,7 @@ function DownloadSection() {
   return (
     <section id="download" className="py-20 md:py-32 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="glass rounded-2xl sm:rounded-3xl p-5 sm:p-8 md:p-16 gradient-border relative overflow-hidden">
+        <div className="glass rounded-[var(--radius-box)] sm:rounded-[var(--radius-box)] p-5 sm:p-8 md:p-16 gradient-border relative overflow-hidden">
           <div className="hidden sm:block absolute top-0 right-0 w-96 h-96 bg-primary-500/10 rounded-full blur-[100px]"></div>
           <div className="hidden sm:block absolute bottom-0 left-0 w-80 h-80 bg-primary-600/10 rounded-full blur-[80px]"></div>
           
@@ -330,7 +330,7 @@ function DownloadSection() {
                   href="https://github.com/FahadBinHussain/ImgVault" 
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="group w-full sm:w-auto px-6 sm:px-8 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-2xl font-semibold text-center transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/25 hover:-translate-y-0.5 flex items-center justify-center gap-2"
+                  className="group w-full sm:w-auto px-6 sm:px-8 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-[var(--radius-box)] font-semibold text-center transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/25 hover:-translate-y-0.5 flex items-center justify-center gap-2"
                 >
                   <Github className="w-5 h-5" />
                   View on GitHub
@@ -338,7 +338,7 @@ function DownloadSection() {
                 </a>
                 <a 
                   href="https://github.com/FahadBinHussain/ImgVault/archive/refs/heads/main.zip"
-                  className="w-full sm:w-auto px-6 sm:px-8 py-4 glass rounded-2xl font-semibold text-center hover:bg-base-content/10 transition-all duration-300 flex items-center justify-center gap-2"
+                  className="w-full sm:w-auto px-6 sm:px-8 py-4 glass rounded-[var(--radius-box)] font-semibold text-center hover:bg-base-content/10 transition-all duration-300 flex items-center justify-center gap-2"
                 >
                   <Download className="w-5 h-5" />
                   Download ZIP
@@ -346,7 +346,7 @@ function DownloadSection() {
               </div>
             </div>
 
-            <div className="glass rounded-2xl p-4 sm:p-6 bg-base-200/70 min-w-0 overflow-hidden">
+            <div className="glass rounded-[var(--radius-box)] p-4 sm:p-6 bg-base-200/70 min-w-0 overflow-hidden">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-3 h-3 rounded-full bg-error/80"></div>
                 <div className="w-3 h-3 rounded-full bg-warning/80"></div>
@@ -412,3 +412,4 @@ export default function Home() {
     </main>
   )
 }
+

@@ -299,11 +299,11 @@ export default function SettingsPage() {
 
       <div className="max-w-3xl mx-auto w-full">
         {/* Header */}
-  <div className="bg-base-100 border border-base-content/20 shadow-xl rounded-2xl p-4 sm:p-6 mb-6">
+  <div className="bg-base-100 border border-base-content/20 shadow-xl rounded-[var(--radius-box)] p-4 sm:p-6 mb-6">
           <div className="flex items-start sm:items-center gap-3 sm:gap-4">
             <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-primary to-secondary rounded-xl blur-md opacity-50"></div>
-              <img src="/icons/1.png" alt="ImgVault" className="w-12 h-12 relative z-10 rounded-xl shadow-lg" />
+              <div className="absolute inset-0 bg-gradient-to-r from-primary to-secondary rounded-[var(--radius-box)] blur-md opacity-50"></div>
+              <img src="/icons/1.png" alt="ImgVault" className="w-12 h-12 relative z-10 rounded-[var(--radius-box)] shadow-lg" />
             </div>
             <div className="flex-1">
               <h1 className="text-2xl sm:text-3xl font-bold text-base-content">Settings</h1>
@@ -313,7 +313,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Settings Form */}
-  <div className="bg-base-100 border border-base-content/20 shadow-xl rounded-2xl p-4 sm:p-8 space-y-8">
+  <div className="bg-base-100 border border-base-content/20 shadow-xl rounded-[var(--radius-box)] p-4 sm:p-8 space-y-8">
           {/* API Keys Section */}
           <div>
             <h2 className="text-xl font-semibold text-base-content mb-6 flex items-center gap-2">
@@ -415,7 +415,7 @@ export default function SettingsPage() {
             
             {/* Firebase Status */}
             {firebaseStatus && (
-              <div className="mb-5 p-4 rounded-xl bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/30 shadow-lg">
+              <div className="mb-5 p-4 rounded-[var(--radius-box)] bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/30 shadow-lg">
                 <p className="text-sm text-base-content/80 font-medium">{firebaseStatus}</p>
               </div>
             )}
@@ -460,7 +460,7 @@ export default function SettingsPage() {
               <select
                 value={localGallerySource}
                 onChange={(e) => setLocalGallerySource(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg bg-base-100/70 border border-base-content/25 
+                className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-100/70 border border-base-content/25 
                          text-base-content cursor-pointer
                          focus:outline-none focus:border-primary focus:ring-2 
                          focus:ring-primary/20 transition-all shadow-lg"
@@ -481,7 +481,7 @@ export default function SettingsPage() {
               <select
                 value={localVideoSource}
                 onChange={(e) => setLocalVideoSource(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg bg-base-100/70 border border-base-content/25 
+                className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-100/70 border border-base-content/25 
                          text-base-content cursor-pointer
                          focus:outline-none focus:border-primary focus:ring-2 
                          focus:ring-primary/20 transition-all shadow-lg"
@@ -501,7 +501,7 @@ export default function SettingsPage() {
             <Button
               onClick={handleSave}
               variant="primary"
-              className="w-full min-h-0 rounded-xl px-6 py-4 text-lg !text-base-content shadow-2xl shadow-primary/10 hover:shadow-primary/25 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-3"
+              className="w-full min-h-0 rounded-[var(--radius-box)] px-6 py-4 text-lg !text-base-content shadow-2xl shadow-primary/10 hover:shadow-primary/25 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-3"
             >
               {saved ? (
                 <>
@@ -519,13 +519,13 @@ export default function SettingsPage() {
         </div>
 
         {/* Help Section */}
-  <div className="bg-base-100 border border-base-content/20 shadow-xl rounded-2xl p-4 sm:p-6 mt-6">
+  <div className="bg-base-100 border border-base-content/20 shadow-xl rounded-[var(--radius-box)] p-4 sm:p-6 mt-6">
   <h2 className="text-lg font-semibold text-base-content mb-4 flex items-center gap-2">
             <span className="text-xl">❓</span>
             Need Help?
           </h2>
           <div className="space-y-3 text-sm text-base-content/70">
-            <div className="flex items-start gap-3 p-3 rounded-lg bg-base-100/60 hover:bg-base-100/80 transition-colors">
+            <div className="flex items-start gap-3 p-3 rounded-[var(--radius-box)] bg-base-100/60 hover:bg-base-100/80 transition-colors">
               <span className="text-lg flex-shrink-0">⚡</span>
               <div>
                 <strong className="text-base-content">Pixvid API Key:</strong> Get it from{' '}
@@ -539,7 +539,7 @@ export default function SettingsPage() {
                 </a>
               </div>
             </div>
-            <div className="flex items-start gap-3 p-3 rounded-lg bg-base-100/60 hover:bg-base-100/80 transition-colors">
+            <div className="flex items-start gap-3 p-3 rounded-[var(--radius-box)] bg-base-100/60 hover:bg-base-100/80 transition-colors">
               <span className="text-lg flex-shrink-0">🖼️</span>
               <div>
                 <strong className="text-base-content">ImgBB API Key:</strong> Get it from{' '}
@@ -553,7 +553,7 @@ export default function SettingsPage() {
                 </a>
               </div>
             </div>
-            <div className="flex items-start gap-3 p-3 rounded-lg bg-base-100/60 hover:bg-base-100/80 transition-colors">
+            <div className="flex items-start gap-3 p-3 rounded-[var(--radius-box)] bg-base-100/60 hover:bg-base-100/80 transition-colors">
               <span className="text-lg flex-shrink-0">🎬</span>
               <div>
                 <strong className="text-base-content">Filemoon API Key:</strong> Get it from{' '}
@@ -567,7 +567,7 @@ export default function SettingsPage() {
                 </a>
               </div>
             </div>
-            <div className="flex items-start gap-3 p-3 rounded-lg bg-base-100/60 hover:bg-base-100/80 transition-colors">
+            <div className="flex items-start gap-3 p-3 rounded-[var(--radius-box)] bg-base-100/60 hover:bg-base-100/80 transition-colors">
               <Package className="w-5 h-5 flex-shrink-0 text-base-content/70" />
               <div>
                 <strong className="text-base-content">UDrop API Keys:</strong> Get them from{' '}
@@ -581,7 +581,7 @@ export default function SettingsPage() {
                 </a>
               </div>
             </div>
-            <div className="flex items-start gap-3 p-3 rounded-lg bg-base-100/60 hover:bg-base-100/80 transition-colors">
+            <div className="flex items-start gap-3 p-3 rounded-[var(--radius-box)] bg-base-100/60 hover:bg-base-100/80 transition-colors">
               <span className="text-lg flex-shrink-0">☁️</span>
               <div>
                 <strong className="text-base-content">Firebase:</strong> Create a project at{' '}
@@ -601,3 +601,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+

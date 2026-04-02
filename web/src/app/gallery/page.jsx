@@ -46,7 +46,7 @@ function getPreferredImageUrl(image, preferredProvider = 'imgbb') {
 // Skeleton Loader Component with Shimmer
 function SkeletonCard({ viewMode }) {
   return (
-    <div className={`glass rounded-2xl overflow-hidden ${viewMode === 'list' ? 'flex' : ''}`} style={{ minHeight: viewMode === 'list' ? 'auto' : '200px' }}>
+    <div className={`glass rounded-[var(--radius-box)] overflow-hidden ${viewMode === 'list' ? 'flex' : ''}`} style={{ minHeight: viewMode === 'list' ? 'auto' : '200px' }}>
       <div className={`${viewMode === 'list' ? 'w-32 h-28' : 'h-full min-h-[200px]'} relative overflow-hidden bg-base-200/60`}>
         <div className="absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" style={{ backgroundSize: '200% 100%' }} />
       </div>
@@ -69,14 +69,14 @@ function EmptyState({ hasConfig }) {
   if (!hasConfig) {
     return (
       <div className="text-center py-20 animate-fade-in">
-        <div className="w-24 h-24 mx-auto rounded-3xl bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center mb-8 animate-float">
+        <div className="w-24 h-24 mx-auto rounded-[var(--radius-box)] bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center mb-8 animate-float">
           <Settings className="w-12 h-12 text-primary-400" />
         </div>
         <h3 className="text-2xl font-bold mb-3 gradient-text">Configure Firebase First</h3>
         <p className="text-base-content/65 mb-8 max-w-md mx-auto">Set up your Firebase config to start viewing your images</p>
         <a 
           href="/settings" 
-          className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-2xl font-semibold hover:shadow-lg hover:shadow-primary-500/25 transition-all duration-300 hover:-translate-y-1"
+          className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-[var(--radius-box)] font-semibold hover:shadow-lg hover:shadow-primary-500/25 transition-all duration-300 hover:-translate-y-1"
         >
           <Settings className="w-5 h-5" />
           Go to Settings
@@ -87,7 +87,7 @@ function EmptyState({ hasConfig }) {
 
   return (
     <div className="text-center py-20 animate-fade-in">
-      <div className="w-24 h-24 mx-auto rounded-3xl bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center mb-8 animate-float">
+      <div className="w-24 h-24 mx-auto rounded-[var(--radius-box)] bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center mb-8 animate-float">
         <Sparkles className="w-12 h-12 text-primary-400" />
       </div>
       <h3 className="text-2xl font-bold mb-3">No Images Yet</h3>
@@ -96,7 +96,7 @@ function EmptyState({ hasConfig }) {
         href="https://github.com/FahadBinHussain/ImgVault" 
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-2 px-8 py-4 glass rounded-2xl font-semibold hover:bg-base-content/10 transition-all duration-300 hover:-translate-y-1 gradient-border"
+        className="inline-flex items-center gap-2 px-8 py-4 glass rounded-[var(--radius-box)] font-semibold hover:bg-base-content/10 transition-all duration-300 hover:-translate-y-1 gradient-border"
       >
         <ExternalLink className="w-5 h-5" />
         Get the Extension
@@ -427,7 +427,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
           <img
             src={imageUrl}
             alt={image.pageTitle || 'Image'}
-            className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-2xl shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+            className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
             onLoad={() => setIsLoading(false)}
           />
         </div>
@@ -445,7 +445,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
           <div className="flex gap-2 mb-6 border-b border-base-content/15 pb-4">
             <button
               onClick={(e) => { e.stopPropagation(); setActiveTab('noobs'); }}
-              className={`px-4 py-2 font-semibold transition-all rounded-lg ${
+              className={`px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] ${
                 activeTab === 'noobs'
                   ? 'bg-primary-500/20 text-primary-400'
                   : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'
@@ -455,7 +455,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); setActiveTab('nerds'); }}
-              className={`px-4 py-2 font-semibold transition-all rounded-lg ${
+              className={`px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] ${
                 activeTab === 'nerds'
                   ? 'bg-success/20 text-success'
                   : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'
@@ -476,14 +476,14 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
                       <button
                         onClick={handleCancelEdit}
                         disabled={isSaving}
-                        className="px-3 py-1.5 rounded-lg text-sm bg-base-content/5 hover:bg-base-content/10 text-base-content/80 transition-colors disabled:opacity-50"
+                        className="px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-base-content/5 hover:bg-base-content/10 text-base-content/80 transition-colors disabled:opacity-50"
                       >
                         Cancel
                       </button>
                       <button
                         onClick={handleSave}
                         disabled={isSaving}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition-colors disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition-colors disabled:opacity-50"
                       >
                         {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                         Save
@@ -492,7 +492,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
                   ) : (
                     <button
                       onClick={(e) => { e.stopPropagation(); setIsEditing(true); setSaveError('') }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition-colors"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition-colors"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                       Edit
@@ -502,7 +502,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
               </div>
 
               {saveError && (
-                <div className="rounded-lg border border-error/30 bg-error/10 text-error text-xs p-2">
+                <div className="rounded-[var(--radius-box)] border border-error/30 bg-error/10 text-error text-xs p-2">
                   {saveError}
                 </div>
               )}
@@ -532,7 +532,7 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
 
   return (
     <div 
-      className={`group relative glass rounded-2xl overflow-hidden cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-xl hover:shadow-primary-500/10 ${viewMode === 'list' ? 'flex' : ''} ${className}`}
+      className={`group relative glass rounded-[var(--radius-box)] overflow-hidden cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-xl hover:shadow-primary-500/10 ${viewMode === 'list' ? 'flex' : ''} ${className}`}
       style={{ 
         animationDelay: `${index * 50}ms`,
         animation: 'fadeInUp 0.6s ease-out forwards',
@@ -576,7 +576,7 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
         </div>
 
         {/* Gradient border effect */}
-        <div className={`absolute inset-0 rounded-2xl transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}
+        <div className={`absolute inset-0 rounded-[var(--radius-box)] transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}
           style={{
             background: 'linear-gradient(135deg, rgba(92, 124, 250, 0.3), transparent, rgba(92, 124, 250, 0.1))',
             pointerEvents: 'none'
@@ -815,7 +815,7 @@ export default function GalleryPage() {
   <section className="pt-24 sm:pt-28 pb-10 sm:pb-12 px-4 sm:px-6">
           <div className="max-w-7xl mx-auto">
             <div className="mb-8">
-              <div className="h-10 bg-base-200/60 rounded-xl w-48 mb-3 animate-pulse" />
+              <div className="h-10 bg-base-200/60 rounded-[var(--radius-box)] w-48 mb-3 animate-pulse" />
               <div className="h-5 bg-base-200/60 rounded w-64 animate-pulse" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -865,7 +865,7 @@ export default function GalleryPage() {
                       placeholder="Search images..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-11 pr-4 py-3 bg-base-200/60 border border-base-content/10 rounded-xl text-sm focus:outline-none focus:border-primary-500/50 focus:bg-base-200 w-full sm:w-64 transition-all duration-300 sm:focus:w-80 focus:shadow-lg focus:shadow-primary-500/10"
+                      className="pl-11 pr-4 py-3 bg-base-200/60 border border-base-content/10 rounded-[var(--radius-box)] text-sm focus:outline-none focus:border-primary-500/50 focus:bg-base-200 w-full sm:w-64 transition-all duration-300 sm:focus:w-80 focus:shadow-lg focus:shadow-primary-500/10"
                     />
                     {searchQuery && (
                       <button 
@@ -878,16 +878,16 @@ export default function GalleryPage() {
                   </div>
                   
                   {/* View toggle */}
-                  <div className="flex items-center gap-1 glass rounded-xl p-1.5">
+                  <div className="flex items-center gap-1 glass rounded-[var(--radius-box)] p-1.5">
                     <button
                       onClick={() => setViewMode('grid')}
-                      className={`p-2.5 rounded-lg transition-all duration-300 ${viewMode === 'grid' ? 'bg-primary-500/20 text-primary-400 shadow-lg shadow-primary-500/20' : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'}`}
+                      className={`p-2.5 rounded-[var(--radius-box)] transition-all duration-300 ${viewMode === 'grid' ? 'bg-primary-500/20 text-primary-400 shadow-lg shadow-primary-500/20' : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'}`}
                     >
                       <Grid className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => setViewMode('list')}
-                      className={`p-2.5 rounded-lg transition-all duration-300 ${viewMode === 'list' ? 'bg-primary-500/20 text-primary-400 shadow-lg shadow-primary-500/20' : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'}`}
+                      className={`p-2.5 rounded-[var(--radius-box)] transition-all duration-300 ${viewMode === 'list' ? 'bg-primary-500/20 text-primary-400 shadow-lg shadow-primary-500/20' : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'}`}
                     >
                       <List className="w-4 h-4" />
                     </button>
@@ -898,7 +898,7 @@ export default function GalleryPage() {
 
             {/* Content */}
             {loadError ? (
-              <div className="glass rounded-2xl p-8 text-error text-center animate-fade-in">
+              <div className="glass rounded-[var(--radius-box)] p-8 text-error text-center animate-fade-in">
                 <p className="font-medium">{loadError}</p>
               </div>
             ) : filteredImages.length === 0 ? (
@@ -1017,3 +1017,4 @@ export default function GalleryPage() {
     </>
   )
 }
+

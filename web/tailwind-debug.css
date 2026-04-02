@@ -2382,11 +2382,11 @@ video {
   border-radius:0.25rem
 }
 
-.rounded-2xl{
+.rounded-[var(--radius-box)]{
   border-radius:1rem
 }
 
-.rounded-3xl{
+.rounded-[var(--radius-box)]{
   border-radius:1.5rem
 }
 
@@ -2394,15 +2394,15 @@ video {
   border-radius:9999px
 }
 
-.rounded-lg{
+.rounded-[var(--radius-box)]{
   border-radius:0.5rem
 }
 
-.rounded-md{
+.rounded-[var(--radius-box)]{
   border-radius:0.375rem
 }
 
-.rounded-xl{
+.rounded-[var(--radius-box)]{
   border-radius:0.75rem
 }
 

@@ -132,10 +132,10 @@ export default function CollectionsPage() {
       <div style={{ height: navbarHeight ? `${navbarHeight + 8}px` : '90px' }} />
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-16 space-y-6">
-        <div className="bg-base-100 border border-base-content/15 rounded-2xl shadow-xl p-5 sm:p-6">
+        <div className="bg-base-100 border border-base-content/15 rounded-[var(--radius-box)] shadow-xl p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-primary/15 text-primary flex items-center justify-center">
+              <div className="w-12 h-12 rounded-[var(--radius-box)] bg-primary/15 text-primary flex items-center justify-center">
                 <FolderOpen className="w-6 h-6" />
               </div>
               <div>
@@ -158,7 +158,7 @@ export default function CollectionsPage() {
         </div>
 
         {collections.length === 0 ? (
-          <div className="bg-base-100 border border-base-content/15 rounded-2xl shadow-xl text-center py-20 px-6">
+          <div className="bg-base-100 border border-base-content/15 rounded-[var(--radius-box)] shadow-xl text-center py-20 px-6">
             <FolderOpen className="w-20 h-20 text-base-content/25 mx-auto mb-4" />
             <p className="text-base-content/70 text-xl mb-6">No collections yet</p>
             <Button onClick={() => setShowCreateModal(true)} variant="primary">
@@ -177,7 +177,7 @@ export default function CollectionsPage() {
                   key={collection.id}
                   initial={{ opacity: 0, scale: 0.96 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="rounded-2xl border border-base-content/10 bg-base-100 p-6 shadow-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
+                  className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 p-6 shadow-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
                 >
                   {isEditing ? (
                     <div className="space-y-3">
@@ -223,7 +223,7 @@ export default function CollectionsPage() {
                         <div className="flex gap-2">
                           <button
                             onClick={() => setEditingCollection({ ...collection })}
-                            className="p-2 rounded-lg bg-base-200 hover:bg-base-300 border border-base-content/10 transition-all duration-200"
+                            className="p-2 rounded-[var(--radius-box)] bg-base-200 hover:bg-base-300 border border-base-content/10 transition-all duration-200"
                             title="Edit collection"
                           >
                             <Edit2 className="w-4 h-4 text-base-content/70" />
@@ -233,7 +233,7 @@ export default function CollectionsPage() {
                               setCollectionToDelete(collection);
                               setShowDeleteConfirm(true);
                             }}
-                            className="p-2 rounded-lg bg-base-200 hover:bg-base-300 border border-base-content/10 transition-all duration-200"
+                            className="p-2 rounded-[var(--radius-box)] bg-base-200 hover:bg-base-300 border border-base-content/10 transition-all duration-200"
                             title="Delete collection"
                           >
                             <Trash2 className="w-4 h-4 text-error" />
@@ -257,7 +257,7 @@ export default function CollectionsPage() {
                           {collectionImages.slice(0, 6).map((img) => (
                             <div
                               key={img.id}
-                              className="aspect-square rounded-lg overflow-hidden bg-base-200 cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all"
+                              className="aspect-square rounded-[var(--radius-box)] overflow-hidden bg-base-200 cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all"
                               onClick={() => navigate(`/gallery/${collection.id}`)}
                             >
                               <img src={getImageUrl(img)} alt={img.pageTitle} className="w-full h-full object-cover" />
@@ -333,3 +333,4 @@ export default function CollectionsPage() {
     </div>
   );
 }
+

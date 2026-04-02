@@ -116,7 +116,7 @@ export default function TimelineScrollbar({ dateGroups, containerRef }) {
         ref={scrollbarRef}
         onClick={handleScrollbarClick}
         onMouseDown={handleDragStart}
-        className="relative h-[min(68vh,560px)] w-14 rounded-2xl border border-base-content/10
+        className="relative h-[min(68vh,560px)] w-14 rounded-[var(--radius-box)] border border-base-content/10
                    bg-base-100/70 backdrop-blur-xl shadow-2xl pointer-events-auto select-none"
       >
         {/* Track */}
@@ -159,7 +159,7 @@ export default function TimelineScrollbar({ dateGroups, containerRef }) {
               />
 
               {(isHovered || isActive) && (
-                <span className="absolute right-full top-1/2 -translate-y-1/2 mr-3 px-2.5 py-1 rounded-md
+                <span className="absolute right-full top-1/2 -translate-y-1/2 mr-3 px-2.5 py-1 rounded-[var(--radius-box)]
                                text-[11px] font-semibold whitespace-nowrap text-base-content
                                bg-base-100/95 border border-base-content/15 shadow-xl">
                   {group.label}
@@ -172,3 +172,4 @@ export default function TimelineScrollbar({ dateGroups, containerRef }) {
     </div>
   );
 }
+

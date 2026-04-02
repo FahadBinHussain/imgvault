@@ -23,6 +23,7 @@ export default function GalleryLightbox({
   onShare,
   shareStatus = '',
   redactedFields = [],
+  omittedFields = [],
   preferredProvider = 'imgbb',
   firebaseProjectId = '',
 }) {
@@ -107,7 +108,9 @@ export default function GalleryLightbox({
     image?.udropDirectUrl
   )
 
+  const omittedFieldSet = new Set(omittedFields)
   const noobFields = isSelectedVideo ? baseVideoFieldKeys : baseImageFieldKeys
+  const displayedNoobFields = noobFields.filter((field) => !omittedFieldSet.has(field))
   const editableNoobFields = new Set([
     'pageTitle',
     'creationDate',
@@ -121,11 +124,12 @@ export default function GalleryLightbox({
   const nerdFields = Object.keys(image || {})
     .filter((field) => field !== 'id')
     .filter((field) => !noobFields.includes(field))
+    .filter((field) => !omittedFieldSet.has(field))
     .sort((a, b) => a.localeCompare(b))
   const nerdVisibleFields = [...nerdFields].concat(
-    redactedFields.filter((field) => !nerdFields.includes(field))
+    redactedFields.filter((field) => !nerdFields.includes(field) && !omittedFieldSet.has(field))
   )
-  const noobsVisibleFieldCount = noobFields.length
+  const noobsVisibleFieldCount = displayedNoobFields.length
   const nerdsVisibleFieldCount = nerdVisibleFields.length
   const redactedFieldSet = new Set(redactedFields)
 
@@ -451,7 +455,7 @@ export default function GalleryLightbox({
       >
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 sm:top-6 sm:right-6 p-2 sm:p-3 rounded-full border border-base-content/15 bg-base-100/80 text-base-content shadow-lg backdrop-blur-xl hover:bg-base-100 transition-all duration-300 z-10"
+        className="absolute top-3 right-3 sm:top-6 sm:right-6 p-2 sm:p-3 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/80 text-base-content shadow-lg backdrop-blur-xl hover:bg-base-100 transition-all duration-300 z-10"
         >
           <X className="w-5 h-5 sm:w-6 sm:h-6" />
         </button>
@@ -462,7 +466,7 @@ export default function GalleryLightbox({
             e.stopPropagation()
             setIsInfoExpanded((prev) => !prev)
           }}
-          className="lg:hidden absolute top-3 left-3 p-2.5 rounded-full border border-base-content/15 bg-base-100/80 text-base-content shadow-lg backdrop-blur-xl hover:bg-base-100 transition-all duration-300 z-10"
+          className="lg:hidden absolute top-3 left-3 p-2.5 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/80 text-base-content shadow-lg backdrop-blur-xl hover:bg-base-100 transition-all duration-300 z-10"
         >
           <Info className="w-5 h-5" />
         </button>
@@ -473,7 +477,7 @@ export default function GalleryLightbox({
               e.stopPropagation()
               onNavigate(currentIndex - 1)
             }}
-            className="hidden lg:block absolute left-2 sm:left-6 p-2 sm:p-4 glass rounded-full hover:bg-base-content/20 transition-all duration-300 hover:-translate-x-1"
+            className="hidden lg:block absolute left-2 sm:left-6 p-2 sm:p-4 glass rounded-[var(--radius-box)] hover:bg-base-content/20 transition-all duration-300 hover:-translate-x-1"
           >
             <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
@@ -485,7 +489,7 @@ export default function GalleryLightbox({
               e.stopPropagation()
               onNavigate(currentIndex + 1)
             }}
-            className="hidden lg:block absolute right-2 sm:right-6 p-2 sm:p-4 glass rounded-full hover:bg-base-content/20 transition-all duration-300 hover:translate-x-1"
+            className="hidden lg:block absolute right-2 sm:right-6 p-2 sm:p-4 glass rounded-[var(--radius-box)] hover:bg-base-content/20 transition-all duration-300 hover:translate-x-1"
           >
             <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
@@ -514,7 +518,7 @@ export default function GalleryLightbox({
               <img
                 src={previousImageUrl}
                 alt={previousImage?.pageTitle || 'Previous image'}
-                className="max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-2xl shadow-2xl opacity-40 scale-90"
+                className="max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl opacity-40 scale-90"
                 draggable="false"
                 onLoad={() => markImageLoaded(previousImageUrl)}
               />
@@ -527,7 +531,7 @@ export default function GalleryLightbox({
               <img
                 src={imageUrl}
                 alt={image.pageTitle || 'Image'}
-                className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-2xl shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+                className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
                 onLoad={() => {
                   markImageLoaded(imageUrl)
                   setIsLoading(false)
@@ -541,7 +545,7 @@ export default function GalleryLightbox({
               <img
                 src={nextImageUrl}
                 alt={nextImage?.pageTitle || 'Next image'}
-                className="max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-2xl shadow-2xl opacity-40 scale-90"
+                className="max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl opacity-40 scale-90"
                 draggable="false"
                 onLoad={() => markImageLoaded(nextImageUrl)}
               />
@@ -558,7 +562,7 @@ export default function GalleryLightbox({
       </div>
 
       <div
-        className={`fixed lg:static left-0 right-0 bottom-0 w-full lg:w-[400px] h-[78dvh] lg:h-auto max-h-[78dvh] lg:max-h-none bg-base-100/95 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-base-content/15 overflow-y-auto flex flex-col rounded-t-3xl lg:rounded-none transition-transform duration-300 ${mobileSheetClass} lg:translate-y-0`}
+          className={`fixed lg:static left-0 right-0 bottom-0 w-full lg:w-[400px] h-[78dvh] lg:h-auto max-h-[78dvh] lg:max-h-none bg-base-100/95 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-base-content/15 overflow-y-auto flex flex-col rounded-[var(--radius-box)] lg:rounded-none transition-transform duration-300 ${mobileSheetClass} lg:translate-y-0`}
       >
         <div className="p-6 flex-1">
           <div className="lg:hidden flex items-center justify-between mb-4">
@@ -569,7 +573,7 @@ export default function GalleryLightbox({
                 e.stopPropagation()
                 setIsInfoExpanded(false)
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors"
             >
               <X className="w-4 h-4" />
               Close
@@ -579,7 +583,7 @@ export default function GalleryLightbox({
           <div className="flex gap-2 mb-6 border-b border-base-content/15 pb-4">
             <button
               onClick={(e) => { e.stopPropagation(); setActiveTab('noobs') }}
-              className={`px-4 py-2 font-semibold transition-all rounded-lg flex items-center gap-2 ${
+              className={`px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] flex items-center gap-2 ${
                 activeTab === 'noobs'
                   ? 'bg-primary-500/20 text-primary-400'
                   : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'
@@ -592,7 +596,7 @@ export default function GalleryLightbox({
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); setActiveTab('nerds') }}
-              className={`px-4 py-2 font-semibold transition-all rounded-lg flex items-center gap-2 ${
+              className={`px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] flex items-center gap-2 ${
                 activeTab === 'nerds'
                   ? 'bg-success/20 text-success'
                   : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'
@@ -615,7 +619,7 @@ export default function GalleryLightbox({
                         e.stopPropagation()
                         onShare(image)
                       }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors"
                     >
                       <Share2 className="w-3.5 h-3.5" />
                       Share
@@ -627,14 +631,14 @@ export default function GalleryLightbox({
                         <button
                           onClick={handleCancelEdit}
                           disabled={isSaving}
-                          className="px-3 py-1.5 rounded-lg text-sm bg-base-content/5 hover:bg-base-content/10 text-base-content/80 transition-colors disabled:opacity-50"
+                          className="px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-base-content/5 hover:bg-base-content/10 text-base-content/80 transition-colors disabled:opacity-50"
                         >
                           Cancel
                         </button>
                         <button
                           onClick={handleSave}
                           disabled={isSaving}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition-colors disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition-colors disabled:opacity-50"
                         >
                           {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                           Save
@@ -643,7 +647,7 @@ export default function GalleryLightbox({
                     ) : (
                       <button
                         onClick={(e) => { e.stopPropagation(); setIsEditing(true); setSaveError('') }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition-colors"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition-colors"
                       >
                         <Pencil className="w-3.5 h-3.5" />
                         Edit
@@ -654,13 +658,13 @@ export default function GalleryLightbox({
               </div>
 
               {shareStatus && (
-                <div className="rounded-lg border border-primary-500/30 bg-primary-500/10 text-primary-200 text-xs p-2">
+                <div className="rounded-[var(--radius-box)] border border-primary-500/30 bg-primary-500/10 text-primary-200 text-xs p-2">
                   {shareStatus}
                 </div>
               )}
 
               {saveError && (
-                <div className="rounded-lg border border-error/30 bg-error/10 text-error text-xs p-2">
+                <div className="rounded-[var(--radius-box)] border border-error/30 bg-error/10 text-error text-xs p-2">
                   {saveError}
                 </div>
               )}
@@ -685,7 +689,7 @@ export default function GalleryLightbox({
                 </div>
               </div>
 
-              {noobFields.map((field, index) => renderMetadataField(field, index))}
+              {displayedNoobFields.map((field, index) => renderMetadataField(field, index))}
             </div>
           )}
 
@@ -699,4 +703,5 @@ export default function GalleryLightbox({
     </div>
   )
 }
+
 

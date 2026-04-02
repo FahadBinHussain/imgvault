@@ -145,7 +145,7 @@ export default function GalleryNavbar({
               {!isSettingsPage && !isHostPage && !isLogsPage && (
                 <button
                   onClick={toggleSelectionMode}
-                  className={`border transition-colors flex items-center gap-1.5 text-sm px-2 py-1.5 rounded-md ${
+                  className={`border transition-colors flex items-center gap-1.5 text-sm px-2 py-1.5 rounded-[var(--radius-box)] ${
                     selectionMode
                       ? 'border-primary/20 bg-primary/12 text-primary'
                       : 'border-transparent hover:bg-base-content/10 text-base-content/70 hover:text-base-content'
@@ -301,3 +301,4 @@ export default function GalleryNavbar({
     </div>
   );
 }
+
