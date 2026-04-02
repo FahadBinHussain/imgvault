@@ -95,146 +95,6 @@ export class StorageManager {
   }
 
   /**
-   * Ensure legacy media documents include collectionId, even when null.
-   * This only patches missing fields and never deletes documents.
-   * @returns {Promise<void>}
-   */
-  async ensureCollectionIdBackfill() {
-    await this.ensureInitialized();
-
-    const projectId = this.config?.projectId;
-    if (!projectId) {
-      return;
-    }
-
-    const storageKey = `collectionIdBackfill_${projectId}`;
-    const result = await chrome.storage.local.get([storageKey]);
-    if (result[storageKey]) {
-      return;
-    }
-
-    try {
-      await this.backfillMissingCollectionIdForPath('images');
-      await this.backfillMissingCollectionIdForPath('trash');
-      await chrome.storage.local.set({ [storageKey]: true });
-      console.log('✅ [BACKFILL] collectionId migration completed successfully');
-    } catch (error) {
-      console.warn('⚠️ [BACKFILL] collectionId migration failed, will retry later:', error);
-    }
-  }
-
-  /**
-   * Ensure legacy media documents include fileTypeSource.
-   * This only patches missing fields and never deletes documents.
-   * @returns {Promise<void>}
-   */
-  async ensureFileTypeSourceBackfill() {
-    await this.ensureInitialized();
-
-    const projectId = this.config?.projectId;
-    if (!projectId) {
-      return;
-    }
-
-    const storageKey = `fileTypeSourceBackfill_${projectId}`;
-    const result = await chrome.storage.local.get([storageKey]);
-    if (result[storageKey]) {
-      return;
-    }
-
-    try {
-      await this.backfillMissingStringFieldForPath('images', 'fileTypeSource', 'N/A');
-      await this.backfillMissingStringFieldForPath('trash', 'fileTypeSource', 'N/A');
-      await chrome.storage.local.set({ [storageKey]: true });
-      console.log('✅ [BACKFILL] fileTypeSource migration completed successfully');
-    } catch (error) {
-      console.warn('⚠️ [BACKFILL] fileTypeSource migration failed, will retry later:', error);
-    }
-  }
-
-  /**
-   * Patch legacy documents in a collection path so collectionId always exists.
-   * @private
-   * @param {string} path
-   * @returns {Promise<void>}
-   */
-  async backfillMissingCollectionIdForPath(path) {
-    const docs = await this.fetchAllDocuments(path);
-    const missingDocs = docs.filter((doc) => !Object.prototype.hasOwnProperty.call(doc.fields || {}, 'collectionId'));
-
-    if (!missingDocs.length) {
-      console.log(`ℹ️ [BACKFILL] No legacy ${path} docs missing collectionId`);
-      return;
-    }
-
-    console.log(`🔧 [BACKFILL] Patching ${missingDocs.length} ${path} docs with collectionId: null`);
-
-    await Promise.all(missingDocs.map(async (doc) => {
-      const docPath = doc.name.split('/documents/')[1];
-      const url = this.buildUrl(docPath, {
-        'updateMask.fieldPaths': ['collectionId']
-      });
-
-      const response = await fetch(url, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fields: {
-            collectionId: { nullValue: null }
-          }
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to patch ${docPath}: ${errorText}`);
-      }
-    }));
-  }
-
-  /**
-   * Patch legacy documents in a collection path so a missing string field exists.
-   * @private
-   * @param {string} path
-   * @param {string} fieldName
-   * @param {string} fieldValue
-   * @returns {Promise<void>}
-   */
-  async backfillMissingStringFieldForPath(path, fieldName, fieldValue) {
-    const docs = await this.fetchAllDocuments(path);
-    const missingDocs = docs.filter((doc) => !Object.prototype.hasOwnProperty.call(doc.fields || {}, fieldName));
-
-    if (!missingDocs.length) {
-      console.log(`ℹ️ [BACKFILL] No legacy ${path} docs missing ${fieldName}`);
-      return;
-    }
-
-    console.log(`🔧 [BACKFILL] Patching ${missingDocs.length} ${path} docs with ${fieldName}: ${fieldValue}`);
-
-    await Promise.all(missingDocs.map(async (doc) => {
-      const docPath = doc.name.split('/documents/')[1];
-      const url = this.buildUrl(docPath, {
-        'updateMask.fieldPaths': [fieldName]
-      });
-
-      const response = await fetch(url, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fields: {
-            [fieldName]: { stringValue: fieldValue }
-          }
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to patch ${docPath}: ${errorText}`);
-      }
-    }));
-  }
-
-  /**
    * Build Firestore API URL
    * @private
    * @param {string} path - Document path
@@ -471,8 +331,6 @@ export class StorageManager {
    */
   async getAllImagesForDuplicateCheck() {
     await this.ensureInitialized();
-    await this.ensureCollectionIdBackfill();
-    await this.ensureFileTypeSourceBackfill();
 
     try {
       console.log('🔍 [DUPLICATE CHECK] Fetching ALL image data (including hashes from active AND trash)...');
@@ -529,8 +387,6 @@ export class StorageManager {
    */
   async getAllImages() {
     await this.ensureInitialized();
-    await this.ensureCollectionIdBackfill();
-    await this.ensureFileTypeSourceBackfill();
 
     try {
       console.log('📊 [OPTIMIZE] Fetching lightweight gallery data...');
@@ -686,8 +542,6 @@ export class StorageManager {
    */
   async getTrashedImages() {
     await this.ensureInitialized();
-    await this.ensureCollectionIdBackfill();
-    await this.ensureFileTypeSourceBackfill();
 
     try {
       console.log('🗑️ [TRASH] Fetching trashed images...');
@@ -1063,7 +917,8 @@ export class StorageManager {
           filemoonApiKey: fields.filemoonApiKey?.stringValue || '',
           udropKey1: fields.udropKey1?.stringValue || '',
           udropKey2: fields.udropKey2?.stringValue || '',
-          defaultGallerySource: fields.defaultGallerySource?.stringValue || 'imgbb'
+          defaultGallerySource: fields.defaultGallerySource?.stringValue || 'imgbb',
+          defaultVideoSource: fields.defaultVideoSource?.stringValue || 'filemoon'
         };
       }
 
@@ -1075,6 +930,7 @@ export class StorageManager {
       if (settings.udropKey1) mergedSettings.udropKey1 = settings.udropKey1;
       if (settings.udropKey2) mergedSettings.udropKey2 = settings.udropKey2;
       if (settings.defaultGallerySource) mergedSettings.defaultGallerySource = settings.defaultGallerySource;
+      if (settings.defaultVideoSource) mergedSettings.defaultVideoSource = settings.defaultVideoSource;
 
       const doc = this.toFirestoreDoc({
         ...mergedSettings,
@@ -1146,6 +1002,7 @@ export class StorageManager {
         udropKey1: fields.udropKey1?.stringValue || '',
         udropKey2: fields.udropKey2?.stringValue || '',
         defaultGallerySource: fields.defaultGallerySource?.stringValue || 'imgbb',
+        defaultVideoSource: fields.defaultVideoSource?.stringValue || 'filemoon',
         updatedAt: fields.updatedAt?.timestampValue || ''
       };
     } catch (error) {

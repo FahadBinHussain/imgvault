@@ -19,6 +19,7 @@ export default function SettingsPage() {
   const [udropKey2, setUdropKey2] = useChromeStorage('udropKey2', '', 'sync');
   const [firebaseConfigRaw, setFirebaseConfigRaw] = useChromeStorage('firebaseConfigRaw', '', 'sync');
   const [defaultGallerySource, setDefaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
+  const [defaultVideoSource, setDefaultVideoSource] = useChromeStorage('defaultVideoSource', 'filemoon', 'sync');
   const [downloadFolder, setDownloadFolder] = useChromeStorage('downloadFolder', '', 'sync');
   
   const [localPixvid, setLocalPixvid] = useState('');
@@ -28,6 +29,7 @@ export default function SettingsPage() {
   const [localUdropKey2, setLocalUdropKey2] = useState('');
   const [localFirebase, setLocalFirebase] = useState('');
   const [localGallerySource, setLocalGallerySource] = useState('imgbb');
+  const [localVideoSource, setLocalVideoSource] = useState('filemoon');
   const [localDownloadFolder, setLocalDownloadFolder] = useState('');
   const [saved, setSaved] = useState(false);
   const [firebaseStatus, setFirebaseStatus] = useState('');
@@ -41,8 +43,9 @@ export default function SettingsPage() {
     setLocalUdropKey2(udropKey2 || '');
     setLocalFirebase(firebaseConfigRaw || '');
     setLocalGallerySource(defaultGallerySource || 'imgbb');
+    setLocalVideoSource(defaultVideoSource || 'filemoon');
     setLocalDownloadFolder(downloadFolder || '');
-  }, [pixvidApiKey, imgbbApiKey, filemoonApiKey, udropKey1, udropKey2, firebaseConfigRaw, defaultGallerySource, downloadFolder]);
+  }, [pixvidApiKey, imgbbApiKey, filemoonApiKey, udropKey1, udropKey2, firebaseConfigRaw, defaultGallerySource, defaultVideoSource, downloadFolder]);
 
   useEffect(() => {
     if ((downloadFolder || '').trim()) {
@@ -137,6 +140,11 @@ export default function SettingsPage() {
             setDefaultGallerySource(firebaseSettings.defaultGallerySource);
             updated = true;
           }
+          if (firebaseSettings.defaultVideoSource?.trim()) {
+            setLocalVideoSource(firebaseSettings.defaultVideoSource);
+            setDefaultVideoSource(firebaseSettings.defaultVideoSource);
+            updated = true;
+          }
 
           if (updated) {
             setFirebaseStatus('✅ Settings loaded from Firebase');
@@ -212,6 +220,7 @@ export default function SettingsPage() {
     setUdropKey1(localUdropKey1);
     setUdropKey2(localUdropKey2);
     setDefaultGallerySource(localGallerySource);
+    setDefaultVideoSource(localVideoSource);
     setDownloadFolder(localDownloadFolder);
 
     // Also save to Firebase if configured
@@ -237,6 +246,7 @@ export default function SettingsPage() {
         if (localUdropKey1) settingsToSave.udropKey1 = localUdropKey1;
         if (localUdropKey2) settingsToSave.udropKey2 = localUdropKey2;
         if (localGallerySource) settingsToSave.defaultGallerySource = localGallerySource;
+        if (localVideoSource) settingsToSave.defaultVideoSource = localVideoSource;
 
         console.log('📤 [SETTINGS] Saving to Firebase:', Object.keys(settingsToSave));
         console.log('📤 [SETTINGS] UDrop Key 1:', localUdropKey1 ? '✓ Set' : '✗ Empty');
@@ -461,6 +471,27 @@ export default function SettingsPage() {
               <p className="mt-3 text-xs text-base-content/60 flex items-start gap-2">
                 <span className="text-base">💡</span>
                 <span>Choose which service to display images from in the gallery</span>
+              </p>
+            </div>
+            <div className="mt-5">
+              <label className="block text-sm font-medium text-base-content mb-2 flex items-center gap-2">
+                <span className="text-lg">🎬</span>
+                Default Video Source
+              </label>
+              <select
+                value={localVideoSource}
+                onChange={(e) => setLocalVideoSource(e.target.value)}
+                className="w-full px-4 py-3 rounded-lg bg-base-100/70 border border-base-content/25 
+                         text-base-content cursor-pointer
+                         focus:outline-none focus:border-primary focus:ring-2 
+                         focus:ring-primary/20 transition-all shadow-lg"
+              >
+                <option value="filemoon">Filemoon</option>
+                <option value="udrop">UDrop</option>
+              </select>
+              <p className="mt-3 text-xs text-base-content/60 flex items-start gap-2">
+                <span className="text-base">💡</span>
+                <span>Choose which service to display videos from in the gallery and modal</span>
               </p>
             </div>
           </div>

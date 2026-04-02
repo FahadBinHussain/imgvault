@@ -44,7 +44,7 @@ class BaseUploader {
     throw new Error(`${errorPrefix}: ${response.status} - ${errorText}`);
   }
 
-  xhrUpload(url, formData, onProgress) {
+  xhrUpload(url, formData, onProgress, signal) {
     return new Promise((resolve, reject) => {
       if (typeof XMLHttpRequest === 'undefined') {
         reject(new Error('XMLHttpRequest is not available in this context'));
@@ -53,6 +53,21 @@ class BaseUploader {
 
       const xhr = new XMLHttpRequest();
       xhr.open('POST', url, true);
+
+      if (signal) {
+        if (signal.aborted) {
+          xhr.abort();
+          reject(new Error('Upload aborted'));
+          return;
+        }
+
+        const abortUpload = () => xhr.abort();
+        signal.addEventListener('abort', abortUpload, { once: true });
+
+        xhr.onloadend = () => {
+          signal.removeEventListener('abort', abortUpload);
+        };
+      }
 
       xhr.upload.onprogress = (event) => {
         if (typeof onProgress === 'function') {
@@ -102,7 +117,7 @@ export class PixvidUploader extends BaseUploader {
    * @param {string} originalFilename - Original filename or URL
    * @returns {Promise<UploadResult>}
    */
-  async upload(blob, apiKey, originalFilename = 'image.jpg') {
+  async upload(blob, apiKey, originalFilename = 'image.jpg', signal) {
     const formData = new FormData();
     
     // Extract filename from URL or use default
@@ -113,7 +128,8 @@ export class PixvidUploader extends BaseUploader {
     try {
       const response = await fetch(this.apiUrl, {
         method: 'POST',
-        body: formData
+        body: formData,
+        signal
       });
 
       if (!response.ok) {
@@ -169,7 +185,7 @@ export class ImgbbUploader extends BaseUploader {
    * @param {string} apiKey - ImgBB API key
    * @returns {Promise<UploadResult>}
    */
-  async upload(blob, apiKey) {
+  async upload(blob, apiKey, signal) {
     const formData = new FormData();
     
     // Convert blob to base64
@@ -179,7 +195,8 @@ export class ImgbbUploader extends BaseUploader {
     try {
       const response = await fetch(`${this.apiUrl}?key=${apiKey}`, {
         method: 'POST',
-        body: formData
+        body: formData,
+        signal
       });
 
       if (!response.ok) {
@@ -219,9 +236,9 @@ export class FilemoonUploader extends BaseUploader {
    * @param {string} apiKey - Filemoon API key
    * @returns {Promise<string>} Upload server URL
    */
-  async getUploadServer(apiKey) {
+  async getUploadServer(apiKey, signal) {
     try {
-      const response = await fetch(`${this.apiUrl}?key=${apiKey}`);
+      const response = await fetch(`${this.apiUrl}?key=${apiKey}`, { signal });
       
       if (!response.ok) {
         await this.handleError(response, 'Failed to get upload server');
@@ -247,10 +264,10 @@ export class FilemoonUploader extends BaseUploader {
    * @param {string} [filename] - Optional filename
    * @returns {Promise<UploadResult>}
    */
-  async upload(blob, apiKey, filename = 'video.mp4') {
+  async upload(blob, apiKey, filename = 'video.mp4', signal) {
     try {
       // Step 1: Get upload server URL
-      const uploadServerUrl = await this.getUploadServer(apiKey);
+      const uploadServerUrl = await this.getUploadServer(apiKey, signal);
       console.log('📡 Filemoon upload server:', uploadServerUrl);
 
       // Step 2: Upload to the server
@@ -263,7 +280,8 @@ export class FilemoonUploader extends BaseUploader {
       
       const response = await fetch(uploadServerUrl, {
         method: 'POST',
-        body: formData
+        body: formData,
+        signal
       });
 
       if (!response.ok) {
@@ -278,8 +296,8 @@ export class FilemoonUploader extends BaseUploader {
 
       const fileData = result.files[0];
       
-      const watchUrl = `https://api.byse.sx/e/${fileData.filecode}`;
-      const directUrl = `https://api.byse.sx/d/${fileData.filecode}`;
+      const watchUrl = `https://filemoon.sx/d/${fileData.filecode}`;
+      const directUrl = `https://filemoon.sx/e/${fileData.filecode}`;
       
       console.log('🎬 [FILEMOON] File uploaded successfully, filecode:', fileData.filecode);
       console.log('🎬 [FILEMOON] Watch URL:', watchUrl);
@@ -302,24 +320,24 @@ export class FilemoonUploader extends BaseUploader {
     }
   }
 
-  async uploadWithProgress(blob, apiKey, filename = 'video.mp4', onProgress) {
+  async uploadWithProgress(blob, apiKey, filename = 'video.mp4', onProgress, signal) {
     try {
-      const uploadServerUrl = await this.getUploadServer(apiKey);
+      const uploadServerUrl = await this.getUploadServer(apiKey, signal);
 
       const formData = new FormData();
       const videoFilename = filename.split('/').pop().split('?')[0] || 'video.mp4';
       formData.append('file', blob, videoFilename);
       formData.append('key', apiKey);
 
-      const result = await this.xhrUpload(uploadServerUrl, formData, onProgress);
+      const result = await this.xhrUpload(uploadServerUrl, formData, onProgress, signal);
 
       if (result.status !== 200 || !result.files || result.files.length === 0) {
         throw new Error(result.msg || result.error?.message || 'Upload failed');
       }
 
       const fileData = result.files[0];
-      const watchUrl = `https://api.byse.sx/e/${fileData.filecode}`;
-      const directUrl = `https://api.byse.sx/d/${fileData.filecode}`;
+      const watchUrl = `https://filemoon.sx/d/${fileData.filecode}`;
+      const directUrl = `https://filemoon.sx/e/${fileData.filecode}`;
 
       return {
         url: watchUrl,
@@ -349,13 +367,41 @@ export class UDropUploader extends BaseUploader {
     this.apiUrl = 'https://www.udrop.com/api/v2';
   }
 
+  buildDirectUrl(fileIdOrCode, filename, shortUrl = '', watchUrl = '') {
+    const safeFilename = (filename || 'video.mp4').split('/').pop().split('?')[0] || 'video.mp4';
+    let code = '';
+
+    if (shortUrl) {
+      try {
+        const shortUrlPath = new URL(shortUrl).pathname.split('/').filter(Boolean);
+        code = shortUrlPath[0] || '';
+      } catch (_) {
+        // Ignore parse issues and keep falling back.
+      }
+    }
+
+    if (!code && watchUrl) {
+      try {
+        const watchUrlPath = new URL(watchUrl).pathname.split('/').filter(Boolean);
+        code = watchUrlPath[0] || '';
+      } catch (_) {
+        // Ignore parse issues and keep falling back.
+      }
+    }
+
+    code = code || fileIdOrCode || '';
+    if (!code) return '';
+
+    return `https://www.udrop.com/file/${code}/${encodeURIComponent(safeFilename)}`;
+  }
+
   /**
    * Authorize with UDrop API and get access token
    * @param {string} key1 - UDrop API Key 1 (64 characters)
    * @param {string} key2 - UDrop API Key 2 (64 characters)
    * @returns {Promise<{access_token: string, account_id: string}>}
    */
-  async authorize(key1, key2) {
+  async authorize(key1, key2, signal) {
     try {
       const formData = new FormData();
       formData.append('key1', key1);
@@ -363,7 +409,8 @@ export class UDropUploader extends BaseUploader {
 
       const response = await fetch(`${this.apiUrl}/authorize`, {
         method: 'POST',
-        body: formData
+        body: formData,
+        signal
       });
 
       if (!response.ok) {
@@ -394,10 +441,10 @@ export class UDropUploader extends BaseUploader {
    * @param {string} [filename] - Optional filename
    * @returns {Promise<UploadResult>}
    */
-  async upload(blob, key1, key2, filename = 'video.mp4') {
+  async upload(blob, key1, key2, filename = 'video.mp4', signal) {
     try {
       // Step 1: Authorize and get access token
-      const auth = await this.authorize(key1, key2);
+      const auth = await this.authorize(key1, key2, signal);
       console.log('🔐 UDrop authorized, account:', auth.account_id);
 
       // Step 2: Upload video file
@@ -411,7 +458,8 @@ export class UDropUploader extends BaseUploader {
       
       const response = await fetch(`${this.apiUrl}/file/upload`, {
         method: 'POST',
-        body: formData
+        body: formData,
+        signal
       });
 
       if (!response.ok) {
@@ -427,7 +475,12 @@ export class UDropUploader extends BaseUploader {
       const fileData = result.data[0];
       
       // Step 3: Generate download URL
-      let downloadUrl = fileData.url; // Fallback to regular URL
+      let downloadUrl = this.buildDirectUrl(
+        fileData.file_id,
+        fileData.name || videoFilename,
+        fileData.short_url,
+        fileData.url
+      ) || fileData.url;
       
       try {
         const downloadFormData = new FormData();
@@ -437,13 +490,13 @@ export class UDropUploader extends BaseUploader {
         
         const downloadResponse = await fetch(`${this.apiUrl}/file/download`, {
           method: 'POST',
-          body: downloadFormData
+          body: downloadFormData,
+          signal
         });
         
         if (downloadResponse.ok) {
           const downloadResult = await downloadResponse.json();
           if (downloadResult._status === 'success' && downloadResult.data && downloadResult.data.download_url) {
-            downloadUrl = downloadResult.data.download_url;
             console.log('📦 [UDROP] Download URL generated:', downloadUrl);
           }
         }
@@ -479,9 +532,9 @@ export class UDropUploader extends BaseUploader {
     }
   }
 
-  async uploadWithProgress(blob, key1, key2, filename = 'video.mp4', onProgress) {
+  async uploadWithProgress(blob, key1, key2, filename = 'video.mp4', onProgress, signal) {
     try {
-      const auth = await this.authorize(key1, key2);
+      const auth = await this.authorize(key1, key2, signal);
 
       const formData = new FormData();
       const videoFilename = filename.split('/').pop().split('?')[0] || 'video.mp4';
@@ -489,14 +542,19 @@ export class UDropUploader extends BaseUploader {
       formData.append('access_token', auth.access_token);
       formData.append('account_id', auth.account_id);
 
-      const result = await this.xhrUpload(`${this.apiUrl}/file/upload`, formData, onProgress);
+      const result = await this.xhrUpload(`${this.apiUrl}/file/upload`, formData, onProgress, signal);
 
       if (result._status !== 'success' || !result.data || result.data.length === 0) {
         throw new Error(result.response || 'Upload failed');
       }
 
       const fileData = result.data[0];
-      let downloadUrl = fileData.url;
+      let downloadUrl = this.buildDirectUrl(
+        fileData.file_id,
+        fileData.name || videoFilename,
+        fileData.short_url,
+        fileData.url
+      ) || fileData.url;
 
       try {
         const downloadFormData = new FormData();
@@ -506,17 +564,18 @@ export class UDropUploader extends BaseUploader {
 
         const downloadResponse = await fetch(`${this.apiUrl}/file/download`, {
           method: 'POST',
-          body: downloadFormData
+          body: downloadFormData,
+          signal
         });
 
         if (downloadResponse.ok) {
           const downloadResult = await downloadResponse.json();
           if (downloadResult._status === 'success' && downloadResult.data && downloadResult.data.download_url) {
-            downloadUrl = downloadResult.data.download_url;
+            // Keep the constructed direct URL for consistency.
           }
         }
       } catch (_) {
-        // Keep fallback URL.
+        // Keep the constructed direct URL.
       }
 
       return {
