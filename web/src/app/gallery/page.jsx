@@ -676,6 +676,7 @@ export default function GalleryPage() {
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [shareStatus, setShareStatus] = useState('')
   const [preferredProvider, setPreferredProvider] = useState('imgbb')
+  const [firebaseProjectId, setFirebaseProjectId] = useState('')
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -693,6 +694,7 @@ export default function GalleryPage() {
       const data = await res.json()
       const configured = !!data.config
       setHasConfig(configured)
+      setFirebaseProjectId(data?.config?.projectId || '')
       setPreferredProvider(data?.settings?.defaultGallerySource === 'pixvid' ? 'pixvid' : 'imgbb')
 
       if (!configured) {
@@ -972,6 +974,7 @@ export default function GalleryPage() {
           onShare={handleShareImage}
           shareStatus={shareStatus}
           preferredProvider={preferredProvider}
+          firebaseProjectId={firebaseProjectId}
         />
       )}
 

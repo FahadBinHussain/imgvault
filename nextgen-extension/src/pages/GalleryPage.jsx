@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Trash2, Download, X, FolderOpen,
   FileText, Calendar, Cloud, Link2, Globe, AlignLeft, Tag,
-  File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint, Copy
+  File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint
 } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
 import { useImages, useImageUpload, useTrash, useChromeStorage, useCollections, useChromeMessage } from '../hooks/useChromeExtension';
@@ -30,6 +30,7 @@ export default function GalleryPage() {
   const sendMessage = useChromeMessage();
   const [defaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
   const [defaultVideoSource] = useChromeStorage('defaultVideoSource', 'filemoon', 'sync');
+  const [firebaseConfig] = useChromeStorage('firebaseConfig', null, 'sync');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
   const [fullImageDetails, setFullImageDetails] = useState(null);
@@ -318,6 +319,12 @@ export default function GalleryPage() {
   const displayedBaseFieldKeys = activeBaseFieldKeys;
   const countedBaseFieldCount = displayedBaseFieldKeys.length;
   const inlineActionClass = 'shrink-0 inline-flex items-center gap-1.5 rounded-full border border-base-content/12 bg-base-200/70 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-base-content/72 transition-all duration-200 hover:border-base-content/22 hover:bg-base-200 hover:text-base-content hover:shadow-sm active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40';
+  const firebaseProjectId = firebaseConfig?.projectId || '';
+  const firestoreCollectionName = modalImage?.deletedAt ? 'trash' : 'images';
+  const canOpenFirestoreConsole = Boolean(firebaseProjectId && selectedImage?.id);
+  const firestoreConsoleUrl = canOpenFirestoreConsole
+    ? `https://console.firebase.google.com/u/1/project/${encodeURIComponent(firebaseProjectId)}/firestore/databases/-default-/data/~2F${encodeURIComponent(firestoreCollectionName)}~2F${encodeURIComponent(selectedImage.id)}?view=panel-view`
+    : '';
   const getPreferredVideoWatchUrl = (item) => {
     if (!item) return '';
     return defaultVideoSource === 'udrop'
@@ -376,16 +383,6 @@ export default function GalleryPage() {
     setToast({ message, type });
     if (duration > 0) {
       setTimeout(() => setToast(null), duration);
-    }
-  };
-
-  const copyToClipboard = async (value, label = 'Value') => {
-    try {
-      await navigator.clipboard.writeText(String(value ?? ''));
-      showToast(`Copied ${label}`, 'success', 2000);
-    } catch (error) {
-      console.error(`Failed to copy ${label}:`, error);
-      showToast(`Failed to copy ${label}`, 'error', 3000);
     }
   };
 
@@ -2130,13 +2127,16 @@ export default function GalleryPage() {
                         <p className="text-base-content font-mono text-sm break-all flex-1">
                           {formatBaseFieldValue(selectedImage?.id)}
                         </p>
-                        <Button
-                          className={inlineActionClass}
-                          onClick={() => copyToClipboard(selectedImage?.id, 'Firestore document ID')}
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                          Copy
-                        </Button>
+                        {canOpenFirestoreConsole && (
+                          <a
+                            href={firestoreConsoleUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={inlineActionClass}
+                          >
+                            Open
+                          </a>
+                        )}
                       </div>
                     </div>
                     {displayedBaseFieldKeys.map((key, index) => (
