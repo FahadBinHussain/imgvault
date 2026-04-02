@@ -30,9 +30,10 @@ Image records currently save these base fields:
 14. `fileTypeSource`
 15. `creationDate`
 16. `creationDateSource`
-17. `tags`
-18. `description`
-19. `collectionId`
+17. `internalAddedTimestamp`
+18. `tags`
+19. `description`
+20. `collectionId`
 
 ## Video Fields
 
@@ -47,20 +48,54 @@ Video records currently save these base fields:
 7. `fileTypeSource`
 8. `creationDate`
 9. `creationDateSource`
-10. `duration`
-11. `width`
-12. `height`
-13. `tags`
-14. `description`
-15. `collectionId`
-16. `isVideo`
-17. `filemoonWatchUrl`
-18. `filemoonDirectUrl`
-19. `udropWatchUrl`
-20. `udropDirectUrl`
+10. `internalAddedTimestamp`
+11. `duration`
+12. `width`
+13. `height`
+14. `tags`
+15. `description`
+16. `collectionId`
+17. `isVideo`
+18. `filemoonWatchUrl`
+19. `filemoonDirectUrl`
+20. `udropWatchUrl`
+21. `udropDirectUrl`
 
 ## Notes
 
 - Image records currently include host-management fields such as delete URLs because the extension still saves and manages hosted image copies directly.
 - Video records currently use normalized watch/direct URL fields for Filemoon and UDrop.
 - `isVideo` is explicitly saved for videos and is part of the lightweight gallery snapshot used for correct modal routing.
+
+## Modal Mapping
+
+The Gallery item modal currently uses these fields like this:
+
+- `For Noobs` shows the stable base saved fields for the current media type.
+- `For Nerds` shows technical and variable metadata fields, such as hashes and source-specific extras.
+
+### For Noobs
+
+The `For Noobs` tab shows stable user-facing fields, plus one extra visible field at the top:
+
+- `firestoreDocumentId`
+
+That means the current counted rows in `For Noobs` are:
+
+- Images: 20 counted rows
+- Videos: 21 counted rows
+
+`collectionId` and `internalAddedTimestamp` are included in both the count badge and the numbered base-field list.
+
+For images, the `pixvidUrl` and `imgbbUrl` rows are shown directly in `For Noobs`, and each row includes an inline download button.
+
+### For Nerds
+
+The `For Nerds` tab currently shows:
+
+1. `sha256`
+2. `pHash`
+3. `aHash`
+4. `dHash`
+
+After those fixed technical fields, the tab shows any remaining variable metadata fields from the full Firestore document that are not part of the stable base schema.

@@ -869,7 +869,7 @@ class ImgVaultServiceWorker {
         pHash: metadata.pHash,
         aHash: metadata.aHash,
         dHash: metadata.dHash,
-        fileType: // File type from File object or EXIF
+        fileType, // File type from File object or EXIF
         fileTypeSource, // Source of file type (for debugging)
         creationDate, // Creation date from EXIF or file metadata
         creationDateSource, // Source of creation date (for debugging)
@@ -1046,7 +1046,7 @@ class ImgVaultServiceWorker {
         fileName,
         fileSize: videoBlob.size,
         fileType: data.fileType || data.fileMimeType || videoBlob.type,
-        fileTypeSource: 'File object',
+        fileTypeSource: data.fileTypeSource || 'File object',
         creationDate,
         creationDateSource,
         duration: Number.isFinite(data.duration) ? data.duration : null,
@@ -1620,7 +1620,7 @@ class ImgVaultServiceWorker {
       fileName,
       fileSize: data.fileSize || 0,
       fileType: data.fileType || data.fileMimeType || '',
-      fileTypeSource: 'File object',
+      fileTypeSource: data.fileTypeSource || 'File object',
       creationDate,
       creationDateSource,
       duration: Number.isFinite(data.duration) ? data.duration : null,

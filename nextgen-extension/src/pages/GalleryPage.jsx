@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Trash2, Download, X, FolderOpen,
   FileText, Calendar, Cloud, Link2, Globe, AlignLeft, Tag,
-  File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint
+  File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint, Copy
 } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
 import { useImages, useImageUpload, useTrash, useChromeStorage, useCollections, useChromeMessage } from '../hooks/useChromeExtension';
@@ -267,6 +267,79 @@ export default function GalleryPage() {
     fullImageDetails?.id === selectedImage?.id
       ? { ...selectedImage, ...fullImageDetails }
       : selectedImage;
+  const baseImageFieldKeys = [
+    'pixvidUrl',
+    'pixvidDeleteUrl',
+    'imgbbUrl',
+    'imgbbDeleteUrl',
+    'imgbbThumbUrl',
+    'sourceImageUrl',
+    'sourcePageUrl',
+    'pageTitle',
+    'fileName',
+    'fileSize',
+    'width',
+    'height',
+    'fileType',
+    'fileTypeSource',
+    'creationDate',
+    'creationDateSource',
+    'internalAddedTimestamp',
+    'tags',
+    'description',
+    'collectionId'
+  ];
+  const baseVideoFieldKeys = [
+    'sourceImageUrl',
+    'sourcePageUrl',
+    'pageTitle',
+    'fileName',
+    'fileSize',
+    'fileType',
+    'fileTypeSource',
+    'creationDate',
+    'creationDateSource',
+    'internalAddedTimestamp',
+    'duration',
+    'width',
+    'height',
+    'tags',
+    'description',
+    'collectionId',
+    'isVideo',
+    'filemoonWatchUrl',
+    'filemoonDirectUrl',
+    'udropWatchUrl',
+    'udropDirectUrl'
+  ];
+  const activeBaseFieldKeys = isSelectedVideo ? baseVideoFieldKeys : baseImageFieldKeys;
+  const displayedBaseFieldKeys = activeBaseFieldKeys;
+  const videoDownloadOptions = [
+    modalImage?.filemoonDirectUrl ? { key: 'filemoon', label: 'Download from Filemoon', url: modalImage.filemoonDirectUrl } : null,
+    modalImage?.udropDirectUrl ? { key: 'udrop', label: 'Download from UDrop', url: modalImage.udropDirectUrl } : null,
+  ].filter(Boolean);
+  const countedBaseFieldCount = displayedBaseFieldKeys.length;
+  const formatBaseFieldValue = (value) => {
+    if (Array.isArray(value)) return value.length ? value.join(', ') : '[]';
+    if (value === null) return 'null';
+    if (value === undefined || value === '') return 'N/A';
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
+    return String(value);
+  };
+  const metadataOnlyEntries = fullImageDetails
+      ? Object.entries(fullImageDetails)
+        .filter(([key]) => !new Set([
+          'id',
+          'sha256',
+          'pHash',
+          'aHash',
+          'dHash',
+          ...baseImageFieldKeys,
+          ...baseVideoFieldKeys
+        ]).has(key))
+        .sort(([a], [b]) => a.localeCompare(b))
+    : [];
+  const nerdsVisibleFieldCount = fullImageDetails ? metadataOnlyEntries.length + 4 : '...';
   const isResolvingModalMediaType = Boolean(
     selectedImage?.id &&
     fullImageDetails?.id !== selectedImage?.id &&
@@ -293,6 +366,16 @@ export default function GalleryPage() {
     setToast({ message, type });
     if (duration > 0) {
       setTimeout(() => setToast(null), duration);
+    }
+  };
+
+  const copyToClipboard = async (value, label = 'Value') => {
+    try {
+      await navigator.clipboard.writeText(String(value ?? ''));
+      showToast(`Copied ${label}`, 'success', 2000);
+    } catch (error) {
+      console.error(`Failed to copy ${label}:`, error);
+      showToast(`Failed to copy ${label}`, 'error', 3000);
     }
   };
 
@@ -1959,7 +2042,8 @@ export default function GalleryPage() {
               </h2>
 
               {/* Tab Navigation */}
-              <div className="flex gap-2 mb-4 border-b border-base-content/20 overflow-x-auto whitespace-nowrap">
+              <div className="flex items-center justify-between gap-3 mb-4 border-b border-base-content/20">
+                <div className="flex gap-2 overflow-x-auto whitespace-nowrap">
                 <button
                   onClick={() => handleTabSwitch('noobs')}
                   className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${
@@ -1974,16 +2058,7 @@ export default function GalleryPage() {
             ? 'bg-info/20 text-info' 
             : 'bg-base-300/70 text-base-content/60'
                   }`}>
-                    {/* Count: Title, Added To Vault, Collection (conditional), host URLs, Source URL, Page URL, Description, Tags */}
-                    {(() => {
-                      let count = 6; // Title, Added To Vault, Source URL, Page URL, Description, Tags
-                      if (selectedImage?.collectionId) count++; // Collection
-                      if (!isSelectedVideo && selectedImage?.pixvidUrl) count++; // Pixvid URL (images only)
-                      if (!isSelectedVideo && selectedImage?.imgbbUrl) count++; // ImgBB URL (images only)
-                      if (selectedImage?.filemoonWatchUrl) count++; // Filemoon Watch URL (videos)
-                      if (selectedImage?.udropWatchUrl) count++; // UDrop Watch URL (videos)
-                      return count;
-                    })()}
+                    {countedBaseFieldCount}
                   </span>
                 </button>
                 <button
@@ -2000,572 +2075,163 @@ export default function GalleryPage() {
             ? 'bg-success/20 text-success' 
             : 'bg-base-300/70 text-base-content/60'
                   }`}>
-                    {fullImageDetails ? (() => {
-                      // Count base technical fields (excluding Document ID)
-                      let count = 7; // File Name, File Type, File Size, SHA-256, pHash, aHash, dHash
-                      
-                      // Add width and height if present
-                      if (fullImageDetails.width) count++;
-                      if (fullImageDetails.height) count++;
-                      
-                      // Count EXIF fields (everything that's not in knownFields)
-                      const knownFields = new Set([
-                        'id', 'pixvidUrl', 'imgbbUrl',
-                        'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize', 'tags', 'description',
-                        'internalAddedTimestamp', 'sha256', 'pHash', 'aHash', 'dHash', 'width', 'height', 'fileType'
-                      ]);
-                      
-                      const exifFields = Object.keys(fullImageDetails).filter(key => !knownFields.has(key));
-                      count += exifFields.length;
-                      
-                      return count;
-                    })() : '...'}
+                    {nerdsVisibleFieldCount}
                   </span>
+                </button>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowDeleteConfirm(true);
+                  }}
+                  className="group relative shrink-0 px-4 py-2 rounded-xl overflow-hidden
+                           bg-error text-error-content
+                           border border-error/30
+                           transition-all duration-300
+                           hover:scale-105 hover:shadow-xl
+                           active:scale-95
+                           disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="relative flex items-center gap-2 font-semibold">
+                    <Trash2 className="w-4 h-4 group-hover:rotate-12 transition-transform duration-300" />
+                    <span>Delete</span>
+                  </div>
                 </button>
               </div>
 
               {/* For Noobs Tab */}
               {activeTab === 'noobs' && (
                 <div className="space-y-4">
-                  {/* Details Grid */}
-                  {(() => {
-                    let noobsFieldCounter = 0;
-                    const fieldNo = () => `${++noobsFieldCounter}.`;
-
-                    return (
-                  <div className="space-y-3">
+                  <div className="space-y-3 pr-2">
                     <div>
-                      <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center justify-between">
-                        <span className="flex items-center gap-2">
-                          <FileText className="w-3.5 h-3.5" />
-                          <span className="text-primary font-bold">{fieldNo()}</span>
-                          Title
-                        </span>
-                        {editingField !== 'pageTitle' && (
-                          <button
-                            onClick={() => startEditing('pageTitle')}
-                            className="text-primary hover:text-primary/80 text-xs"
-                          >
-                            ✏️ Edit
-                          </button>
-                        )}
+                      <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
+                        <span className="font-mono">firestoreDocumentId</span>
                       </div>
-                      {editingField === 'pageTitle' ? (
-                        <div className="space-y-2">
-                          <input
-                            type="text"
-                            value={editValues.pageTitle || ''}
-                            onChange={(e) => setEditValues({ ...editValues, pageTitle: e.target.value })}
-                            className="w-full px-3 py-2 rounded bg-base-100 border border-base-content/25 text-base-content text-sm"
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => saveEdit('pageTitle')}
-                              className="px-3 py-1 rounded bg-green-500/20 text-green-300 text-xs hover:bg-green-500/30"
-                            >
-                              ✓ Save
-                            </button>
-                            <button
-                              onClick={cancelEdit}
-                              className="px-3 py-1 rounded bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30"
-                            >
-                              ✕ Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-base-content font-medium">
-                          {selectedImage.pageTitle || 'Untitled'}
-                        </div>
-                      )}
+                      <div className="bg-base-100/60 rounded p-2 flex items-start justify-between gap-3">
+                        <p className="text-base-content font-mono text-sm break-all flex-1">
+                          {formatBaseFieldValue(selectedImage?.id)}
+                        </p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(selectedImage?.id, 'Firestore document ID')}
+                        >
+                          <Copy className="w-4 h-4 mr-2" />
+                          Copy
+                        </Button>
+                      </div>
                     </div>
-
-                    <div>
-                      <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center justify-between">
-                        <span className="flex items-center gap-2">
-                          <Calendar className="w-3.5 h-3.5" />
-                          <span className="text-primary font-bold">{fieldNo()}</span>
-                          Added To Vault
-                        </span>
-                        {editingField !== 'internalAddedTimestamp' && (
-                          <button
-                            onClick={() => startEditing('internalAddedTimestamp')}
-                            className="text-primary hover:text-primary/80 text-xs"
-                          >
-                            ✏️ Edit
-                          </button>
-                        )}
-                      </div>
-                      {editingField === 'internalAddedTimestamp' ? (
-                        <div className="space-y-2">
-                          <input
-                            type="datetime-local"
-                            value={editValues.internalAddedTimestamp 
-                              ? new Date(editValues.internalAddedTimestamp).toISOString().slice(0, 16)
-                              : ''}
-                            onChange={(e) => setEditValues({ 
-                              ...editValues, 
-                              internalAddedTimestamp: new Date(e.target.value).toISOString()
-                            })}
-                            className="w-full px-3 py-2 rounded bg-base-100 border border-base-content/25 text-base-content text-sm"
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => saveEdit('internalAddedTimestamp')}
-                              className="px-3 py-1 rounded bg-green-500/20 text-green-300 text-xs hover:bg-green-500/30"
-                            >
-                              ✓ Save
-                            </button>
-                            <button
-                              onClick={cancelEdit}
-                              className="px-3 py-1 rounded bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30"
-                            >
-                              ✕ Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-base-content">
-                          {selectedImage.internalAddedTimestamp
-                            ? new Date(selectedImage.internalAddedTimestamp).toLocaleString('en-US', {
-                                weekday: 'short',
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric',
-                                hour: 'numeric',
-                                minute: '2-digit'
-                              })
-                            : 'N/A'}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Collection */}
-                    <div>
-                      <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center justify-between">
-                        <span className="flex items-center gap-2">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                          </svg>
-                          <span className="text-primary font-bold">{fieldNo()}</span>
-                          Collection
-                        </span>
-                        {editingField !== 'collectionId' && (
-                          <button
-                            onClick={() => startEditing('collectionId')}
-                            className="text-primary hover:text-primary/80 text-xs"
-                          >
-                            ✏️ Edit
-                          </button>
-                        )}
-                      </div>
-                      
-                      {editingField === 'collectionId' ? (
-                        <div className="space-y-2">
-                          <select
-                            value={editValues.collectionId || ''}
-                            onChange={(e) => setEditValues({ ...editValues, collectionId: e.target.value || null })}
-                            className="w-full px-3 py-2 rounded bg-base-100 border border-base-content/25 text-base-content text-sm"
-                          >
-                            <option value="">No Collection</option>
-                            {collections.map(col => (
-                              <option key={col.id} value={col.id}>{col.name}</option>
-                            ))}
-                          </select>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => saveEdit('collectionId')}
-                              className="px-3 py-1 rounded bg-green-500/20 text-green-300 text-xs hover:bg-green-500/30"
-                            >
-                              ✓ Save
-                            </button>
-                            <button
-                              onClick={cancelEdit}
-                              className="px-3 py-1 rounded bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30"
-                            >
-                              ✕ Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : selectedImage.collectionId ? (() => {
-                        const collection = collections.find(c => c.id === selectedImage.collectionId);
-                        return collection ? (
-                          <div className="flex items-center gap-2">
-                            <div 
-                              className="px-3 py-1.5 rounded-lg font-semibold text-sm flex items-center gap-2 shadow-md"
-                              style={{
-                                backgroundColor: `${collection.color || '#6366f1'}20`,
-                                borderColor: `${collection.color || '#6366f1'}50`,
-                                borderWidth: '1px',
-                                color: collection.color || '#a5b4fc'
-                              }}
-                            >
-                              <span>{collection.name}</span>
-                              <span className="text-xs opacity-70">({collection.imageCount || 0})</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-xs text-red-400">
-                            Collection not found (ID: {selectedImage.collectionId})
-                          </div>
-                        );
-                      })() : (
-                        <div className="text-base-content/50 text-sm italic">
-                          Not in any collection
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Pixvid URL - Only show for images */}
-                    {!isSelectedVideo && modalImage.pixvidUrl && (
-                      <div>
+                    {displayedBaseFieldKeys.map((key, index) => (
+                      <div key={key}>
                         <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                          <Link2 className="w-3.5 h-3.5" />
-                          <span className="text-primary font-bold">{fieldNo()}</span>
-                          Pixvid URL
+                          <span className="text-primary font-bold">{index + 1}.</span>
+                          <span className="font-mono">{key}</span>
                         </div>
-                        <div className="bg-base-200 rounded p-2">
-                          <a
-                            href={modalImage.pixvidUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-info hover:text-info/80 break-all text-sm"
-                          >
-                            {modalImage.pixvidUrl}
-                          </a>
-                        </div>
-                      </div>
-                    )}
-
-                    {!isSelectedVideo && modalImage.imgbbUrl && (
-                      <div>
-                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                          <Link2 className="w-3.5 h-3.5" />
-                          <span className="text-primary font-bold">{fieldNo()}</span>
-                          ImgBB URL
-                        </div>
-                        <div className="bg-base-200 rounded p-2">
-                          <a
-                            href={modalImage.imgbbUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-success hover:text-success/80 break-all text-sm"
-                          >
-                            {modalImage.imgbbUrl}
-                          </a>
-                        </div>
-                      </div>
-                    )}
-
-                    {modalImage.filemoonWatchUrl && (
-                      <div>
-                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                          <Link2 className="w-3.5 h-3.5" />
-                          <span className="text-primary font-bold">{fieldNo()}</span>
-                          Filemoon Watch URL
-                        </div>
-                        <div className="bg-base-200 rounded p-2">
-                          <a
-                            href={modalImage.filemoonWatchUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-secondary hover:text-secondary/80 break-all text-sm"
-                          >
-                            {modalImage.filemoonWatchUrl}
-                          </a>
-                        </div>
-                      </div>
-                    )}
-
-                    {modalImage.udropWatchUrl && (
-                      <div>
-                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                          <Link2 className="w-3.5 h-3.5" />
-                          <span className="text-primary font-bold">{fieldNo()}</span>
-                          UDrop Watch URL
-                        </div>
-                        <div className="bg-base-200 rounded p-2">
-                          <a
-                            href={modalImage.udropWatchUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-warning hover:text-warning/80 break-all text-sm"
-                          >
-                            {modalImage.udropWatchUrl}
-                          </a>
-                        </div>
-                      </div>
-                    )}
-
-                    <div>
-                      <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center justify-between">
-                        <span className="flex items-center gap-2">
-                          <ImageIcon className="w-3.5 h-3.5" />
-                          <span className="text-primary font-bold">{fieldNo()}</span>
-                          Source URL
-                        </span>
-                        {editingField !== 'sourceImageUrl' && (
-                          <button
-                            onClick={() => startEditing('sourceImageUrl')}
-                            className="text-primary hover:text-primary/80 text-xs"
-                          >
-                            ✏️ Edit
-                          </button>
-                        )}
-                      </div>
-                      {editingField === 'sourceImageUrl' ? (
-                        <div className="space-y-2">
-                          <input
-                            type="text"
-                            value={editValues.sourceImageUrl || ''}
-                            onChange={(e) => setEditValues({ ...editValues, sourceImageUrl: e.target.value })}
-                            className="w-full px-3 py-2 rounded bg-base-100/70 border border-base-content/25 text-base-content text-sm"
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => saveEdit('sourceImageUrl')}
-                              className="px-3 py-1 rounded bg-green-500/20 text-green-300 text-xs hover:bg-green-500/30"
-                            >
-                              ✓ Save
-                            </button>
-                            <button
-                              onClick={cancelEdit}
-                              className="px-3 py-1 rounded bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30"
-                            >
-                              ✕ Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
                         <div className="bg-base-100/60 rounded p-2">
-                          <a
-                            href={selectedImage.sourceImageUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:text-primary/80 break-all text-sm"
-                          >
-                            {selectedImage.sourceImageUrl || 'N/A'}
-                          </a>
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center justify-between">
-                        <span className="flex items-center gap-2">
-                          <Globe className="w-3.5 h-3.5" />
-                          <span className="text-primary font-bold">{fieldNo()}</span>
-                          Page URL
-                        </span>
-                        {editingField !== 'sourcePageUrl' && (
-                          <button
-                            onClick={() => startEditing('sourcePageUrl')}
-                            className="text-primary hover:text-primary/80 text-xs"
-                          >
-                            ✏️ Edit
-                          </button>
-                        )}
-                      </div>
-                      {editingField === 'sourcePageUrl' ? (
-                        <div className="space-y-2">
-                          <input
-                            type="text"
-                            value={editValues.sourcePageUrl || ''}
-                            onChange={(e) => setEditValues({ ...editValues, sourcePageUrl: e.target.value })}
-                            className="w-full px-3 py-2 rounded bg-base-100/70 border border-base-content/25 text-base-content text-sm"
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => saveEdit('sourcePageUrl')}
-                              className="px-3 py-1 rounded bg-green-500/20 text-green-300 text-xs hover:bg-green-500/30"
-                            >
-                              ✓ Save
-                            </button>
-                            <button
-                              onClick={cancelEdit}
-                              className="px-3 py-1 rounded bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30"
-                            >
-                              ✕ Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="bg-base-100/60 rounded p-2">
-                          <a
-                            href={selectedImage.sourcePageUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:text-primary/80 break-all text-sm"
-                          >
-                            {selectedImage.sourcePageUrl || 'N/A'}
-                          </a>
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center justify-between">
-                        <span className="flex items-center gap-2">
-                          <AlignLeft className="w-3.5 h-3.5" />
-                          <span className="text-primary font-bold">{fieldNo()}</span>
-                          Description
-                        </span>
-                        {editingField !== 'description' && (
-                          <button
-                            onClick={() => startEditing('description')}
-                            className="text-primary hover:text-primary/80 text-xs"
-                          >
-                            ✏️ Edit
-                          </button>
-                        )}
-                      </div>
-                      {editingField === 'description' ? (
-                        <div className="space-y-2">
-                          <textarea
-                            value={editValues.description || ''}
-                            onChange={(e) => setEditValues({ ...editValues, description: e.target.value })}
-                            className="w-full px-3 py-2 rounded bg-base-100/70 border border-base-content/25 text-base-content text-sm"
-                            rows="3"
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => saveEdit('description')}
-                              className="px-3 py-1 rounded bg-green-500/20 text-green-300 text-xs hover:bg-green-500/30"
-                            >
-                              ✓ Save
-                            </button>
-                            <button
-                              onClick={cancelEdit}
-                              className="px-3 py-1 rounded bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30"
-                            >
-                              ✕ Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-base-content/70 text-sm">
-                          {selectedImage.description || 'No description'}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center justify-between">
-                        <span className="flex items-center gap-2">
-                          <Tag className="w-3.5 h-3.5" />
-                          <span className="text-primary font-bold">{fieldNo()}</span>
-                          Tags
-                        </span>
-                        {editingField !== 'tags' && (
-                          <button
-                            onClick={() => startEditing('tags')}
-                            className="text-primary hover:text-primary/80 text-xs"
-                          >
-                            ✏️ Edit
-                          </button>
-                        )}
-                      </div>
-                      {editingField === 'tags' ? (
-                        <div className="space-y-2">
-                          <input
-                            type="text"
-                            value={editValues.tags || ''}
-                            onChange={(e) => setEditValues({ ...editValues, tags: e.target.value })}
-                            placeholder="Comma separated tags"
-                            className="w-full px-3 py-2 rounded bg-base-100/70 border border-base-content/25 text-base-content text-sm"
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => saveEdit('tags')}
-                              className="px-3 py-1 rounded bg-green-500/20 text-green-300 text-xs hover:bg-green-500/30"
-                            >
-                              ✓ Save
-                            </button>
-                            <button
-                              onClick={cancelEdit}
-                              className="px-3 py-1 rounded bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30"
-                            >
-                              ✕ Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          {selectedImage.tags && selectedImage.tags.length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
-                              {selectedImage.tags.map(tag => (
-                                <span
-                                  key={tag}
-                                  className="px-3 py-1 rounded-full bg-primary/20 text-primary text-sm"
+                          {key === 'collectionId' ? (
+                            editingField === 'collectionId' ? (
+                              <div className="space-y-3">
+                                <select
+                                  value={editValues.collectionId ?? (modalImage?.collectionId || '')}
+                                  onChange={(e) => setEditValues({ ...editValues, collectionId: e.target.value })}
+                                  className="w-full px-3 py-2 rounded-lg bg-base-200 border border-base-content/15 text-base-content focus:outline-none focus:border-primary"
                                 >
-                                  {tag}
-                                </span>
-                              ))}
+                                  <option value="">No Collection</option>
+                                  {collections.map((collection) => (
+                                    <option key={collection.id} value={collection.id}>
+                                      {collection.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <div className="flex gap-2">
+                                  <Button size="sm" onClick={() => saveEdit('collectionId')}>
+                                    Save Collection
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditingField(null);
+                                      setEditValues((prev) => ({ ...prev, collectionId: modalImage?.collectionId || '' }));
+                                    }}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-base-content font-mono text-sm break-all">
+                                  {collections.find((collection) => collection.id === modalImage?.collectionId)?.name ||
+                                    formatBaseFieldValue(modalImage?.collectionId)}
+                                </p>
+                                <Button variant="ghost" size="sm" onClick={() => startEditing('collectionId')}>
+                                  {modalImage?.collectionId ? 'Change Collection' : 'Add to Collection'}
+                                </Button>
+                              </div>
+                            )
+                          ) : key === 'pixvidUrl' || key === 'imgbbUrl' ? (
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="text-base-content font-mono text-sm break-all flex-1">
+                                {formatBaseFieldValue(modalImage?.[key])}
+                              </p>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => downloadImage(modalImage?.[key], key === 'pixvidUrl' ? 'pixvid' : 'imgbb')}
+                                disabled={!modalImage?.[key]}
+                              >
+                                <Download className="w-4 h-4 mr-2" />
+                                Download
+                              </Button>
+                            </div>
+                          ) : key === 'sourcePageUrl' ? (
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="text-base-content font-mono text-sm break-all flex-1">
+                                {formatBaseFieldValue(modalImage?.[key])}
+                              </p>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => window.open(modalImage?.[key], '_blank', 'noopener,noreferrer')}
+                                disabled={!modalImage?.[key]}
+                                title="Open in new tab"
+                              >
+                                <Link2 className="w-4 h-4" />
+                              </Button>
                             </div>
                           ) : (
-                            <div className="text-base-content/50 italic text-sm">No tags</div>
+                            <p className="text-base-content font-mono text-sm break-all">
+                              {formatBaseFieldValue(modalImage?.[key])}
+                            </p>
                           )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                    );
-                  })()}
-
-                  {/* Download Buttons */}
-                  <div className="flex gap-2 pt-4 border-t border-base-content/20">
-                    {/* Show video sources if it's a video */}
-                    {isSelectedVideo ? (
-                      <>
-                        {modalImage.filemoonDirectUrl && (
-                          <Button
-                            variant="glass"
-                            size="sm"
-                            onClick={() => downloadImage(modalImage.filemoonDirectUrl, 'filemoon')}
-                          >
-                            <Download className="w-4 h-4 mr-2" />
-                            Download from Filemoon
-                          </Button>
-                        )}
-                        {modalImage.udropDirectUrl && (
-                          <Button
-                            variant="glass"
-                            size="sm"
-                            onClick={() => downloadImage(modalImage.udropDirectUrl, 'udrop')}
-                          >
-                            <Download className="w-4 h-4 mr-2" />
-                            Download from UDrop
-                          </Button>
-                        )}
-                      </>
-                    ) : isResolvingModalMediaType ? (
-                      <div className="text-sm text-base-content/60 italic">
-                        Loading media details...
+                        </div>
                       </div>
-                    ) : !isSelectedVideo ? (
-                      <>
-                        {/* Show image sources if it's an image */}
-                        <Button
-                          variant="glass"
-                          size="sm"
-                          onClick={() => downloadImage(modalImage.pixvidUrl, 'pixvid')}
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          Download from Pixvid
-                        </Button>
-                        {modalImage.imgbbUrl && (
-                          <Button
-                            variant="glass"
-                            size="sm"
-                            onClick={() => downloadImage(modalImage.imgbbUrl, 'imgbb')}
-                          >
-                            <Download className="w-4 h-4 mr-2" />
-                            Download from ImgBB
-                          </Button>
-                        )}
-                      </>
-                    ) : (
-                      <div className="text-sm text-base-content/60 italic">
+                    ))}
+                  </div>
+
+                    {/* Download Buttons */}
+                    <div className="flex gap-2 pt-4 border-t border-base-content/20">
+                      {/* Show video sources if it's a video */}
+                      {isSelectedVideo ? (
+                        <>
+                          {videoDownloadOptions.map((option) => (
+                            <Button
+                              key={option.key}
+                              variant="glass"
+                              size="sm"
+                              onClick={() => downloadImage(option.url, option.key)}
+                            >
+                              <Download className="w-4 h-4 mr-2" />
+                              {option.label}
+                            </Button>
+                          ))}
+                        </>
+                      ) : isResolvingModalMediaType ? (
+                        <div className="text-sm text-base-content/60 italic">
+                          Loading media details...
+                        </div>
+                      ) : !isSelectedVideo ? null : (
+                        <div className="text-sm text-base-content/60 italic">
                         No direct video download URLs available.
                       </div>
                     )}
@@ -2582,94 +2248,11 @@ export default function GalleryPage() {
                       <span className="ml-3 text-base-content/70">Loading technical details...</span>
                     </div>
                   ) : (
-                    <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-                      {/* Document ID */}
-                      <div>
-                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                          <Database className="w-3.5 h-3.5" />
-                          Document ID
-                        </div>
-                        <div className="bg-base-100/60 rounded p-2">
-                          <p className="text-base-content font-mono text-sm break-all">
-                            {selectedImage.id || 'N/A'}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* File Name */}
-                      <div>
-                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                          <File className="w-3.5 h-3.5" />
-                          File Name
-                        </div>
-                        <div className="bg-base-100/60 rounded p-2">
-                          <p className="text-base-content font-mono text-sm break-all">
-                            {fullImageDetails?.fileName || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* File Type */}
-                      <div>
-                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                          <FileText className="w-3.5 h-3.5" />
-                          File Type
-                        </div>
-                        <div className="bg-base-100/60 rounded p-2">
-                          <p className="text-base-content font-mono text-sm">
-                            {fullImageDetails?.fileType || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* File Size */}
-                      <div>
-                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                          <Database className="w-3.5 h-3.5" />
-                          File Size
-                        </div>
-                        <div className="bg-base-100/60 rounded p-2">
-                          <p className="text-base-content font-mono text-sm">
-                            {fullImageDetails?.fileSize 
-                              ? `${(fullImageDetails.fileSize / 1024).toFixed(2)} KB` 
-                              : loadingNerdsTab ? 'Loading...' : 'N/A'}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Width */}
-                      {fullImageDetails?.width && (
-                        <div>
-                          <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                            <Ruler className="w-3.5 h-3.5" />
-                            Width
-                          </div>
-                          <div className="bg-base-100/60 rounded p-2">
-                            <p className="text-base-content font-mono text-sm">
-                              {fullImageDetails.width}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Height */}
-                      {fullImageDetails?.height && (
-                        <div>
-                          <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                            <Ruler className="w-3.5 h-3.5" />
-                            Height
-                          </div>
-                          <div className="bg-base-100/60 rounded p-2">
-                            <p className="text-base-content font-mono text-sm">
-                              {fullImageDetails.height}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
+                    <div className="space-y-4 pr-2">
                       {/* SHA-256 */}
                       <div>
                         <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
+                          <span className="text-primary font-bold">1.</span>
                           <Fingerprint className="w-3.5 h-3.5" />
                           SHA-256
                         </div>
@@ -2683,6 +2266,7 @@ export default function GalleryPage() {
                       {/* pHash */}
                       <div>
                         <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
+                          <span className="text-primary font-bold">2.</span>
                           <Hash className="w-3.5 h-3.5" />
                           pHash
                         </div>
@@ -2696,6 +2280,7 @@ export default function GalleryPage() {
                       {/* aHash */}
                       <div>
                         <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
+                          <span className="text-primary font-bold">3.</span>
                           <Hash className="w-3.5 h-3.5" />
                           aHash
                         </div>
@@ -2709,6 +2294,7 @@ export default function GalleryPage() {
                       {/* dHash */}
                       <div>
                         <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
+                          <span className="text-primary font-bold">4.</span>
                           <Hash className="w-3.5 h-3.5" />
                           dHash
                         </div>
@@ -2719,23 +2305,11 @@ export default function GalleryPage() {
                         </div>
                       </div>
 
-                      {/* All other EXIF fields in the same style */}
-                      {fullImageDetails && (() => {
-                        // Define known fields to exclude (only basic user-facing fields)
-                        const knownFields = new Set([
-                          'id', 'pixvidUrl', 'imgbbUrl',
-                          'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize', 'tags', 'description',
-                          'internalAddedTimestamp', 'sha256', 'pHash', 'aHash', 'dHash', 'width', 'height', 'fileType'
-                        ]);
-                        
-                        // Get all EXIF fields (everything that's not in knownFields) and sort alphabetically
-                        const exifFields = Object.entries(fullImageDetails)
-                          .filter(([key]) => !knownFields.has(key))
-                          .sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
-                        
-                        return exifFields.map(([key, value]) => (
+                      {/* Variable Metadata Fields */}
+                      {fullImageDetails && metadataOnlyEntries.map(([key, value], index) => (
                           <div key={key}>
                             <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
+                              <span className="text-primary font-bold">{index + 5}.</span>
                               <FileText className="w-3.5 h-3.5" />
                               {key}
                             </div>
@@ -2745,34 +2319,12 @@ export default function GalleryPage() {
                               </p>
                             </div>
                           </div>
-                        ));
-                      })()}
+                        ))}
                     </div>
                   )}
                 </div>
               )}
 
-                {/* Action Buttons */}
-                <div className="flex gap-2 pt-4 border-t border-base-content/20 mt-6">
-                  <div className="flex-1" />
-                  <button
-                    onClick={() => {
-                      setShowDeleteConfirm(true);
-                    }}
-                    className="group relative px-6 py-2.5 rounded-xl overflow-hidden
-                             bg-error text-error-content
-                             border border-error/30 
-                             transform transition-all duration-300
-                             hover:scale-105 hover:shadow-xl
-                             active:scale-95
-                             disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                  >
-                    <div className="relative flex items-center gap-2 font-semibold">
-                      <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
-                      <span>Delete</span>
-                    </div>
-                  </button>
-                </div>
                 </div>
               </div>
             </div>
