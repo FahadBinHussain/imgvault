@@ -32,6 +32,7 @@ class ImgVaultServiceWorker {
     this.imgbbUploader = new ImgbbUploader();
     this.filemoonUploader = new FilemoonUploader();
     this.udropUploader = new UDropUploader();
+    this.activeUploadController = null;
     this.initialized = false;
     this.defaultActionIcon = {
       16: 'icons/1-16.png',
@@ -441,6 +442,12 @@ class ImgVaultServiceWorker {
           }));
         return true;
 
+      case 'cancelUpload':
+        this.cancelActiveUpload()
+          .then(result => sendResponse({ success: true, data: result }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'getImages':
         this.storage.getAllImages()
           .then(images => sendResponse({ success: true, data: images }))
@@ -686,6 +693,19 @@ class ImgVaultServiceWorker {
     await chrome.storage.local.set({ uploadLogHistory: nextHistory });
   }
 
+  async cancelActiveUpload() {
+    if (!this.activeUploadController) {
+      await chrome.storage.local.set({ uploadActive: false, uploadStatus: '' });
+      return { cancelled: false };
+    }
+
+    this.activeUploadController.abort();
+    this.activeUploadController = null;
+    await this.updateStatusWithLog('Upload cancelled.', 'warning');
+    await chrome.storage.local.set({ uploadActive: false, uploadStatus: '' });
+    return { cancelled: true };
+  }
+
   /**
    * Handle image upload
    * @param {ImageData} data - Image data to upload
@@ -696,7 +716,10 @@ class ImgVaultServiceWorker {
     if (data.isVideo) {
       return this.handleVideoUpload(data);
     }
-    
+
+    const uploadController = new AbortController();
+    this.activeUploadController = uploadController;
+
     try {
       await chrome.storage.local.set({ uploadStatusLogs: [] });
       // Get API keys from storage
@@ -712,7 +735,7 @@ class ImgVaultServiceWorker {
       
       // Fetch the image
       const imageSource = data.fileBlob instanceof Blob ? data.fileBlob : data.imageUrl;
-      const imageBlob = await this.fetchImage(imageSource);
+      const imageBlob = await this.fetchImage(imageSource, uploadController.signal);
       
       await this.updateStatusWithLog('🔍 Extracting image metadata...');
       
@@ -807,14 +830,14 @@ class ImgVaultServiceWorker {
       await this.updateStatusWithLog(hasImgbb ? '☁️ Uploading to Pixvid and ImgBB...' : '☁️ Uploading to Pixvid...');
       
       const uploadPromises = [
-        this.pixvidUploader.upload(imageBlob, settings.pixvidApiKey, data.imageUrl)
+        this.pixvidUploader.upload(imageBlob, settings.pixvidApiKey, data.imageUrl, uploadController.signal)
           .then(result => ({ type: 'pixvid', ...result }))
           .catch(error => ({ type: 'pixvid', error: error.message }))
       ];
       
       if (hasImgbb) {
         uploadPromises.push(
-          this.imgbbUploader.upload(imageBlob, settings.imgbbApiKey)
+          this.imgbbUploader.upload(imageBlob, settings.imgbbApiKey, uploadController.signal)
             .then(result => ({ type: 'imgbb', ...result }))
             .catch(error => ({ type: 'imgbb', error: error.message }))
         );
@@ -895,6 +918,10 @@ class ImgVaultServiceWorker {
       console.error('Upload error:', error);
       await this.archiveUploadLogRun('error', error.message || 'Image upload failed.');
       throw error;
+    } finally {
+      if (this.activeUploadController === uploadController) {
+        this.activeUploadController = null;
+      }
     }
   }
 
@@ -1375,7 +1402,7 @@ class ImgVaultServiceWorker {
    * @param {string} imageUrl - Image URL or data URL
    * @returns {Promise<Blob>} Image blob
    */
-  async fetchImage(imageUrl) {
+  async fetchImage(imageUrl, signal) {
     if (imageUrl instanceof Blob) {
       return imageUrl;
     }
@@ -1385,10 +1412,10 @@ class ImgVaultServiceWorker {
     }
 
     if (imageUrl.startsWith('data:')) {
-      const response = await fetch(imageUrl);
+      const response = await fetch(imageUrl, { signal });
       return response.blob();
     } else {
-      const response = await fetch(imageUrl);
+      const response = await fetch(imageUrl, { signal });
       if (!response.ok) {
         throw new Error('Failed to fetch image');
       }
