@@ -25,10 +25,11 @@ export default function GalleryPage() {
   const { collectionId } = useParams();
   const { images, loading, reload, deleteImage } = useImages();
   const { trashedImages, loading: trashLoading } = useTrash();
-  const { uploadImage, uploading, progress, error: uploadError, logs: uploadLogs } = useImageUpload();
+  const { uploadImage, cancelUpload, uploading, progress, error: uploadError, logs: uploadLogs } = useImageUpload();
   const { collections, loading: collectionsLoading, createCollection, reload: reloadCollections } = useCollections();
   const sendMessage = useChromeMessage();
   const [defaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
+  const [defaultVideoSource] = useChromeStorage('defaultVideoSource', 'filemoon', 'sync');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
   const [fullImageDetails, setFullImageDetails] = useState(null);
@@ -75,6 +76,7 @@ export default function GalleryPage() {
   const [showFolderPrompt, setShowFolderPrompt] = useState(false);
   const [pendingDownloadFile, setPendingDownloadFile] = useState(null);
   const uploadPreviewUrlRef = useRef(null);
+  const activeVideoUploadControllerRef = useRef(null);
   
   // IndexedDB helpers for storing directory handle
   const saveDirectoryHandle = async (handle) => {
@@ -314,11 +316,23 @@ export default function GalleryPage() {
   ];
   const activeBaseFieldKeys = isSelectedVideo ? baseVideoFieldKeys : baseImageFieldKeys;
   const displayedBaseFieldKeys = activeBaseFieldKeys;
-  const videoDownloadOptions = [
-    modalImage?.filemoonDirectUrl ? { key: 'filemoon', label: 'Download from Filemoon', url: modalImage.filemoonDirectUrl } : null,
-    modalImage?.udropDirectUrl ? { key: 'udrop', label: 'Download from UDrop', url: modalImage.udropDirectUrl } : null,
-  ].filter(Boolean);
   const countedBaseFieldCount = displayedBaseFieldKeys.length;
+  const inlineActionClass = 'shrink-0 inline-flex items-center gap-1.5 rounded-full border border-base-content/12 bg-base-200/70 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-base-content/72 transition-all duration-200 hover:border-base-content/22 hover:bg-base-200 hover:text-base-content hover:shadow-sm active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40';
+  const getPreferredVideoWatchUrl = (item) => {
+    if (!item) return '';
+    return defaultVideoSource === 'udrop'
+      ? (item.udropWatchUrl || item.filemoonWatchUrl || '')
+      : (item.filemoonWatchUrl || item.udropWatchUrl || '');
+  };
+  const getPreferredVideoDirectUrl = (item) => {
+    if (!item) return '';
+    return defaultVideoSource === 'udrop'
+      ? (item.udropDirectUrl || item.filemoonDirectUrl || '')
+      : (item.filemoonDirectUrl || item.udropDirectUrl || '');
+  };
+  const shouldRenderModalVideoPlayer = (item) => (
+    defaultVideoSource === 'udrop' && Boolean(item?.udropDirectUrl)
+  );
   const formatBaseFieldValue = (value) => {
     if (Array.isArray(value)) return value.length ? value.join(', ') : '[]';
     if (value === null) return 'null';
@@ -326,20 +340,16 @@ export default function GalleryPage() {
     if (typeof value === 'boolean') return value ? 'true' : 'false';
     return String(value);
   };
-  const metadataOnlyEntries = fullImageDetails
-      ? Object.entries(fullImageDetails)
-        .filter(([key]) => !new Set([
-          'id',
-          'sha256',
-          'pHash',
-          'aHash',
-          'dHash',
-          ...baseImageFieldKeys,
-          ...baseVideoFieldKeys
-        ]).has(key))
-        .sort(([a], [b]) => a.localeCompare(b))
+  const nerdsEntries = fullImageDetails
+    ? Object.entries(fullImageDetails)
+      .filter(([key, value]) => {
+        if (key === 'id') return false;
+        if ([...baseImageFieldKeys, ...baseVideoFieldKeys].includes(key)) return false;
+        return value !== undefined && value !== null && value !== '';
+      })
+      .sort(([a], [b]) => a.localeCompare(b))
     : [];
-  const nerdsVisibleFieldCount = fullImageDetails ? metadataOnlyEntries.length + 4 : '...';
+  const nerdsVisibleFieldCount = fullImageDetails ? nerdsEntries.length : '...';
   const isResolvingModalMediaType = Boolean(
     selectedImage?.id &&
     fullImageDetails?.id !== selectedImage?.id &&
@@ -420,6 +430,9 @@ export default function GalleryPage() {
   };
 
   const uploadVideoDirectly = async (uploadData) => {
+    const uploadController = new AbortController();
+    activeVideoUploadControllerRef.current = uploadController;
+
     await chrome.storage.local.set({
       uploadActive: true,
       uploadStatus: 'Preparing direct video upload...',
@@ -454,7 +467,8 @@ export default function GalleryPage() {
                 : `UDrop upload progress: ${loadedLabel} sent`;
               await chrome.storage.local.set({ uploadStatus: message });
               await appendClientUploadLog(message);
-            }
+            },
+            uploadController.signal
           );
         } catch (error) {
           await appendClientUploadLog(`UDrop XHR upload failed: ${error.message || String(error)}`, 'error');
@@ -506,7 +520,8 @@ export default function GalleryPage() {
                 : `Filemoon upload progress: ${loadedLabel} sent`;
               await chrome.storage.local.set({ uploadStatus: message });
               await appendClientUploadLog(message);
-            }
+            },
+            uploadController.signal
           );
         } catch (error) {
           await appendClientUploadLog(`Filemoon XHR upload failed: ${error.message || String(error)}`, 'error');
@@ -550,6 +565,9 @@ export default function GalleryPage() {
       await appendClientUploadLog(`Direct video upload failed: ${error.message || String(error)}`, 'error');
       throw error;
     } finally {
+      if (activeVideoUploadControllerRef.current === uploadController) {
+        activeVideoUploadControllerRef.current = null;
+      }
       await chrome.storage.local.set({ uploadActive: false });
     }
   };
@@ -701,6 +719,23 @@ export default function GalleryPage() {
 
     if (uploading) {
       showToast('Upload will continue in the background. You can reopen the modal to check logs later.', 'info', 3500);
+    }
+  };
+
+  const terminateUploadJob = async () => {
+    try {
+      if (uploadImageData?.isVideo && activeVideoUploadControllerRef.current) {
+        activeVideoUploadControllerRef.current.abort();
+      } else {
+        await cancelUpload();
+      }
+
+      await chrome.storage.local.set({ uploadActive: false, uploadStatus: '' });
+      setShowUploadModal(false);
+      showToast('Upload cancelled.', 'warning', 3000);
+    } catch (error) {
+      console.error('Failed to cancel upload:', error);
+      showToast(`Failed to cancel upload: ${error.message || String(error)}`, 'error', 4000);
     }
   };
 
@@ -1220,24 +1255,14 @@ export default function GalleryPage() {
     setEditValues({});
   };
 
-  const downloadImage = async (url, source) => {
-    try {
-      // For Filemoon, convert embed URL to download URL
-      if (source === 'filemoon') {
-        // Extract filecode from URL (format: https://api.byse.sx/e/FILECODE)
-        const match = url.match(/\/e\/([^\/\?]+)/);
-        if (match && match[1]) {
-          const filecode = match[1];
-          const downloadUrl = `https://bysesayeveum.com/download/${filecode}`;
-          window.open(downloadUrl, '_blank');
+    const downloadImage = async (url, source) => {
+      try {
+        // For Filemoon, direct URLs are already stored as /d/{filecode}
+        if (source === 'filemoon') {
+          window.open(url, '_blank', 'noopener,noreferrer');
           showToast('✅ Opening Filemoon download page...', 'success', 3000);
-        } else {
-          // Fallback to opening the embed URL
-          window.open(url, '_blank');
-          showToast('✅ Opening Filemoon page...', 'success', 3000);
+          return;
         }
-        return;
-      }
       
       // For UDrop, open in new tab
       if (source === 'udrop') {
@@ -1860,32 +1885,25 @@ export default function GalleryPage() {
                     )}
                     
                     {/* Loading skeleton with shimmer - only show for non-video items */}
-                    {!loadedImages.has(img.id) && !img.filemoonWatchUrl && !img.udropWatchUrl && (
-                      <div className="absolute inset-0 bg-base-300 overflow-hidden">
-                        <div className="absolute inset-0 shimmer"></div>
-                      </div>
-                    )}
-                    
-                    {/* Render image or video thumbnail/embed */}
-                    {img.filemoonWatchUrl ? (
-                      <iframe
-                        src={img.filemoonWatchUrl}
-                        className="w-full aspect-video object-cover pointer-events-none"
-                        frameBorder="0"
-                        scrolling="no"
-                        style={{ pointerEvents: 'none' }}
-                        onLoad={() => handleImageLoad(img.id)}
-                      />
-                    ) : img.udropWatchUrl ? (
-                      <video
-                        src={img.udropWatchUrl}
-                        className="w-full aspect-video object-cover"
-                        style={{ pointerEvents: 'none' }}
-                        onLoadedMetadata={() => handleImageLoad(img.id)}
-                      />
-                    ) : (
-                      <img
-                        src={img.imgbbUrl || img.pixvidUrl}
+                    {!loadedImages.has(img.id) && !getPreferredVideoWatchUrl(img) && (
+                        <div className="absolute inset-0 bg-base-300 overflow-hidden">
+                          <div className="absolute inset-0 shimmer"></div>
+                        </div>
+                      )}
+                      
+                      {/* Render image or video thumbnail/embed */}
+                    {getPreferredVideoWatchUrl(img) ? (
+                        <iframe
+                         src={getPreferredVideoWatchUrl(img)}
+                          className="w-full aspect-video object-cover pointer-events-none"
+                          frameBorder="0"
+                          scrolling="no"
+                          style={{ pointerEvents: 'none' }}
+                          onLoad={() => handleImageLoad(img.id)}
+                        />
+                      ) : (
+                        <img
+                          src={img.imgbbUrl || img.pixvidUrl}
                         alt={img.pageTitle}
                         onLoad={() => handleImageLoad(img.id)}
                         className={`w-full object-cover transition-all duration-700 ease-out
@@ -1898,8 +1916,8 @@ export default function GalleryPage() {
                     )}
                     
                     {/* Video play icon overlay */}
-                    {(img.filemoonWatchUrl || img.udropWatchUrl) && (
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    {getPreferredVideoWatchUrl(img) && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="bg-base-300/80 backdrop-blur-sm rounded-full p-4">
                           <svg className="w-12 h-12 text-base-content" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M8 5v14l11-7z"/>
@@ -1972,23 +1990,25 @@ export default function GalleryPage() {
                               ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}></div>
                 
                 {/* Conditional rendering for video or image */}
-                {modalImage.filemoonWatchUrl ? (
+                {shouldRenderModalVideoPlayer(modalImage) ? (
+                  <video
+                    src={getPreferredVideoDirectUrl(modalImage)}
+                    className={`w-full h-full rounded-2xl shadow-2xl relative z-10 bg-black object-contain
+                             transition-all duration-700 ease-out
+                             ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
+                    controls
+                    preload="metadata"
+                    playsInline
+                  />
+                ) : getPreferredVideoWatchUrl(modalImage) ? (
                   <iframe
-                    src={modalImage.filemoonWatchUrl}
+                    src={getPreferredVideoWatchUrl(modalImage)}
                     className={`w-full h-full rounded-2xl shadow-2xl relative z-10
                              transition-all duration-700 ease-out
                              ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
                     frameBorder="0"
                     allowFullScreen
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  />
-                ) : modalImage.udropWatchUrl ? (
-                  <video
-                    src={modalImage.udropWatchUrl}
-                    controls
-                    className={`w-full h-full rounded-2xl shadow-2xl relative z-10
-                             transition-all duration-700 ease-out
-                             ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
                   />
                 ) : isResolvingModalMediaType ? (
                   <div className={`w-full h-full rounded-2xl shadow-2xl relative z-10 flex items-center justify-center bg-base-200/60
@@ -2111,11 +2131,10 @@ export default function GalleryPage() {
                           {formatBaseFieldValue(selectedImage?.id)}
                         </p>
                         <Button
-                          variant="ghost"
-                          size="sm"
+                          className={inlineActionClass}
                           onClick={() => copyToClipboard(selectedImage?.id, 'Firestore document ID')}
                         >
-                          <Copy className="w-4 h-4 mr-2" />
+                          <Copy className="w-3.5 h-3.5" />
                           Copy
                         </Button>
                       </div>
@@ -2169,18 +2188,26 @@ export default function GalleryPage() {
                                 </Button>
                               </div>
                             )
-                          ) : key === 'pixvidUrl' || key === 'imgbbUrl' ? (
+                          ) : key === 'pixvidUrl' || key === 'imgbbUrl' || key === 'filemoonDirectUrl' || key === 'udropDirectUrl' ? (
                             <div className="flex items-start justify-between gap-3">
                               <p className="text-base-content font-mono text-sm break-all flex-1">
                                 {formatBaseFieldValue(modalImage?.[key])}
                               </p>
                               <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => downloadImage(modalImage?.[key], key === 'pixvidUrl' ? 'pixvid' : 'imgbb')}
+                                className={inlineActionClass}
+                                onClick={() => downloadImage(
+                                  modalImage?.[key],
+                                  key === 'pixvidUrl'
+                                    ? 'pixvid'
+                                    : key === 'imgbbUrl'
+                                      ? 'imgbb'
+                                      : key === 'filemoonDirectUrl'
+                                        ? 'filemoon'
+                                        : 'udrop'
+                                )}
                                 disabled={!modalImage?.[key]}
                               >
-                                <Download className="w-4 h-4 mr-2" />
+                                <Download className="w-3.5 h-3.5" />
                                 Download
                               </Button>
                             </div>
@@ -2190,13 +2217,13 @@ export default function GalleryPage() {
                                 {formatBaseFieldValue(modalImage?.[key])}
                               </p>
                               <Button
-                                variant="ghost"
-                                size="sm"
+                                className={`${inlineActionClass} px-2 py-2`}
                                 onClick={() => window.open(modalImage?.[key], '_blank', 'noopener,noreferrer')}
                                 disabled={!modalImage?.[key]}
                                 title="Open in new tab"
+                                aria-label="Open source page in new tab"
                               >
-                                <Link2 className="w-4 h-4" />
+                                <Link2 className="w-3.5 h-3.5" />
                               </Button>
                             </div>
                           ) : (
@@ -2209,33 +2236,17 @@ export default function GalleryPage() {
                     ))}
                   </div>
 
-                    {/* Download Buttons */}
-                    <div className="flex gap-2 pt-4 border-t border-base-content/20">
-                      {/* Show video sources if it's a video */}
-                      {isSelectedVideo ? (
-                        <>
-                          {videoDownloadOptions.map((option) => (
-                            <Button
-                              key={option.key}
-                              variant="glass"
-                              size="sm"
-                              onClick={() => downloadImage(option.url, option.key)}
-                            >
-                              <Download className="w-4 h-4 mr-2" />
-                              {option.label}
-                            </Button>
-                          ))}
-                        </>
-                      ) : isResolvingModalMediaType ? (
+                    <div className="pt-4 border-t border-base-content/20">
+                      {isResolvingModalMediaType ? (
                         <div className="text-sm text-base-content/60 italic">
                           Loading media details...
                         </div>
-                      ) : !isSelectedVideo ? null : (
+                      ) : isSelectedVideo && !modalImage.filemoonDirectUrl && !modalImage.udropDirectUrl ? (
                         <div className="text-sm text-base-content/60 italic">
-                        No direct video download URLs available.
-                      </div>
-                    )}
-                  </div>
+                          No direct video download URLs available.
+                        </div>
+                      ) : null}
+                    </div>
                 </div>
               )}
 
@@ -2249,73 +2260,28 @@ export default function GalleryPage() {
                     </div>
                   ) : (
                     <div className="space-y-4 pr-2">
-                      {/* SHA-256 */}
-                      <div>
-                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                          <span className="text-primary font-bold">1.</span>
-                          <Fingerprint className="w-3.5 h-3.5" />
-                          SHA-256
+                      {fullImageDetails && nerdsEntries.length === 0 && (
+                        <div className="text-sm text-base-content/60 italic">
+                          No extra technical fields on this document.
                         </div>
-                        <div className="bg-base-100/60 rounded p-2">
-                          <p className="text-base-content font-mono text-sm break-all">
-                            {fullImageDetails?.sha256 || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                          </p>
-                        </div>
-                      </div>
+                      )}
 
-                      {/* pHash */}
-                      <div>
-                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                          <span className="text-primary font-bold">2.</span>
-                          <Hash className="w-3.5 h-3.5" />
-                          pHash
-                        </div>
-                        <div className="bg-base-100/60 rounded p-2">
-                          <p className="text-base-content font-mono text-sm break-all">
-                            {fullImageDetails?.pHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* aHash */}
-                      <div>
-                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                          <span className="text-primary font-bold">3.</span>
-                          <Hash className="w-3.5 h-3.5" />
-                          aHash
-                        </div>
-                        <div className="bg-base-100/60 rounded p-2">
-                          <p className="text-base-content font-mono text-sm break-all">
-                            {fullImageDetails?.aHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* dHash */}
-                      <div>
-                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                          <span className="text-primary font-bold">4.</span>
-                          <Hash className="w-3.5 h-3.5" />
-                          dHash
-                        </div>
-                        <div className="bg-base-100/60 rounded p-2">
-                          <p className="text-base-content font-mono text-sm break-all">
-                            {fullImageDetails?.dHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Variable Metadata Fields */}
-                      {fullImageDetails && metadataOnlyEntries.map(([key, value], index) => (
+                      {fullImageDetails && nerdsEntries.map(([key, value], index) => (
                           <div key={key}>
                             <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                              <span className="text-primary font-bold">{index + 5}.</span>
-                              <FileText className="w-3.5 h-3.5" />
-                              {key}
+                              <span className="text-primary font-bold">{index + 1}.</span>
+                              {key === 'sha256' ? (
+                                <Fingerprint className="w-3.5 h-3.5" />
+                              ) : key === 'pHash' || key === 'aHash' || key === 'dHash' ? (
+                                <Hash className="w-3.5 h-3.5" />
+                              ) : (
+                                <FileText className="w-3.5 h-3.5" />
+                              )}
+                              {key === 'sha256' ? 'SHA-256' : key}
                             </div>
                             <div className="bg-base-100/60 rounded p-2">
                               <p className="text-base-content font-mono text-sm break-all">
-                                {typeof value === 'object' ? JSON.stringify(value) : String(value || 'N/A')}
+                                {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                               </p>
                             </div>
                           </div>
@@ -2489,11 +2455,11 @@ export default function GalleryPage() {
               <span>Upload Image</span>
               <div className="flex gap-2">
                 <button
-                  onClick={closeUploadModal}
+                  onClick={uploading ? terminateUploadJob : closeUploadModal}
                   className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 
                            text-white text-sm font-medium transition-colors"
                 >
-                  Cancel
+                  {uploading ? 'Terminate Upload' : 'Cancel'}
                 </button>
                 <button
                   onClick={() => handleUploadSubmit(false)}

@@ -152,8 +152,19 @@ export function useImageUpload() {
     }
   }, [sendMessage]);
 
+  const cancelUpload = useCallback(async () => {
+    try {
+      await sendMessage('cancelUpload');
+    } finally {
+      setUploading(false);
+      setProgress('');
+      chrome.storage.local.set({ uploadActive: false, uploadStatus: '' });
+    }
+  }, [sendMessage]);
+
   return {
     uploadImage,
+    cancelUpload,
     uploading,
     progress,
     error,
