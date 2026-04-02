@@ -2,6 +2,11 @@
 
 The gallery does not load full Firestore documents up front. It uses a lightweight snapshot field set for fast gallery rendering, filtering, and correct image/video modal routing.
 
+Important scope note:
+
+- This document describes the extension gallery snapshot behavior.
+- The web app may use a different loading strategy and can fetch fuller Firestore payloads for metadata inspection.
+
 ## Current Snapshot Fields
 
 The gallery currently fetches these fields in its lightweight snapshot:
