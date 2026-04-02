@@ -24,6 +24,7 @@ export default function GalleryLightbox({
   shareStatus = '',
   redactedFields = [],
   preferredProvider = 'imgbb',
+  firebaseProjectId = '',
 }) {
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('noobs')
@@ -49,71 +50,83 @@ export default function GalleryLightbox({
     tags: '',
   })
 
-  const allMetadataFields = [
-    'BlueMatrixColumn',
-    'BlueTRC',
-    'ColorSpaceData',
-    'DeviceManufacturer',
-    'DeviceModel',
-    'GreenMatrixColumn',
-    'GreenTRC',
-    'JFIFVersion',
-    'MediaWhitePoint',
-    'PrimaryPlatform',
-    'ProfileCMMType',
-    'ProfileClass',
-    'ProfileConnectionSpace',
-    'ProfileCopyright',
-    'ProfileCreator',
-    'ProfileDateTime',
-    'ProfileDescription',
-    'ProfileFileSignature',
-    'ProfileVersion',
-    'RedMatrixColumn',
-    'RedTRC',
-    'RenderingIntent',
-    'ResolutionUnit',
-    'ThumbnailHeight',
-    'ThumbnailWidth',
-    'XResolution',
-    'YResolution',
-    'aHash',
+  const baseImageFieldKeys = [
+    'pixvidUrl',
+    'pixvidDeleteUrl',
+    'imgbbUrl',
+    'imgbbDeleteUrl',
+    'imgbbThumbUrl',
+    'sourceImageUrl',
+    'sourcePageUrl',
+    'pageTitle',
+    'fileName',
+    'fileSize',
+    'width',
+    'height',
+    'fileType',
+    'fileTypeSource',
     'creationDate',
     'creationDateSource',
-    'dHash',
+    'internalAddedTimestamp',
+    'tags',
     'description',
+    'collectionId',
+  ]
+
+  const baseVideoFieldKeys = [
+    'sourceImageUrl',
+    'sourcePageUrl',
+    'pageTitle',
     'fileName',
     'fileSize',
     'fileType',
-    'height',
-    'imgbbDeleteUrl',
-    'imgbbThumbUrl',
-    'imgbbUrl',
+    'fileTypeSource',
+    'creationDate',
+    'creationDateSource',
     'internalAddedTimestamp',
-    'pHash',
-    'pageTitle',
-    'pixvidDeleteUrl',
-    'pixvidUrl',
-    'sha256',
-    'sourceImageUrl',
-    'sourcePageUrl',
-    'tags',
+    'duration',
     'width',
+    'height',
+    'tags',
+    'description',
+    'collectionId',
+    'isVideo',
+    'filemoonWatchUrl',
+    'filemoonDirectUrl',
+    'udropWatchUrl',
+    'udropDirectUrl',
   ]
 
-  const noobFields = [
+  const isSelectedVideo = Boolean(
+    image?.isVideo ||
+    image?.fileType?.startsWith?.('video/') ||
+    image?.duration ||
+    image?.filemoonWatchUrl ||
+    image?.udropWatchUrl ||
+    image?.filemoonDirectUrl ||
+    image?.udropDirectUrl
+  )
+
+  const noobFields = isSelectedVideo ? baseVideoFieldKeys : baseImageFieldKeys
+  const editableNoobFields = new Set([
     'pageTitle',
     'creationDate',
-    'pixvidUrl',
-    'imgbbUrl',
     'sourceImageUrl',
     'sourcePageUrl',
     'description',
     'tags',
-  ]
-
-  const nerdFields = allMetadataFields.filter((field) => !noobFields.includes(field))
-  const editableNoobFields = new Set(noobFields)
+    'pixvidUrl',
+    'imgbbUrl',
+  ])
+  const nerdFields = Object.keys(image || {})
+    .filter((field) => field !== 'id')
+    .filter((field) => !noobFields.includes(field))
+    .sort((a, b) => a.localeCompare(b))
+  const nerdVisibleFields = [...nerdFields].concat(
+    redactedFields.filter((field) => !nerdFields.includes(field))
+  )
+  const noobsVisibleFieldCount = noobFields.length
+  const nerdsVisibleFieldCount = nerdVisibleFields.length
   const redactedFieldSet = new Set(redactedFields)
 
   const toEditValues = useCallback((img) => ({
@@ -420,6 +433,12 @@ export default function GalleryLightbox({
     if (!url) return
     setLoadedImageUrls((prev) => (prev[url] ? prev : { ...prev, [url]: true }))
   }
+  const firestoreCollection = image?.collectionId || (image?.deletedAt ? 'trash' : 'images')
+  const canOpenFirestoreConsole = Boolean(firebaseProjectId && image?.id)
+  const encodedDocPath = `~2F${encodeURIComponent(firestoreCollection)}~2F${encodeURIComponent(image?.id || '')}`
+  const firestoreDocUrl = canOpenFirestoreConsole
+    ? `https://console.firebase.google.com/u/1/project/${encodeURIComponent(firebaseProjectId)}/firestore/databases/-default-/data/${encodedDocPath}?view=panel-view`
+    : null
 
   return (
     <div
@@ -560,32 +579,35 @@ export default function GalleryLightbox({
           <div className="flex gap-2 mb-6 border-b border-base-content/15 pb-4">
             <button
               onClick={(e) => { e.stopPropagation(); setActiveTab('noobs') }}
-              className={`px-4 py-2 font-semibold transition-all rounded-lg ${
+              className={`px-4 py-2 font-semibold transition-all rounded-lg flex items-center gap-2 ${
                 activeTab === 'noobs'
                   ? 'bg-primary-500/20 text-primary-400'
                   : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'
               }`}
             >
-              For Noobs 👶
+              For Noobs
+              <span className="inline-flex items-center justify-center min-w-[1.6rem] h-6 px-2 rounded-full bg-base-content/10 text-base-content/80 text-xs font-semibold">
+                {noobsVisibleFieldCount}
+              </span>
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); setActiveTab('nerds') }}
-              className={`px-4 py-2 font-semibold transition-all rounded-lg ${
+              className={`px-4 py-2 font-semibold transition-all rounded-lg flex items-center gap-2 ${
                 activeTab === 'nerds'
                   ? 'bg-success/20 text-success'
                   : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'
               }`}
             >
-              For Nerds 🤓
+              For Nerds
+              <span className="inline-flex items-center justify-center min-w-[1.6rem] h-6 px-2 rounded-full bg-base-content/10 text-base-content/80 text-xs font-semibold">
+                {nerdsVisibleFieldCount}
+              </span>
             </button>
           </div>
 
           {activeTab === 'noobs' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-base-content/65">
-                  {onSaveEdits ? 'You can edit these 8 fields.' : 'Shared image preview'}
-                </p>
+              <div className="flex items-center justify-end gap-2">
                 <div className="flex items-center gap-2">
                   {onShare && (
                     <button
@@ -643,15 +665,33 @@ export default function GalleryLightbox({
                 </div>
               )}
 
+              <div>
+                <div className="text-xs font-semibold text-base-content/65 mb-1 flex items-center gap-2">
+                  <FileText className="w-3.5 h-3.5" />
+                  firestoreDocumentId
+                </div>
+                <div className="bg-base-200/60 rounded p-2">
+                  <p className="text-base-content text-sm break-all font-mono">{formatFieldValue('id', image?.id)}</p>
+                  {canOpenFirestoreConsole && (
+                    <a
+                      href={firestoreDocUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-block text-primary-400 hover:text-primary-300 text-xs break-all"
+                    >
+                      Open in Firebase Console
+                    </a>
+                  )}
+                </div>
+              </div>
+
               {noobFields.map((field, index) => renderMetadataField(field, index))}
             </div>
           )}
 
           {activeTab === 'nerds' && (
             <div className="space-y-4">
-              {[...nerdFields]
-                .concat(redactedFields.filter((field) => !nerdFields.includes(field)))
-                .map((field, index) => renderMetadataField(field, index))}
+              {nerdVisibleFields.map((field, index) => renderMetadataField(field, index))}
             </div>
           )}
         </div>
@@ -659,3 +699,4 @@ export default function GalleryLightbox({
     </div>
   )
 }
+

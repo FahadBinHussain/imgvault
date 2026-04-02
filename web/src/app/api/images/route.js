@@ -13,28 +13,44 @@ function fromFirestoreDoc(doc) {
   const result = { id }
 
   for (const [key, value] of Object.entries(fields)) {
-    if (value.stringValue !== undefined) {
-      result[key] = value.stringValue
-    } else if (value.integerValue !== undefined) {
-      result[key] = Number.parseInt(value.integerValue, 10)
-    } else if (value.doubleValue !== undefined) {
-      result[key] = Number.parseFloat(value.doubleValue)
-    } else if (value.booleanValue !== undefined) {
-      result[key] = value.booleanValue
-    } else if (value.timestampValue !== undefined) {
-      result[key] = value.timestampValue
-    } else if (value.arrayValue !== undefined) {
-      result[key] = value.arrayValue.values?.map((v) => v.stringValue ?? '') || []
-    } else if (value.nullValue !== undefined) {
-      result[key] = null
-    }
+    result[key] = fromFirestoreValue(value)
   }
 
   if (!Array.isArray(result.tags)) result.tags = []
   return result
 }
 
-async function fetchAllFirestoreDocs(baseUrl, apiKey, baseParams, maskFields) {
+function fromFirestoreValue(value) {
+  if (value === null || value === undefined || typeof value !== 'object') {
+    return null
+  }
+
+  if (value.nullValue !== undefined) return null
+  if (value.stringValue !== undefined) return value.stringValue
+  if (value.booleanValue !== undefined) return value.booleanValue
+  if (value.integerValue !== undefined) return Number.parseInt(value.integerValue, 10)
+  if (value.doubleValue !== undefined) return Number.parseFloat(value.doubleValue)
+  if (value.timestampValue !== undefined) return value.timestampValue
+  if (value.bytesValue !== undefined) return value.bytesValue
+  if (value.referenceValue !== undefined) return value.referenceValue
+  if (value.geoPointValue !== undefined) return value.geoPointValue
+
+  if (value.arrayValue !== undefined) {
+    const values = value.arrayValue.values || []
+    return values.map((item) => fromFirestoreValue(item))
+  }
+
+  if (value.mapValue !== undefined) {
+    const mapFields = value.mapValue.fields || {}
+    return Object.fromEntries(
+      Object.entries(mapFields).map(([k, v]) => [k, fromFirestoreValue(v)])
+    )
+  }
+
+  return null
+}
+
+async function fetchAllFirestoreDocs(baseUrl, apiKey, baseParams, maskFields = []) {
   const allDocs = []
   let pageToken = null
 
@@ -98,57 +114,7 @@ export async function GET() {
   const baseParams = {
     orderBy: 'internalAddedTimestamp desc',
   }
-  const maskFields = [
-    'BlueMatrixColumn',
-    'BlueTRC',
-    'ColorSpaceData',
-    'DeviceManufacturer',
-    'DeviceModel',
-    'GreenMatrixColumn',
-    'GreenTRC',
-    'JFIFVersion',
-    'MediaWhitePoint',
-    'PrimaryPlatform',
-    'ProfileCMMType',
-    'ProfileClass',
-    'ProfileConnectionSpace',
-    'ProfileCopyright',
-    'ProfileCreator',
-    'ProfileDateTime',
-    'ProfileDescription',
-    'ProfileFileSignature',
-    'ProfileVersion',
-    'RedMatrixColumn',
-    'RedTRC',
-    'RenderingIntent',
-    'ResolutionUnit',
-    'ThumbnailHeight',
-    'ThumbnailWidth',
-    'XResolution',
-    'YResolution',
-    'aHash',
-    'creationDate',
-    'creationDateSource',
-    'dHash',
-    'description',
-    'fileName',
-    'fileSize',
-    'fileType',
-    'height',
-    'imgbbDeleteUrl',
-    'imgbbThumbUrl',
-    'imgbbUrl',
-    'internalAddedTimestamp',
-    'pHash',
-    'pageTitle',
-    'pixvidDeleteUrl',
-    'pixvidUrl',
-    'sha256',
-    'sourceImageUrl',
-    'sourcePageUrl',
-    'tags',
-    'width',
-  ]
+  const maskFields = []
   try {
     const documents = await fetchAllFirestoreDocs(
       baseUrl,
