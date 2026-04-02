@@ -34,11 +34,11 @@ export default function AppNavbar({ mode = 'dashboard', activeRoute }) {
           </div>
 
           <div className="hidden lg:flex items-center gap-4 xl:gap-8">
-            <a href="#features" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">Features</a>
-            <a href="#demo" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">Demo</a>
-            <a href="#download" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">Download</a>
+            <a href="#features" className="text-base-content/75 hover:text-base-content transition-colors text-sm font-medium">Features</a>
+            <a href="#demo" className="text-base-content/75 hover:text-base-content transition-colors text-sm font-medium">Demo</a>
+            <a href="#download" className="text-base-content/75 hover:text-base-content transition-colors text-sm font-medium">Download</a>
             <ThemeSwitcher />
-            <a href="https://github.com/FahadBinHussain/ImgVault" target="_blank" rel="noopener noreferrer" className="text-dark-300 hover:text-white transition-colors">
+            <a href="https://github.com/FahadBinHussain/ImgVault" target="_blank" rel="noopener noreferrer" className="text-base-content/75 hover:text-base-content transition-colors">
               <Github className="w-5 h-5" />
             </a>
             {session ? (
@@ -61,13 +61,13 @@ export default function AppNavbar({ mode = 'dashboard', activeRoute }) {
             ) : (
               <button
                 onClick={() => signIn('google')}
-                className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 transition-colors"
+                className="flex items-center justify-center w-9 h-9 rounded-lg bg-base-content/10 hover:bg-base-content/20 border border-base-content/20 transition-colors"
                 title="Sign In"
               >
                 <LogIn className="w-4 h-4" />
               </button>
             )}
-            <button className="text-white p-1" onClick={() => setMobileMenuOpen((open) => !open)}>
+            <button className="text-base-content p-1" onClick={() => setMobileMenuOpen((open) => !open)}>
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
@@ -75,9 +75,9 @@ export default function AppNavbar({ mode = 'dashboard', activeRoute }) {
 
         {mobileMenuOpen && (
           <div className="lg:hidden glass mt-3 mx-4 sm:mx-6 rounded-2xl p-4 sm:p-6 flex flex-col gap-4">
-            <a href="#features" className="text-dark-300 hover:text-white transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>Features</a>
-            <a href="#demo" className="text-dark-300 hover:text-white transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>Demo</a>
-            <a href="#download" className="text-dark-300 hover:text-white transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>Download</a>
+            <a href="#features" className="text-base-content/75 hover:text-base-content transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>Features</a>
+            <a href="#demo" className="text-base-content/75 hover:text-base-content transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>Demo</a>
+            <a href="#download" className="text-base-content/75 hover:text-base-content transition-colors font-medium" onClick={() => setMobileMenuOpen(false)}>Download</a>
           </div>
         )}
       </nav>
@@ -98,28 +98,28 @@ export default function AppNavbar({ mode = 'dashboard', activeRoute }) {
           <ThemeSwitcher className="shrink-0" />
           <a
             href="/gallery"
-            className={`transition-colors p-2 rounded-lg ${activeRoute === 'gallery' ? 'text-white' : 'text-dark-300 hover:text-white hover:bg-white/5'}`}
+            className={`transition-colors p-2 rounded-lg ${activeRoute === 'gallery' ? 'text-base-content' : 'text-base-content/75 hover:text-base-content hover:bg-base-content/5'}`}
             title="Gallery"
           >
             <Images className="w-5 h-5" />
           </a>
           <a
             href="/links"
-            className={`transition-colors p-2 rounded-lg ${activeRoute === 'links' ? 'text-white' : 'text-dark-300 hover:text-white hover:bg-white/5'}`}
+            className={`transition-colors p-2 rounded-lg ${activeRoute === 'links' ? 'text-base-content' : 'text-base-content/75 hover:text-base-content hover:bg-base-content/5'}`}
             title="Shared Links"
           >
             <Link2 className="w-5 h-5" />
           </a>
           <a
             href="/settings"
-            className={`transition-colors p-2 rounded-lg ${activeRoute === 'settings' ? 'text-white' : 'text-dark-300 hover:text-white hover:bg-white/5'}`}
+            className={`transition-colors p-2 rounded-lg ${activeRoute === 'settings' ? 'text-base-content' : 'text-base-content/75 hover:text-base-content hover:bg-base-content/5'}`}
             title="Settings"
           >
             <Settings className="w-5 h-5" />
           </a>
           <a
             href="/trash"
-            className={`transition-colors p-2 rounded-lg ${activeRoute === 'trash' ? 'text-white' : 'text-dark-300 hover:text-white hover:bg-white/5'}`}
+            className={`transition-colors p-2 rounded-lg ${activeRoute === 'trash' ? 'text-base-content' : 'text-base-content/75 hover:text-base-content hover:bg-base-content/5'}`}
             title="Trash"
           >
             <Trash2 className="w-5 h-5" />
@@ -132,7 +132,7 @@ export default function AppNavbar({ mode = 'dashboard', activeRoute }) {
           ) : (
             <button
               onClick={() => signIn('google')}
-              className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 transition-colors"
+              className="flex items-center justify-center w-9 h-9 rounded-lg bg-base-content/10 hover:bg-base-content/20 border border-base-content/20 transition-colors"
               title="Sign In"
             >
               <LogIn className="w-4 h-4" />

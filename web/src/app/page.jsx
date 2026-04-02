@@ -45,7 +45,7 @@ function HeroSection() {
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 text-center">
         <div className="inline-flex items-center gap-2 glass rounded-full px-5 py-2 mb-8 animate-float">
           <Sparkles className="w-4 h-4 text-primary-400" />
-          <span className="text-sm text-dark-200">Next-Gen Image Management</span>
+          <span className="text-sm text-base-content/80">Next-Gen Image Management</span>
         </div>
 
   <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-bold mb-6 leading-tight">
@@ -53,7 +53,7 @@ function HeroSection() {
           <span className="gradient-text">With Context</span>
         </h1>
 
-  <p className="text-base sm:text-lg md:text-xl text-dark-400 max-w-2xl mx-auto mb-10 sm:mb-12 leading-relaxed">
+  <p className="text-base sm:text-lg md:text-xl text-base-content/65 max-w-2xl mx-auto mb-10 sm:mb-12 leading-relaxed">
           A modern Chrome extension that captures images with their full context, 
           detects duplicates intelligently, and organizes everything beautifully.
         </p>
@@ -73,7 +73,7 @@ function HeroSection() {
           
           <a 
             href="#demo" 
-            className="w-full sm:w-auto px-8 py-4 glass rounded-2xl font-semibold text-lg hover:bg-white/10 transition-all duration-300 flex items-center justify-center gap-2"
+            className="w-full sm:w-auto px-8 py-4 glass rounded-2xl font-semibold text-lg hover:bg-base-content/10 transition-all duration-300 flex items-center justify-center gap-2"
           >
             <Eye className="w-5 h-5" />
             See in Action
@@ -83,20 +83,20 @@ function HeroSection() {
         {/* Floating UI mockup */}
         <div className="relative max-w-4xl mx-auto">
           <div className="glass rounded-3xl p-2 glow-effect animate-float-slow">
-            <div className="bg-dark-900/80 rounded-2xl p-6 md:p-8">
+            <div className="bg-base-100/80 rounded-2xl p-6 md:p-8">
               <div className="flex items-center gap-2 mb-6">
-                <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
-                <div className="w-3 h-3 rounded-full bg-yellow-500/80"></div>
-                <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
+                <div className="w-3 h-3 rounded-full bg-error/80"></div>
+                <div className="w-3 h-3 rounded-full bg-warning/80"></div>
+                <div className="w-3 h-3 rounded-full bg-success/80"></div>
                 <div className="flex-1 text-center">
-                  <div className="inline-block glass rounded-lg px-4 py-1 text-xs text-dark-400">ImgVault Gallery</div>
+                  <div className="inline-block glass rounded-lg px-4 py-1 text-xs text-base-content/65">ImgVault Gallery</div>
                 </div>
               </div>
               <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
                 {mockGalleryImages.map((imageUrl, i) => (
                   <div 
                     key={i} 
-                    className="aspect-square rounded-xl bg-gradient-to-br from-primary-500/20 to-primary-700/20 border border-white/5 hover:border-primary-500/30 transition-all duration-300 hover:scale-105 cursor-pointer group"
+                    className="aspect-square rounded-xl bg-gradient-to-br from-primary-500/20 to-primary-700/20 border border-base-content/10 hover:border-primary-500/30 transition-all duration-300 hover:scale-105 cursor-pointer group"
                     style={{ animationDelay: `${i * 0.1}s` }}
                   >
                     <img
@@ -123,14 +123,14 @@ function FeaturesSection() {
       title: 'Perceptual Hashing',
       description: 'Advanced duplicate detection using perceptual hashing algorithms. Never save the same image twice.',
       color: 'from-yellow-500/20 to-orange-500/20',
-      iconColor: 'text-yellow-400'
+      iconColor: 'text-warning'
     },
     {
       icon: Cloud,
       title: 'Dual Cloud Upload',
       description: 'Automatically upload to both Pixvid and ImgBB for redundancy and easy sharing.',
       color: 'from-blue-500/20 to-cyan-500/20',
-      iconColor: 'text-blue-400'
+      iconColor: 'text-info'
     },
     {
       icon: Search,
@@ -144,14 +144,14 @@ function FeaturesSection() {
       title: 'Context Preservation',
       description: 'Captures full page metadata, URL, and context with every saved image.',
       color: 'from-green-500/20 to-emerald-500/20',
-      iconColor: 'text-green-400'
+      iconColor: 'text-success'
     },
     {
       icon: Cpu,
       title: 'React + Vite Powered',
       description: 'Built with modern tech stack for lightning-fast performance and smooth UI.',
       color: 'from-red-500/20 to-rose-500/20',
-      iconColor: 'text-red-400'
+      iconColor: 'text-error'
     },
     {
       icon: Lock,
@@ -168,12 +168,12 @@ function FeaturesSection() {
         <div className="text-center mb-20">
           <div className="inline-flex items-center gap-2 glass rounded-full px-5 py-2 mb-6">
             <Layers className="w-4 h-4 text-primary-400" />
-            <span className="text-sm text-dark-200">Powerful Features</span>
+            <span className="text-sm text-base-content/80">Powerful Features</span>
           </div>
           <h2 className="text-4xl md:text-5xl font-bold mb-6">
             Built for <span className="gradient-text">Power Users</span>
           </h2>
-          <p className="text-lg text-dark-400 max-w-2xl mx-auto">
+          <p className="text-lg text-base-content/65 max-w-2xl mx-auto">
             Everything you need to capture, organize, and manage images like a pro.
           </p>
         </div>
@@ -188,7 +188,7 @@ function FeaturesSection() {
                 <feature.icon className={`w-7 h-7 ${feature.iconColor}`} />
               </div>
               <h3 className="text-xl font-semibold mb-3">{feature.title}</h3>
-              <p className="text-dark-400 leading-relaxed">{feature.description}</p>
+              <p className="text-base-content/65 leading-relaxed">{feature.description}</p>
             </div>
           ))}
         </div>
@@ -226,12 +226,12 @@ function DemoSection() {
         <div className="text-center mb-20">
           <div className="inline-flex items-center gap-2 glass rounded-full px-5 py-2 mb-6">
             <Eye className="w-4 h-4 text-primary-400" />
-            <span className="text-sm text-dark-200">See It In Action</span>
+            <span className="text-sm text-base-content/80">See It In Action</span>
           </div>
           <h2 className="text-4xl md:text-5xl font-bold mb-6">
             Simple Yet <span className="gradient-text">Powerful</span>
           </h2>
-          <p className="text-lg text-dark-400 max-w-2xl mx-auto">
+          <p className="text-lg text-base-content/65 max-w-2xl mx-auto">
             Three ways to manage your images effortlessly.
           </p>
         </div>
@@ -245,20 +245,20 @@ function DemoSection() {
                 className={`text-left p-6 rounded-2xl transition-all duration-300 ${
                   activeTab === i 
                     ? 'glass border border-primary-500/30 shadow-lg shadow-primary-500/10' 
-                    : 'hover:bg-white/5'
+                    : 'hover:bg-base-content/5'
                 }`}
               >
                 <div className="flex items-start gap-4">
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
                     activeTab === i 
                       ? 'bg-primary-500/20 text-primary-400' 
-                      : 'bg-dark-800 text-dark-500'
+                      : 'bg-base-200 text-base-content/55'
                   }`}>
                     <tab.icon className="w-6 h-6" />
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold mb-1">{tab.title}</h3>
-                    <p className={`text-sm ${activeTab === i ? 'text-dark-300' : 'text-dark-500'}`}>
+                    <p className={`text-sm ${activeTab === i ? 'text-base-content/75' : 'text-base-content/55'}`}>
                       {tab.description}
                     </p>
                   </div>
@@ -268,7 +268,7 @@ function DemoSection() {
           </div>
 
           <div className="glass rounded-3xl p-2 glow-effect">
-            <div className="bg-dark-900/80 rounded-2xl p-6 aspect-video flex items-center justify-center">
+            <div className="bg-base-100/80 rounded-2xl p-6 aspect-video flex items-center justify-center">
               <div className="text-center">
                 <div className="w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br from-primary-500/30 to-primary-700/30 flex items-center justify-center mb-4 animate-pulse-slow">
                   {(() => {
@@ -276,7 +276,7 @@ function DemoSection() {
                     return <Icon className="w-10 h-10 text-primary-400" />
                   })()}
                 </div>
-                <p className="text-dark-400 text-sm">{tabs[activeTab].title}</p>
+                <p className="text-base-content/65 text-sm">{tabs[activeTab].title}</p>
               </div>
             </div>
           </div>
@@ -305,12 +305,12 @@ function DownloadSection() {
             <div className="min-w-0">
               <div className="inline-flex items-center gap-2 glass rounded-full px-5 py-2 mb-6">
                 <Download className="w-4 h-4 text-primary-400" />
-                <span className="text-sm text-dark-200">Get Started</span>
+                <span className="text-sm text-base-content/80">Get Started</span>
               </div>
               <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-6 break-words">
                 Ready to <span className="gradient-text">Transform</span> Your Workflow?
               </h2>
-              <p className="text-base sm:text-lg text-dark-400 mb-8 leading-relaxed">
+              <p className="text-base sm:text-lg text-base-content/65 mb-8 leading-relaxed">
                 Install ImgVault Next-Gen in seconds and start saving images like a pro.
               </p>
 
@@ -320,7 +320,7 @@ function DownloadSection() {
                     <div className="w-8 h-8 rounded-full bg-primary-500/20 flex items-center justify-center shrink-0">
                       <span className="text-sm font-semibold text-primary-400">{i + 1}</span>
                     </div>
-                    <p className="text-dark-300 break-words">{step}</p>
+                    <p className="text-base-content/75 break-words">{step}</p>
                   </div>
                 ))}
               </div>
@@ -338,7 +338,7 @@ function DownloadSection() {
                 </a>
                 <a 
                   href="https://github.com/FahadBinHussain/ImgVault/archive/refs/heads/main.zip"
-                  className="w-full sm:w-auto px-6 sm:px-8 py-4 glass rounded-2xl font-semibold text-center hover:bg-white/10 transition-all duration-300 flex items-center justify-center gap-2"
+                  className="w-full sm:w-auto px-6 sm:px-8 py-4 glass rounded-2xl font-semibold text-center hover:bg-base-content/10 transition-all duration-300 flex items-center justify-center gap-2"
                 >
                   <Download className="w-5 h-5" />
                   Download ZIP
@@ -346,13 +346,13 @@ function DownloadSection() {
               </div>
             </div>
 
-            <div className="glass rounded-2xl p-4 sm:p-6 bg-dark-900/50 min-w-0 overflow-hidden">
+            <div className="glass rounded-2xl p-4 sm:p-6 bg-base-200/70 min-w-0 overflow-hidden">
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
-                <div className="w-3 h-3 rounded-full bg-yellow-500/80"></div>
-                <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
+                <div className="w-3 h-3 rounded-full bg-error/80"></div>
+                <div className="w-3 h-3 rounded-full bg-warning/80"></div>
+                <div className="w-3 h-3 rounded-full bg-success/80"></div>
               </div>
-              <pre className="text-xs sm:text-sm text-dark-300 font-mono overflow-x-auto max-w-full">
+              <pre className="text-xs sm:text-sm text-base-content/75 font-mono overflow-x-auto max-w-full">
                 <code>{`# Clone the repository
 git clone https://github.com/FahadBinHussain/ImgVault.git
 
@@ -377,7 +377,7 @@ pnpm build
 
 function Footer() {
   return (
-    <footer className="py-12 border-t border-white/5">
+    <footer className="py-12 border-t border-base-content/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
@@ -385,14 +385,14 @@ function Footer() {
             <span className="font-semibold">ImgVault Next-Gen</span>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-sm text-dark-500">
-            <a href="https://github.com/FahadBinHussain/ImgVault" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">GitHub</a>
-            <a href="#features" className="hover:text-white transition-colors">Features</a>
-            <a href="#download" className="hover:text-white transition-colors">Download</a>
+          <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-sm text-base-content/55">
+            <a href="https://github.com/FahadBinHussain/ImgVault" target="_blank" rel="noopener noreferrer" className="hover:text-base-content transition-colors">GitHub</a>
+            <a href="#features" className="hover:text-base-content transition-colors">Features</a>
+            <a href="#download" className="hover:text-base-content transition-colors">Download</a>
           </div>
 
-          <p className="text-sm text-dark-600">
-            Built with <span className="text-red-400">♥</span> by ImgVault Team
+          <p className="text-sm text-base-content/45">
+            Built with <span className="text-error">♥</span> by ImgVault Team
           </p>
         </div>
       </div>

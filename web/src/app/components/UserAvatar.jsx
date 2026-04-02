@@ -65,7 +65,7 @@ export default function UserAvatar({
       role="img"
       aria-label={alt}
       title={title}
-      className={`${className} inline-flex items-center justify-center bg-gradient-to-br from-primary-600 to-primary-500 text-white text-xs font-semibold select-none`}
+      className={`${className} inline-flex items-center justify-center bg-gradient-to-br from-primary-600 to-primary-500 text-base-content text-xs font-semibold select-none`}
     >
       {initials}
     </div>

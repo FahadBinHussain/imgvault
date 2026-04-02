@@ -163,7 +163,7 @@ export default function SettingsPage() {
         <div className="max-w-3xl mx-auto">
           <div className="mb-8">
             <h1 className="text-2xl sm:text-3xl font-bold mb-2">Settings</h1>
-            <p className="text-dark-400">Configure your web dashboard like the extension</p>
+            <p className="text-base-content/65">Configure your web dashboard like the extension</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -175,7 +175,7 @@ export default function SettingsPage() {
 
               <div className="space-y-5">
                 <div>
-                  <label className="block text-sm font-medium text-dark-100 mb-2">Pixvid API Key</label>
+                  <label className="block text-sm font-medium text-base-content/85 mb-2">Pixvid API Key</label>
                   <input
                     type="password"
                     value={settings.pixvidApiKey}
@@ -186,7 +186,7 @@ export default function SettingsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-dark-100 mb-2">ImgBB API Key</label>
+                  <label className="block text-sm font-medium text-base-content/85 mb-2">ImgBB API Key</label>
                   <input
                     type="password"
                     value={settings.imgbbApiKey}
@@ -197,7 +197,7 @@ export default function SettingsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-dark-100 mb-2">Filemoon API Key</label>
+                  <label className="block text-sm font-medium text-base-content/85 mb-2">Filemoon API Key</label>
                   <input
                     type="password"
                     value={settings.filemoonApiKey}
@@ -209,7 +209,7 @@ export default function SettingsPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-dark-100 mb-2">UDrop API Key 1</label>
+                    <label className="block text-sm font-medium text-base-content/85 mb-2">UDrop API Key 1</label>
                     <input
                       type="password"
                       value={settings.udropKey1}
@@ -220,7 +220,7 @@ export default function SettingsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-dark-100 mb-2">UDrop API Key 2</label>
+                    <label className="block text-sm font-medium text-base-content/85 mb-2">UDrop API Key 2</label>
                     <input
                       type="password"
                       value={settings.udropKey2}
@@ -248,14 +248,14 @@ export default function SettingsPage() {
                 </button>
               </div>
 
-              <label className="text-sm font-medium text-dark-100">Firebase Config JSON</label>
+              <label className="text-sm font-medium text-base-content/85">Firebase Config JSON</label>
               <textarea
                 value={configText}
                 onChange={(e) => handleConfigChange(e.target.value)}
                 placeholder='{"apiKey":"...","authDomain":"..."}'
                 className="mt-2 w-full min-h-[220px] sm:min-h-[260px] rounded-xl border border-base-content/15 bg-base-100/70 p-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
               />
-              <p className="mt-2 text-xs text-dark-400">
+              <p className="mt-2 text-xs text-base-content/65">
                 Paste the full Firebase config JSON. It will be parsed automatically.
               </p>
             </div>
@@ -267,7 +267,7 @@ export default function SettingsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-dark-100 mb-2">Default Image Source</label>
+                <label className="block text-sm font-medium text-base-content/85 mb-2">Default Image Source</label>
                 <select
                   value={settings.defaultGallerySource}
                   onChange={(e) => updateSetting('defaultGallerySource', e.target.value)}
@@ -286,7 +286,7 @@ export default function SettingsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-dark-100 mb-2">Download Folder</label>
+                <label className="block text-sm font-medium text-base-content/85 mb-2">Download Folder</label>
                 <input
                   type="text"
                   value={settings.downloadFolder}
@@ -294,28 +294,28 @@ export default function SettingsPage() {
                   placeholder="C:\Users\Admin\Videos"
                   className="w-full rounded-xl border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                 />
-                <p className="mt-2 text-xs text-dark-400">
+                <p className="mt-2 text-xs text-base-content/65">
                   Stored for parity with the extension settings page.
                 </p>
               </div>
             </div>
 
             {parseError ? (
-              <div className="flex items-center gap-2 text-red-400 text-sm">
+              <div className="flex items-center gap-2 text-error text-sm">
                 <AlertCircle className="w-4 h-4" />
                 {parseError}
               </div>
             ) : null}
 
             {error ? (
-              <div className="flex items-center gap-2 text-red-400 text-sm">
+              <div className="flex items-center gap-2 text-error text-sm">
                 <AlertCircle className="w-4 h-4" />
                 {error}
               </div>
             ) : null}
 
             {success ? (
-              <div className="flex items-center gap-2 text-green-400 text-sm">
+              <div className="flex items-center gap-2 text-success text-sm">
                 <Check className="w-4 h-4" />
                 {success}
               </div>

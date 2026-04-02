@@ -47,15 +47,15 @@ function getPreferredImageUrl(image, preferredProvider = 'imgbb') {
 function SkeletonCard({ viewMode }) {
   return (
     <div className={`glass rounded-2xl overflow-hidden ${viewMode === 'list' ? 'flex' : ''}`} style={{ minHeight: viewMode === 'list' ? 'auto' : '200px' }}>
-      <div className={`${viewMode === 'list' ? 'w-32 h-28' : 'h-full min-h-[200px]'} relative overflow-hidden bg-dark-800/50`}>
+      <div className={`${viewMode === 'list' ? 'w-32 h-28' : 'h-full min-h-[200px]'} relative overflow-hidden bg-base-200/60`}>
         <div className="absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" style={{ backgroundSize: '200% 100%' }} />
       </div>
       {viewMode === 'list' && (
         <div className="p-4 space-y-3 flex-1">
-          <div className="relative overflow-hidden rounded h-4 bg-dark-700/50">
+          <div className="relative overflow-hidden rounded h-4 bg-base-300/60">
             <div className="absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" style={{ backgroundSize: '200% 100%' }} />
           </div>
-          <div className="relative overflow-hidden rounded h-3 bg-dark-700/50 w-1/2">
+          <div className="relative overflow-hidden rounded h-3 bg-base-300/60 w-1/2">
             <div className="absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" style={{ backgroundSize: '200% 100%' }} />
           </div>
         </div>
@@ -73,7 +73,7 @@ function EmptyState({ hasConfig }) {
           <Settings className="w-12 h-12 text-primary-400" />
         </div>
         <h3 className="text-2xl font-bold mb-3 gradient-text">Configure Firebase First</h3>
-        <p className="text-dark-400 mb-8 max-w-md mx-auto">Set up your Firebase config to start viewing your images</p>
+        <p className="text-base-content/65 mb-8 max-w-md mx-auto">Set up your Firebase config to start viewing your images</p>
         <a 
           href="/settings" 
           className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-2xl font-semibold hover:shadow-lg hover:shadow-primary-500/25 transition-all duration-300 hover:-translate-y-1"
@@ -91,12 +91,12 @@ function EmptyState({ hasConfig }) {
         <Sparkles className="w-12 h-12 text-primary-400" />
       </div>
       <h3 className="text-2xl font-bold mb-3">No Images Yet</h3>
-      <p className="text-dark-400 mb-8 max-w-md mx-auto">Start saving images from the Chrome extension to see them here</p>
+      <p className="text-base-content/65 mb-8 max-w-md mx-auto">Start saving images from the Chrome extension to see them here</p>
       <a 
         href="https://github.com/FahadBinHussain/ImgVault" 
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-2 px-8 py-4 glass rounded-2xl font-semibold hover:bg-white/10 transition-all duration-300 hover:-translate-y-1 gradient-border"
+        className="inline-flex items-center gap-2 px-8 py-4 glass rounded-2xl font-semibold hover:bg-base-content/10 transition-all duration-300 hover:-translate-y-1 gradient-border"
       >
         <ExternalLink className="w-5 h-5" />
         Get the Extension
@@ -315,7 +315,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
 
     return (
       <div key={key}>
-        <div className="text-xs font-semibold text-dark-400 mb-1 flex items-center gap-2">
+        <div className="text-xs font-semibold text-base-content/65 mb-1 flex items-center gap-2">
           <FileText className="w-3.5 h-3.5" />
           {`${index + 1}. ${label}`}
         </div>
@@ -327,7 +327,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
               onChange={(e) => setEditValues((prev) => ({ ...prev, description: e.target.value }))}
               onClick={(e) => e.stopPropagation()}
               rows={4}
-              className="w-full bg-dark-800/70 border border-white/10 rounded p-2 text-sm text-white focus:outline-none focus:border-primary-500/50"
+              className="w-full bg-base-200/70 border border-base-content/15 rounded p-2 text-sm text-base-content focus:outline-none focus:border-primary-500/50"
               placeholder="Enter description"
             />
           ) : key === 'tags' ? (
@@ -336,7 +336,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
               value={editValues.tags}
               onChange={(e) => setEditValues((prev) => ({ ...prev, tags: e.target.value }))}
               onClick={(e) => e.stopPropagation()}
-              className="w-full bg-dark-800/70 border border-white/10 rounded p-2 text-sm text-white focus:outline-none focus:border-primary-500/50"
+              className="w-full bg-base-200/70 border border-base-content/15 rounded p-2 text-sm text-base-content focus:outline-none focus:border-primary-500/50"
               placeholder="tag1, tag2, tag3"
             />
           ) : (
@@ -345,7 +345,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
               value={editValues[key] ?? ''}
               onChange={(e) => setEditValues((prev) => ({ ...prev, [key]: e.target.value }))}
               onClick={(e) => e.stopPropagation()}
-              className="w-full bg-dark-800/70 border border-white/10 rounded p-2 text-sm text-white focus:outline-none focus:border-primary-500/50"
+              className="w-full bg-base-200/70 border border-base-content/15 rounded p-2 text-sm text-base-content focus:outline-none focus:border-primary-500/50"
               placeholder={`Enter ${label}`}
             />
           )
@@ -361,7 +361,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
             ))}
           </div>
         ) : isUrlField(key) && typeof rawValue === 'string' && rawValue ? (
-          <div className="bg-dark-800/50 rounded p-2">
+          <div className="bg-base-200/60 rounded p-2">
             <a
               href={rawValue}
               target="_blank"
@@ -372,8 +372,8 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
             </a>
           </div>
         ) : (
-          <div className="bg-dark-800/50 rounded p-2">
-            <p className="text-white text-sm break-all font-mono">{displayValue}</p>
+          <div className="bg-base-200/60 rounded p-2">
+            <p className="text-base-content text-sm break-all font-mono">{displayValue}</p>
           </div>
         )}
       </div>
@@ -390,7 +390,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
         {/* Close button */}
         <button 
           onClick={onClose}
-          className="absolute top-3 right-3 sm:top-6 sm:right-6 p-2 sm:p-3 glass rounded-full hover:bg-white/20 transition-all duration-300 z-10"
+          className="absolute top-3 right-3 sm:top-6 sm:right-6 p-2 sm:p-3 glass rounded-full hover:bg-base-content/20 transition-all duration-300 z-10"
         >
           <X className="w-5 h-5 sm:w-6 sm:h-6" />
         </button>
@@ -399,7 +399,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
         {currentIndex > 0 && (
           <button 
             onClick={(e) => { e.stopPropagation(); handlePrev() }}
-            className="absolute left-2 sm:left-6 p-2 sm:p-4 glass rounded-full hover:bg-white/20 transition-all duration-300 hover:-translate-x-1"
+            className="absolute left-2 sm:left-6 p-2 sm:p-4 glass rounded-full hover:bg-base-content/20 transition-all duration-300 hover:-translate-x-1"
           >
             <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
@@ -408,7 +408,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
         {currentIndex < images.length - 1 && (
           <button 
             onClick={(e) => { e.stopPropagation(); handleNext() }}
-            className="absolute right-2 sm:right-6 p-2 sm:p-4 glass rounded-full hover:bg-white/20 transition-all duration-300 hover:translate-x-1"
+            className="absolute right-2 sm:right-6 p-2 sm:p-4 glass rounded-full hover:bg-base-content/20 transition-all duration-300 hover:translate-x-1"
           >
             <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
@@ -439,16 +439,16 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
       </div>
 
       {/* Right side - Details Panel */}
-      <div className="w-full lg:w-[400px] max-h-[50vh] lg:max-h-none bg-dark-900/95 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-white/10 overflow-y-auto flex flex-col">
+      <div className="w-full lg:w-[400px] max-h-[50vh] lg:max-h-none bg-base-100/95 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-base-content/15 overflow-y-auto flex flex-col">
         <div className="p-6 flex-1">
           {/* Tab Navigation */}
-          <div className="flex gap-2 mb-6 border-b border-white/10 pb-4">
+          <div className="flex gap-2 mb-6 border-b border-base-content/15 pb-4">
             <button
               onClick={(e) => { e.stopPropagation(); setActiveTab('noobs'); }}
               className={`px-4 py-2 font-semibold transition-all rounded-lg ${
                 activeTab === 'noobs'
                   ? 'bg-primary-500/20 text-primary-400'
-                  : 'text-dark-400 hover:text-white hover:bg-white/5'
+                  : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'
               }`}
             >
               For Noobs 👶
@@ -457,8 +457,8 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
               onClick={(e) => { e.stopPropagation(); setActiveTab('nerds'); }}
               className={`px-4 py-2 font-semibold transition-all rounded-lg ${
                 activeTab === 'nerds'
-                  ? 'bg-green-500/20 text-green-400'
-                  : 'text-dark-400 hover:text-white hover:bg-white/5'
+                  ? 'bg-success/20 text-success'
+                  : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'
               }`}
             >
               For Nerds 🤓
@@ -469,14 +469,14 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
           {activeTab === 'noobs' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-dark-400">You can edit these 8 fields.</p>
+                <p className="text-xs text-base-content/65">You can edit these 8 fields.</p>
                 <div className="flex items-center gap-2">
                   {isEditing ? (
                     <>
                       <button
                         onClick={handleCancelEdit}
                         disabled={isSaving}
-                        className="px-3 py-1.5 rounded-lg text-sm bg-white/5 hover:bg-white/10 text-dark-200 transition-colors disabled:opacity-50"
+                        className="px-3 py-1.5 rounded-lg text-sm bg-base-content/5 hover:bg-base-content/10 text-base-content/80 transition-colors disabled:opacity-50"
                       >
                         Cancel
                       </button>
@@ -502,7 +502,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
               </div>
 
               {saveError && (
-                <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-xs p-2">
+                <div className="rounded-lg border border-error/30 bg-error/10 text-error text-xs p-2">
                   {saveError}
                 </div>
               )}
@@ -544,13 +544,13 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
     >
       {/* Image Container */}
       <div
-        className={`${viewMode === 'list' ? 'w-28 h-24 sm:w-40 sm:h-28 flex-shrink-0' : 'h-auto'} bg-dark-900 relative overflow-hidden`}
+        className={`${viewMode === 'list' ? 'w-28 h-24 sm:w-40 sm:h-28 flex-shrink-0' : 'h-auto'} bg-base-100 relative overflow-hidden`}
         style={viewMode !== 'list' && !isLoaded ? { minHeight: '220px' } : undefined}
       >
         {imageUrl ? (
           <>
             {!isLoaded && (
-              <div className="absolute inset-0 bg-dark-800/70">
+              <div className="absolute inset-0 bg-base-200/70">
                 <div
                   className="absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent"
                   style={{ backgroundSize: '200% 100%' }}
@@ -567,7 +567,7 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
           </>
         ) : (
           <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center">
-            <Image className="w-12 h-12 text-dark-500" />
+            <Image className="w-12 h-12 text-base-content/55" />
           </div>
         )}
         
@@ -590,7 +590,7 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
           <h3 className="text-sm font-semibold truncate transition-colors duration-300 group-hover:text-primary-400" title={image.pageTitle || 'Untitled'}>
             {image.pageTitle || 'Untitled'}
           </h3>
-          <div className="flex items-center gap-2 text-xs text-dark-400">
+          <div className="flex items-center gap-2 text-xs text-base-content/65">
             <Calendar className="w-3.5 h-3.5" />
             <span>
               {image.internalAddedTimestamp
@@ -654,7 +654,7 @@ function DateHeader({ date }) {
         <span className="text-sm font-semibold text-primary-400">
           {date.split(' ')[1]?.replace(',', '') || ''}
         </span>
-        <div className="text-xs text-dark-400">
+        <div className="text-xs text-base-content/65">
           {date.split(' ')[0]}
         </div>
       </div>
@@ -813,8 +813,8 @@ export default function GalleryPage() {
   <section className="pt-24 sm:pt-28 pb-10 sm:pb-12 px-4 sm:px-6">
           <div className="max-w-7xl mx-auto">
             <div className="mb-8">
-              <div className="h-10 bg-dark-800/50 rounded-xl w-48 mb-3 animate-pulse" />
-              <div className="h-5 bg-dark-800/50 rounded w-64 animate-pulse" />
+              <div className="h-10 bg-base-200/60 rounded-xl w-48 mb-3 animate-pulse" />
+              <div className="h-5 bg-base-200/60 rounded w-64 animate-pulse" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {[...Array(8)].map((_, i) => (
@@ -840,7 +840,7 @@ export default function GalleryPage() {
                 <h1 className="text-3xl sm:text-4xl font-bold mb-2">
                   <span className="gradient-text">Gallery</span>
                 </h1>
-                <p className="text-dark-400">
+                <p className="text-base-content/65">
                   {images.length > 0 
                     ? `${images.length} image${images.length > 1 ? 's' : ''} saved`
                     : 'Your saved images from across the web'}
@@ -857,20 +857,20 @@ export default function GalleryPage() {
                 <div className="w-full md:w-auto flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 animate-fade-in" style={{ animationDelay: '100ms' }}>
                   {/* Search */}
                   <div className="relative group">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-500 transition-colors group-focus-within:text-primary-400" />
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/55 transition-colors group-focus-within:text-primary-400" />
                     <input
                       type="text"
                       placeholder="Search images..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-11 pr-4 py-3 bg-dark-800/50 border border-white/5 rounded-xl text-sm focus:outline-none focus:border-primary-500/50 focus:bg-dark-800 w-full sm:w-64 transition-all duration-300 sm:focus:w-80 focus:shadow-lg focus:shadow-primary-500/10"
+                      className="pl-11 pr-4 py-3 bg-base-200/60 border border-base-content/10 rounded-xl text-sm focus:outline-none focus:border-primary-500/50 focus:bg-base-200 w-full sm:w-64 transition-all duration-300 sm:focus:w-80 focus:shadow-lg focus:shadow-primary-500/10"
                     />
                     {searchQuery && (
                       <button 
                         onClick={() => setSearchQuery('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-white/10 transition-colors"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-base-content/10 transition-colors"
                       >
-                        <X className="w-3.5 h-3.5 text-dark-400" />
+                        <X className="w-3.5 h-3.5 text-base-content/65" />
                       </button>
                     )}
                   </div>
@@ -879,13 +879,13 @@ export default function GalleryPage() {
                   <div className="flex items-center gap-1 glass rounded-xl p-1.5">
                     <button
                       onClick={() => setViewMode('grid')}
-                      className={`p-2.5 rounded-lg transition-all duration-300 ${viewMode === 'grid' ? 'bg-primary-500/20 text-primary-400 shadow-lg shadow-primary-500/20' : 'text-dark-400 hover:text-white hover:bg-white/5'}`}
+                      className={`p-2.5 rounded-lg transition-all duration-300 ${viewMode === 'grid' ? 'bg-primary-500/20 text-primary-400 shadow-lg shadow-primary-500/20' : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'}`}
                     >
                       <Grid className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => setViewMode('list')}
-                      className={`p-2.5 rounded-lg transition-all duration-300 ${viewMode === 'list' ? 'bg-primary-500/20 text-primary-400 shadow-lg shadow-primary-500/20' : 'text-dark-400 hover:text-white hover:bg-white/5'}`}
+                      className={`p-2.5 rounded-lg transition-all duration-300 ${viewMode === 'list' ? 'bg-primary-500/20 text-primary-400 shadow-lg shadow-primary-500/20' : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'}`}
                     >
                       <List className="w-4 h-4" />
                     </button>
@@ -896,7 +896,7 @@ export default function GalleryPage() {
 
             {/* Content */}
             {loadError ? (
-              <div className="glass rounded-2xl p-8 text-red-400 text-center animate-fade-in">
+              <div className="glass rounded-2xl p-8 text-error text-center animate-fade-in">
                 <p className="font-medium">{loadError}</p>
               </div>
             ) : filteredImages.length === 0 ? (
