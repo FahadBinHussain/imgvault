@@ -244,6 +244,37 @@ Useful scripts in `web`:
 - Video saving currently flows through the Host page and gallery upload handoff
 - The repo still contains some older code and assets that are no longer the primary path
 
+## Recent Updates And Lessons Learned
+
+This section captures important implementation changes made during recent UI and metadata work:
+
+- Firestore document coverage in web gallery:
+  - `web/src/app/api/images/route.js` now fetches full Firestore documents instead of a narrow field mask.
+  - This was required so Nerds view can show all expected fields from Firestore.
+
+- Firestore value parsing:
+  - Web API parsing now supports nested/map/array values more safely instead of only a narrow set of scalar types.
+  - This avoids silent field drops in metadata-heavy records.
+
+- Shared modal redaction behavior:
+  - Shared view keeps sensitive provider delete URLs visible as `REDACTED` instead of exposing raw values.
+  - Do not expose `imgbbDeleteUrl` / `pixvidDeleteUrl` in public share pages.
+
+- Firebase console deep link format:
+  - Working format uses:
+    - `/u/1/project/<projectId>/firestore/databases/-default-/data/~2F<collection>~2F<documentId>?view=panel-view`
+  - `/(default)` path variants did not resolve reliably in this setup.
+  - Collection resolution follows media state (`images` vs `trash`).
+
+- Theme-driven border radius (DaisyUI v5):
+  - Correct token is `--radius-box` (not `--rounded-box`).
+  - Radius classes were moved away from hardcoded Tailwind rounded sizes toward token-based usage where possible.
+  - If corners appear square in a theme, verify that theme’s `--radius-box` is non-zero.
+
+- Extension/Web icon normalization:
+  - Icon references were standardized to `1.png` where requested.
+  - Existing `2.png` references were intentionally preserved.
+
 ## Build Note
 
 When working on the extension, the main verification command is:
