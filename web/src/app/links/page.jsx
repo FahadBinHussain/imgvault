@@ -31,7 +31,7 @@ function EmptyState() {
         <Link2 className="w-12 h-12 text-primary-400" />
       </div>
       <h3 className="text-2xl font-bold mb-3">No Shared Links Yet</h3>
-      <p className="text-dark-400 max-w-md mx-auto">
+      <p className="text-base-content/65 max-w-md mx-auto">
         Create a share link from the gallery modal and it will appear here.
       </p>
     </div>
@@ -133,7 +133,7 @@ export default function LinksPage() {
             <h1 className="text-3xl sm:text-4xl font-bold">
               <span className="gradient-text">Shared Links</span>
             </h1>
-            <p className="text-dark-400">
+            <p className="text-base-content/65">
               {links.length} link{links.length !== 1 ? 's' : ''} available
             </p>
           </div>
@@ -145,7 +145,7 @@ export default function LinksPage() {
           )}
 
           {loadError ? (
-            <div className="glass rounded-2xl p-8 text-red-400 text-center">
+            <div className="glass rounded-2xl p-8 text-error text-center">
               <p className="font-medium">{loadError}</p>
             </div>
           ) : links.length === 0 ? (
@@ -160,7 +160,7 @@ export default function LinksPage() {
                 return (
                   <div key={link.id} className="glass rounded-2xl overflow-hidden">
                     <div className="flex flex-col sm:flex-row">
-                      <div className="w-full sm:w-48 h-48 bg-dark-900 flex items-center justify-center overflow-hidden">
+                      <div className="w-full sm:w-48 h-48 bg-base-100 flex items-center justify-center overflow-hidden">
                         {imageUrl ? (
                           <img
                             src={imageUrl}
@@ -168,7 +168,7 @@ export default function LinksPage() {
                             className="w-full h-full object-contain"
                           />
                         ) : (
-                          <Link2 className="w-10 h-10 text-dark-500" />
+                          <Link2 className="w-10 h-10 text-base-content/55" />
                         )}
                       </div>
 
@@ -176,14 +176,14 @@ export default function LinksPage() {
                         <p className="text-lg font-semibold break-words leading-snug">
                           {image.pageTitle || 'Untitled'}
                         </p>
-                        <div className="mt-2 text-xs text-dark-400 flex items-center gap-1.5">
+                        <div className="mt-2 text-xs text-base-content/65 flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5" />
                           <span>
                             {link.updatedAt ? new Date(link.updatedAt).toLocaleString() : 'Unknown time'}
                           </span>
                         </div>
 
-                        <div className="mt-4 bg-dark-800/50 rounded-xl px-3 py-2 text-xs text-dark-300 break-all">
+                        <div className="mt-4 bg-base-200/60 rounded-xl px-3 py-2 text-xs text-base-content/75 break-all">
                           {new URL(link.url, 'https://placeholder.local').pathname}
                         </div>
 
@@ -200,7 +200,7 @@ export default function LinksPage() {
                             href={link.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 text-dark-100 hover:bg-white/10 transition-colors text-sm"
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors text-sm"
                           >
                             <ExternalLink className="w-4 h-4" />
                             Open
@@ -209,7 +209,7 @@ export default function LinksPage() {
                           <button
                             onClick={() => deleteLink(link.token)}
                             disabled={deletingToken === link.token}
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/15 text-red-300 hover:bg-red-500/25 transition-colors text-sm disabled:opacity-50"
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-error/15 text-error hover:bg-error/25 transition-colors text-sm disabled:opacity-50"
                           >
                             {deletingToken === link.token ? (
                               <Loader2 className="w-4 h-4 animate-spin" />

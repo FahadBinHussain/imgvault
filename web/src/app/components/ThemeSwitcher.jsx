@@ -126,7 +126,7 @@ export default function ThemeSwitcher({ className = '' }) {
 			<button
 				type="button"
 				onClick={() => setOpen((prev) => !prev)}
-				className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-dark-300 hover:text-white hover:bg-white/5 transition-colors"
+				className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-base-content/75 hover:text-base-content hover:bg-base-content/5 transition-colors"
 				aria-haspopup="menu"
 				aria-expanded={open}
 				title="Theme settings"
@@ -136,14 +136,14 @@ export default function ThemeSwitcher({ className = '' }) {
 
 			{open && (
 				<div
-					className="fixed left-2 right-2 top-14 rounded-xl border border-white/20 bg-base-100 shadow-2xl p-2 z-[9999] overflow-hidden sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-56 sm:max-w-none"
+					className="fixed left-2 right-2 top-14 rounded-xl border border-base-content/20 bg-base-100 shadow-2xl p-2 z-[9999] overflow-hidden sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-56 sm:max-w-none"
 					style={{
 						backgroundColor: 'var(--color-base-100)',
 						opacity: 1,
 					}}
 				>
-					<div className="px-2 py-2 mb-1 border-b border-white/10">
-						<p className="text-xs text-dark-400">Current theme</p>
+					<div className="px-2 py-2 mb-1 border-b border-base-content/15">
+						<p className="text-xs text-base-content/65">Current theme</p>
 						<p className="text-sm font-medium">{formatThemeName(theme)}</p>
 					</div>
 
@@ -158,7 +158,7 @@ export default function ThemeSwitcher({ className = '' }) {
 									className={`w-full flex items-center justify-between gap-2 px-2 py-2 rounded-lg text-sm transition-colors ${
 										isActive
 											? 'bg-primary-500/20 text-primary-300'
-											: 'text-dark-300 hover:text-white hover:bg-white/5'
+											: 'text-base-content/75 hover:text-base-content hover:bg-base-content/5'
 									}`}
 								>
 									<span>{formatThemeName(themeName)}</span>

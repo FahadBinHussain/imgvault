@@ -221,7 +221,7 @@ export const Modal = ({ isOpen, onClose, title, children, className, fullscreen 
       />
       <div
         className={clsx(
-          'relative z-10 glass-card rounded-2xl p-6 w-full overflow-y-auto',
+          'relative z-10 rounded-2xl p-6 w-full overflow-y-auto border border-base-content/20 bg-base-100 shadow-2xl',
           fullscreen
             ? 'max-w-7xl max-h-[95vh] h-full'
             : 'max-w-lg max-h-[90vh]',

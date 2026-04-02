@@ -81,13 +81,13 @@ function TrashThumbnail({ item }) {
   if (!current) {
     if (isVideoItem) {
       return (
-        <div className="flex flex-col items-center gap-2 text-dark-400">
+        <div className="flex flex-col items-center gap-2 text-base-content/65">
           <Film className="w-10 h-10 text-primary-400" />
           <span className="text-xs">Video item</span>
         </div>
       )
     }
-    return <Trash2 className="w-10 h-10 text-dark-500" />
+    return <Trash2 className="w-10 h-10 text-base-content/55" />
   }
 
   return (
@@ -192,7 +192,7 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
 
     return (
       <div key={key}>
-        <div className="text-xs font-semibold text-dark-400 mb-1 flex items-center gap-2">
+        <div className="text-xs font-semibold text-base-content/65 mb-1 flex items-center gap-2">
           {key === 'tags' ? <Tag className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
           {`${index + 1}. ${formatFieldLabel(key)}`}
         </div>
@@ -202,27 +202,27 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
             {rawValue.map((tag) => (
               <span
                 key={`${key}-${tag}`}
-                className="px-3 py-1 rounded-full bg-red-500/20 text-red-300 text-sm"
+                className="px-3 py-1 rounded-full bg-error/20 text-error text-sm"
               >
                 {tag}
               </span>
             ))}
           </div>
         ) : isUrlField(key) && typeof rawValue === 'string' ? (
-          <div className="bg-dark-800/50 rounded p-2">
+          <div className="bg-base-200/60 rounded p-2">
             <a
               href={rawValue}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-start gap-2 text-red-300 hover:text-red-200 break-all text-sm"
+              className="inline-flex items-start gap-2 text-error hover:text-error break-all text-sm"
             >
               <ExternalLink className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               <span>{rawValue}</span>
             </a>
           </div>
         ) : (
-          <div className="bg-dark-800/50 rounded p-2">
-            <p className="text-white text-sm break-all font-mono">{displayValue}</p>
+          <div className="bg-base-200/60 rounded p-2">
+            <p className="text-base-content text-sm break-all font-mono">{displayValue}</p>
           </div>
         )}
       </div>
@@ -237,7 +237,7 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
       <div className="flex-1 flex items-center justify-center p-3 sm:p-6 lg:p-8 relative min-h-[45vh] lg:min-h-0">
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 sm:top-6 sm:right-6 p-2 sm:p-3 glass rounded-full hover:bg-white/20 transition-all duration-300 z-10"
+          className="absolute top-3 right-3 sm:top-6 sm:right-6 p-2 sm:p-3 glass rounded-full hover:bg-base-content/20 transition-all duration-300 z-10"
         >
           <X className="w-5 h-5 sm:w-6 sm:h-6" />
         </button>
@@ -248,7 +248,7 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
               e.stopPropagation()
               onNavigate(currentIndex - 1)
             }}
-            className="absolute left-2 sm:left-6 p-2 sm:p-4 glass rounded-full hover:bg-white/20 transition-all duration-300 hover:-translate-x-1"
+            className="absolute left-2 sm:left-6 p-2 sm:p-4 glass rounded-full hover:bg-base-content/20 transition-all duration-300 hover:-translate-x-1"
           >
             <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
@@ -260,7 +260,7 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
               e.stopPropagation()
               onNavigate(currentIndex + 1)
             }}
-            className="absolute right-2 sm:right-6 p-2 sm:p-4 glass rounded-full hover:bg-white/20 transition-all duration-300 hover:translate-x-1"
+            className="absolute right-2 sm:right-6 p-2 sm:p-4 glass rounded-full hover:bg-base-content/20 transition-all duration-300 hover:translate-x-1"
           >
             <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
@@ -272,7 +272,7 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
         >
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center">
-              <Loader2 className="w-10 h-10 animate-spin text-red-400" />
+              <Loader2 className="w-10 h-10 animate-spin text-error" />
             </div>
           )}
 
@@ -301,9 +301,9 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
               onError={() => setIsLoading(false)}
             />
           ) : (
-            <div className="w-72 h-72 rounded-3xl bg-dark-900/80 flex flex-col items-center justify-center gap-3">
-              <Film className="w-12 h-12 text-red-400" />
-              <p className="text-dark-300">Preview unavailable</p>
+            <div className="w-72 h-72 rounded-3xl bg-base-100/80 flex flex-col items-center justify-center gap-3">
+              <Film className="w-12 h-12 text-error" />
+              <p className="text-base-content/75">Preview unavailable</p>
             </div>
           )}
         </div>
@@ -313,9 +313,9 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
         </div>
       </div>
 
-      <div className="w-full lg:w-[400px] max-h-[50vh] lg:max-h-none bg-dark-900/95 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-white/10 overflow-y-auto flex flex-col">
+      <div className="w-full lg:w-[400px] max-h-[50vh] lg:max-h-none bg-base-100/95 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-base-content/15 overflow-y-auto flex flex-col">
         <div className="p-6 flex-1">
-          <div className="flex gap-2 mb-6 border-b border-white/10 pb-4">
+          <div className="flex gap-2 mb-6 border-b border-base-content/15 pb-4">
             <button
               onClick={(e) => {
                 e.stopPropagation()
@@ -323,8 +323,8 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
               }}
               className={`px-4 py-2 font-semibold transition-all rounded-lg ${
                 activeTab === 'noobs'
-                  ? 'bg-red-500/20 text-red-300'
-                  : 'text-dark-400 hover:text-white hover:bg-white/5'
+                  ? 'bg-error/20 text-error'
+                  : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'
               }`}
             >
               For Noobs 👶
@@ -336,8 +336,8 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
               }}
               className={`px-4 py-2 font-semibold transition-all rounded-lg ${
                 activeTab === 'nerds'
-                  ? 'bg-red-500/20 text-red-300'
-                  : 'text-dark-400 hover:text-white hover:bg-white/5'
+                  ? 'bg-error/20 text-error'
+                  : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'
               }`}
             >
               For Nerds 🤓
@@ -359,10 +359,10 @@ function EmptyState() {
   return (
     <div className="text-center py-20 animate-fade-in">
       <div className="w-24 h-24 mx-auto rounded-3xl bg-gradient-to-br from-red-500/20 to-red-700/20 flex items-center justify-center mb-8 animate-float">
-        <Trash2 className="w-12 h-12 text-red-400" />
+        <Trash2 className="w-12 h-12 text-error" />
       </div>
       <h3 className="text-2xl font-bold mb-3">Trash is Empty</h3>
-      <p className="text-dark-400 max-w-md mx-auto">Deleted items from the extension will appear here.</p>
+      <p className="text-base-content/65 max-w-md mx-auto">Deleted items from the extension will appear here.</p>
     </div>
   )
 }
@@ -453,28 +453,28 @@ export default function TrashPage() {
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-10">
               <div>
                 <h1 className="text-3xl sm:text-4xl font-bold mb-2">
-                  <span className="text-red-400">Trash</span>
+                  <span className="text-error">Trash</span>
                 </h1>
-                <p className="text-dark-400">
+                <p className="text-base-content/65">
                   {filteredItems.length} item{filteredItems.length !== 1 ? 's' : ''} in trash
                 </p>
               </div>
               {items.length > 0 && (
                 <div className="relative group w-full md:w-80">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-500" />
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/55" />
                   <input
                     type="text"
                     placeholder="Search trash..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-11 pr-4 py-3 bg-dark-800/50 border border-white/5 rounded-xl text-sm focus:outline-none focus:border-red-500/50 w-full"
+                    className="pl-11 pr-4 py-3 bg-base-200/60 border border-base-content/10 rounded-xl text-sm focus:outline-none focus:border-red-500/50 w-full"
                   />
                 </div>
               )}
             </div>
 
             {loadError ? (
-              <div className="glass rounded-2xl p-8 text-red-400 text-center">
+              <div className="glass rounded-2xl p-8 text-error text-center">
                 <p className="font-medium">{loadError}</p>
               </div>
             ) : filteredItems.length === 0 ? (
@@ -489,12 +489,12 @@ export default function TrashPage() {
                       onClick={() => handleItemClick(item, index)}
                       className="glass rounded-2xl overflow-hidden text-left transition-transform duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-red-500/10"
                     >
-                      <div className="h-48 bg-dark-900 relative overflow-hidden flex items-center justify-center">
+                      <div className="h-48 bg-base-100 relative overflow-hidden flex items-center justify-center">
                         <TrashThumbnail item={item} />
                       </div>
                       <div className="p-4">
                         <p className="text-sm font-semibold truncate">{item.pageTitle || 'Untitled'}</p>
-                        <div className="mt-2 text-xs text-dark-400 flex items-center gap-1.5">
+                        <div className="mt-2 text-xs text-base-content/65 flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5" />
                           <span>
                             {item.deletedAt ? new Date(item.deletedAt).toLocaleString() : 'Unknown deletion time'}

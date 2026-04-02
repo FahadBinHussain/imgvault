@@ -61,7 +61,7 @@ export default function SharedImagePage({ params }) {
     return (
       <main className="min-h-screen theme-surface flex items-center justify-center px-4">
         <div className="glass rounded-2xl p-8 text-center max-w-md">
-          <p className="text-red-300 font-medium">{error || 'Shared image not found'}</p>
+          <p className="text-error font-medium">{error || 'Shared image not found'}</p>
         </div>
       </main>
     )

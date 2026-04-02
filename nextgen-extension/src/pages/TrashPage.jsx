@@ -1302,8 +1302,8 @@ export default function TrashPage() {
             <ul className="list-disc list-inside text-base-content/80 space-y-1 ml-2">
               {selectedImage?.imgbbUrl && <li>ImgBB hosting</li>}
               {selectedImage?.pixvidUrl && !selectedImage?.filemoonUrl && !selectedImage?.udropUrl && <li>Pixvid hosting</li>}
-              {selectedImage?.filemoonUrl && <li className="text-yellow-400">⚠️ Filemoon video (must be manually deleted from dashboard)</li>}
-              {selectedImage?.udropUrl && <li className="text-yellow-400">⚠️ UDrop video (must be manually deleted from dashboard)</li>}
+              {selectedImage?.filemoonUrl && <li className="text-warning">⚠️ Filemoon video (must be manually deleted from dashboard)</li>}
+              {selectedImage?.udropUrl && <li className="text-warning">⚠️ UDrop video (must be manually deleted from dashboard)</li>}
               <li>Your trash bin</li>
             </ul>
           </div>
