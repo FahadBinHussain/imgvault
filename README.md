@@ -152,6 +152,9 @@ ImgVault uses a mix of browser storage and Firebase-backed storage:
   - trash
   - synced user settings
 
+Extension implementation notes such as gallery snapshot fields live under:
+- `nextgen-extension/docs`
+
 ## Typical Workflows
 
 ### Save an image

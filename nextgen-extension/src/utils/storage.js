@@ -392,9 +392,21 @@ export class StorageManager {
       
       // Only fetch essential fields for gallery view
       const maskFields = [
-        'pixvidUrl', 'imgbbUrl', 'imgbbThumbUrl', 'filemoonUrl', 'udropUrl', 'sourceImageUrl',
-        'sourcePageUrl', 'pageTitle', 'tags', 'description', 'internalAddedTimestamp',
-        'collectionId' // Include collectionId for filtering and display
+        'pixvidUrl',
+        'imgbbUrl',
+        'imgbbThumbUrl',
+        'filemoonWatchUrl',
+        'filemoonDirectUrl',
+        'udropWatchUrl',
+        'udropDirectUrl',
+        'sourcePageUrl',
+        'pageTitle',
+        'tags',
+        'description',
+        'internalAddedTimestamp',
+        'collectionId',
+        'fileType',
+        'isVideo'
       ];
       
       const requestParams = {

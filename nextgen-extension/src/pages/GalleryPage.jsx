@@ -253,6 +253,37 @@ export default function GalleryPage() {
     );
   });
 
+  const isSelectedVideo = Boolean(
+    (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.isVideo : selectedImage?.isVideo) ||
+    (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.fileType : selectedImage?.fileType)?.startsWith?.('video/') ||
+    (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.duration : selectedImage?.duration) ||
+    (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.filemoonWatchUrl : selectedImage?.filemoonWatchUrl) ||
+    (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.udropWatchUrl : selectedImage?.udropWatchUrl) ||
+    (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.filemoonDirectUrl : selectedImage?.filemoonDirectUrl) ||
+    (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.udropDirectUrl : selectedImage?.udropDirectUrl)
+  );
+
+  const modalImage =
+    fullImageDetails?.id === selectedImage?.id
+      ? { ...selectedImage, ...fullImageDetails }
+      : selectedImage;
+  const isResolvingModalMediaType = Boolean(
+    selectedImage?.id &&
+    fullImageDetails?.id !== selectedImage?.id &&
+    !selectedImage?.isVideo &&
+    !selectedImage?.fileType &&
+    !selectedImage?.filemoonWatchUrl &&
+    !selectedImage?.udropWatchUrl &&
+    !selectedImage?.filemoonDirectUrl &&
+    !selectedImage?.udropDirectUrl
+  );
+
+  useEffect(() => {
+    if (!selectedImage?.id) return;
+    if (fullImageDetails?.id === selectedImage.id) return;
+    loadFullImageDetails(selectedImage.id);
+  }, [selectedImage?.id, fullImageDetails?.id]);
+
   // Get current collection name
   const currentCollection = collectionId 
     ? collections.find(c => c.id === collectionId)
@@ -344,13 +375,15 @@ export default function GalleryPage() {
           );
         } catch (error) {
           await appendClientUploadLog(`UDrop XHR upload failed: ${error.message || String(error)}`, 'error');
-          await appendClientUploadLog('Falling back to normal UDrop upload...', 'warning');
-          udropResult = await udropUploader.upload(
-            uploadData.fileBlob,
-            settings.udropKey1,
-            settings.udropKey2,
-            uploadData.fileName || 'video.mp4'
-          );
+          await appendClientUploadLog('Normal UDrop upload fallback is currently disabled for testing.', 'warning');
+          // Fallback retained intentionally for later re-enable:
+          // udropResult = await udropUploader.upload(
+          //   uploadData.fileBlob,
+          //   settings.udropKey1,
+          //   settings.udropKey2,
+          //   uploadData.fileName || 'video.mp4'
+          // );
+          throw error;
         }
 
         await appendClientUploadLog(`UDrop API status: ${udropResult.apiStatus || 'unknown'}`);
@@ -394,12 +427,14 @@ export default function GalleryPage() {
           );
         } catch (error) {
           await appendClientUploadLog(`Filemoon XHR upload failed: ${error.message || String(error)}`, 'error');
-          await appendClientUploadLog('Falling back to normal Filemoon upload...', 'warning');
-          filemoonResult = await filemoonUploader.upload(
-            uploadData.fileBlob,
-            settings.filemoonApiKey,
-            uploadData.fileName || 'video.mp4'
-          );
+          await appendClientUploadLog('Normal Filemoon upload fallback is currently disabled for testing.', 'warning');
+          // Fallback retained intentionally for later re-enable:
+          // filemoonResult = await filemoonUploader.upload(
+          //   uploadData.fileBlob,
+          //   settings.filemoonApiKey,
+          //   uploadData.fileName || 'video.mp4'
+          // );
+          throw error;
         }
 
         await appendClientUploadLog(`Filemoon API status: ${filemoonResult.apiStatus || 'unknown'}`);
@@ -1742,25 +1777,25 @@ export default function GalleryPage() {
                     )}
                     
                     {/* Loading skeleton with shimmer - only show for non-video items */}
-                    {!loadedImages.has(img.id) && !img.filemoonUrl && !img.udropUrl && (
+                    {!loadedImages.has(img.id) && !img.filemoonWatchUrl && !img.udropWatchUrl && (
                       <div className="absolute inset-0 bg-base-300 overflow-hidden">
                         <div className="absolute inset-0 shimmer"></div>
                       </div>
                     )}
                     
                     {/* Render image or video thumbnail/embed */}
-                    {img.filemoonUrl ? (
+                    {img.filemoonWatchUrl ? (
                       <iframe
-                        src={img.filemoonUrl}
+                        src={img.filemoonWatchUrl}
                         className="w-full aspect-video object-cover pointer-events-none"
                         frameBorder="0"
                         scrolling="no"
                         style={{ pointerEvents: 'none' }}
                         onLoad={() => handleImageLoad(img.id)}
                       />
-                    ) : img.udropUrl ? (
+                    ) : img.udropWatchUrl ? (
                       <video
-                        src={img.udropUrl}
+                        src={img.udropWatchUrl}
                         className="w-full aspect-video object-cover"
                         style={{ pointerEvents: 'none' }}
                         onLoadedMetadata={() => handleImageLoad(img.id)}
@@ -1780,7 +1815,7 @@ export default function GalleryPage() {
                     )}
                     
                     {/* Video play icon overlay */}
-                    {(img.filemoonUrl || img.udropUrl) && (
+                    {(img.filemoonWatchUrl || img.udropWatchUrl) && (
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="bg-base-300/80 backdrop-blur-sm rounded-full p-4">
                           <svg className="w-12 h-12 text-base-content" fill="currentColor" viewBox="0 0 24 24">
@@ -1854,9 +1889,9 @@ export default function GalleryPage() {
                               ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}></div>
                 
                 {/* Conditional rendering for video or image */}
-                {selectedImage.filemoonUrl ? (
+                {modalImage.filemoonWatchUrl ? (
                   <iframe
-                    src={selectedImage.filemoonUrl}
+                    src={modalImage.filemoonWatchUrl}
                     className={`w-full h-full rounded-2xl shadow-2xl relative z-10
                              transition-all duration-700 ease-out
                              ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
@@ -1864,18 +1899,27 @@ export default function GalleryPage() {
                     allowFullScreen
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   />
-                ) : selectedImage.udropUrl ? (
+                ) : modalImage.udropWatchUrl ? (
                   <video
-                    src={selectedImage.udropUrl}
+                    src={modalImage.udropWatchUrl}
                     controls
                     className={`w-full h-full rounded-2xl shadow-2xl relative z-10
                              transition-all duration-700 ease-out
                              ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
                   />
+                ) : isResolvingModalMediaType ? (
+                  <div className={`w-full h-full rounded-2xl shadow-2xl relative z-10 flex items-center justify-center bg-base-200/60
+                             transition-all duration-700 ease-out
+                             ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
+                    <div className="text-center space-y-3">
+                      <Spinner size="lg" />
+                      <div className="text-sm text-base-content/70">Loading media details...</div>
+                    </div>
+                  </div>
                 ) : (
                   <img
-                    src={selectedImage.imgbbUrl || selectedImage.pixvidUrl}
-                    alt={selectedImage.pageTitle}
+                    src={modalImage.imgbbUrl || modalImage.pixvidUrl}
+                    alt={modalImage.pageTitle}
                     className={`max-w-full max-h-full object-contain rounded-2xl shadow-2xl relative z-10
                              transition-all duration-700 ease-out
                              hover:scale-[1.02] hover:shadow-primary/30
@@ -1930,15 +1974,14 @@ export default function GalleryPage() {
             ? 'bg-info/20 text-info' 
             : 'bg-base-300/70 text-base-content/60'
                   }`}>
-                    {/* Count: Title, Added To Vault, Collection (conditional), Pixvid/Filemoon/UDrop URLs, ImgBB URL, Source URL, Page URL, Description, Tags */}
+                    {/* Count: Title, Added To Vault, Collection (conditional), host URLs, Source URL, Page URL, Description, Tags */}
                     {(() => {
                       let count = 6; // Title, Added To Vault, Source URL, Page URL, Description, Tags
                       if (selectedImage?.collectionId) count++; // Collection
-                      // Images show Pixvid URL, videos show Filemoon/UDrop
-                      if (selectedImage?.pixvidUrl && !selectedImage?.filemoonUrl && !selectedImage?.udropUrl) count++; // Pixvid URL (images only)
-                      if (selectedImage?.imgbbUrl) count++; // ImgBB URL
-                      if (selectedImage?.filemoonUrl) count++; // Filemoon URL (videos)
-                      if (selectedImage?.udropUrl) count++; // UDrop URL (videos)
+                      if (!isSelectedVideo && selectedImage?.pixvidUrl) count++; // Pixvid URL (images only)
+                      if (!isSelectedVideo && selectedImage?.imgbbUrl) count++; // ImgBB URL (images only)
+                      if (selectedImage?.filemoonWatchUrl) count++; // Filemoon Watch URL (videos)
+                      if (selectedImage?.udropWatchUrl) count++; // UDrop Watch URL (videos)
                       return count;
                     })()}
                   </span>
@@ -2173,8 +2216,8 @@ export default function GalleryPage() {
                       )}
                     </div>
 
-                    {/* Pixvid URL - Only show for images (not videos) */}
-                    {selectedImage.pixvidUrl && !selectedImage.filemoonUrl && !selectedImage.udropUrl && (
+                    {/* Pixvid URL - Only show for images */}
+                    {!isSelectedVideo && modalImage.pixvidUrl && (
                       <div>
                         <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                           <Link2 className="w-3.5 h-3.5" />
@@ -2183,18 +2226,18 @@ export default function GalleryPage() {
                         </div>
                         <div className="bg-base-200 rounded p-2">
                           <a
-                            href={selectedImage.pixvidUrl}
+                            href={modalImage.pixvidUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-info hover:text-info/80 break-all text-sm"
                           >
-                            {selectedImage.pixvidUrl}
+                            {modalImage.pixvidUrl}
                           </a>
                         </div>
                       </div>
                     )}
 
-                    {selectedImage.imgbbUrl && (
+                    {!isSelectedVideo && modalImage.imgbbUrl && (
                       <div>
                         <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                           <Link2 className="w-3.5 h-3.5" />
@@ -2203,52 +2246,52 @@ export default function GalleryPage() {
                         </div>
                         <div className="bg-base-200 rounded p-2">
                           <a
-                            href={selectedImage.imgbbUrl}
+                            href={modalImage.imgbbUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-success hover:text-success/80 break-all text-sm"
                           >
-                            {selectedImage.imgbbUrl}
+                            {modalImage.imgbbUrl}
                           </a>
                         </div>
                       </div>
                     )}
 
-                    {selectedImage.filemoonUrl && (
+                    {modalImage.filemoonWatchUrl && (
                       <div>
                         <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                           <Link2 className="w-3.5 h-3.5" />
                           <span className="text-primary font-bold">{fieldNo()}</span>
-                          Filemoon URL
+                          Filemoon Watch URL
                         </div>
                         <div className="bg-base-200 rounded p-2">
                           <a
-                            href={selectedImage.filemoonUrl}
+                            href={modalImage.filemoonWatchUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-secondary hover:text-secondary/80 break-all text-sm"
                           >
-                            {selectedImage.filemoonUrl}
+                            {modalImage.filemoonWatchUrl}
                           </a>
                         </div>
                       </div>
                     )}
 
-                    {selectedImage.udropUrl && (
+                    {modalImage.udropWatchUrl && (
                       <div>
                         <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                           <Link2 className="w-3.5 h-3.5" />
                           <span className="text-primary font-bold">{fieldNo()}</span>
-                          UDrop URL
+                          UDrop Watch URL
                         </div>
                         <div className="bg-base-200 rounded p-2">
                           <a
-                            href={selectedImage.udropUrl}
+                            href={modalImage.udropWatchUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-warning hover:text-warning/80 break-all text-sm"
                           >
-                            {selectedImage.udropUrl}
+                            {modalImage.udropWatchUrl}
                           </a>
                         </div>
                       </div>
@@ -2472,51 +2515,59 @@ export default function GalleryPage() {
                   {/* Download Buttons */}
                   <div className="flex gap-2 pt-4 border-t border-base-content/20">
                     {/* Show video sources if it's a video */}
-                    {(selectedImage.filemoonUrl || selectedImage.udropUrl) ? (
+                    {isSelectedVideo ? (
                       <>
-                        {selectedImage.filemoonUrl && (
+                        {modalImage.filemoonDirectUrl && (
                           <Button
                             variant="glass"
                             size="sm"
-                            onClick={() => downloadImage(selectedImage.filemoonUrl, 'filemoon')}
+                            onClick={() => downloadImage(modalImage.filemoonDirectUrl, 'filemoon')}
                           >
                             <Download className="w-4 h-4 mr-2" />
                             Download from Filemoon
                           </Button>
                         )}
-                        {selectedImage.udropUrl && (
+                        {modalImage.udropDirectUrl && (
                           <Button
                             variant="glass"
                             size="sm"
-                            onClick={() => downloadImage(selectedImage.udropUrl, 'udrop')}
+                            onClick={() => downloadImage(modalImage.udropDirectUrl, 'udrop')}
                           >
                             <Download className="w-4 h-4 mr-2" />
                             Download from UDrop
                           </Button>
                         )}
                       </>
-                    ) : (
+                    ) : isResolvingModalMediaType ? (
+                      <div className="text-sm text-base-content/60 italic">
+                        Loading media details...
+                      </div>
+                    ) : !isSelectedVideo ? (
                       <>
                         {/* Show image sources if it's an image */}
                         <Button
                           variant="glass"
                           size="sm"
-                          onClick={() => downloadImage(selectedImage.pixvidUrl, 'pixvid')}
+                          onClick={() => downloadImage(modalImage.pixvidUrl, 'pixvid')}
                         >
                           <Download className="w-4 h-4 mr-2" />
                           Download from Pixvid
                         </Button>
-                        {selectedImage.imgbbUrl && (
+                        {modalImage.imgbbUrl && (
                           <Button
                             variant="glass"
                             size="sm"
-                            onClick={() => downloadImage(selectedImage.imgbbUrl, 'imgbb')}
+                            onClick={() => downloadImage(modalImage.imgbbUrl, 'imgbb')}
                           >
                             <Download className="w-4 h-4 mr-2" />
                             Download from ImgBB
                           </Button>
                         )}
                       </>
+                    ) : (
+                      <div className="text-sm text-base-content/60 italic">
+                        No direct video download URLs available.
+                      </div>
                     )}
                   </div>
                 </div>
@@ -3786,3 +3837,5 @@ export default function GalleryPage() {
     </div>
   );
 }
+
+
