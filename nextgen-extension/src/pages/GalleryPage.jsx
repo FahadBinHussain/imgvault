@@ -12,11 +12,12 @@ import {
   File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint
 } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
-import { useImages, useImageUpload, useTrash, useChromeStorage, useCollections } from '../hooks/useChromeExtension';
+import { useImages, useImageUpload, useTrash, useChromeStorage, useCollections, useChromeMessage } from '../hooks/useChromeExtension';
 import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import TimelineScrollbar from '../components/TimelineScrollbar';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig';
+import { UDropUploader } from '../utils/uploaders';
 
 export default function GalleryPage() {
   const navigate = useNavigate();
@@ -26,6 +27,7 @@ export default function GalleryPage() {
   const { trashedImages, loading: trashLoading } = useTrash();
   const { uploadImage, uploading, progress, error: uploadError, logs: uploadLogs } = useImageUpload();
   const { collections, loading: collectionsLoading, createCollection, reload: reloadCollections } = useCollections();
+  const sendMessage = useChromeMessage();
   const [defaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
@@ -281,6 +283,96 @@ export default function GalleryPage() {
         <span className="whitespace-pre-wrap break-all font-mono text-[12px]">{entry.message}</span>
       </div>
     );
+  };
+
+  const appendClientUploadLog = async (message, type = 'info') => {
+    const result = await chrome.storage.local.get(['uploadStatusLogs']);
+    const entry = {
+      timestamp: new Date().toLocaleTimeString(),
+      message,
+      type,
+    };
+    const nextLogs = [entry, ...(result.uploadStatusLogs || [])].slice(0, 200);
+    await chrome.storage.local.set({ uploadStatusLogs: nextLogs });
+  };
+
+  const formatBytes = (bytes) => {
+    if (!Number.isFinite(bytes) || bytes < 0) return 'unknown size';
+    if (bytes === 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const value = bytes / (1024 ** exponent);
+    return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`;
+  };
+
+  const uploadVideoDirectly = async (uploadData) => {
+    await chrome.storage.local.set({
+      uploadActive: true,
+      uploadStatus: 'Preparing direct video upload...',
+      uploadStatusLogs: [],
+    });
+
+    await appendClientUploadLog('Attempting direct UDrop upload from the extension page...');
+
+    try {
+      const settings = await sendMessage('getVideoHostSettings');
+      if (!settings?.udropKey1 || !settings?.udropKey2) {
+        throw new Error('UDrop keys are not available for direct upload.');
+      }
+
+      const uploader = new UDropUploader();
+      await appendClientUploadLog(`Video payload ready: ${formatBytes(uploadData.fileSize || uploadData.fileBlob?.size || 0)}.`);
+      await appendClientUploadLog('Authorizing with UDrop...');
+      await chrome.storage.local.set({ uploadStatus: 'Uploading video directly to UDrop...' });
+
+      const udropResult = await uploader.uploadWithProgress(
+        uploadData.fileBlob,
+        settings.udropKey1,
+        settings.udropKey2,
+        uploadData.fileName || 'video.mp4',
+        async ({ loaded, total, percent }) => {
+          const totalLabel = total ? formatBytes(total) : formatBytes(uploadData.fileBlob?.size || 0);
+          const loadedLabel = formatBytes(loaded);
+          const message = percent !== null
+            ? `UDrop direct upload progress: ${percent}% (${loadedLabel} / ${totalLabel})`
+            : `UDrop direct upload progress: ${loadedLabel} sent`;
+          await chrome.storage.local.set({ uploadStatus: message });
+          await appendClientUploadLog(message);
+        }
+      );
+
+      await appendClientUploadLog(`UDrop API status: ${udropResult.apiStatus || 'unknown'}`);
+      if (udropResult.apiResponse) {
+        await appendClientUploadLog(`UDrop API message: ${udropResult.apiResponse}`);
+      }
+      await appendClientUploadLog(`UDrop authorized, account: ${udropResult.accountId || 'unknown'}`);
+      await appendClientUploadLog('[UDROP] File uploaded successfully', 'success');
+      await appendClientUploadLog(`[UDROP] URL: ${udropResult.displayUrl || udropResult.url || ''}`);
+      if (udropResult.shortUrl) {
+        await appendClientUploadLog(`[UDROP] Short URL: ${udropResult.shortUrl}`);
+      }
+      if (udropResult.fileId) {
+        await appendClientUploadLog(`[UDROP] File ID: ${udropResult.fileId}`);
+      }
+      if (udropResult.url) {
+        await appendClientUploadLog(`[UDROP] Download URL: ${udropResult.url}`);
+      }
+
+      await chrome.storage.local.set({ uploadStatus: 'Saving video metadata...' });
+      const saved = await sendMessage('saveUploadedVideo', {
+        ...uploadData,
+        udropResult,
+      });
+      await appendClientUploadLog(`[SAVE VIDEO] Saved successfully with ID: ${saved.id}`, 'success');
+      return saved;
+    } catch (error) {
+      await appendClientUploadLog(`Direct video upload failed: ${error.message || String(error)}`, 'error');
+      await appendClientUploadLog('Falling back to background upload...', 'warning');
+      await chrome.storage.local.set({ uploadStatus: 'Falling back to background upload...' });
+      throw error;
+    } finally {
+      await chrome.storage.local.set({ uploadActive: false });
+    }
   };
 
   const revokeUploadPreviewUrl = () => {
@@ -706,6 +798,7 @@ export default function GalleryPage() {
         pageUrl: String(uploadPageUrl || ''),
         pageTitle: String(uploadImageData.pageTitle || ''),
         fileName: String(uploadImageData.fileName || ''),
+        fileSize: uploadImageData.file?.size || uploadMetadata?.fileSize || null,
         description: String(uploadDescription || ''),
         tags: tagsArray.map(t => String(t)),
         ignoreDuplicate: Boolean(ignoreDuplicates),
@@ -733,7 +826,15 @@ export default function GalleryPage() {
         throw new Error('Upload data contains non-serializable values');
       }
 
-      await uploadImage(uploadData);
+      if (uploadData.isVideo && uploadData.fileBlob) {
+        try {
+          await uploadVideoDirectly(uploadData);
+        } catch (_) {
+          await uploadImage(uploadData);
+        }
+      } else {
+        await uploadImage(uploadData);
+      }
 
       // Close modal first for better UX
       setShowUploadModal(false);
@@ -3110,7 +3211,7 @@ export default function GalleryPage() {
                             <div className="text-sm text-primary-200 mb-2">
                               <span>
                                 {uploadImageData?.isVideo 
-                                  ? 'Uploading video to Filemoon and UDrop...' 
+                                  ? 'Uploading video to UDrop...' 
                                   : 'Uploading image to Pixvid and ImgBB...'}
                               </span>
                             </div>

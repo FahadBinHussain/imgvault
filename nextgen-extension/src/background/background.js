@@ -573,6 +573,18 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'getVideoHostSettings':
+        this.getMergedVideoHostSettings()
+          .then(settings => sendResponse({ success: true, data: settings }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'saveUploadedVideo':
+        this.saveUploadedVideo(request.data)
+          .then(result => sendResponse({ success: true, data: result }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       default:
         console.warn('Unknown action:', action);
         return false;
@@ -602,6 +614,53 @@ class ImgVaultServiceWorker {
   async updateStatusWithLog(message, type = 'info') {
     this.updateStatus(message);
     await this.appendUploadLog(message, type);
+  }
+
+  formatBytes(bytes) {
+    if (!Number.isFinite(bytes) || bytes < 0) {
+      return 'unknown size';
+    }
+
+    if (bytes === 0) {
+      return '0 B';
+    }
+
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const value = bytes / (1024 ** exponent);
+    return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`;
+  }
+
+  async getMergedVideoHostSettings() {
+    const syncSettings = await chrome.storage.sync.get(['filemoonApiKey', 'udropKey1', 'udropKey2']);
+    const merged = { ...syncSettings };
+
+    if (merged.udropKey1 && merged.udropKey2) {
+      return merged;
+    }
+
+    try {
+      const firebaseSettings = await this.storage.getUserSettings();
+
+      if (!merged.udropKey1 && firebaseSettings?.udropKey1) {
+        merged.udropKey1 = firebaseSettings.udropKey1;
+      }
+
+      if (!merged.udropKey2 && firebaseSettings?.udropKey2) {
+        merged.udropKey2 = firebaseSettings.udropKey2;
+      }
+
+      if ((!syncSettings.udropKey1 && merged.udropKey1) || (!syncSettings.udropKey2 && merged.udropKey2)) {
+        await chrome.storage.sync.set({
+          ...(merged.udropKey1 ? { udropKey1: merged.udropKey1 } : {}),
+          ...(merged.udropKey2 ? { udropKey2: merged.udropKey2 } : {}),
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to hydrate video host settings from Firebase:', error);
+    }
+
+    return merged;
   }
 
   async archiveUploadLogRun(status, summary) {
@@ -839,13 +898,13 @@ class ImgVaultServiceWorker {
     try {
       await chrome.storage.local.set({ uploadStatusLogs: [] });
       // Get API keys from storage
-      const settings = await chrome.storage.sync.get(['filemoonApiKey', 'udropKey1', 'udropKey2']);
+      const settings = await this.getMergedVideoHostSettings();
       
-      const hasFilemoon = !!settings.filemoonApiKey;
+      const hasFilemoon = false;
       const hasUDrop = settings.udropKey1 && settings.udropKey2;
       
-      if (!hasFilemoon && !hasUDrop) {
-        throw new Error('No video hosting service configured. Please set Filemoon API key or UDrop API keys in settings.');
+      if (!hasUDrop) {
+        throw new Error('No video hosting service configured. Please set UDrop API keys in settings.');
       }
 
       await this.updateStatusWithLog('📥 Fetching video...');
@@ -853,10 +912,23 @@ class ImgVaultServiceWorker {
       // Fetch the video once
       const videoSource = data.fileBlob instanceof Blob ? data.fileBlob : data.imageUrl;
       const videoBlob = await this.fetchImage(videoSource);
+      const expectedSize = Number.isFinite(data.fileSize) ? data.fileSize : null;
+
+      if (!(videoBlob instanceof Blob) || videoBlob.size <= 0) {
+        throw new Error('Video payload is empty. Please reload the file and try again.');
+      }
+
+      if (expectedSize && videoBlob.size !== expectedSize) {
+        await this.appendUploadLog(
+          `⚠️ Video payload size mismatch. Expected ${this.formatBytes(expectedSize)}, received ${this.formatBytes(videoBlob.size)}.`,
+          'warning'
+        );
+      } else {
+        await this.appendUploadLog(`📦 Video payload ready: ${this.formatBytes(videoBlob.size)}.`);
+      }
       
       // Build status message based on available services
       const services = [];
-      if (hasFilemoon) services.push('Filemoon');
       if (hasUDrop) services.push('UDrop');
       
       const statusMsg = services.length > 1 
@@ -874,9 +946,17 @@ class ImgVaultServiceWorker {
           this.filemoonUploader.upload(
             videoBlob, 
             settings.filemoonApiKey, 
-            data.fileName || 'video.mp4'
+            data.fileName || 'video.mp4',
+            ({ loaded, total, percent }) => {
+              const totalLabel = total ? this.formatBytes(total) : this.formatBytes(videoBlob.size);
+              const loadedLabel = this.formatBytes(loaded);
+              const message = percent !== null
+                ? `☁️ Filemoon upload progress: ${percent}% (${loadedLabel} / ${totalLabel})`
+                : `☁️ Filemoon upload progress: ${loadedLabel} sent`;
+              this.appendUploadLog(message);
+            }
           )
-            .then(result => {
+            .then(async (result) => {
               this.appendUploadLog(`✅ Filemoon: upload completed for ${result.filename || data.fileName || 'video file'}`, 'success');
               return { type: 'filemoon', result };
             })
@@ -895,10 +975,34 @@ class ImgVaultServiceWorker {
             videoBlob, 
             settings.udropKey1, 
             settings.udropKey2, 
-            data.fileName || 'video.mp4'
+            data.fileName || 'video.mp4',
+            ({ loaded, total, percent }) => {
+              const totalLabel = total ? this.formatBytes(total) : this.formatBytes(videoBlob.size);
+              const loadedLabel = this.formatBytes(loaded);
+              const message = percent !== null
+                ? `☁️ UDrop upload progress: ${percent}% (${loadedLabel} / ${totalLabel})`
+                : `☁️ UDrop upload progress: ${loadedLabel} sent`;
+              this.appendUploadLog(message);
+            }
           )
             .then(result => {
               this.appendUploadLog(`✅ UDrop: upload completed for ${result.filename || data.fileName || 'video file'}`, 'success');
+              this.appendUploadLog(`📨 UDrop API status: ${result.apiStatus || 'unknown'}`);
+              if (result.apiResponse) {
+                this.appendUploadLog(`📨 UDrop API message: ${result.apiResponse}`);
+              }
+              if (result.fileId) {
+                this.appendUploadLog(`🆔 UDrop file_id: ${result.fileId}`);
+              }
+              if (result.accountId) {
+                this.appendUploadLog(`👤 UDrop account_id: ${result.accountId}`);
+              }
+              if (result.shortUrl) {
+                this.appendUploadLog(`🔗 UDrop short URL: ${result.shortUrl}`);
+              }
+              if (result.url) {
+                this.appendUploadLog(`🔗 UDrop download URL: ${result.url}`);
+              }
               return { type: 'udrop', result };
             })
             .catch(err => {
@@ -985,9 +1089,26 @@ class ImgVaultServiceWorker {
         videoMetadata.udropFileId = udropResult.fileId;
       }
       
+      if (udropResult) {
+        await this.appendUploadLog(`🔐 UDrop authorized, account: ${udropResult.accountId || 'unknown'}`);
+        await this.appendUploadLog(`📦 [UDROP] File uploaded successfully`, 'success');
+        await this.appendUploadLog(`📦 [UDROP] URL: ${udropResult.displayUrl || udropResult.url || ''}`);
+        if (udropResult.shortUrl) {
+          await this.appendUploadLog(`📦 [UDROP] Short URL: ${udropResult.shortUrl}`);
+        }
+        if (udropResult.fileId) {
+          await this.appendUploadLog(`📦 [UDROP] File ID: ${udropResult.fileId}`);
+        }
+        if (udropResult.url) {
+          await this.appendUploadLog(`📦 [UDROP] Download URL: ${udropResult.url}`);
+        }
+      }
+
       const savedId = await this.storage.saveImage(videoMetadata);
+      await this.appendUploadLog(`📊 [SAVE VIDEO] Video metadata size: ${JSON.stringify(videoMetadata).length} bytes`);
+      await this.appendUploadLog(`✅ [SAVE VIDEO] Saved successfully with ID: ${savedId}`, 'success');
       
-      await this.updateStatusWithLog('✅ Video saved successfully!', 'success');
+      await this.updateStatusWithLog('Video saved successfully!', 'success');
       
       await this.archiveUploadLogRun(
         uploadErrors.length > 0 ? 'warning' : 'success',
@@ -1492,6 +1613,59 @@ class ImgVaultServiceWorker {
     error.allDuplicates = duplicateCheck.allMatches;  // Include all matches
     return error;
   }
+
+  async saveUploadedVideo(data) {
+    const fileName = this.extractFileName(data);
+
+    let cleanSourceImageUrl = data.originalSourceUrl || data.imageUrl;
+    if (cleanSourceImageUrl && cleanSourceImageUrl.startsWith('data:')) {
+      cleanSourceImageUrl = '';
+    }
+
+    let creationDate = null;
+    let creationDateSource = '';
+
+    if (data.fileLastModified) {
+      creationDate = new Date(data.fileLastModified).toISOString();
+      creationDateSource = 'OS lastModified';
+    } else {
+      creationDate = new Date().toISOString();
+      creationDateSource = 'Current timestamp (no metadata available)';
+    }
+
+    const videoMetadata = {
+      sourceImageUrl: cleanSourceImageUrl,
+      sourcePageUrl: data.pageUrl,
+      pageTitle: data.pageTitle,
+      fileName,
+      fileSize: data.fileSize || 0,
+      fileType: data.fileType || data.fileMimeType || '',
+      fileTypeSource: 'File object',
+      creationDate,
+      creationDateSource,
+      duration: Number.isFinite(data.duration) ? data.duration : null,
+      width: Number.isFinite(data.width) ? data.width : null,
+      height: Number.isFinite(data.height) ? data.height : null,
+      tags: data.tags || [],
+      description: data.description || '',
+      collectionId: data.collectionId || null,
+      isVideo: true,
+      udropUrl: data.udropResult?.url || '',
+      udropShortUrl: data.udropResult?.shortUrl || '',
+      udropFileId: data.udropResult?.fileId || '',
+    };
+
+    await this.updateStatusWithLog('Saving video metadata...');
+    const savedId = await this.storage.saveImage(videoMetadata);
+    await this.appendUploadLog(`[SAVE VIDEO] Video metadata size: ${JSON.stringify(videoMetadata).length} bytes`);
+    await this.appendUploadLog(`[SAVE VIDEO] Saved successfully with ID: ${savedId}`, 'success');
+    await this.updateStatusWithLog('Video saved successfully!', 'success');
+
+    return {
+      id: savedId,
+      ...videoMetadata
+    };
+  }
 }
 
 // Initialize service worker
@@ -1557,3 +1731,4 @@ chrome.action.onClicked.addListener((tab) => {
 
 // Export for testing
 export default serviceWorker;
+

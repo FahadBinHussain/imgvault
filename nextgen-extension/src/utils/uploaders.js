@@ -43,6 +43,47 @@ class BaseUploader {
     const errorText = await response.text();
     throw new Error(`${errorPrefix}: ${response.status} - ${errorText}`);
   }
+
+  xhrUpload(url, formData, onProgress) {
+    return new Promise((resolve, reject) => {
+      if (typeof XMLHttpRequest === 'undefined') {
+        reject(new Error('XMLHttpRequest is not available in this context'));
+        return;
+      }
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url, true);
+
+      xhr.upload.onprogress = (event) => {
+        if (typeof onProgress === 'function') {
+          onProgress({
+            loaded: event.loaded,
+            total: event.lengthComputable ? event.total : null,
+            percent: event.lengthComputable && event.total > 0
+              ? Math.round((event.loaded / event.total) * 100)
+              : null,
+          });
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText || '{}'));
+          } catch (error) {
+            reject(new Error(`Invalid JSON response: ${error.message}`));
+          }
+        } else {
+          reject(new Error(`${xhr.status} - ${xhr.responseText || 'Upload failed'}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.onabort = () => reject(new Error('Upload aborted'));
+      xhr.send(formData);
+    });
+  }
+
 }
 
 /**
@@ -385,10 +426,73 @@ export class UDropUploader extends BaseUploader {
         fileId: fileData.file_id,
         shortUrl: fileData.short_url,
         deleteHash: fileData.delete_hash,
-        filename: fileData.name
+        filename: fileData.name,
+        accountId: auth.account_id,
+        apiStatus: result._status || '',
+        apiResponse: result.response || '',
+        downloadApiStatus: downloadUrl !== fileData.url ? 'success' : 'fallback'
       };
     } catch (error) {
       console.error('UDrop API error:', error);
+      throw new Error(`Failed to upload to UDrop: ${error.message}`);
+    }
+  }
+
+  async uploadWithProgress(blob, key1, key2, filename = 'video.mp4', onProgress) {
+    try {
+      const auth = await this.authorize(key1, key2);
+
+      const formData = new FormData();
+      const videoFilename = filename.split('/').pop().split('?')[0] || 'video.mp4';
+      formData.append('upload_file', blob, videoFilename);
+      formData.append('access_token', auth.access_token);
+      formData.append('account_id', auth.account_id);
+
+      const result = await this.xhrUpload(`${this.apiUrl}/file/upload`, formData, onProgress);
+
+      if (result._status !== 'success' || !result.data || result.data.length === 0) {
+        throw new Error(result.response || 'Upload failed');
+      }
+
+      const fileData = result.data[0];
+      let downloadUrl = fileData.url;
+
+      try {
+        const downloadFormData = new FormData();
+        downloadFormData.append('access_token', auth.access_token);
+        downloadFormData.append('account_id', auth.account_id);
+        downloadFormData.append('file_id', fileData.file_id);
+
+        const downloadResponse = await fetch(`${this.apiUrl}/file/download`, {
+          method: 'POST',
+          body: downloadFormData
+        });
+
+        if (downloadResponse.ok) {
+          const downloadResult = await downloadResponse.json();
+          if (downloadResult._status === 'success' && downloadResult.data && downloadResult.data.download_url) {
+            downloadUrl = downloadResult.data.download_url;
+          }
+        }
+      } catch (_) {
+        // Keep fallback URL.
+      }
+
+      return {
+        url: downloadUrl,
+        deleteUrl: fileData.delete_url,
+        displayUrl: fileData.url,
+        thumbUrl: null,
+        fileId: fileData.file_id,
+        shortUrl: fileData.short_url,
+        deleteHash: fileData.delete_hash,
+        filename: fileData.name,
+        accountId: auth.account_id,
+        apiStatus: result._status || '',
+        apiResponse: result.response || '',
+        downloadApiStatus: downloadUrl !== fileData.url ? 'success' : 'fallback'
+      };
+    } catch (error) {
       throw new Error(`Failed to upload to UDrop: ${error.message}`);
     }
   }

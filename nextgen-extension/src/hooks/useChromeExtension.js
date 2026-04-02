@@ -94,9 +94,11 @@ export function useImageUpload() {
   const sendMessage = useChromeMessage();
 
   useEffect(() => {
-    chrome.storage.local.get(['uploadStatusLogs', 'uploadLogHistory'], (result) => {
+    chrome.storage.local.get(['uploadStatusLogs', 'uploadLogHistory', 'uploadActive', 'uploadStatus'], (result) => {
       setLogs(result.uploadStatusLogs || []);
       setHistory(result.uploadLogHistory || []);
+      setUploading(Boolean(result.uploadActive));
+      setProgress(result.uploadStatus || '');
     });
 
     // Listen for upload status updates
@@ -107,6 +109,10 @@ export function useImageUpload() {
 
       if (changes.uploadStatus) {
         setProgress(changes.uploadStatus.newValue || '');
+      }
+
+      if (changes.uploadActive) {
+        setUploading(Boolean(changes.uploadActive.newValue));
       }
 
       if (changes.uploadStatusLogs) {
@@ -130,7 +136,7 @@ export function useImageUpload() {
     setError(null);
     setProgress('Starting upload...');
     setLogs([]);
-    chrome.storage.local.set({ uploadStatusLogs: [] });
+    chrome.storage.local.set({ uploadStatusLogs: [], uploadActive: true, uploadStatus: 'Starting upload...' });
 
     try {
       const result = await sendMessage('uploadImage', imageData);
@@ -142,6 +148,7 @@ export function useImageUpload() {
       throw err;
     } finally {
       setUploading(false);
+      chrome.storage.local.set({ uploadActive: false });
     }
   }, [sendMessage]);
 

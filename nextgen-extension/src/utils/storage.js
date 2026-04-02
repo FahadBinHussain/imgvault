@@ -983,6 +983,8 @@ export class StorageManager {
         pixvidApiKey: fields.pixvidApiKey?.stringValue || '',
         imgbbApiKey: fields.imgbbApiKey?.stringValue || '',
         filemoonApiKey: fields.filemoonApiKey?.stringValue || '',
+        udropKey1: fields.udropKey1?.stringValue || '',
+        udropKey2: fields.udropKey2?.stringValue || '',
         defaultGallerySource: fields.defaultGallerySource?.stringValue || 'imgbb',
         updatedAt: fields.updatedAt?.timestampValue || ''
       };
