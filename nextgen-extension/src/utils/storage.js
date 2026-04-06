@@ -164,7 +164,7 @@ export class StorageManager {
       if (value === undefined) continue;
       
       // Special handling for exifMetadata - flatten it into individual fields
-      if (key === 'exifMetadata' && typeof value === 'object' && !Array.isArray(value)) {
+      if (key === 'exifMetadata' && value && typeof value === 'object' && !Array.isArray(value)) {
         for (const [exifKey, exifValue] of Object.entries(value)) {
           if (exifValue === null || exifValue === undefined) continue;
           
