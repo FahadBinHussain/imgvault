@@ -1216,10 +1216,14 @@ export default function GalleryPage() {
 
   const startEditing = (field) => {
     setEditingField(field);
+    const currentValue = modalImage?.[field] ?? selectedImage?.[field] ?? '';
     if (field === 'tags') {
-      setEditValues({ ...editValues, [field]: selectedImage.tags?.join(', ') || '' });
+      const tagsValue = Array.isArray(modalImage?.tags)
+        ? modalImage.tags.join(', ')
+        : (Array.isArray(selectedImage?.tags) ? selectedImage.tags.join(', ') : '');
+      setEditValues({ ...editValues, [field]: tagsValue });
     } else {
-      setEditValues({ ...editValues, [field]: selectedImage[field] || '' });
+      setEditValues({ ...editValues, [field]: currentValue });
     }
   };
 
@@ -1293,6 +1297,11 @@ export default function GalleryPage() {
         }
         
         setSelectedImage({ ...selectedImage, collectionId: newCollectionId });
+        setFullImageDetails((prev) =>
+          prev && prev.id === selectedImage.id
+            ? { ...prev, collectionId: newCollectionId }
+            : prev
+        );
         setEditingField(null);
         
         // Reload both images and collections to reflect the changes
@@ -1307,6 +1316,11 @@ export default function GalleryPage() {
       });
       
       setSelectedImage({ ...selectedImage, [field]: value });
+      setFullImageDetails((prev) =>
+        prev && prev.id === selectedImage.id
+          ? { ...prev, [field]: value }
+          : prev
+      );
       setEditingField(null);
     } catch (error) {
       console.error('Failed to update field:', error);
@@ -1518,6 +1532,58 @@ export default function GalleryPage() {
 
   // Handle auto-open upload from debug page
   useEffect(() => {
+    const hydratePendingAutoUpload = async () => {
+      if (location.state?.autoOpenUpload) {
+        return;
+      }
+
+      try {
+        const { pendingAutoUpload } = await chrome.storage.local.get('pendingAutoUpload');
+        if (!pendingAutoUpload?.autoOpenUpload || pendingAutoUpload?.pausedUntilFocus) {
+          return;
+        }
+
+        navigate(location.pathname, { replace: true, state: pendingAutoUpload });
+      } catch (error) {
+        console.error('Failed to hydrate pending auto-upload state:', error);
+      }
+    };
+
+    hydratePendingAutoUpload();
+  }, [location.pathname, location.state?.autoOpenUpload, navigate]);
+
+  useEffect(() => {
+    const retryPendingAutoUpload = async () => {
+      if (location.state?.autoOpenUpload || showUploadModal) {
+        return;
+      }
+
+      try {
+        const { pendingAutoUpload } = await chrome.storage.local.get('pendingAutoUpload');
+        if (pendingAutoUpload?.autoOpenUpload && !pendingAutoUpload?.pausedUntilFocus) {
+          navigate(location.pathname, { replace: true, state: pendingAutoUpload });
+        }
+      } catch (error) {
+        console.error('Failed to retry pending auto-upload hydration:', error);
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (!document.hidden) {
+        retryPendingAutoUpload();
+      }
+    };
+
+    window.addEventListener('focus', retryPendingAutoUpload);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', retryPendingAutoUpload);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [location.pathname, location.state?.autoOpenUpload, navigate, showUploadModal]);
+
+  useEffect(() => {
     if (location.state?.autoOpenUpload) {
       // If a file was provided (from debug page with File System API)
       if (location.state?.uploadFile) {
@@ -1539,6 +1605,7 @@ export default function GalleryPage() {
         // Auto-load file using saved directory handle
         console.log('🐛 [AUTO-LOAD] Starting auto-load for:', location.state.downloadFilePath);
         setPendingDownloadSourceUrl(String(location.state.downloadSourceUrl || '').trim());
+        setShowUploadModal(true);
         
         const loadDownloadedFile = async () => {
           try {
@@ -1599,6 +1666,7 @@ export default function GalleryPage() {
       }
       
       // Clear the navigation state
+      chrome.storage.local.remove('pendingAutoUpload').catch(() => {});
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [location.state]);
@@ -2295,21 +2363,53 @@ export default function GalleryPage() {
                                 Download
                               </Button>
                             </div>
-                          ) : key === 'sourcePageUrl' ? (
-                            <div className="flex items-start justify-between gap-3">
-                              <p className="text-base-content font-mono text-sm break-all flex-1">
-                                {formatBaseFieldValue(modalImage?.[key])}
-                              </p>
-                              <Button
-                                className={`${inlineActionClass} px-2 py-2`}
-                                onClick={() => window.open(modalImage?.[key], '_blank', 'noopener,noreferrer')}
-                                disabled={!modalImage?.[key]}
-                                title="Open in new tab"
-                                aria-label="Open source page in new tab"
-                              >
-                                <Link2 className="w-3.5 h-3.5" />
-                              </Button>
-                            </div>
+                          ) : key === 'sourceImageUrl' || key === 'sourcePageUrl' ? (
+                            editingField === key ? (
+                              <div className="space-y-3">
+                                <input
+                                  type="url"
+                                  value={editValues[key] ?? (modalImage?.[key] || '')}
+                                  onChange={(e) => setEditValues({ ...editValues, [key]: e.target.value })}
+                                  placeholder={key === 'sourceImageUrl' ? 'https://example.com/image.jpg' : 'https://example.com/page'}
+                                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 text-base-content focus:outline-none focus:border-primary"
+                                />
+                                <div className="flex gap-2">
+                                  <Button size="sm" onClick={() => saveEdit(key)}>
+                                    Save URL
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditingField(null);
+                                      setEditValues((prev) => ({ ...prev, [key]: modalImage?.[key] || '' }));
+                                    }}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-start justify-between gap-3">
+                                <p className="text-base-content font-mono text-sm break-all flex-1">
+                                  {formatBaseFieldValue(modalImage?.[key])}
+                                </p>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    className={`${inlineActionClass} px-2 py-2`}
+                                    onClick={() => window.open(modalImage?.[key], '_blank', 'noopener,noreferrer')}
+                                    disabled={!modalImage?.[key]}
+                                    title="Open in new tab"
+                                    aria-label={`Open ${key} in new tab`}
+                                  >
+                                    <Link2 className="w-3.5 h-3.5" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => startEditing(key)}>
+                                    Edit
+                                  </Button>
+                                </div>
+                              </div>
+                            )
                           ) : (
                             <p className="text-base-content font-mono text-sm break-all">
                               {formatBaseFieldValue(modalImage?.[key])}

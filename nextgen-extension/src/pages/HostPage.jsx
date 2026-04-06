@@ -307,6 +307,59 @@ export default function HostPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let navigating = false;
+
+    const flushPendingAutoUpload = async () => {
+      if (navigating) return;
+
+      try {
+        const { pendingAutoUpload } = await chrome.storage.local.get('pendingAutoUpload');
+        if (!pendingAutoUpload?.autoOpenUpload) {
+          return;
+        }
+
+        if (pendingAutoUpload.pausedUntilFocus && (document.hidden || !document.hasFocus())) {
+          return;
+        }
+
+        navigating = true;
+        if (pendingAutoUpload.pausedUntilFocus) {
+          addLog('Tab focused. Resuming auto-upload handoff...', 'success');
+          const resumedPayload = {
+            ...pendingAutoUpload,
+            pausedUntilFocus: false,
+            resumedAt: Date.now(),
+          };
+          await chrome.storage.local.set({ pendingAutoUpload: resumedPayload });
+          navigate('/gallery', { state: resumedPayload });
+          return;
+        }
+        addLog('Detected completed download while tab was unfocused. Opening gallery...', 'success');
+        navigate('/gallery', { state: pendingAutoUpload });
+      } catch (error) {
+        console.error('Failed to flush pending auto-upload from Host page:', error);
+      } finally {
+        navigating = false;
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (!document.hidden) {
+        flushPendingAutoUpload();
+      }
+    };
+
+    flushPendingAutoUpload();
+    window.addEventListener('focus', flushPendingAutoUpload);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', flushPendingAutoUpload);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [navigate]);
+
   const handleNativeDownload = async () => {
     if (!downloadUrl.trim()) {
       addLog('Enter a video URL first.', 'error');
@@ -332,12 +385,19 @@ export default function HostPage() {
       addLog(`Downloaded to: ${response.filePath || 'completed'}`, 'success');
 
       if (response.filePath) {
+        const tabFocused = !document.hidden && document.hasFocus();
+        if (!tabFocused) {
+          addLog('Tab not in focus. Auto-upload paused; it will resume when you focus the extension tab.', 'info');
+          return;
+        }
+
         addLog('Opening gallery to auto-load the downloaded file...', 'success');
         navigate('/gallery', {
           state: {
             autoOpenUpload: true,
             downloadFilePath: response.filePath,
             downloadSourceUrl: downloadUrl,
+            pausedUntilFocus: false,
           },
         });
       }
