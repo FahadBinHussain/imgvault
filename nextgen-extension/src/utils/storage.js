@@ -254,6 +254,8 @@ export class StorageManager {
     if (!result.pixvidUrl) result.pixvidUrl = '';
     if (!result.sourceImageUrl) result.sourceImageUrl = '';
     if (!result.sourcePageUrl) result.sourcePageUrl = '';
+    if (!result.faviconUrl) result.faviconUrl = '';
+    if (!result.linkPreviewImageUrl) result.linkPreviewImageUrl = '';
     if (!result.pageTitle) result.pageTitle = '';
     if (!result.fileName) result.fileName = '';
     if (!Object.prototype.hasOwnProperty.call(result, 'collectionId')) result.collectionId = null;
@@ -401,6 +403,9 @@ export class StorageManager {
         'filemoonDirectUrl',
         'udropWatchUrl',
         'udropDirectUrl',
+        'linkUrl',
+        'faviconUrl',
+        'linkPreviewImageUrl',
         'sourcePageUrl',
         'pageTitle',
         'tags',
@@ -408,7 +413,8 @@ export class StorageManager {
         'internalAddedTimestamp',
         'collectionId',
         'fileType',
-        'isVideo'
+        'isVideo',
+        'isLink'
       ];
       
       const requestParams = {
@@ -462,6 +468,69 @@ export class StorageManager {
     } catch (error) {
       console.error('Error getting image:', error);
       return null;
+    }
+  }
+
+  async hasSavedLinkByUrl(pageUrl) {
+    await this.ensureInitialized();
+
+    const target = String(pageUrl || '').trim();
+    if (!target) return false;
+    const canonicalTarget = this.canonicalizeLinkUrl(target);
+
+    try {
+      const docs = await this.fetchAllDocuments('images', {
+        'mask.fieldPaths': ['isLink', 'linkUrl', 'sourcePageUrl']
+      });
+
+      return docs.some((doc) => {
+        const fields = doc?.fields || {};
+        if (fields?.isLink?.booleanValue !== true) return false;
+        const linkUrl = fields?.linkUrl?.stringValue || '';
+        const sourcePageUrl = fields?.sourcePageUrl?.stringValue || '';
+        const canonicalLinkUrl = this.canonicalizeLinkUrl(linkUrl);
+        const canonicalSourcePageUrl = this.canonicalizeLinkUrl(sourcePageUrl);
+        return (
+          canonicalLinkUrl === canonicalTarget ||
+          canonicalSourcePageUrl === canonicalTarget ||
+          linkUrl === target ||
+          sourcePageUrl === target
+        );
+      });
+    } catch (error) {
+      console.error('Error checking saved link URL:', error);
+      return false;
+    }
+  }
+
+  canonicalizeLinkUrl(inputUrl) {
+    const raw = String(inputUrl || '').trim();
+    if (!raw) return '';
+
+    try {
+      const parsed = new URL(raw);
+      parsed.hash = '';
+      parsed.hostname = parsed.hostname.toLowerCase();
+
+      // Drop common tracking params while preserving meaningful query keys.
+      const dropParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid'];
+      for (const key of dropParams) {
+        parsed.searchParams.delete(key);
+      }
+
+      // Normalize default ports.
+      if ((parsed.protocol === 'https:' && parsed.port === '443') || (parsed.protocol === 'http:' && parsed.port === '80')) {
+        parsed.port = '';
+      }
+
+      // Normalize trailing slash for non-root paths.
+      if (parsed.pathname.length > 1) {
+        parsed.pathname = parsed.pathname.replace(/\/+$/, '');
+      }
+
+      return parsed.toString();
+    } catch (error) {
+      return raw;
     }
   }
 

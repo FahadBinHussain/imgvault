@@ -248,6 +248,9 @@ export default function GalleryPage() {
     (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.filemoonDirectUrl : selectedImage?.filemoonDirectUrl) ||
     (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.udropDirectUrl : selectedImage?.udropDirectUrl)
   );
+  const isSelectedLink = Boolean(
+    (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.isLink : selectedImage?.isLink)
+  );
 
   const modalImage =
     fullImageDetails?.id === selectedImage?.id
@@ -298,7 +301,19 @@ export default function GalleryPage() {
     'udropWatchUrl',
     'udropDirectUrl'
   ];
-  const activeBaseFieldKeys = isSelectedVideo ? baseVideoFieldKeys : baseImageFieldKeys;
+  const baseLinkFieldKeys = [
+    'linkUrl',
+    'pageTitle',
+    'description',
+    'tags',
+    'collectionId',
+    'internalAddedTimestamp',
+    'faviconUrl',
+    'linkPreviewImageUrl',
+    'lastVisitedAt',
+    'isLink'
+  ];
+  const activeBaseFieldKeys = isSelectedLink ? baseLinkFieldKeys : (isSelectedVideo ? baseVideoFieldKeys : baseImageFieldKeys);
   const displayedBaseFieldKeys = activeBaseFieldKeys;
   const countedBaseFieldCount = displayedBaseFieldKeys.length;
   const inlineActionClass = 'shrink-0 inline-flex items-center gap-1.5 rounded-full border border-base-content/12 bg-base-200/70 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-base-content/72 transition-all duration-200 hover:border-base-content/22 hover:bg-base-200 hover:text-base-content hover:shadow-sm active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40';
@@ -370,6 +385,11 @@ export default function GalleryPage() {
   const shouldRenderModalVideoPlayer = (item) => (
     defaultVideoSource === 'udrop' && Boolean(item?.udropDirectUrl)
   );
+  const getLinkPreviewImage = (item) => (
+    item?.linkPreviewImageUrl ||
+    item?.sourceImageUrl ||
+    ''
+  );
   const formatBaseFieldValue = (value) => {
     if (Array.isArray(value)) return value.length ? value.join(', ') : '[]';
     if (value === null) return 'null';
@@ -377,11 +397,16 @@ export default function GalleryPage() {
     if (typeof value === 'boolean') return value ? 'true' : 'false';
     return String(value);
   };
+  const nerdsExcludedKeys = new Set([
+    ...baseImageFieldKeys,
+    ...baseVideoFieldKeys,
+    ...baseLinkFieldKeys
+  ]);
   const nerdsEntries = fullImageDetails
     ? Object.entries(fullImageDetails)
       .filter(([key, value]) => {
         if (key === 'id') return false;
-        if ([...baseImageFieldKeys, ...baseVideoFieldKeys].includes(key)) return false;
+        if (nerdsExcludedKeys.has(key)) return false;
         return value !== undefined && value !== null && value !== '';
       })
       .sort(([a], [b]) => a.localeCompare(b))
@@ -1970,8 +1995,8 @@ export default function GalleryPage() {
               {date}
             </h2>
             
-            {/* Masonry Grid - 3 columns on mobile, 4 on tablet, 5 on desktop, 6 on large screens */}
-            <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-3 sm:gap-4 md:gap-6 space-y-3 sm:space-y-4 md:space-y-6">
+            {/* Horizontal row-first grid (left-to-right ordering by time) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 md:gap-6">
               {groupedImages[date].map((img, index) => (
                 <motion.div
                   key={img.id}
@@ -1983,7 +2008,7 @@ export default function GalleryPage() {
                     ease: [0.25, 0.46, 0.45, 0.94]
                   }}
                   whileHover={{ scale: 1.02, y: -4 }}
-                  className="group relative break-inside-avoid mb-6 cursor-pointer"
+                  className="group relative cursor-pointer"
                   onClick={(e) => {
                     if (selectionMode) {
                       toggleImageSelection(img.id, e);
@@ -2023,14 +2048,35 @@ export default function GalleryPage() {
                     )}
                     
                     {/* Loading skeleton with shimmer - only show for non-video items */}
-                    {!loadedImages.has(img.id) && !getPreferredVideoWatchUrl(img) && (
+                    {!loadedImages.has(img.id) && !getPreferredVideoWatchUrl(img) && !img.isLink && (
                         <div className="absolute inset-0 bg-base-300 overflow-hidden">
                           <div className="absolute inset-0 shimmer"></div>
                         </div>
                       )}
                       
-                      {/* Render image or video thumbnail/embed */}
-                    {getPreferredVideoWatchUrl(img) ? (
+                    {/* Render image or video thumbnail/embed */}
+                    {img.isLink ? (
+                        (() => {
+                          const linkPreviewImage = getLinkPreviewImage(img);
+                          return (
+                            <div className="relative w-full aspect-video bg-base-200">
+                              {linkPreviewImage ? (
+                                <img
+                                  src={linkPreviewImage}
+                                  alt={img.pageTitle || 'Link preview'}
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                  onLoad={() => handleImageLoad(img.id)}
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-base-content/45">
+                                  <Link2 className="w-10 h-10" />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()
+                      ) : getPreferredVideoWatchUrl(img) ? (
                         shouldRenderModalVideoPlayer(img) ? (
                           <video
                             src={getPreferredVideoDirectUrl(img)}
@@ -2139,7 +2185,60 @@ export default function GalleryPage() {
                               ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}></div>
                 
                 {/* Conditional rendering for video or image */}
-                {shouldRenderModalVideoPlayer(modalImage) ? (
+                {modalImage?.isLink ? (
+                  (() => {
+                    const linkPreviewUrl = modalImage?.linkUrl || modalImage?.sourcePageUrl || '';
+                    const linkPreviewImage = getLinkPreviewImage(modalImage);
+                    return (
+                      <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 overflow-hidden border border-base-content/10 bg-base-100
+                                 transition-all duration-700 ease-out
+                                 ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
+                        <div className="h-full p-4 sm:p-6">
+                          <div className="h-full rounded-[var(--radius-box)] border border-base-content/12 bg-base-100 overflow-hidden">
+                            <div className="h-full flex flex-col md:flex-row">
+                              <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between min-w-0">
+                                <div className="space-y-3">
+                                  <div className="flex items-center gap-2 text-base-content/70">
+                                    <Link2 className="w-4 h-4" />
+                                    <span className="text-xs font-semibold uppercase tracking-wide">Saved Link</span>
+                                  </div>
+                                  <h3 className="text-xl font-bold text-base-content leading-snug">
+                                    {modalImage?.pageTitle || 'Untitled Link'}
+                                  </h3>
+                                  <p className="text-base-content/70 text-sm leading-relaxed">
+                                    {modalImage?.description || 'Saved page bookmark'}
+                                  </p>
+                                </div>
+                                <a
+                                  href={linkPreviewUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-info text-sm break-all hover:underline mt-4"
+                                >
+                                  {linkPreviewUrl || 'N/A'}
+                                </a>
+                              </div>
+                              <div className="md:w-[42%] lg:w-[40%] h-48 md:h-auto bg-base-200 border-t md:border-t-0 md:border-l border-base-content/10">
+                                {linkPreviewImage ? (
+                                  <img
+                                    src={linkPreviewImage}
+                                    alt={modalImage?.pageTitle || 'Link preview'}
+                                    className="w-full h-full object-contain"
+                                    loading="lazy"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-base-content/45">
+                                    <Link2 className="w-12 h-12" />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : shouldRenderModalVideoPlayer(modalImage) ? (
                   <video
                     src={getPreferredVideoDirectUrl(modalImage)}
                     className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain
@@ -2212,7 +2311,7 @@ export default function GalleryPage() {
 
               {/* Tab Navigation */}
               <div className="flex items-center justify-between gap-3 mb-4 border-b border-base-content/20">
-                <div className="flex gap-2 overflow-x-auto whitespace-nowrap">
+                {!isSelectedLink && <div className="flex gap-2 overflow-x-auto whitespace-nowrap">
                 <button
                   onClick={() => handleTabSwitch('noobs')}
                   className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${
@@ -2247,7 +2346,7 @@ export default function GalleryPage() {
                     {nerdsVisibleFieldCount}
                   </span>
                 </button>
-                </div>
+                </div>}
                 <button
                   onClick={() => {
                     setShowDeleteConfirm(true);
@@ -2268,7 +2367,7 @@ export default function GalleryPage() {
               </div>
 
               {/* For Noobs Tab */}
-              {activeTab === 'noobs' && (
+              {(activeTab === 'noobs' || isSelectedLink) && (
                 <div className="space-y-4">
                   <div className="space-y-3 pr-2">
                     <div>
@@ -2363,14 +2462,18 @@ export default function GalleryPage() {
                                 Download
                               </Button>
                             </div>
-                          ) : key === 'sourceImageUrl' || key === 'sourcePageUrl' ? (
+                          ) : key === 'sourceImageUrl' || key === 'sourcePageUrl' || key === 'linkUrl' ? (
                             editingField === key ? (
                               <div className="space-y-3">
                                 <input
                                   type="url"
                                   value={editValues[key] ?? (modalImage?.[key] || '')}
                                   onChange={(e) => setEditValues({ ...editValues, [key]: e.target.value })}
-                                  placeholder={key === 'sourceImageUrl' ? 'https://example.com/image.jpg' : 'https://example.com/page'}
+                                  placeholder={
+                                    key === 'sourceImageUrl'
+                                      ? 'https://example.com/image.jpg'
+                                      : 'https://example.com/page'
+                                  }
                                   className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 text-base-content focus:outline-none focus:border-primary"
                                 />
                                 <div className="flex gap-2">
@@ -2435,7 +2538,7 @@ export default function GalleryPage() {
               )}
 
               {/* For Nerds Tab */}
-              {activeTab === 'nerds' && (
+              {activeTab === 'nerds' && !isSelectedLink && (
                 <div className="space-y-4">
                   {loadingNerdsTab && !fullImageDetails ? (
                     <div className="flex justify-center items-center py-10">

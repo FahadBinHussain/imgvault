@@ -113,10 +113,14 @@ class ImgVaultServiceWorker {
         : 'ImgVault - Open Gallery',
     });
 
+    const hasSavedLink = await this.storage.hasSavedLinkByUrl(url);
     await chrome.action.setBadgeText({
       tabId,
-      text: '',
+      text: hasSavedLink ? 'L' : '',
     });
+    if (hasSavedLink) {
+      await chrome.action.setBadgeBackgroundColor({ tabId, color: '#16a34a' });
+    }
   }
 
   async refreshActionIconForActiveTab() {
@@ -177,6 +181,18 @@ class ImgVaultServiceWorker {
         }
       });
 
+      chrome.contextMenus.create({
+        id: 'saveLinkToImgVault',
+        title: 'Save Link to ImgVault',
+        contexts: ['page', 'link']
+      }, () => {
+        if (chrome.runtime.lastError) {
+          console.log('Save link context menu creation:', chrome.runtime.lastError.message);
+        } else {
+          console.log('✅ Save link context menu created successfully');
+        }
+      });
+
       // Add menu item for paused YouTube video frame capture
       chrome.contextMenus.create({
         id: 'saveYouTubeFrameToImgVault',
@@ -197,12 +213,94 @@ class ImgVaultServiceWorker {
     });
   }
 
+  extractMetaImageFromHtml(html = '', baseUrl = '') {
+    const patterns = [
+      /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+      /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+      /<meta[^>]+itemprop=["']image["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      const raw = (match?.[1] || '').trim();
+      if (!raw) continue;
+      try {
+        return new URL(raw, baseUrl).toString();
+      } catch (error) {
+        continue;
+      }
+    }
+    return '';
+  }
+
+  async fetchLinkPreviewImage(linkUrl = '') {
+    const target = String(linkUrl || '').trim();
+    if (!target) return '';
+
+    try {
+      const response = await fetch(target, { redirect: 'follow' });
+      if (!response.ok) return '';
+      const finalUrl = response.url || target;
+      const html = await response.text();
+      return this.extractMetaImageFromHtml(html, finalUrl);
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch link preview image:', error?.message || error);
+      return '';
+    }
+  }
+
   /**
    * Handle context menu click
    * @param {chrome.contextMenus.OnClickData} info - Menu click info
    * @param {chrome.tabs.Tab} tab - Active tab
    */
   async handleContextMenuClick(info, tab) {
+    if (info.menuItemId === 'saveLinkToImgVault') {
+      const targetUrl = (info.linkUrl || info.pageUrl || tab?.url || '').trim();
+      if (!targetUrl) {
+        return;
+      }
+
+      let faviconUrl = '';
+      try {
+        const parsed = new URL(targetUrl);
+        faviconUrl = `${parsed.origin}/favicon.ico`;
+      } catch (error) {
+        faviconUrl = '';
+      }
+
+      const previewImageUrl = await this.fetchLinkPreviewImage(targetUrl);
+
+      const alreadySaved = await this.storage.hasSavedLinkByUrl(targetUrl);
+      if (alreadySaved) {
+        if (tab?.id) {
+          await this.updateActionIconForTab(tab.id, tab.url || targetUrl);
+        }
+        return;
+      }
+
+      await this.storage.saveImage({
+        isLink: true,
+        linkUrl: targetUrl,
+        pageTitle: tab?.title || targetUrl,
+        description: '',
+        tags: [],
+        collectionId: null,
+        faviconUrl,
+        linkPreviewImageUrl: previewImageUrl,
+        lastVisitedAt: new Date().toISOString(),
+      });
+
+      if (tab?.id) {
+        await this.updateActionIconForTab(tab.id, tab.url || targetUrl);
+      }
+
+      chrome.tabs.create({
+        url: chrome.runtime.getURL('index.html')
+      });
+      return;
+    }
+
     if (info.menuItemId === 'saveToImgVault') {
       console.log('🎯 Context menu clicked!');
       console.log('📸 info.srcUrl:', info.srcUrl);
