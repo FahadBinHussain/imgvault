@@ -49,10 +49,14 @@ function getVideoPreview(url) {
   try {
     const parsedUrl = new URL(url);
     const host = parsedUrl.hostname.toLowerCase();
+    const path = parsedUrl.pathname || '';
     const isYouTube = host === 'youtube.com' ||
       host === 'www.youtube.com' ||
       host === 'm.youtube.com' ||
       host === 'youtu.be';
+    const isFacebookHost = host === 'facebook.com' ||
+      host === 'www.facebook.com' ||
+      host === 'm.facebook.com';
 
     let videoId = '';
 
@@ -70,6 +74,40 @@ function getVideoPreview(url) {
         href: url,
         thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
       };
+    }
+
+    if (host === 'fb.watch') {
+      const shortId = path.replace(/^\/+/, '').split('/')[0];
+      if (shortId) {
+        return {
+          siteLabel: 'Facebook',
+          title: 'Facebook video detected',
+          subtitle: shortId,
+          href: url,
+          thumbnailUrl: '',
+        };
+      }
+    }
+
+    if (isFacebookHost) {
+      const watchVideoId = parsedUrl.searchParams.get('v') || '';
+      const reelId = path.startsWith('/reel/') ? path.replace(/^\/reel\/?/, '').split('/')[0] : '';
+      let videosId = '';
+      const videosMatch = path.match(/\/videos\/([^/?#]+)/);
+      if (videosMatch) {
+        videosId = videosMatch[1] || '';
+      }
+
+      const matchedId = watchVideoId || reelId || videosId;
+      if (matchedId) {
+        return {
+          siteLabel: 'Facebook',
+          title: 'Facebook video detected',
+          subtitle: matchedId,
+          href: url,
+          thumbnailUrl: '',
+        };
+      }
     }
 
     return {
@@ -117,6 +155,13 @@ export default function HostPage() {
     ytDlpMessage: 'Checking yt-dlp...',
   });
   const videoPreview = getVideoPreview(downloadUrl);
+  const normalizedDownloadUrl = downloadUrl.trim();
+  const sourceFieldPreview = normalizedDownloadUrl
+    ? {
+        sourceImageUrl: normalizedDownloadUrl,
+        sourcePageUrl: normalizedDownloadUrl,
+      }
+    : null;
 
   const addLog = (message, type = 'info') => {
     setLogs((prev) => [
@@ -292,6 +337,7 @@ export default function HostPage() {
           state: {
             autoOpenUpload: true,
             downloadFilePath: response.filePath,
+            downloadSourceUrl: downloadUrl,
           },
         });
       }
@@ -503,6 +549,22 @@ export default function HostPage() {
               <p className="text-xs text-base-content/60">
                 Large video downloads may take several minutes before the native host sends its final completion message.
               </p>
+
+              <div className="rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 p-3 space-y-2">
+                <div className="text-xs font-semibold text-base-content/75">Saved Source Fields Preview</div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-base-content/55">sourceImageUrl</div>
+                  <div className="text-xs font-mono break-all text-base-content/80">
+                    {sourceFieldPreview?.sourceImageUrl || 'N/A'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-base-content/55">sourcePageUrl</div>
+                  <div className="text-xs font-mono break-all text-base-content/80">
+                    {sourceFieldPreview?.sourcePageUrl || 'N/A'}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">

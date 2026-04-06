@@ -63,6 +63,7 @@ export default function GalleryPage() {
   const [showCreateCollection, setShowCreateCollection] = useState(false); // Show create collection input
   const [newCollectionName, setNewCollectionName] = useState(''); // New collection name
   const [isManualUploadMode, setIsManualUploadMode] = useState(false); // Track if triggered by context menu with no srcUrl
+  const [uploadModalMetaTab, setUploadModalMetaTab] = useState('noobs');
   
   // Selection mode state
   const [selectionMode, setSelectionMode] = useState(false);
@@ -76,6 +77,7 @@ export default function GalleryPage() {
   // Auto-upload state
   const [showFolderPrompt, setShowFolderPrompt] = useState(false);
   const [pendingDownloadFile, setPendingDownloadFile] = useState(null);
+  const [pendingDownloadSourceUrl, setPendingDownloadSourceUrl] = useState('');
   const uploadPreviewUrlRef = useRef(null);
   const activeVideoUploadControllerRef = useRef(null);
   
@@ -858,6 +860,12 @@ export default function GalleryPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (showUploadModal) {
+      setUploadModalMetaTab('noobs');
+    }
+  }, [showUploadModal, uploadImageData?.isVideo]);
+
   // Drag & Drop handlers
   const handleDragEnter = (e) => {
     e.preventDefault();
@@ -891,7 +899,8 @@ export default function GalleryPage() {
           const file = await getFileFromDirectoryHandle(savedHandle, fileName, pendingDownloadFile);
           setShowFolderPrompt(false);
           setPendingDownloadFile(null);
-          await processMediaFile(file, 'native-download://upload', 'Downloaded Video');
+          setPendingDownloadSourceUrl('');
+          await processMediaFile(file, pendingDownloadSourceUrl || 'native-download://upload', 'Downloaded Video');
           setIsLocalUpload(true);
           setShowUploadModal(true);
           showToast(`Loaded "${fileName}" from saved folder.`, 'success', 3000);
@@ -905,7 +914,8 @@ export default function GalleryPage() {
                 const file = await getFileFromDirectoryHandle(savedHandle, fileName, pendingDownloadFile);
                 setShowFolderPrompt(false);
                 setPendingDownloadFile(null);
-                await processMediaFile(file, 'native-download://upload', 'Downloaded Video');
+                setPendingDownloadSourceUrl('');
+                await processMediaFile(file, pendingDownloadSourceUrl || 'native-download://upload', 'Downloaded Video');
                 setIsLocalUpload(true);
                 setShowUploadModal(true);
                 showToast(`Loaded "${fileName}" from saved folder.`, 'success', 3000);
@@ -961,9 +971,10 @@ export default function GalleryPage() {
       // Hide the prompt
       setShowFolderPrompt(false);
       setPendingDownloadFile(null);
+      setPendingDownloadSourceUrl('');
       
       // Process and show modal
-      await processMediaFile(file, 'native-download://upload', 'Downloaded Video');
+      await processMediaFile(file, pendingDownloadSourceUrl || 'native-download://upload', 'Downloaded Video');
       setIsLocalUpload(true);
       setShowUploadModal(true);
       showToast(`✅ Video "${fileName}" loaded successfully!`, 'success', 3000);
@@ -1055,10 +1066,13 @@ export default function GalleryPage() {
         .filter(t => t.length > 0);
 
       // Create upload data object with only serializable values
+      const hasRealSourceUrl = /^https?:\/\//i.test(String(uploadPageUrl || ''));
       const uploadData = {
         imageUrl: String(uploadImageData.srcUrl || ''),
         fileBlob: uploadImageData.file || null,
-        originalSourceUrl: (isLocalUpload || uploadPageUrl === 'Uploaded manually') ? 'Uploaded manually' : String(uploadPageUrl || ''),
+        originalSourceUrl: hasRealSourceUrl
+          ? String(uploadPageUrl || '')
+          : ((isLocalUpload || uploadPageUrl === 'Uploaded manually') ? 'Uploaded manually' : String(uploadPageUrl || '')),
         pageUrl: String(uploadPageUrl || ''),
         pageTitle: String(uploadImageData.pageTitle || ''),
         fileName: String(uploadImageData.fileName || ''),
@@ -1524,6 +1538,7 @@ export default function GalleryPage() {
       } else if (location.state?.downloadFilePath) {
         // Auto-load file using saved directory handle
         console.log('🐛 [AUTO-LOAD] Starting auto-load for:', location.state.downloadFilePath);
+        setPendingDownloadSourceUrl(String(location.state.downloadSourceUrl || '').trim());
         
         const loadDownloadedFile = async () => {
           try {
@@ -1542,7 +1557,7 @@ export default function GalleryPage() {
                 console.log('✅ [AUTO-LOAD] File loaded successfully:', file.name, file.size, 'bytes');
                 
                 // Process and show modal
-                await processMediaFile(file, 'native-download://upload', 'Downloaded Video');
+                await processMediaFile(file, location.state.downloadSourceUrl || pendingDownloadSourceUrl || 'native-download://upload', 'Downloaded Video');
                 setIsLocalUpload(true);
                 setShowUploadModal(true);
                 showToast(`✅ Video "${fileName}" loaded successfully!`, 'success', 3000);
@@ -2765,71 +2780,6 @@ export default function GalleryPage() {
                       </div>
                     )}
                     
-                    {/* Metadata field count */}
-                    {uploadMetadata && (
-                      <details className="rounded-[var(--radius-box)] bg-success/10 border border-success/30 p-4" open={false}>
-                        <summary className="cursor-pointer list-none flex items-center justify-between">
-                          <span className="text-success font-semibold text-sm">📊 Total Firestore Fields</span>
-                          <span className="text-success font-bold text-2xl">
-                            {(() => {
-                              const formFields = ['sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'description', 'tags', 'collectionId'];
-                              const coreMetadataFields = ['fileName', 'fileSize', 'fileType', 'fileTypeSource', 'width', 'height'];
-                              const hashFields = ['sha256', 'pHash', 'aHash', 'dHash'];
-                              const dateFields = ['creationDate', 'creationDateSource'];
-                              const exifFieldsCount = uploadMetadata.exifMetadata ? Object.keys(uploadMetadata.exifMetadata).length : 0;
-                              const imgbbUrls = ['imgbbUrl', 'imgbbDeleteUrl', 'imgbbThumbUrl'];
-                              const pixvidUrls = ['pixvidUrl', 'pixvidDeleteUrl'];
-                              const internalFields = ['internalAddedTimestamp'];
-                              return formFields.length + coreMetadataFields.length + hashFields.length + dateFields.length + exifFieldsCount + imgbbUrls.length + pixvidUrls.length + internalFields.length;
-                            })()}
-                          </span>
-                        </summary>
-                        {(() => {
-                      // Form fields
-                      const formFields = ['sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'description', 'tags', 'collectionId'];
-                      
-                      // Core metadata fields
-                      const coreMetadataFields = ['fileName', 'fileSize', 'fileType', 'fileTypeSource', 'width', 'height'];
-                      
-                      // Hash fields
-                      const hashFields = ['sha256', 'pHash', 'aHash', 'dHash'];
-                      
-                      // Date fields
-                      const dateFields = ['creationDate', 'creationDateSource'];
-                      
-                      // EXIF metadata fields
-                      const exifFieldsCount = uploadMetadata.exifMetadata ? Object.keys(uploadMetadata.exifMetadata).length : 0;
-                      
-                      // ImgBB URLs (3 total)
-                      const imgbbUrls = ['imgbbUrl', 'imgbbDeleteUrl', 'imgbbThumbUrl'];
-                      
-                      // Pixvid URLs (2 total)
-                      const pixvidUrls = ['pixvidUrl', 'pixvidDeleteUrl'];
-                      
-                      // Internal timestamp (1 field)
-                      const internalFields = ['internalAddedTimestamp'];
-                      
-                      const totalFields = formFields.length + coreMetadataFields.length + hashFields.length + 
-                                         dateFields.length + exifFieldsCount + imgbbUrls.length + 
-                                         pixvidUrls.length + internalFields.length;
-                      
-                      return (
-                          <div className="text-xs text-base-content/75 border-t border-success/20 pt-3 mt-3 space-y-1">
-                            <div>This includes:</div>
-                            <div>• {formFields.length} form fields (including collection)</div>
-                            <div>• {coreMetadataFields.length} core metadata fields</div>
-                            <div>• {hashFields.length} hash fields</div>
-                            <div>• {dateFields.length} date fields</div>
-                            <div>• {exifFieldsCount} EXIF metadata fields</div>
-                            <div>• {imgbbUrls.length} ImgBB URLs</div>
-                            <div>• {pixvidUrls.length} Pixvid URLs</div>
-                            <div>• {internalFields.length} internal timestamp</div>
-                          </div>
-                      );
-                    })()}
-                      </details>
-                    )}
-                    
                     {/* Metadata Computation Details */}
                     {uploadMetadata && (
                       <details className="p-4 rounded-[var(--radius-box)] bg-info/10 border border-info/30 space-y-3" open={false}>
@@ -3063,6 +3013,163 @@ export default function GalleryPage() {
                   )}
                   
                   {/* Form Fields - Alphabetically ordered */}
+                  {uploadImageData ? (
+                    <div className="space-y-4">
+                      <div className="flex gap-2 border-b border-base-content/15 pb-3">
+                        <button
+                          onClick={() => setUploadModalMetaTab('noobs')}
+                          className={`px-3 py-1.5 rounded-[var(--radius-box)] text-sm font-semibold transition-colors ${
+                            uploadModalMetaTab === 'noobs'
+                              ? 'bg-primary/20 text-primary'
+                              : 'bg-base-200 text-base-content/70 hover:text-base-content'
+                          }`}
+                        >
+                          {`For Noobs (${uploadImageData?.isVideo ? 21 : 20})`}
+                        </button>
+                        <button
+                          onClick={() => setUploadModalMetaTab('nerds')}
+                          className={`px-3 py-1.5 rounded-[var(--radius-box)] text-sm font-semibold transition-colors ${
+                            uploadModalMetaTab === 'nerds'
+                              ? 'bg-success/20 text-success'
+                              : 'bg-base-200 text-base-content/70 hover:text-base-content'
+                          }`}
+                        >
+                          {`For Nerds (${
+                            Object.entries(uploadMetadata || {})
+                              .filter(([key, value]) => {
+                                const noobKeys = new Set(
+                                  (
+                                    uploadImageData?.isVideo
+                                      ? [
+                                          'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize',
+                                          'fileType', 'fileTypeSource', 'creationDate', 'creationDateSource',
+                                          'internalAddedTimestamp', 'duration', 'width', 'height', 'tags',
+                                          'description', 'collectionId', 'isVideo', 'filemoonWatchUrl',
+                                          'filemoonDirectUrl', 'udropWatchUrl', 'udropDirectUrl'
+                                        ]
+                                      : [
+                                          'pixvidUrl', 'pixvidDeleteUrl', 'imgbbUrl', 'imgbbDeleteUrl', 'imgbbThumbUrl',
+                                          'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize',
+                                          'width', 'height', 'fileType', 'fileTypeSource', 'creationDate',
+                                          'creationDateSource', 'internalAddedTimestamp', 'tags', 'description', 'collectionId'
+                                        ]
+                                  )
+                                );
+                                return !noobKeys.has(key) && value !== undefined && value !== null && value !== '';
+                              }).length
+                          })`}
+                        </button>
+                      </div>
+
+                      {(() => {
+                        const isVideoUpload = Boolean(uploadImageData?.isVideo);
+                        const normalizedSourceUrl = /^https?:\/\//i.test(String(uploadPageUrl || ''))
+                          ? String(uploadPageUrl || '')
+                          : (uploadPageUrl === 'Uploaded manually'
+                            ? 'Uploaded manually'
+                            : String(uploadImageData?.srcUrl || 'Uploaded manually'));
+                        const normalizedTags = uploadTags
+                          .split(',')
+                          .map((t) => t.trim())
+                          .filter(Boolean);
+
+                        const noobsFields = isVideoUpload
+                          ? [
+                              ['sourceImageUrl', normalizedSourceUrl],
+                              ['sourcePageUrl', String(uploadPageUrl || 'N/A')],
+                              ['pageTitle', String(uploadImageData?.pageTitle || 'N/A')],
+                              ['fileName', String(uploadImageData?.fileName || 'N/A')],
+                              ['fileSize', uploadMetadata?.fileSize || uploadImageData?.file?.size || 'N/A'],
+                              ['fileType', uploadImageData?.fileType || uploadImageData?.file?.type || uploadMetadata?.fileType || 'N/A'],
+                              ['fileTypeSource', uploadMetadata?.fileTypeSource || 'N/A'],
+                              ['creationDate', uploadMetadata?.creationDate || 'N/A'],
+                              ['creationDateSource', uploadMetadata?.creationDateSource || 'N/A'],
+                              ['internalAddedTimestamp', 'Auto-generated on save'],
+                              ['duration', uploadMetadata?.duration ?? 'N/A'],
+                              ['width', uploadMetadata?.width ?? 'N/A'],
+                              ['height', uploadMetadata?.height ?? 'N/A'],
+                              ['tags', normalizedTags.length ? normalizedTags.join(', ') : '[]'],
+                              ['description', uploadDescription || ''],
+                              ['collectionId', selectedCollectionId || null],
+                              ['isVideo', true],
+                              ['filemoonWatchUrl', 'Pending (set after upload)'],
+                              ['filemoonDirectUrl', 'Pending (set after upload)'],
+                              ['udropWatchUrl', 'Pending (set after upload)'],
+                              ['udropDirectUrl', 'Pending (set after upload)'],
+                            ]
+                          : [
+                              ['pixvidUrl', 'Pending (set after upload)'],
+                              ['pixvidDeleteUrl', 'Pending (set after upload)'],
+                              ['imgbbUrl', 'Pending (set after upload)'],
+                              ['imgbbDeleteUrl', 'Pending (set after upload)'],
+                              ['imgbbThumbUrl', 'Pending (set after upload)'],
+                              ['sourceImageUrl', normalizedSourceUrl],
+                              ['sourcePageUrl', String(uploadPageUrl || 'N/A')],
+                              ['pageTitle', String(uploadImageData?.pageTitle || 'N/A')],
+                              ['fileName', String(uploadImageData?.fileName || 'N/A')],
+                              ['fileSize', uploadMetadata?.fileSize || uploadImageData?.file?.size || 'N/A'],
+                              ['width', uploadMetadata?.width ?? 'N/A'],
+                              ['height', uploadMetadata?.height ?? 'N/A'],
+                              ['fileType', uploadImageData?.fileType || uploadImageData?.file?.type || uploadMetadata?.fileType || 'N/A'],
+                              ['fileTypeSource', uploadMetadata?.fileTypeSource || 'N/A'],
+                              ['creationDate', uploadMetadata?.creationDate || 'N/A'],
+                              ['creationDateSource', uploadMetadata?.creationDateSource || 'N/A'],
+                              ['internalAddedTimestamp', 'Auto-generated on save'],
+                              ['tags', normalizedTags.length ? normalizedTags.join(', ') : '[]'],
+                              ['description', uploadDescription || ''],
+                              ['collectionId', selectedCollectionId || null],
+                            ];
+
+                        const noobKeys = new Set(noobsFields.map(([key]) => key));
+                        const nerdEntries = Object.entries(uploadMetadata || {})
+                          .filter(([key, value]) => !noobKeys.has(key) && value !== undefined && value !== null && value !== '')
+                          .sort(([a], [b]) => a.localeCompare(b));
+
+                        if (uploadModalMetaTab === 'nerds') {
+                          if (nerdEntries.length === 0) {
+                            return (
+                              <div className="rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 p-4 text-sm text-base-content/70">
+                                {`No extra metadata fields detected for this ${isVideoUpload ? 'video' : 'image'}.`}
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="space-y-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 p-4">
+                              {nerdEntries.map(([key, value], index) => (
+                                <div key={key}>
+                                  <label className="block text-xs font-medium text-base-content/60 mb-1">
+                                    {`${index + 1}. ${key}`}
+                                  </label>
+                                  <div className="px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-content/10 text-base-content text-xs break-all font-mono">
+                                    {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="space-y-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 p-4">
+                            <div className="text-sm font-medium text-base-content/80 mb-1">
+                              {`${isVideoUpload ? 'Video' : 'Image'} Fields To Save (${noobsFields.length})`}
+                            </div>
+                            {noobsFields.map(([key, value], index) => (
+                              <div key={key}>
+                                <label className="block text-xs font-medium text-base-content/60 mb-1">
+                                  {`${index + 1}. ${key}`}
+                                </label>
+                                <div className="px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-content/10 text-base-content text-xs break-all font-mono">
+                                  {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ) : (
                   <div className="space-y-4">
                   
                   {/* description */}
@@ -3195,9 +3302,9 @@ export default function GalleryPage() {
                       </label>
                       <div className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 
                                     text-base-content/75 font-mono text-xs break-all">
-                        {isLocalUpload || uploadPageUrl === 'Uploaded manually' 
-                          ? 'Uploaded manually' 
-                          : uploadImageData.srcUrl}
+                        {/^https?:\/\//i.test(String(uploadPageUrl || ''))
+                          ? uploadPageUrl
+                          : (uploadPageUrl === 'Uploaded manually' ? 'Uploaded manually' : uploadImageData.srcUrl)}
                       </div>
                     </div>
                   )}
@@ -3220,6 +3327,10 @@ export default function GalleryPage() {
                     
                     {/* Quality Tip for specific sites */}
                     {(() => {
+                      if (uploadImageData?.isVideo) {
+                        return null;
+                      }
+
                       const shouldShowWarning = isWarningSite(uploadPageUrl);
                       const shouldShowGoodQuality = isGoodQualitySite(uploadPageUrl);
                       
@@ -3301,16 +3412,69 @@ export default function GalleryPage() {
 
                   {/* Display ALL metadata fields that will be saved */}
                   {uploadMetadata && (() => {
+                    const isVideoUpload = Boolean(uploadImageData?.isVideo);
+                    const normalizedSourceUrl = /^https?:\/\//i.test(String(uploadPageUrl || ''))
+                      ? String(uploadPageUrl || '')
+                      : 'Uploaded manually';
+                    const normalizedTags = uploadTags
+                      .split(',')
+                      .map((t) => t.trim())
+                      .filter(Boolean);
+
+                    if (isVideoUpload) {
+                      const videoFields = [
+                        ['sourceImageUrl', normalizedSourceUrl],
+                        ['sourcePageUrl', String(uploadPageUrl || 'N/A')],
+                        ['pageTitle', String(uploadImageData?.pageTitle || 'N/A')],
+                        ['fileName', String(uploadImageData?.fileName || 'N/A')],
+                        ['fileSize', uploadMetadata?.fileSize || uploadImageData?.file?.size || 'N/A'],
+                        ['fileType', uploadImageData?.fileType || uploadImageData?.file?.type || uploadMetadata?.fileType || 'N/A'],
+                        ['fileTypeSource', uploadMetadata?.fileTypeSource || 'N/A'],
+                        ['creationDate', uploadMetadata?.creationDate || 'N/A'],
+                        ['creationDateSource', uploadMetadata?.creationDateSource || 'N/A'],
+                        ['internalAddedTimestamp', 'Auto-generated on save'],
+                        ['duration', uploadMetadata?.duration ?? 'N/A'],
+                        ['width', uploadMetadata?.width ?? 'N/A'],
+                        ['height', uploadMetadata?.height ?? 'N/A'],
+                        ['tags', normalizedTags.length ? normalizedTags.join(', ') : '[]'],
+                        ['description', uploadDescription || ''],
+                        ['collectionId', selectedCollectionId || null],
+                        ['isVideo', true],
+                        ['filemoonWatchUrl', 'Pending (set after upload)'],
+                        ['filemoonDirectUrl', 'Pending (set after upload)'],
+                        ['udropWatchUrl', 'Pending (set after upload)'],
+                        ['udropDirectUrl', 'Pending (set after upload)'],
+                      ];
+
+                      return (
+                        <div className="space-y-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 p-4">
+                          <div className="text-sm font-medium text-base-content/80 mb-1">
+                            Video Fields To Save (21)
+                          </div>
+                          {videoFields.map(([key, value], index) => (
+                            <div key={key}>
+                              <label className="block text-xs font-medium text-base-content/60 mb-1">
+                                {`${index + 1}. ${key}`}
+                              </label>
+                              <div className="px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-content/10 text-base-content text-xs break-all font-mono">
+                                {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    }
+
                     const allFields = {
                       'aHash': uploadMetadata.aHash || 'N/A',
-                      'Creation Date': uploadMetadata.creationDate 
+                      'Creation Date': uploadMetadata.creationDate
                         ? new Date(uploadMetadata.creationDate).toLocaleString()
                         : 'N/A',
                       'creationDateSource': uploadMetadata.creationDateSource || 'N/A',
                       'dHash': uploadMetadata.dHash || 'N/A',
                       'File Name': uploadImageData?.fileName || 'N/A',
-                      'File Size': uploadMetadata.fileSize 
-                        ? `${(uploadMetadata.fileSize / 1024).toFixed(2)} KB` 
+                      'File Size': uploadMetadata.fileSize
+                        ? `${(uploadMetadata.fileSize / 1024).toFixed(2)} KB`
                         : 'N/A',
                       'fileTypeSource': uploadMetadata.fileTypeSource || 'N/A',
                       'Height': uploadMetadata.height || 'N/A',
@@ -3320,12 +3484,11 @@ export default function GalleryPage() {
                       'Width': uploadMetadata.width || 'N/A',
                       ...(uploadMetadata.exifMetadata || {})
                     };
-                    
-                    // Sort fields alphabetically
-                    const sortedFields = Object.entries(allFields).sort(([keyA], [keyB]) => 
+
+                    const sortedFields = Object.entries(allFields).sort(([keyA], [keyB]) =>
                       keyA.localeCompare(keyB)
                     );
-                    
+
                     return (
                       <details className="space-y-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 p-4" open={false}>
                         <summary className="cursor-pointer list-none text-sm font-medium text-base-content/80 mb-3">
@@ -3345,6 +3508,7 @@ export default function GalleryPage() {
                     );
                   })()}
                 </div>
+                  )}
 
                 {/* Error Message */}
                 {uploadError && !duplicateData && (
@@ -3397,6 +3561,7 @@ export default function GalleryPage() {
                     onClick={() => {
                       setShowFolderPrompt(false);
                       setPendingDownloadFile(null);
+                      setPendingDownloadSourceUrl('');
                       showToast('❌ Auto-upload cancelled', 'error', 2000);
                     }}
                     className="flex-1"

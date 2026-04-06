@@ -16,6 +16,15 @@
 - upload status logging
 - native host messaging (`download`, `get_default_video_directory`, etc.)
 
+## YouTube Icon Detection Rule
+
+The action icon now switches to the supported-video icon only for direct video URL patterns:
+
+- `https://youtu.be/<id>`
+- `https://youtube.com/watch?v=<id>` (including `www.youtube.com` and `m.youtube.com`)
+
+Non-watch YouTube URLs (for example channel pages, home, playlists, or `/shorts/...`) no longer trigger the video icon.
+
 ## UDrop Direct URL Rule
 
 Use:
@@ -50,8 +59,16 @@ Important behavior:
 - Noobs tab: stable base fields for current media type + Firestore document id block
 - Nerds tab: all remaining fields from record, including technical metadata
 - Shared view: sensitive delete URLs are shown as `REDACTED` (not omitted)
+- Upload modal for videos now mirrors this split:
+  - `For Noobs`: numbered stable fields that will be saved
+  - `For Nerds`: extra detected metadata fields, shown only when present
+- The old `Total Firestore Fields` summary panel was removed from upload modal to avoid stale counts.
 
 ## Theme Rules
 
 - prefer theme tokens and DaisyUI variables (not hardcoded text/background colors)
 - radius should use `var(--radius-box)` for theme-driven corners
+
+## Notification Behavior
+
+- Toast/notification messages now wrap and stay within viewport bounds on long titles/messages.

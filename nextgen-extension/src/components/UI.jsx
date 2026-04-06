@@ -279,23 +279,26 @@ export const Toast = ({ message, type = 'info', onClose }) => {
   return (
     <div
       className={clsx(
-        'fixed bottom-4 right-4 z-50',
-        'px-6 py-4 rounded-[var(--radius-box)]',
+        'fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 z-50',
+        'w-auto sm:max-w-[min(42rem,calc(100vw-2rem))]',
+        'px-4 sm:px-6 py-4 rounded-[var(--radius-box)]',
         'animate-slide-in-bottom',
         'border border-base-content/10',
         config.bg,
         config.glow,
         'backdrop-blur-xl',
         'transform transition-all duration-300',
-        'hover:scale-105'
+        'hover:scale-[1.01]'
       )}
     >
-      <div className="flex items-center gap-3">
-        <span className="font-medium text-lg">{message}</span>
+      <div className="flex items-start gap-3 min-w-0">
+        <span className="font-medium text-sm sm:text-base leading-snug break-words whitespace-pre-wrap min-w-0 flex-1">
+          {message}
+        </span>
         {onClose && (
           <button
             onClick={onClose}
-            className="ml-2 opacity-80 hover:opacity-100 transition-all hover:rotate-90 transform duration-200"
+            className="ml-1 sm:ml-2 shrink-0 opacity-80 hover:opacity-100 transition-all hover:rotate-90 transform duration-200"
           >
             x
           </button>

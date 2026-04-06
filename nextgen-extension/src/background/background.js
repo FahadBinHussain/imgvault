@@ -52,11 +52,41 @@ class ImgVaultServiceWorker {
     try {
       const parsedUrl = new URL(url);
       const host = parsedUrl.hostname.toLowerCase();
-
-      return host === 'youtube.com' ||
+      const path = parsedUrl.pathname || '';
+      const isYouTubeHost =
+        host === 'youtube.com' ||
         host === 'www.youtube.com' ||
-        host === 'm.youtube.com' ||
-        host === 'youtu.be';
+        host === 'm.youtube.com';
+      const isFacebookHost =
+        host === 'facebook.com' ||
+        host === 'www.facebook.com' ||
+        host === 'm.facebook.com';
+
+      if (host === 'youtu.be') {
+        const videoId = parsedUrl.pathname.replace(/^\/+/, '').split('/')[0];
+        return Boolean(videoId);
+      }
+
+      if (isYouTubeHost) {
+        const isWatchPath = parsedUrl.pathname === '/watch';
+        const videoId = parsedUrl.searchParams.get('v') || '';
+        return isWatchPath && Boolean(videoId);
+      }
+
+      if (host === 'fb.watch') {
+        const shortId = path.replace(/^\/+/, '').split('/')[0];
+        return Boolean(shortId);
+      }
+
+      if (isFacebookHost) {
+        const watchVideoId = parsedUrl.searchParams.get('v') || '';
+        const isWatchPath = path === '/watch' || path === '/watch/';
+        const isReelPath = path.startsWith('/reel/');
+        const isVideosPath = path.includes('/videos/');
+        return (isWatchPath && Boolean(watchVideoId)) || isReelPath || isVideosPath;
+      }
+
+      return false;
     } catch (error) {
       return false;
     }

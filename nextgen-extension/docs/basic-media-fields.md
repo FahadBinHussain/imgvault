@@ -89,6 +89,8 @@ That means the current counted rows in `For Noobs` are:
 
 For images, the `pixvidUrl` and `imgbbUrl` rows are shown directly in `For Noobs`, and each row includes an inline download button.
 
+In the upload modal for videos, this same stable base-field model is shown as a numbered `Video Fields To Save` section under `For Noobs`.
+
 ### For Nerds
 
 The `For Nerds` tab currently shows:
@@ -99,3 +101,9 @@ The `For Nerds` tab currently shows:
 4. `dHash`
 
 After those fixed technical fields, the tab shows any remaining variable metadata fields from the full Firestore document that are not part of the stable base schema.
+
+In the upload modal, `For Nerds` is dynamic and only appears when extra metadata fields are detected. If none are detected, the UI shows that no extra metadata fields were found.
+
+## Upload Modal Note
+
+The old aggregate `Total Firestore Fields` panel was removed from the upload modal because it could become stale and confusing as save logic evolved.

@@ -257,7 +257,15 @@ This section captures important implementation changes made during recent UI and
   - This avoids silent field drops in metadata-heavy records.
 
 - Shared modal redaction behavior:
-  - Shared view keeps sensitive provider delete URLs visible as `REDACTED` instead of exposing raw values.
+- Shared view keeps sensitive provider delete URLs visible as `REDACTED` instead of exposing raw values.
+
+- Upload modal metadata UX:
+  - Video uploads now use `For Noobs` and `For Nerds` tabs like the detail modal.
+  - The stale `Total Firestore Fields` summary block was removed from the upload modal.
+  - Source URL fields in native video flow preserve real source links when available.
+
+- Toast notification overflow hardening:
+  - Long notification text now wraps and remains inside the viewport instead of overflowing.
   - Do not expose `imgbbDeleteUrl` / `pixvidDeleteUrl` in public share pages.
 
 - Firebase console deep link format:
