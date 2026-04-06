@@ -1948,14 +1948,25 @@ export default function GalleryPage() {
                       
                       {/* Render image or video thumbnail/embed */}
                     {getPreferredVideoWatchUrl(img) ? (
-                        <iframe
-                         src={getPreferredVideoWatchUrl(img)}
-                          className="w-full aspect-video object-cover pointer-events-none"
-                          frameBorder="0"
-                          scrolling="no"
-                          style={{ pointerEvents: 'none' }}
-                          onLoad={() => handleImageLoad(img.id)}
-                        />
+                        shouldRenderModalVideoPlayer(img) ? (
+                          <video
+                            src={getPreferredVideoDirectUrl(img)}
+                            className="w-full aspect-video object-cover pointer-events-none"
+                            muted
+                            playsInline
+                            preload="metadata"
+                            onLoadedData={() => handleImageLoad(img.id)}
+                          />
+                        ) : (
+                          <iframe
+                           src={getPreferredVideoWatchUrl(img)}
+                            className="w-full aspect-video object-cover pointer-events-none"
+                            frameBorder="0"
+                            scrolling="no"
+                            style={{ pointerEvents: 'none' }}
+                            onLoad={() => handleImageLoad(img.id)}
+                          />
+                        )
                       ) : (
                         <img
                           src={img.imgbbUrl || img.pixvidUrl}
