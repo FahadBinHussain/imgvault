@@ -13,7 +13,8 @@
     "scripting",
     "nativeMessaging",
     "cookies",
-    "downloads"
+    "downloads",
+    "notifications"
   ],
   
   "host_permissions": [

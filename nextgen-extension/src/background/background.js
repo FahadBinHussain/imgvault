@@ -11,6 +11,8 @@ import { PixvidUploader, ImgbbUploader, FilemoonUploader, UDropUploader } from '
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig.js';
 
 const NATIVE_DOWNLOAD_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+const TAB_NOT_FOCUSED_NOTIFICATION_ID = 'imgvault-native-tab-not-focused';
+const TAB_FOCUSED_NOTIFICATION_ID = 'imgvault-native-tab-focused';
 
 /**
  * @typedef {Object} ImageData
@@ -723,6 +725,77 @@ class ImgVaultServiceWorker {
     await chrome.storage.local.set({ uploadLogHistory: nextHistory });
   }
 
+  async isExtensionUiFocused() {
+    try {
+      const extensionOrigin = chrome.runtime.getURL('');
+      const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (!activeTab?.url?.startsWith(extensionOrigin)) {
+        return false;
+      }
+
+      const win = await chrome.windows.get(activeTab.windowId);
+      return Boolean(win?.focused);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async notifyTabNotFocused() {
+    if (!chrome.notifications?.create) return;
+    try {
+      await chrome.notifications.create(TAB_NOT_FOCUSED_NOTIFICATION_ID, {
+        type: 'basic',
+        iconUrl: 'icons/1.png',
+        title: 'ImgVault',
+        message: 'Tab not in focus. Auto-upload is paused and will resume when you focus the extension.',
+        priority: 2,
+        requireInteraction: true,
+      });
+    } catch (error) {
+      console.debug('Failed to show tab-not-focused notification:', error);
+    }
+  }
+
+  async notifyTabFocusedResuming() {
+    if (!chrome.notifications?.create) return;
+    try {
+      await chrome.notifications.clear(TAB_NOT_FOCUSED_NOTIFICATION_ID);
+      await chrome.notifications.create(TAB_FOCUSED_NOTIFICATION_ID, {
+        type: 'basic',
+        iconUrl: 'icons/1.png',
+        title: 'ImgVault',
+        message: 'Tab focused. Resuming auto-upload handoff.',
+        priority: 1,
+      });
+    } catch (error) {
+      console.debug('Failed to show tab-focused notification:', error);
+    }
+  }
+
+  async resumePendingAutoUploadOnFocus() {
+    try {
+      const { pendingAutoUpload } = await chrome.storage.local.get('pendingAutoUpload');
+      if (!pendingAutoUpload?.autoOpenUpload || !pendingAutoUpload?.pausedUntilFocus) {
+        return;
+      }
+
+      const focused = await this.isExtensionUiFocused();
+      if (!focused) {
+        return;
+      }
+
+      const nextPending = {
+        ...pendingAutoUpload,
+        pausedUntilFocus: false,
+        resumedAt: Date.now(),
+      };
+      await chrome.storage.local.set({ pendingAutoUpload: nextPending });
+      await this.notifyTabFocusedResuming();
+    } catch (error) {
+      console.debug('Failed to resume pending auto upload on focus:', error);
+    }
+  }
+
   async cancelActiveUpload() {
     if (!this.activeUploadController) {
       await chrome.storage.local.set({ uploadActive: false, uploadStatus: '' });
@@ -1263,7 +1336,27 @@ class ImgVaultServiceWorker {
           clearTimeout(timeout);
           
           if (response.success) {
-            resolve(response);
+            (async () => {
+              const focused = await this.isExtensionUiFocused();
+              const pendingAutoUpload = {
+                autoOpenUpload: true,
+                downloadFilePath: response.filePath || '',
+                downloadSourceUrl: url,
+                createdAt: Date.now(),
+                pausedUntilFocus: !focused,
+              };
+
+              await chrome.storage.local.set({ pendingAutoUpload });
+              if (!focused) {
+                await this.notifyTabNotFocused();
+              }
+            })()
+              .catch((error) => {
+                console.debug('Failed to persist pending auto upload state:', error);
+              })
+              .finally(() => {
+                resolve(response);
+              });
           } else {
             reject({
               message: response.message || 'Native host download failed',
@@ -1726,6 +1819,7 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   try {
     const tab = await chrome.tabs.get(tabId);
     await serviceWorker.updateActionIconForTab(tabId, tab.url || '');
+    await serviceWorker.resumePendingAutoUploadOnFocus();
   } catch (error) {
     console.debug('Failed to update action icon on tab activation:', error);
   }
@@ -1738,9 +1832,14 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
   try {
     await serviceWorker.updateActionIconForTab(tabId, changeInfo.url || tab.url || '');
+    await serviceWorker.resumePendingAutoUploadOnFocus();
   } catch (error) {
     console.debug('Failed to update action icon on tab update:', error);
   }
+});
+
+chrome.windows.onFocusChanged.addListener(async () => {
+  await serviceWorker.resumePendingAutoUploadOnFocus();
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
