@@ -352,10 +352,13 @@ fn download_video(url: &str, output_path: &str, cookies_data: Option<&[BrowserCo
     command
         .arg(url)
         .arg("--verbose")
+        .arg("-o")
+        .arg(output_path)
         .arg("-f")
         .arg("bestvideo+bestaudio/best")
         .arg("--merge-output-format")
         .arg("mkv")
+        .arg("--windows-filenames")
         .arg("--no-playlist")
         .arg("--progress")
         .arg("--newline")
@@ -565,10 +568,13 @@ fn download_video_with_progress(
     command
         .arg(url)
         .arg("--verbose")
+        .arg("-o")
+        .arg(output_path)
         .arg("-f")
         .arg("bestvideo+bestaudio/best")
         .arg("--merge-output-format")
         .arg("mkv")
+        .arg("--windows-filenames")
         .arg("--no-playlist")
         .arg("--progress")
         .arg("--newline")
@@ -621,10 +627,17 @@ fn download_video_with_progress(
     let stdout_tx = tx.clone();
     let stdout_handle = std::thread::spawn(move || {
         let mut collected = Vec::new();
-        let reader = BufReader::new(stdout_pipe);
-        for line_result in reader.lines() {
-            match line_result {
-                Ok(line) => {
+        let mut reader = BufReader::new(stdout_pipe);
+        let mut buffer = Vec::new();
+
+        loop {
+            buffer.clear();
+            match reader.read_until(b'\n', &mut buffer) {
+                Ok(0) => break,
+                Ok(_) => {
+                    let line = String::from_utf8_lossy(&buffer)
+                        .trim_end_matches(['\r', '\n'])
+                        .to_string();
                     if !line.trim().is_empty() {
                         let _ = stdout_tx.send(("stdout".to_string(), line.clone()));
                     }
@@ -636,15 +649,23 @@ fn download_video_with_progress(
                 }
             }
         }
+
         collected.join("\n")
     });
 
     let stderr_handle = std::thread::spawn(move || {
         let mut collected = Vec::new();
-        let reader = BufReader::new(stderr_pipe);
-        for line_result in reader.lines() {
-            match line_result {
-                Ok(line) => {
+        let mut reader = BufReader::new(stderr_pipe);
+        let mut buffer = Vec::new();
+
+        loop {
+            buffer.clear();
+            match reader.read_until(b'\n', &mut buffer) {
+                Ok(0) => break,
+                Ok(_) => {
+                    let line = String::from_utf8_lossy(&buffer)
+                        .trim_end_matches(['\r', '\n'])
+                        .to_string();
                     if !line.trim().is_empty() {
                         let _ = tx.send(("stderr".to_string(), line.clone()));
                     }
@@ -656,6 +677,7 @@ fn download_video_with_progress(
                 }
             }
         }
+
         collected.join("\n")
     });
 
@@ -722,6 +744,43 @@ fn download_video_with_progress(
             .filter(|part| !part.is_empty())
             .collect::<Vec<_>>()
             .join("\n");
+
+        let lower_combined = combined.to_lowercase();
+        let should_retry_with_short_title =
+            output_path.contains("%(title)s") &&
+            !output_path.contains("%(title).180B") &&
+            (lower_combined.contains("unable to open for writing") ||
+                lower_combined.contains("no such file or directory"));
+
+        if should_retry_with_short_title {
+            let fallback_output_path = output_path.replace("%(title)s", "%(title).180B");
+            let notice = NativeResponse {
+                success: true,
+                event: Some("progress".to_string()),
+                request_id: request_id.map(|value| value.to_string()),
+                message: None,
+                line: Some(format!(
+                    "[ImgVault] Retrying with shortened title template: {}",
+                    fallback_output_path
+                )),
+                stream: Some("stderr".to_string()),
+                file_path: None,
+                stdout: None,
+                stderr: None,
+            };
+
+            if let Err(error) = send_native_response(stdout, &notice) {
+                eprintln!("[NATIVE] Failed to send retry notice: {}", error);
+            }
+
+            return download_video_with_progress(
+                url,
+                &fallback_output_path,
+                cookies_data,
+                request_id,
+                stdout,
+            );
+        }
 
         Err(DownloadOutcome {
             message: if combined.is_empty() {

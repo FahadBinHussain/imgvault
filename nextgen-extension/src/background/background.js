@@ -1186,8 +1186,7 @@ class ImgVaultServiceWorker {
       const cookies = await this.getYouTubeCookiesForYtDlp();
 
       // Generate output path with timestamp
-      const timestamp = Date.now();
-      const outputPath = `${downloadFolder}\\yt-dlp-${timestamp}.%(ext)s`;
+      const outputPath = `${downloadFolder}\\%(title)s [%(id)s].%(ext)s`;
       
       console.log(`📁 [NATIVE] Download folder: ${downloadFolder}`);
       console.log(`📝 [NATIVE] Output path template: ${outputPath}`);

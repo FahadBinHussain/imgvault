@@ -115,8 +115,7 @@ function App() {
     addLog(`📥 Starting download: ${testUrl}`);
 
     try {
-      const timestamp = Date.now();
-      const outputPath = `C:\\Users\\Admin\\Downloads\\yt-dlp-test-${timestamp}.%(ext)s`;
+      const outputPath = 'C:\\Users\\Admin\\Downloads\\%(title)s [%(id)s].%(ext)s';
       
       addLog(`📂 Output template: ${outputPath}`);
       addLog(`⏳ Executing yt-dlp...`);

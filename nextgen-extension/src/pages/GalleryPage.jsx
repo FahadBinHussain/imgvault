@@ -105,28 +105,9 @@ export default function GalleryPage() {
       
       if (handle) {
         console.log('✅ [IDB] Directory handle retrieved from storage');
-        
-        // Try to verify/request permission
-        try {
-          if (typeof handle.queryPermission === 'function') {
-            const permission = await handle.queryPermission({ mode: 'read' });
-            console.log('🔐 [IDB] Current permission:', permission);
-            
-            if (permission === 'granted') {
-              console.log('✅ [IDB] Permission already granted');
-              return handle;
-            } else if (permission === 'prompt') {
-              console.log('[IDB] Saved handle needs picker confirmation');
-              return null;
-            }
-          } else {
-            console.log('⚠️ [IDB] queryPermission not supported, trying direct access');
-            // Browser doesn't support queryPermission, just return the handle and let file access fail if no permission
-            return handle;
-          }
-        } catch (permErr) {
-          console.log('⚠️ [IDB] Permission check failed:', permErr.message);
-        }
+        // Do not force permission checks here. They can require user gesture
+        // and would make us drop into picker every time.
+        return handle;
       }
       return null;
     } catch (err) {
@@ -330,6 +311,53 @@ export default function GalleryPage() {
     return defaultVideoSource === 'udrop'
       ? (item.udropWatchUrl || item.filemoonWatchUrl || '')
       : (item.filemoonWatchUrl || item.udropWatchUrl || '');
+  };
+
+  const getFileNameFromPath = (filePath = '') => {
+    const normalized = String(filePath || '').trim();
+    if (!normalized) return '';
+    const parts = normalized.split(/[\\/]/).filter(Boolean);
+    return parts[parts.length - 1] || '';
+  };
+
+  const extractMediaIdFromName = (name = '') => {
+    const text = String(name || '');
+    const match = text.match(/\[([^\]]+)\](?:\.[^.]+)?$/);
+    return match?.[1] || '';
+  };
+
+  const getFileFromDirectoryHandle = async (dirHandle, expectedFileName, sourcePathForFallback = '') => {
+    try {
+      const exactHandle = await dirHandle.getFileHandle(expectedFileName);
+      return await exactHandle.getFile();
+    } catch (exactErr) {
+      if (exactErr?.name !== 'NotFoundError') {
+        throw exactErr;
+      }
+    }
+
+    const mediaId =
+      extractMediaIdFromName(expectedFileName) ||
+      extractMediaIdFromName(getFileNameFromPath(sourcePathForFallback));
+
+    if (!mediaId) {
+      throw new DOMException('A requested file or directory could not be found at the time an operation was processed.', 'NotFoundError');
+    }
+
+    const matchingFiles = [];
+    for await (const [entryName, entryHandle] of dirHandle.entries()) {
+      if (entryHandle?.kind !== 'file') continue;
+      if (!entryName.includes(`[${mediaId}]`)) continue;
+      const file = await entryHandle.getFile();
+      matchingFiles.push(file);
+    }
+
+    if (matchingFiles.length === 0) {
+      throw new DOMException('A requested file or directory could not be found at the time an operation was processed.', 'NotFoundError');
+    }
+
+    matchingFiles.sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
+    return matchingFiles[0];
   };
   const getPreferredVideoDirectUrl = (item) => {
     if (!item) return '';
@@ -855,13 +883,12 @@ export default function GalleryPage() {
         return;
       }
       
-      // Extract filename from path
-      const fileName = pendingDownloadFile.split('\\').pop();
+      // Extract filename from path (supports both "\" and "/")
+      const fileName = getFileNameFromPath(pendingDownloadFile);
       const savedHandle = await getDirectoryHandle();
       if (savedHandle) {
         try {
-          const fileHandle = await savedHandle.getFileHandle(fileName);
-          const file = await fileHandle.getFile();
+          const file = await getFileFromDirectoryHandle(savedHandle, fileName, pendingDownloadFile);
           setShowFolderPrompt(false);
           setPendingDownloadFile(null);
           await processMediaFile(file, 'native-download://upload', 'Downloaded Video');
@@ -870,7 +897,34 @@ export default function GalleryPage() {
           showToast(`Loaded "${fileName}" from saved folder.`, 'success', 3000);
           return;
         } catch (savedHandleErr) {
-          await clearDirectoryHandle();
+          const errorName = savedHandleErr?.name || '';
+          if ((errorName === 'NotAllowedError' || errorName === 'SecurityError') && typeof savedHandle.requestPermission === 'function') {
+            try {
+              const permission = await savedHandle.requestPermission({ mode: 'read' });
+              if (permission === 'granted') {
+                const file = await getFileFromDirectoryHandle(savedHandle, fileName, pendingDownloadFile);
+                setShowFolderPrompt(false);
+                setPendingDownloadFile(null);
+                await processMediaFile(file, 'native-download://upload', 'Downloaded Video');
+                setIsLocalUpload(true);
+                setShowUploadModal(true);
+                showToast(`Loaded "${fileName}" from saved folder.`, 'success', 3000);
+                return;
+              }
+            } catch (permissionErr) {
+              console.log('⚠️ [AUTO-LOAD] Saved handle permission retry failed:', permissionErr.message);
+            }
+          }
+
+          // Keep the saved folder for transient misses (e.g. file not moved yet)
+          // and only clear when the handle itself is invalid/forbidden.
+          if (
+            errorName !== 'NotFoundError' &&
+            errorName !== 'NotAllowedError' &&
+            errorName !== 'SecurityError'
+          ) {
+            await clearDirectoryHandle();
+          }
         }
       }
       console.log('📁 [AUTO-LOAD] Extracted filename:', fileName);
@@ -900,8 +954,7 @@ export default function GalleryPage() {
       
       // Get the file
       console.log('📄 [AUTO-LOAD] Getting file handle for:', fileName);
-      const fileHandle = await dirHandle.getFileHandle(fileName);
-      const file = await fileHandle.getFile();
+      const file = await getFileFromDirectoryHandle(dirHandle, fileName, pendingDownloadFile);
       
       console.log('✅ [AUTO-LOAD] File loaded successfully:', file.name, file.size, 'bytes');
       
@@ -923,7 +976,7 @@ export default function GalleryPage() {
         showToast('❌ Folder selection cancelled.', 'error', 3000);
       } else if (err.name === 'NotFoundError') {
         console.log('⚠️ [AUTO-LOAD] File not found in selected folder');
-        const fileName = pendingDownloadFile.split('\\').pop();
+        const fileName = getFileNameFromPath(pendingDownloadFile);
         setShowFolderPrompt(false);
         setShowUploadModal(true);
         showToast(`⚠️ File "${fileName}" not found in selected folder. Please select it manually.`, 'warning', 5000);
@@ -1474,7 +1527,7 @@ export default function GalleryPage() {
         
         const loadDownloadedFile = async () => {
           try {
-            const fileName = location.state.downloadFilePath.split('\\').pop();
+            const fileName = getFileNameFromPath(location.state.downloadFilePath);
             console.log('� [AUTO-LOAD] Extracted filename:', fileName);
             
             // Try to get saved directory handle
@@ -1484,8 +1537,7 @@ export default function GalleryPage() {
               try {
                 console.log('✅ [AUTO-LOAD] Using saved directory handle');
                 // Try to access the file
-                const fileHandle = await dirHandle.getFileHandle(fileName);
-                const file = await fileHandle.getFile();
+                const file = await getFileFromDirectoryHandle(dirHandle, fileName, location.state.downloadFilePath);
                 
                 console.log('✅ [AUTO-LOAD] File loaded successfully:', file.name, file.size, 'bytes');
                 
@@ -1497,8 +1549,14 @@ export default function GalleryPage() {
                 return;
               } catch (fileErr) {
                 console.log('⚠️ [AUTO-LOAD] Failed to access file with saved handle:', fileErr.message);
-                // Clear the invalid handle
-                await clearDirectoryHandle();
+                const errorName = fileErr?.name || '';
+                if (errorName !== 'NotFoundError') {
+                  // Clear only invalid/forbidden handles, keep valid folder handles
+                  // when the downloaded file is simply not present yet.
+                  if (errorName !== 'NotAllowedError' && errorName !== 'SecurityError') {
+                    await clearDirectoryHandle();
+                  }
+                }
               }
             }
             
@@ -3316,7 +3374,7 @@ export default function GalleryPage() {
                   </p>
                   {pendingDownloadFile && (
                     <p className="mt-3 text-sm text-base-content/80 font-mono bg-base-200 p-2 rounded">
-                      {pendingDownloadFile.split('\\').pop()}
+                {getFileNameFromPath(pendingDownloadFile)}
                     </p>
                   )}
                 </div>
