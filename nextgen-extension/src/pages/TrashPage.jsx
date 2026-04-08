@@ -176,6 +176,7 @@ export default function TrashPage() {
       
       const deletePromises = Array.from(selectedImages).map(id => permanentlyDelete(id));
       await Promise.all(deletePromises);
+      setTimeout(() => showImgbbProviderNotice(), 300);
       
       showToast(`✅ ${selectedImages.size} item${selectedImages.size > 1 ? 's' : ''} permanently deleted!`, 'success', 3000);
       setSelectedImages(new Set());
@@ -193,6 +194,14 @@ export default function TrashPage() {
     if (duration > 0) {
       setTimeout(() => setToast(null), duration);
     }
+  };
+
+  const showImgbbProviderNotice = () => {
+    showToast(
+      'ImgBB note: if a delete URL does not work, this is usually an ImgBB-side issue. Item is still removed from trash.',
+      'warning',
+      6500
+    );
   };
 
   const handleRestore = async () => {
@@ -224,6 +233,7 @@ export default function TrashPage() {
     try {
       showToast('🔥 Permanently deleting from hosts and trash...', 'info', 0);
       await permanentlyDelete(selectedImage.id);
+      setTimeout(() => showImgbbProviderNotice(), 300);
       
       showToast('✅ Item permanently deleted!', 'success', 3000);
       setSelectedImage(null);
@@ -242,6 +252,7 @@ export default function TrashPage() {
     try {
       showToast('🔥 Emptying trash...', 'info', 0);
       const deletedCount = await emptyTrash();
+      setTimeout(() => showImgbbProviderNotice(), 300);
       
       showToast(`✅ Emptied trash! (${deletedCount} items deleted)`, 'success', 3000);
     } catch (error) {
