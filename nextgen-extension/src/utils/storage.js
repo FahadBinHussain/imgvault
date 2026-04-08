@@ -1062,6 +1062,14 @@ export class StorageManager {
       
       const pixvidDeleteUrl = fields.pixvidDeleteUrl?.stringValue;
       const imgbbDeleteUrl = fields.imgbbDeleteUrl?.stringValue;
+
+      if (imgbbDeleteUrl) {
+        try {
+          await this.deleteFromImgbb(imgbbDeleteUrl);
+        } catch (imgbbPrimaryDeleteError) {
+          console.warn('[PERMANENT DELETE] Primary ImgBB delete helper failed:', imgbbPrimaryDeleteError);
+        }
+      }
       
       // Delete from Pixvid if pixvidDeleteUrl exists
       if (pixvidDeleteUrl) {
@@ -1078,7 +1086,7 @@ export class StorageManager {
       }
       
       // Delete from ImgBB if imgbbDeleteUrl exists
-      if (imgbbDeleteUrl) {
+      if (false && imgbbDeleteUrl) {
         console.log('🌐 [PERMANENT DELETE] Deleting from ImgBB...');
         try {
           const deleteUrl = new URL(imgbbDeleteUrl);
@@ -1591,6 +1599,46 @@ export class StorageManager {
     return this.neonSql;
   }
 
+  async deleteFromImgbb(imgbbDeleteUrl) {
+    if (!imgbbDeleteUrl) return false;
+
+    // Official ImgBB deletion uses delete_url returned from upload response.
+    try {
+      const response = await fetch(imgbbDeleteUrl, {
+        method: 'GET',
+        redirect: 'follow',
+        cache: 'no-store',
+        credentials: 'omit'
+      });
+      if (!response.ok) {
+        throw new Error(`ImgBB delete URL returned ${response.status}`);
+      }
+      return true;
+    } catch (directError) {
+      console.warn('⚠️ [IMGBB] Direct delete URL failed, falling back:', directError);
+    }
+
+    // 2) Fallback: legacy JSON endpoints with extracted pathname/hash
+    try {
+      const deleteUrl = new URL(imgbbDeleteUrl);
+      const pathParts = deleteUrl.pathname.split('/').filter(Boolean);
+      if (pathParts.length >= 2) {
+        const imageId = pathParts[0];
+        const imageHash = pathParts[1];
+        try {
+          return await tryPostDelete('https://ibb.co/json', imageId, imageHash);
+        } catch (ibbError) {
+          console.warn('⚠️ [IMGBB] ibb.co/json fallback failed:', ibbError);
+        }
+        return await tryPostDelete('https://imgbb.com/json', imageId, imageHash);
+      }
+    } catch (parseError) {
+      console.warn('⚠️ [IMGBB] Could not parse delete URL:', parseError);
+    }
+
+    return false;
+  }
+
   generateDocId() {
     if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
     return `img_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -1844,10 +1892,13 @@ export class StorageManager {
     if (!current) return false;
     const pixvidDeleteUrl = current.pixvidDeleteUrl;
     const imgbbDeleteUrl = current.imgbbDeleteUrl;
+    if (imgbbDeleteUrl) {
+      try { await this.deleteFromImgbb(imgbbDeleteUrl); } catch {}
+    }
     if (pixvidDeleteUrl) {
       try { await fetch(pixvidDeleteUrl, { method: 'GET' }); } catch {}
     }
-    if (imgbbDeleteUrl) {
+    if (false && imgbbDeleteUrl) {
       try {
         const deleteUrl = new URL(imgbbDeleteUrl);
         const pathParts = deleteUrl.pathname.split('/').filter(p => p);
