@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Save, Check, Package } from 'lucide-react';
+import { Save, Check, Package, Download } from 'lucide-react';
 import { Button, Input, Textarea, Card } from '../components/UI';
 import { useChromeStorage } from '../hooks/useChromeExtension';
 import GalleryNavbar from '../components/GalleryNavbar';
@@ -18,6 +18,7 @@ export default function SettingsPage() {
   const [udropKey1, setUdropKey1] = useChromeStorage('udropKey1', '', 'sync');
   const [udropKey2, setUdropKey2] = useChromeStorage('udropKey2', '', 'sync');
   const [firebaseConfigRaw, setFirebaseConfigRaw] = useChromeStorage('firebaseConfigRaw', '', 'sync');
+  const [neonDatabaseUrl, setNeonDatabaseUrl] = useChromeStorage('neonDatabaseUrl', '', 'sync');
   const [defaultGallerySource, setDefaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
   const [defaultVideoSource, setDefaultVideoSource] = useChromeStorage('defaultVideoSource', 'filemoon', 'sync');
   const [downloadFolder, setDownloadFolder] = useChromeStorage('downloadFolder', '', 'sync');
@@ -28,11 +29,14 @@ export default function SettingsPage() {
   const [localUdropKey1, setLocalUdropKey1] = useState('');
   const [localUdropKey2, setLocalUdropKey2] = useState('');
   const [localFirebase, setLocalFirebase] = useState('');
+  const [localNeonDatabaseUrl, setLocalNeonDatabaseUrl] = useState('');
   const [localGallerySource, setLocalGallerySource] = useState('imgbb');
   const [localVideoSource, setLocalVideoSource] = useState('filemoon');
   const [localDownloadFolder, setLocalDownloadFolder] = useState('');
   const [saved, setSaved] = useState(false);
   const [firebaseStatus, setFirebaseStatus] = useState('');
+  const [exportingBackup, setExportingBackup] = useState(false);
+  const [backupStatus, setBackupStatus] = useState('');
   const [navbarHeight, setNavbarHeight] = useState(0);
 
   useEffect(() => {
@@ -42,10 +46,11 @@ export default function SettingsPage() {
     setLocalUdropKey1(udropKey1 || '');
     setLocalUdropKey2(udropKey2 || '');
     setLocalFirebase(firebaseConfigRaw || '');
+    setLocalNeonDatabaseUrl(neonDatabaseUrl || '');
     setLocalGallerySource(defaultGallerySource || 'imgbb');
     setLocalVideoSource(defaultVideoSource || 'filemoon');
     setLocalDownloadFolder(downloadFolder || '');
-  }, [pixvidApiKey, imgbbApiKey, filemoonApiKey, udropKey1, udropKey2, firebaseConfigRaw, defaultGallerySource, defaultVideoSource, downloadFolder]);
+  }, [pixvidApiKey, imgbbApiKey, filemoonApiKey, udropKey1, udropKey2, firebaseConfigRaw, neonDatabaseUrl, defaultGallerySource, defaultVideoSource, downloadFolder]);
 
   useEffect(() => {
     if ((downloadFolder || '').trim()) {
@@ -222,6 +227,7 @@ export default function SettingsPage() {
     setDefaultGallerySource(localGallerySource);
     setDefaultVideoSource(localVideoSource);
     setDownloadFolder(localDownloadFolder);
+    setNeonDatabaseUrl(localNeonDatabaseUrl.trim());
 
     // Also save to Firebase if configured
     try {
@@ -268,6 +274,45 @@ export default function SettingsPage() {
 
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
+  };
+
+  const handleExportFirestoreBackup = async () => {
+    setExportingBackup(true);
+    setBackupStatus('Preparing full Firestore backup...');
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'exportFirestoreBackup'
+      });
+
+      if (!response?.success || !response?.data) {
+        throw new Error(response?.error || 'Backup export failed');
+      }
+
+      const backupData = response.data;
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const fileName = `imgvault-firestore-backup-${timestamp}.json`;
+
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], {
+        type: 'application/json'
+      });
+      const objectUrl = URL.createObjectURL(blob);
+
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+
+      setBackupStatus(`Backup exported: ${fileName}`);
+    } catch (error) {
+      console.error('Firestore backup export failed:', error);
+      setBackupStatus(`Backup failed: ${error.message}`);
+    } finally {
+      setExportingBackup(false);
+    }
   };
 
   return (
@@ -443,6 +488,46 @@ export default function SettingsPage() {
                 <span className="text-base">💡</span>
                 <span>Get your Firebase config from the Firebase Console → Project Settings → General → Your apps</span>
               </p>
+            </div>
+
+            <div className="mt-5">
+              <label className="block text-sm font-medium text-base-content mb-2 flex items-center gap-2">
+                <span className="text-lg">🟢</span>
+                Neon Database URL (Optional)
+              </label>
+              <Input
+                type="password"
+                value={localNeonDatabaseUrl}
+                onChange={(e) => setLocalNeonDatabaseUrl(e.target.value)}
+                placeholder="postgresql://user:password@ep-xxxx.aws.neon.tech/dbname?sslmode=require"
+                className="font-mono text-sm shadow-lg"
+              />
+              <p className="mt-3 text-xs text-base-content/60 flex items-start gap-2">
+                <span className="text-base">💡</span>
+                <span>If this is filled, ImgVault will use Neon DB. If empty, it will use Firebase when Firebase config is set.</span>
+              </p>
+            </div>
+
+            <div className="mt-5 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/60 p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-base-content">Full Firestore Backup</p>
+                  <p className="text-xs text-base-content/65 mt-1">
+                    Exports all collections and nested subcollections into one local JSON file.
+                  </p>
+                </div>
+                <Button
+                  onClick={handleExportFirestoreBackup}
+                  disabled={exportingBackup}
+                  className="min-h-0 rounded-[var(--radius-box)] px-4 py-2.5 flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>{exportingBackup ? 'Exporting...' : 'Export Full Backup'}</span>
+                </Button>
+              </div>
+              {backupStatus && (
+                <p className="text-xs text-base-content/75 mt-3">{backupStatus}</p>
+              )}
             </div>
           </div>
 

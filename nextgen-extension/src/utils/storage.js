@@ -4,6 +4,8 @@
  * @version 2.0.0
  */
 
+import { neon } from '@neondatabase/serverless';
+
 /**
  * @typedef {Object} FirebaseConfig
  * @property {string} apiKey - Firebase API key
@@ -55,6 +57,10 @@ export class StorageManager {
     this.initialized = false;
     /** @type {string} */
     this.baseUrl = '';
+    /** @type {'firestore'|'neon'|null} */
+    this.backend = null;
+    /** @type {Function|null} */
+    this.neonSql = null;
   }
 
   /**
@@ -64,7 +70,15 @@ export class StorageManager {
   async init() {
     console.log('🔵 StorageManager.init() called');
     
-    const result = await chrome.storage.sync.get(['firebaseConfig']);
+    const result = await chrome.storage.sync.get(['firebaseConfig', 'neonDatabaseUrl']);
+    const neonDatabaseUrl = String(result.neonDatabaseUrl || '').trim();
+    if (neonDatabaseUrl) {
+      this.backend = 'neon';
+      this.neonSql = neon(neonDatabaseUrl);
+      this.initialized = true;
+      console.log('StorageManager initialized with backend: neon');
+      return true;
+    }
     console.log('🔵 Firebase config from storage:', result.firebaseConfig ? 'found' : 'not found');
     
     if (!result.firebaseConfig) {
@@ -72,6 +86,7 @@ export class StorageManager {
       return false;
     }
 
+    this.backend = 'firestore';
     this.config = result.firebaseConfig;
     this.baseUrl = `https://firestore.googleapis.com/v1/projects/${this.config.projectId}/databases/(default)/documents`;
     this.initialized = true;
@@ -89,7 +104,7 @@ export class StorageManager {
     if (!this.initialized) {
       const success = await this.init();
       if (!success) {
-        throw new Error('Firebase not configured. Please set up Firebase in settings.');
+        throw new Error('No database configured. Set Neon DB URL or Firebase config in settings.');
       }
     }
   }
@@ -149,6 +164,222 @@ export class StorageManager {
     } while (pageToken);
 
     return allDocuments;
+  }
+
+  /**
+   * Build Firestore API URL using absolute REST path suffix
+   * @private
+   * @param {string} suffix - Path suffix after /v1/
+   * @param {Object} [params]
+   * @returns {string}
+   */
+  buildApiUrl(suffix, params = {}) {
+    const cleanSuffix = String(suffix || '').replace(/^\/+/, '');
+    const url = new URL(`https://firestore.googleapis.com/v1/${cleanSuffix}`);
+    url.searchParams.set('key', this.config.apiKey);
+
+    Object.entries(params).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        value.forEach(v => url.searchParams.append(key, v));
+      } else if (value !== undefined && value !== null) {
+        url.searchParams.set(key, value);
+      }
+    });
+
+    return url.toString();
+  }
+
+  /**
+   * Extract Firestore document path from fully-qualified document name
+   * Example: projects/x/databases/(default)/documents/images/abc -> images/abc
+   * @private
+   * @param {string} fullName
+   * @returns {string}
+   */
+  extractDocPath(fullName = '') {
+    const marker = '/documents/';
+    const index = String(fullName).indexOf(marker);
+    if (index < 0) return '';
+    return String(fullName).slice(index + marker.length);
+  }
+
+  /**
+   * Convert Firestore Value to plain JS value (generic, type-safe for export)
+   * @private
+   * @param {Object} value
+   * @returns {*}
+   */
+  firestoreValueToJs(value = {}) {
+    if (Object.prototype.hasOwnProperty.call(value, 'nullValue')) return null;
+    if (Object.prototype.hasOwnProperty.call(value, 'stringValue')) return value.stringValue;
+    if (Object.prototype.hasOwnProperty.call(value, 'booleanValue')) return value.booleanValue;
+    if (Object.prototype.hasOwnProperty.call(value, 'integerValue')) return Number(value.integerValue);
+    if (Object.prototype.hasOwnProperty.call(value, 'doubleValue')) return value.doubleValue;
+    if (Object.prototype.hasOwnProperty.call(value, 'timestampValue')) return value.timestampValue;
+    if (Object.prototype.hasOwnProperty.call(value, 'referenceValue')) return value.referenceValue;
+    if (Object.prototype.hasOwnProperty.call(value, 'geoPointValue')) return value.geoPointValue;
+    if (Object.prototype.hasOwnProperty.call(value, 'bytesValue')) return value.bytesValue;
+
+    if (value.arrayValue) {
+      const items = value.arrayValue.values || [];
+      return items.map(item => this.firestoreValueToJs(item));
+    }
+
+    if (value.mapValue) {
+      const mapFields = value.mapValue.fields || {};
+      const out = {};
+      Object.entries(mapFields).forEach(([k, v]) => {
+        out[k] = this.firestoreValueToJs(v);
+      });
+      return out;
+    }
+
+    return null;
+  }
+
+  /**
+   * Convert Firestore "fields" object to plain JS object
+   * @private
+   * @param {Object} fields
+   * @returns {Object}
+   */
+  firestoreFieldsToJs(fields = {}) {
+    const out = {};
+    Object.entries(fields || {}).forEach(([key, value]) => {
+      out[key] = this.firestoreValueToJs(value);
+    });
+    return out;
+  }
+
+  /**
+   * List subcollection IDs for a document path (or root when empty)
+   * @private
+   * @param {string} [parentDocPath]
+   * @returns {Promise<string[]>}
+   */
+  async listCollectionIds(parentDocPath = '') {
+    const collectionIds = [];
+    let pageToken = null;
+
+    do {
+      const suffix = parentDocPath
+        ? `projects/${this.config.projectId}/databases/(default)/documents/${parentDocPath}:listCollectionIds`
+        : `projects/${this.config.projectId}/databases/(default)/documents:listCollectionIds`;
+
+      const url = this.buildApiUrl(suffix);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pageSize: 1000,
+          ...(pageToken ? { pageToken } : {})
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed listing collections for "${parentDocPath || '(root)'}": ${errorText}`);
+      }
+
+      const result = await response.json();
+      collectionIds.push(...(result.collectionIds || []));
+      pageToken = result.nextPageToken || null;
+    } while (pageToken);
+
+    return collectionIds;
+  }
+
+  /**
+   * Export one collection path recursively with all subcollections
+   * @private
+   * @param {string} collectionPath
+   * @returns {Promise<Object>}
+   */
+  async exportCollectionRecursive(collectionPath) {
+    const docs = await this.fetchAllDocuments(collectionPath);
+    const exportedDocs = [];
+
+    for (const doc of docs) {
+      const docPath = this.extractDocPath(doc.name);
+      const subcollections = {};
+
+      try {
+        const subCollectionIds = await this.listCollectionIds(docPath);
+        for (const subCollectionId of subCollectionIds) {
+          const childPath = `${docPath}/${subCollectionId}`;
+          subcollections[subCollectionId] = await this.exportCollectionRecursive(childPath);
+        }
+      } catch (error) {
+        subcollections.__error = error.message;
+      }
+
+      exportedDocs.push({
+        id: docPath.split('/').pop(),
+        name: doc.name,
+        path: docPath,
+        createTime: doc.createTime || null,
+        updateTime: doc.updateTime || null,
+        fieldsRaw: doc.fields || {},
+        data: this.firestoreFieldsToJs(doc.fields || {}),
+        subcollections
+      });
+    }
+
+    return {
+      path: collectionPath,
+      documentCount: exportedDocs.length,
+      documents: exportedDocs
+    };
+  }
+
+  /**
+   * Export full Firestore database (all root collections + nested subcollections)
+   * @returns {Promise<Object>}
+   */
+  async exportFullDatabase() {
+    await this.ensureInitialized();
+
+    if (this.backend === 'neon') {
+      const { firebaseConfig } = await chrome.storage.sync.get(['firebaseConfig']);
+      if (!firebaseConfig) {
+        throw new Error('Firebase config not set. Firestore backup requires Firebase config.');
+      }
+      this.config = firebaseConfig;
+      this.baseUrl = `https://firestore.googleapis.com/v1/projects/${this.config.projectId}/databases/(default)/documents`;
+    }
+
+    const startedAt = new Date().toISOString();
+    const errors = [];
+    let rootCollectionIds = [];
+
+    try {
+      rootCollectionIds = await this.listCollectionIds('');
+    } catch (error) {
+      // Fallback to known root collections if listCollectionIds is blocked by rules/permissions
+      errors.push(`Root collection discovery failed: ${error.message}`);
+      rootCollectionIds = ['images', 'trash', 'collections', 'userSettings'];
+    }
+
+    const collections = {};
+    for (const rootCollectionId of rootCollectionIds) {
+      try {
+        collections[rootCollectionId] = await this.exportCollectionRecursive(rootCollectionId);
+      } catch (error) {
+        errors.push(`Collection "${rootCollectionId}" export failed: ${error.message}`);
+      }
+    }
+
+    const finishedAt = new Date().toISOString();
+    return {
+      backupVersion: 1,
+      source: 'firestore',
+      projectId: this.config.projectId,
+      exportedAt: finishedAt,
+      startedAt,
+      rootCollectionsAttempted: rootCollectionIds,
+      collections,
+      errors
+    };
   }
 
   /**
@@ -270,6 +501,9 @@ export class StorageManager {
    */
   async saveImage(imageData) {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.saveImageNeon(imageData);
+    }
 
     try {
       // Log the data size before saving
@@ -333,6 +567,9 @@ export class StorageManager {
    */
   async getAllImagesForDuplicateCheck() {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.getAllImagesForDuplicateCheckNeon();
+    }
 
     try {
       console.log('🔍 [DUPLICATE CHECK] Fetching ALL image data (including hashes from active AND trash)...');
@@ -389,6 +626,9 @@ export class StorageManager {
    */
   async getAllImages() {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.getAllImagesNeon();
+    }
 
     try {
       console.log('📊 [OPTIMIZE] Fetching lightweight gallery data...');
@@ -447,6 +687,9 @@ export class StorageManager {
    */
   async getImageById(id) {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.getImageByIdNeon(id);
+    }
 
     try {
       console.log(`🔍 [LAZY LOAD] Fetching full details for image: ${id}`);
@@ -473,6 +716,9 @@ export class StorageManager {
 
   async hasSavedLinkByUrl(pageUrl) {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.hasSavedLinkByUrlNeon(pageUrl);
+    }
 
     const target = String(pageUrl || '').trim();
     if (!target) return false;
@@ -541,6 +787,9 @@ export class StorageManager {
    */
   async moveToTrash(id) {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.moveToTrashNeon(id);
+    }
 
     try {
       console.log('🗑️ [TRASH] Moving image to trash:', id);
@@ -611,6 +860,9 @@ export class StorageManager {
    */
   async getTrashedImages() {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.getTrashedImagesNeon();
+    }
 
     try {
       console.log('🗑️ [TRASH] Fetching trashed images...');
@@ -670,6 +922,9 @@ export class StorageManager {
    */
   async getTrashedImageById(id) {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.getTrashedImageByIdNeon(id);
+    }
 
     try {
       console.log(`🔍 [TRASH] Fetching full details for trashed image: ${id}`);
@@ -706,6 +961,9 @@ export class StorageManager {
    */
   async restoreFromTrash(trashId) {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.restoreFromTrashNeon(trashId);
+    }
 
     try {
       console.log('♻️ [RESTORE] Restoring image from trash:', trashId);
@@ -784,6 +1042,9 @@ export class StorageManager {
    */
   async permanentlyDelete(trashId) {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.permanentlyDeleteNeon(trashId);
+    }
 
     try {
       console.log('🔥 [PERMANENT DELETE] Starting permanent deletion for:', trashId);
@@ -875,6 +1136,9 @@ export class StorageManager {
    */
   async emptyTrash() {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.emptyTrashNeon();
+    }
 
     try {
       console.log('🔥 [EMPTY TRASH] Emptying all trash...');
@@ -920,6 +1184,9 @@ export class StorageManager {
    */
   async updateImage(id, updates) {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.updateImageNeon(id, updates);
+    }
 
     try {
       const fieldPaths = Object.keys(updates);
@@ -970,6 +1237,9 @@ export class StorageManager {
    */
   async saveUserSettings(settings) {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.saveUserSettingsNeon(settings);
+    }
 
     try {
       // Try to get existing document first
@@ -1049,6 +1319,9 @@ export class StorageManager {
    */
   async getUserSettings() {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.getUserSettingsNeon();
+    }
 
     try {
       const url = this.buildUrl('userSettings/config');
@@ -1090,6 +1363,9 @@ export class StorageManager {
    */
   async createCollection(collectionData) {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.createCollectionNeon(collectionData);
+    }
 
     try {
       const docId = `collection_${Date.now()}`;
@@ -1126,6 +1402,9 @@ export class StorageManager {
    */
   async getCollections() {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.getCollectionsNeon();
+    }
 
     try {
       const url = this.buildUrl('collections', { orderBy: 'name asc' });
@@ -1156,6 +1435,9 @@ export class StorageManager {
    */
   async updateCollection(collectionId, updates) {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.updateCollectionNeon(collectionId, updates);
+    }
 
     try {
       // First get the current collection to preserve all fields
@@ -1214,6 +1496,9 @@ export class StorageManager {
    */
   async deleteCollection(collectionId) {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.deleteCollectionNeon(collectionId);
+    }
 
     try {
       const url = this.buildUrl(`collections/${collectionId}`);
@@ -1240,6 +1525,9 @@ export class StorageManager {
    */
   async getImagesByCollection(collectionId) {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.getImagesByCollectionNeon(collectionId);
+    }
 
     try {
       // Note: Firestore REST API doesn't support complex queries like "where collectionId ==",
@@ -1263,6 +1551,9 @@ export class StorageManager {
    */
   async incrementCollectionCount(collectionId, delta) {
     await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.incrementCollectionCountNeon(collectionId, delta);
+    }
 
     try {
       // First, get the current collection data
@@ -1288,5 +1579,436 @@ export class StorageManager {
       console.error('Error updating collection count:', error);
       throw error;
     }
+  }
+
+  // ----------------------------
+  // Neon backend implementation
+  // ----------------------------
+  ensureNeonReady() {
+    if (!this.neonSql) {
+      throw new Error('Neon DB not configured.');
+    }
+    return this.neonSql;
+  }
+
+  generateDocId() {
+    if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+    return `img_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  toNeonMediaPayload(imageData = {}, existing = {}) {
+    const merged = { ...existing, ...imageData };
+    const isVideo = Boolean(merged.isVideo);
+    const isLink = Boolean(merged.isLink);
+    const kind = isLink ? 'link' : (isVideo ? 'video' : 'image');
+    const canonicalLink = this.canonicalizeLinkUrl(merged.linkUrl || merged.sourcePageUrl || '');
+
+    return {
+      kind,
+      isVideo,
+      isLink,
+      pageTitle: merged.pageTitle || '',
+      description: merged.description || '',
+      tags: Array.isArray(merged.tags) ? merged.tags : [],
+      collectionId: Object.prototype.hasOwnProperty.call(merged, 'collectionId') ? merged.collectionId : null,
+      internalAddedTimestamp: merged.internalAddedTimestamp || new Date().toISOString(),
+      sourceImageUrl: merged.sourceImageUrl || '',
+      sourcePageUrl: merged.sourcePageUrl || '',
+      fileName: merged.fileName || '',
+      fileSize: Number.isFinite(Number(merged.fileSize)) ? Number(merged.fileSize) : null,
+      width: Number.isFinite(Number(merged.width)) ? Number(merged.width) : null,
+      height: Number.isFinite(Number(merged.height)) ? Number(merged.height) : null,
+      duration: Number.isFinite(Number(merged.duration)) ? Number(merged.duration) : null,
+      fileType: merged.fileType || '',
+      fileTypeSource: merged.fileTypeSource || '',
+      creationDate: merged.creationDate || null,
+      creationDateSource: merged.creationDateSource || '',
+      sha256: merged.sha256 || '',
+      pHash: merged.pHash || '',
+      aHash: merged.aHash || '',
+      dHash: merged.dHash || '',
+      pixvidUrl: merged.pixvidUrl || '',
+      pixvidDeleteUrl: merged.pixvidDeleteUrl || '',
+      imgbbUrl: merged.imgbbUrl || '',
+      imgbbDeleteUrl: merged.imgbbDeleteUrl || '',
+      imgbbThumbUrl: merged.imgbbThumbUrl || '',
+      filemoonWatchUrl: merged.filemoonWatchUrl || '',
+      filemoonDirectUrl: merged.filemoonDirectUrl || '',
+      udropWatchUrl: merged.udropWatchUrl || '',
+      udropDirectUrl: merged.udropDirectUrl || '',
+      linkUrl: merged.linkUrl || '',
+      linkUrlCanonical: canonicalLink,
+      linkPreviewImageUrl: merged.linkPreviewImageUrl || '',
+      faviconUrl: merged.faviconUrl || '',
+      lastVisitedAt: merged.lastVisitedAt || null,
+      deletedAt: merged.deletedAt || null,
+      exifMetadata: merged.exifMetadata || null,
+      extraMetadata: merged,
+    };
+  }
+
+  fromNeonMediaRow(row = {}) {
+    const extra = row.extra_metadata && typeof row.extra_metadata === 'object' ? row.extra_metadata : {};
+    return {
+      ...extra,
+      id: row.id,
+      isVideo: row.is_video,
+      isLink: row.is_link,
+      pageTitle: row.page_title || extra.pageTitle || '',
+      description: row.description || extra.description || '',
+      tags: Array.isArray(row.tags) ? row.tags : (Array.isArray(extra.tags) ? extra.tags : []),
+      collectionId: row.collection_id ?? (Object.prototype.hasOwnProperty.call(extra, 'collectionId') ? extra.collectionId : null),
+      internalAddedTimestamp: row.internal_added_timestamp || extra.internalAddedTimestamp || '',
+      sourceImageUrl: row.source_image_url || extra.sourceImageUrl || '',
+      sourcePageUrl: row.source_page_url || extra.sourcePageUrl || '',
+      fileName: row.file_name || extra.fileName || '',
+      fileSize: row.file_size ?? extra.fileSize ?? null,
+      width: row.width ?? extra.width ?? null,
+      height: row.height ?? extra.height ?? null,
+      duration: row.duration ?? extra.duration ?? null,
+      fileType: row.file_type || extra.fileType || '',
+      fileTypeSource: row.file_type_source || extra.fileTypeSource || '',
+      creationDate: row.creation_date || extra.creationDate || null,
+      creationDateSource: row.creation_date_source || extra.creationDateSource || '',
+      sha256: row.sha256 || extra.sha256 || '',
+      pHash: row.p_hash || extra.pHash || '',
+      aHash: row.a_hash || extra.aHash || '',
+      dHash: row.d_hash || extra.dHash || '',
+      pixvidUrl: row.pixvid_url || extra.pixvidUrl || '',
+      pixvidDeleteUrl: row.pixvid_delete_url || extra.pixvidDeleteUrl || '',
+      imgbbUrl: row.imgbb_url || extra.imgbbUrl || '',
+      imgbbDeleteUrl: row.imgbb_delete_url || extra.imgbbDeleteUrl || '',
+      imgbbThumbUrl: row.imgbb_thumb_url || extra.imgbbThumbUrl || '',
+      filemoonWatchUrl: row.filemoon_watch_url || extra.filemoonWatchUrl || '',
+      filemoonDirectUrl: row.filemoon_direct_url || extra.filemoonDirectUrl || '',
+      udropWatchUrl: row.udrop_watch_url || extra.udropWatchUrl || '',
+      udropDirectUrl: row.udrop_direct_url || extra.udropDirectUrl || '',
+      linkUrl: row.link_url || extra.linkUrl || '',
+      linkPreviewImageUrl: row.link_preview_image_url || extra.linkPreviewImageUrl || '',
+      faviconUrl: row.favicon_url || extra.faviconUrl || '',
+      lastVisitedAt: row.last_visited_at || extra.lastVisitedAt || null,
+      exifMetadata: row.exif_metadata || extra.exifMetadata || null,
+      deletedAt: row.deleted_at || null,
+    };
+  }
+
+  async upsertMediaRowNeon(id, payload) {
+    const sql = this.ensureNeonReady();
+    const p = payload;
+    await sql`
+      insert into public.media_items (
+        id, kind, is_video, is_link, page_title, description, tags, collection_id,
+        internal_added_timestamp, source_image_url, source_page_url, file_name, file_size, width, height, duration,
+        file_type, file_type_source, creation_date, creation_date_source, sha256, p_hash, a_hash, d_hash,
+        pixvid_url, pixvid_delete_url, imgbb_url, imgbb_delete_url, imgbb_thumb_url,
+        filemoon_watch_url, filemoon_direct_url, udrop_watch_url, udrop_direct_url,
+        link_url, link_url_canonical, link_preview_image_url, favicon_url, last_visited_at,
+        deleted_at, exif_metadata, extra_metadata, updated_at
+      ) values (
+        ${id}, ${p.kind}, ${p.isVideo}, ${p.isLink}, ${p.pageTitle}, ${p.description}, ${JSON.stringify(p.tags)}::jsonb, ${p.collectionId},
+        ${p.internalAddedTimestamp}, ${p.sourceImageUrl}, ${p.sourcePageUrl}, ${p.fileName}, ${p.fileSize}, ${p.width}, ${p.height}, ${p.duration},
+        ${p.fileType}, ${p.fileTypeSource}, ${p.creationDate}, ${p.creationDateSource}, ${p.sha256}, ${p.pHash}, ${p.aHash}, ${p.dHash},
+        ${p.pixvidUrl}, ${p.pixvidDeleteUrl}, ${p.imgbbUrl}, ${p.imgbbDeleteUrl}, ${p.imgbbThumbUrl},
+        ${p.filemoonWatchUrl}, ${p.filemoonDirectUrl}, ${p.udropWatchUrl}, ${p.udropDirectUrl},
+        ${p.linkUrl}, ${p.linkUrlCanonical}, ${p.linkPreviewImageUrl}, ${p.faviconUrl}, ${p.lastVisitedAt},
+        ${p.deletedAt}, ${p.exifMetadata ? JSON.stringify(p.exifMetadata) : null}::jsonb, ${JSON.stringify(p.extraMetadata || {})}::jsonb, now()
+      )
+      on conflict (id) do update set
+        kind = excluded.kind,
+        is_video = excluded.is_video,
+        is_link = excluded.is_link,
+        page_title = excluded.page_title,
+        description = excluded.description,
+        tags = excluded.tags,
+        collection_id = excluded.collection_id,
+        internal_added_timestamp = excluded.internal_added_timestamp,
+        source_image_url = excluded.source_image_url,
+        source_page_url = excluded.source_page_url,
+        file_name = excluded.file_name,
+        file_size = excluded.file_size,
+        width = excluded.width,
+        height = excluded.height,
+        duration = excluded.duration,
+        file_type = excluded.file_type,
+        file_type_source = excluded.file_type_source,
+        creation_date = excluded.creation_date,
+        creation_date_source = excluded.creation_date_source,
+        sha256 = excluded.sha256,
+        p_hash = excluded.p_hash,
+        a_hash = excluded.a_hash,
+        d_hash = excluded.d_hash,
+        pixvid_url = excluded.pixvid_url,
+        pixvid_delete_url = excluded.pixvid_delete_url,
+        imgbb_url = excluded.imgbb_url,
+        imgbb_delete_url = excluded.imgbb_delete_url,
+        imgbb_thumb_url = excluded.imgbb_thumb_url,
+        filemoon_watch_url = excluded.filemoon_watch_url,
+        filemoon_direct_url = excluded.filemoon_direct_url,
+        udrop_watch_url = excluded.udrop_watch_url,
+        udrop_direct_url = excluded.udrop_direct_url,
+        link_url = excluded.link_url,
+        link_url_canonical = excluded.link_url_canonical,
+        link_preview_image_url = excluded.link_preview_image_url,
+        favicon_url = excluded.favicon_url,
+        last_visited_at = excluded.last_visited_at,
+        deleted_at = excluded.deleted_at,
+        exif_metadata = excluded.exif_metadata,
+        extra_metadata = excluded.extra_metadata,
+        updated_at = now()
+    `;
+  }
+
+  async saveImageNeon(imageData) {
+    const id = imageData.id || this.generateDocId();
+    const payload = this.toNeonMediaPayload(imageData);
+    await this.upsertMediaRowNeon(id, payload);
+    if (payload.collectionId) {
+      await this.incrementCollectionCountNeon(payload.collectionId, 1);
+    }
+    return id;
+  }
+
+  async getAllImagesNeon() {
+    const sql = this.ensureNeonReady();
+    const rows = await sql`select * from public.media_items where deleted_at is null order by internal_added_timestamp desc`;
+    return rows.map((r) => this.fromNeonMediaRow(r));
+  }
+
+  async getAllImagesForDuplicateCheckNeon() {
+    const sql = this.ensureNeonReady();
+    const rows = await sql`select * from public.media_items order by internal_added_timestamp desc`;
+    return rows.map((r) => {
+      const item = this.fromNeonMediaRow(r);
+      if (r.deleted_at) item._isTrash = true;
+      return item;
+    });
+  }
+
+  async getImageByIdNeon(id) {
+    const sql = this.ensureNeonReady();
+    const rows = await sql`select * from public.media_items where id = ${id} and deleted_at is null limit 1`;
+    if (!rows.length) return null;
+    return this.fromNeonMediaRow(rows[0]);
+  }
+
+  async getTrashedImageByIdNeon(id) {
+    const sql = this.ensureNeonReady();
+    const rows = await sql`select * from public.media_items where id = ${id} and deleted_at is not null limit 1`;
+    if (!rows.length) return null;
+    return { ...this.fromNeonMediaRow(rows[0]), _isTrash: true };
+  }
+
+  async hasSavedLinkByUrlNeon(pageUrl) {
+    const target = String(pageUrl || '').trim();
+    if (!target) return false;
+    const canonicalTarget = this.canonicalizeLinkUrl(target);
+    const sql = this.ensureNeonReady();
+    const rows = await sql`select link_url, source_page_url, link_url_canonical from public.media_items where is_link = true and deleted_at is null`;
+    return rows.some((row) => {
+      const a = this.canonicalizeLinkUrl(row.link_url || '');
+      const b = this.canonicalizeLinkUrl(row.source_page_url || '');
+      return a === canonicalTarget || b === canonicalTarget || row.link_url_canonical === canonicalTarget;
+    });
+  }
+
+  async moveToTrashNeon(id) {
+    const current = await this.getImageByIdNeon(id);
+    if (!current) return false;
+    const sql = this.ensureNeonReady();
+    await sql`update public.media_items set deleted_at = now(), updated_at = now() where id = ${id}`;
+    if (current.collectionId) {
+      await this.incrementCollectionCountNeon(current.collectionId, -1);
+    }
+    return true;
+  }
+
+  async getTrashedImagesNeon() {
+    const sql = this.ensureNeonReady();
+    const rows = await sql`select * from public.media_items where deleted_at is not null order by deleted_at desc`;
+    return rows.map((r) => ({ ...this.fromNeonMediaRow(r), _isTrash: true }));
+  }
+
+  async restoreFromTrashNeon(id) {
+    const current = await this.getTrashedImageByIdNeon(id);
+    if (!current) return false;
+    const sql = this.ensureNeonReady();
+    await sql`update public.media_items set deleted_at = null, updated_at = now() where id = ${id}`;
+    if (current.collectionId) {
+      await this.incrementCollectionCountNeon(current.collectionId, 1);
+    }
+    return true;
+  }
+
+  async permanentlyDeleteNeon(id) {
+    const current = await this.getTrashedImageByIdNeon(id);
+    if (!current) return false;
+    const pixvidDeleteUrl = current.pixvidDeleteUrl;
+    const imgbbDeleteUrl = current.imgbbDeleteUrl;
+    if (pixvidDeleteUrl) {
+      try { await fetch(pixvidDeleteUrl, { method: 'GET' }); } catch {}
+    }
+    if (imgbbDeleteUrl) {
+      try {
+        const deleteUrl = new URL(imgbbDeleteUrl);
+        const pathParts = deleteUrl.pathname.split('/').filter(p => p);
+        if (pathParts.length >= 2) {
+          const imageId = pathParts[0];
+          const imageHash = pathParts[1];
+          const formData = new FormData();
+          formData.append('pathname', `/${imageId}/${imageHash}`);
+          await fetch('https://imgbb.com/json', { method: 'POST', body: formData });
+        }
+      } catch {}
+    }
+    const sql = this.ensureNeonReady();
+    await sql`delete from public.media_items where id = ${id}`;
+    return true;
+  }
+
+  async emptyTrashNeon() {
+    const trashed = await this.getTrashedImagesNeon();
+    for (const item of trashed) {
+      await this.permanentlyDeleteNeon(item.id);
+    }
+    return trashed.length;
+  }
+
+  async updateImageNeon(id, updates) {
+    const sql = this.ensureNeonReady();
+    const rows = await sql`select * from public.media_items where id = ${id} limit 1`;
+    if (!rows.length) throw new Error('Image not found');
+    const existing = this.fromNeonMediaRow(rows[0]);
+    const payload = this.toNeonMediaPayload({ ...existing, ...updates });
+    await this.upsertMediaRowNeon(id, payload);
+    return true;
+  }
+
+  async saveUserSettingsNeon(settings) {
+    const current = await this.getUserSettingsNeon();
+    const merged = { ...(current || {}), ...settings };
+    const sql = this.ensureNeonReady();
+    await sql`
+      insert into public.settings (
+        id, pixvid_api_key, imgbb_api_key, filemoon_api_key, udrop_key1, udrop_key2,
+        default_gallery_source, default_video_source, updated_at
+      ) values (
+        'config', ${merged.pixvidApiKey || ''}, ${merged.imgbbApiKey || ''}, ${merged.filemoonApiKey || ''},
+        ${merged.udropKey1 || ''}, ${merged.udropKey2 || ''}, ${merged.defaultGallerySource || 'imgbb'},
+        ${merged.defaultVideoSource || 'filemoon'}, now()
+      )
+      on conflict (id) do update set
+        pixvid_api_key = excluded.pixvid_api_key,
+        imgbb_api_key = excluded.imgbb_api_key,
+        filemoon_api_key = excluded.filemoon_api_key,
+        udrop_key1 = excluded.udrop_key1,
+        udrop_key2 = excluded.udrop_key2,
+        default_gallery_source = excluded.default_gallery_source,
+        default_video_source = excluded.default_video_source,
+        updated_at = now()
+    `;
+    return true;
+  }
+
+  async getUserSettingsNeon() {
+    const sql = this.ensureNeonReady();
+    const rows = await sql`select * from public.settings where id = 'config' limit 1`;
+    if (!rows.length) return null;
+    const row = rows[0];
+    return {
+      pixvidApiKey: row.pixvid_api_key || '',
+      imgbbApiKey: row.imgbb_api_key || '',
+      filemoonApiKey: row.filemoon_api_key || '',
+      udropKey1: row.udrop_key1 || '',
+      udropKey2: row.udrop_key2 || '',
+      defaultGallerySource: row.default_gallery_source || 'imgbb',
+      defaultVideoSource: row.default_video_source || 'filemoon',
+      updatedAt: row.updated_at || ''
+    };
+  }
+
+  async createCollectionNeon(collectionData) {
+    const sql = this.ensureNeonReady();
+    const id = `collection_${Date.now()}`;
+    await sql`
+      insert into public.collections (id, name, description, color, image_count, created_at, updated_at)
+      values (${id}, ${collectionData.name}, ${collectionData.description || ''}, ${collectionData.color || ''}, 0, now(), now())
+    `;
+    return {
+      id,
+      name: collectionData.name,
+      description: collectionData.description || '',
+      color: collectionData.color || '',
+      imageCount: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  async getCollectionsNeon() {
+    const sql = this.ensureNeonReady();
+    const rows = await sql`select * from public.collections order by name asc`;
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name || '',
+      description: r.description || '',
+      color: r.color || '',
+      imageCount: Number(r.image_count || 0),
+      createdAt: r.created_at || '',
+      updatedAt: r.updated_at || '',
+    }));
+  }
+
+  async updateCollectionNeon(collectionId, updates) {
+    const sql = this.ensureNeonReady();
+    const rows = await sql`select * from public.collections where id = ${collectionId} limit 1`;
+    if (!rows.length) throw new Error('Collection not found');
+    const current = rows[0];
+    const merged = {
+      name: updates.name ?? current.name,
+      description: updates.description ?? current.description,
+      color: updates.color ?? current.color,
+      imageCount: updates.imageCount ?? current.image_count
+    };
+    await sql`
+      update public.collections
+      set name = ${merged.name}, description = ${merged.description}, color = ${merged.color},
+          image_count = ${Number(merged.imageCount || 0)}, updated_at = now()
+      where id = ${collectionId}
+    `;
+    return {
+      id: collectionId,
+      name: merged.name,
+      description: merged.description,
+      color: merged.color,
+      imageCount: Number(merged.imageCount || 0),
+      createdAt: current.created_at,
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  async deleteCollectionNeon(collectionId) {
+    const sql = this.ensureNeonReady();
+    await sql`delete from public.collections where id = ${collectionId}`;
+    await sql`update public.media_items set collection_id = null, updated_at = now() where collection_id = ${collectionId}`;
+    return true;
+  }
+
+  async getImagesByCollectionNeon(collectionId) {
+    const sql = this.ensureNeonReady();
+    const rows = await sql`
+      select * from public.media_items
+      where collection_id = ${collectionId} and deleted_at is null
+      order by internal_added_timestamp desc
+    `;
+    return rows.map((r) => this.fromNeonMediaRow(r));
+  }
+
+  async incrementCollectionCountNeon(collectionId, delta) {
+    const sql = this.ensureNeonReady();
+    await sql`
+      update public.collections
+      set image_count = greatest(0, image_count + ${Number(delta || 0)}), updated_at = now()
+      where id = ${collectionId}
+    `;
   }
 }
