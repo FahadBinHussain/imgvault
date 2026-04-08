@@ -668,6 +668,12 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'exportFirestoreBackup':
+        this.storage.exportFullDatabase()
+          .then(backup => sendResponse({ success: true, data: backup }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'getFilemoonThumbnail':
         this.getFilemoonThumbnail(request.filecode)
           .then(thumbnailUrl => sendResponse({ success: true, thumbnailUrl }))
