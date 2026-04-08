@@ -3,3 +3,5 @@
 *.log
 /backend/tmp/
 *.pem
+backup.json
+*.backup.json

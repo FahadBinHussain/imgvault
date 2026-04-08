@@ -8,6 +8,7 @@
     "build": "vite build && powershell -ExecutionPolicy Bypass -File ./postbuild.ps1",
     "preview": "vite preview",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "db:import:backup": "node ./scripts/import-firestore-backup-to-neon.mjs ./backup.json",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
