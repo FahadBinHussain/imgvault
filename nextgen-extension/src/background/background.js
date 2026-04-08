@@ -215,9 +215,13 @@ class ImgVaultServiceWorker {
 
   extractMetaImageFromHtml(html = '', baseUrl = '') {
     const patterns = [
-      /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]*content=["']([^"']+)["'][^>]*>/i,
-      /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]*content=["']([^"']+)["'][^>]*>/i,
-      /<meta[^>]+itemprop=["']image["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+      /<meta[^>]+property=["']og:image:secure_url["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+      /<meta[^>]+property=["']og:image:url["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+      /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+      /<meta[^>]+name=["']twitter:image:src["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+      /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+      /<meta[^>]+itemprop=["']image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+      /<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["'][^>]*>/i,
     ];
 
     for (const pattern of patterns) {
@@ -230,12 +234,115 @@ class ImgVaultServiceWorker {
         continue;
       }
     }
+
+    // Fallback: first meaningful image from HTML
+    const imgMatches = [...html.matchAll(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi)];
+    for (const m of imgMatches) {
+      const raw = String(m?.[1] || '').trim();
+      if (!raw) continue;
+      if (raw.startsWith('data:')) continue;
+      if (/sprite|icon|logo|avatar|emoji/i.test(raw)) continue;
+      try {
+        return new URL(raw, baseUrl).toString();
+      } catch (error) {
+        continue;
+      }
+    }
+
     return '';
   }
 
-  async fetchLinkPreviewImage(linkUrl = '') {
+  async getLinkPreviewFromTab(tabId, targetUrl = '') {
+    if (!tabId) return '';
+    try {
+      const [{ result }] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (url) => {
+          try {
+            const currentHref = window.location.href || '';
+            if (url && currentHref && url !== currentHref) {
+              // If link target differs from current page, this DOM may not match.
+              // Still continue because some menu actions use page URL.
+            }
+
+            const fromMeta = (selector, attr = 'content') => {
+              const el = document.querySelector(selector);
+              const v = el?.getAttribute(attr)?.trim();
+              return v || '';
+            };
+
+            const candidates = [
+              fromMeta('meta[property="og:image:secure_url"]'),
+              fromMeta('meta[property="og:image:url"]'),
+              fromMeta('meta[property="og:image"]'),
+              fromMeta('meta[name="twitter:image:src"]'),
+              fromMeta('meta[name="twitter:image"]'),
+              fromMeta('meta[itemprop="image"]'),
+              fromMeta('link[rel="image_src"]', 'href'),
+            ].filter(Boolean);
+
+            // JSON-LD image fallback
+            if (!candidates.length) {
+              const ldScripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
+              for (const s of ldScripts) {
+                try {
+                  const parsed = JSON.parse(s.textContent || '{}');
+                  const entries = Array.isArray(parsed) ? parsed : [parsed];
+                  for (const entry of entries) {
+                    const image = entry?.image;
+                    const imageUrl = Array.isArray(image) ? image[0] : image;
+                    if (typeof imageUrl === 'string' && imageUrl.trim()) {
+                      candidates.push(imageUrl.trim());
+                      break;
+                    }
+                  }
+                } catch {}
+                if (candidates.length) break;
+              }
+            }
+
+            if (candidates.length) {
+              const resolved = new URL(candidates[0], document.baseURI).toString();
+              return resolved;
+            }
+
+            // Last resort: biggest likely content image
+            const imgs = Array.from(document.images || []);
+            const ranked = imgs
+              .map((img) => ({
+                src: img.currentSrc || img.src || '',
+                area: (img.naturalWidth || img.width || 0) * (img.naturalHeight || img.height || 0),
+              }))
+              .filter((x) => x.src && !x.src.startsWith('data:') && x.area > 15000)
+              .sort((a, b) => b.area - a.area);
+
+            if (ranked.length) {
+              return new URL(ranked[0].src, document.baseURI).toString();
+            }
+
+            return '';
+          } catch (e) {
+            return '';
+          }
+        },
+        args: [targetUrl]
+      });
+
+      return String(result || '');
+    } catch (error) {
+      return '';
+    }
+  }
+
+  async fetchLinkPreviewImage(linkUrl = '', tabId = null) {
     const target = String(linkUrl || '').trim();
     if (!target) return '';
+
+    // Best source: page DOM directly (works on JS-rendered pages).
+    const tabPreview = await this.getLinkPreviewFromTab(tabId, target);
+    if (tabPreview) {
+      return tabPreview;
+    }
 
     try {
       const response = await fetch(target, { redirect: 'follow' });
@@ -269,7 +376,7 @@ class ImgVaultServiceWorker {
         faviconUrl = '';
       }
 
-      const previewImageUrl = await this.fetchLinkPreviewImage(targetUrl);
+      const previewImageUrl = await this.fetchLinkPreviewImage(targetUrl, tab?.id || null);
 
       const alreadySaved = await this.storage.hasSavedLinkByUrl(targetUrl);
       if (alreadySaved) {

@@ -39,6 +39,25 @@ export default function GalleryNavbar({
   const visibleCount = Number.isFinite(displayCount)
     ? displayCount
     : (Array.isArray(filteredImages) ? filteredImages.length : (Array.isArray(images) ? images.length : 0));
+  const itemsForBreakdown = Array.isArray(filteredImages)
+    ? filteredImages
+    : (Array.isArray(images) ? images : []);
+  const breakdown = itemsForBreakdown.reduce((acc, item) => {
+    if (item?.isLink) {
+      acc.links += 1;
+    } else if (item?.isVideo) {
+      acc.videos += 1;
+    } else {
+      acc.images += 1;
+    }
+    return acc;
+  }, { images: 0, videos: 0, links: 0 });
+  const breakdownParts = [
+    `${visibleCount} item${visibleCount !== 1 ? 's' : ''}`,
+    `${breakdown.images} image${breakdown.images !== 1 ? 's' : ''}`,
+    `${breakdown.videos} video${breakdown.videos !== 1 ? 's' : ''}`,
+    `${breakdown.links} link${breakdown.links !== 1 ? 's' : ''}`,
+  ];
   const pageTitle = collectionId && currentCollection
     ? currentCollection.name
     : isSettingsPage
@@ -58,7 +77,9 @@ export default function GalleryNavbar({
         ? 'Native host controls'
         : isLogsPage
           ? 'Upload and host history'
-        : `${visibleCount} ${isTrashPage ? 'item' : 'image'}${visibleCount !== 1 ? 's' : ''}`;
+        : isTrashPage
+          ? `${visibleCount} item${visibleCount !== 1 ? 's' : ''}`
+          : breakdownParts.join(' • ');
 
   useEffect(() => {
     if (!navRef.current || !onHeightChange) return;
