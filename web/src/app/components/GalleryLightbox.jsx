@@ -51,6 +51,32 @@ export default function GalleryLightbox({
     description: '',
     tags: '',
   })
+  const getItemKind = (item) => {
+    if (item?.isLink) return 'link'
+    if (item?.isVideo || item?.fileType?.startsWith?.('video/')) return 'video'
+    return 'image'
+  }
+  const getPreferredVideoWatchUrl = (item) => (
+    preferredVideoSource === 'udrop'
+      ? item?.udropWatchUrl || item?.filemoonWatchUrl || item?.udropUrl || item?.filemoonUrl || ''
+      : item?.filemoonWatchUrl || item?.udropWatchUrl || item?.filemoonUrl || item?.udropUrl || ''
+  )
+  const getPreferredVideoDirectUrl = (item) => (
+    preferredVideoSource === 'udrop'
+      ? item?.udropDirectUrl || item?.filemoonDirectUrl || ''
+      : item?.filemoonDirectUrl || item?.udropDirectUrl || ''
+  )
+  const getPreferredImageUrl = (item) => (
+    preferredProvider === 'pixvid'
+      ? item?.pixvidUrl || item?.imgbbUrl || item?.imgbbThumbUrl || item?.sourceImageUrl || ''
+      : item?.imgbbUrl || item?.imgbbThumbUrl || item?.pixvidUrl || item?.sourceImageUrl || ''
+  )
+  const getLinkPreviewImage = (item) => item?.linkPreviewImageUrl || getPreferredImageUrl(item) || ''
+  const toProxyMediaUrl = (url) => {
+    if (!url || typeof url !== 'string') return ''
+    if (!/^https?:\/\//i.test(url)) return url
+    return `/api/media?url=${encodeURIComponent(url)}`
+  }
 
   const baseImageFieldKeys = [
     'pixvidUrl',
@@ -98,8 +124,22 @@ export default function GalleryLightbox({
     'udropWatchUrl',
     'udropDirectUrl',
   ]
+  const baseLinkFieldKeys = [
+    'linkUrl',
+    'pageTitle',
+    'description',
+    'tags',
+    'collectionId',
+    'internalAddedTimestamp',
+    'faviconUrl',
+    'linkPreviewImageUrl',
+    'lastVisitedAt',
+    'isLink',
+  ]
 
+  const isSelectedLink = Boolean(image?.isLink || image?.linkUrl)
   const isSelectedVideo = Boolean(
+    !isSelectedLink && (
     image?.isVideo ||
     image?.fileType?.startsWith?.('video/') ||
     image?.duration ||
@@ -107,10 +147,13 @@ export default function GalleryLightbox({
     image?.udropWatchUrl ||
     image?.filemoonDirectUrl ||
     image?.udropDirectUrl
+    )
   )
 
   const omittedFieldSet = new Set(omittedFields)
-  const noobFields = isSelectedVideo ? baseVideoFieldKeys : baseImageFieldKeys
+  const noobFields = isSelectedLink
+    ? baseLinkFieldKeys
+    : (isSelectedVideo ? baseVideoFieldKeys : baseImageFieldKeys)
   const displayedNoobFields = noobFields.filter((field) => !omittedFieldSet.has(field))
   const editableNoobFields = new Set([
     'pageTitle',
@@ -122,10 +165,26 @@ export default function GalleryLightbox({
     'pixvidUrl',
     'imgbbUrl',
   ])
+  const nerdsExcludedKeys = new Set([
+    ...baseImageFieldKeys,
+    ...baseVideoFieldKeys,
+    ...baseLinkFieldKeys,
+    'kind',
+    'createdAt',
+    'updatedAt',
+    'deletedAt',
+    'linkUrlCanonical',
+    'extraMetadata',
+  ])
   const nerdFields = Object.keys(image || {})
     .filter((field) => field !== 'id')
-    .filter((field) => !noobFields.includes(field))
+    .filter((field) => !nerdsExcludedKeys.has(field))
     .filter((field) => !omittedFieldSet.has(field))
+    .filter((field) => {
+      const value = image?.[field]
+      if (value === false) return false
+      return value !== undefined && value !== null && value !== ''
+    })
     .sort((a, b) => a.localeCompare(b))
   const nerdVisibleFields = [...nerdFields].concat(
     redactedFields.filter((field) => !nerdFields.includes(field) && !omittedFieldSet.has(field))
@@ -192,7 +251,7 @@ export default function GalleryLightbox({
   const imageUrl = getPreferredImageUrl(image)
   const currentVideoWatchUrl = getPreferredVideoWatchUrl(image)
   const currentVideoDirectUrl = getPreferredVideoDirectUrl(image)
-  const currentLinkPreview = getLinkPreviewImage(image)
+  const currentLinkPreview = toProxyMediaUrl(getLinkPreviewImage(image))
   const mobileSheetClass = isInfoExpanded ? 'translate-y-0' : 'translate-y-full'
 
   useEffect(() => {
@@ -425,8 +484,8 @@ export default function GalleryLightbox({
 
   const previousImage = currentIndex > 0 ? images[currentIndex - 1] : null
   const nextImage = currentIndex < images.length - 1 ? images[currentIndex + 1] : null
-  const previousImageUrl = previousImage ? (getLinkPreviewImage(previousImage) || getPreferredImageUrl(previousImage)) : null
-  const nextImageUrl = nextImage ? (getLinkPreviewImage(nextImage) || getPreferredImageUrl(nextImage)) : null
+  const previousImageUrl = previousImage ? toProxyMediaUrl(getLinkPreviewImage(previousImage) || getPreferredImageUrl(previousImage)) : null
+  const nextImageUrl = nextImage ? toProxyMediaUrl(getLinkPreviewImage(nextImage) || getPreferredImageUrl(nextImage)) : null
   const markImageLoaded = (url) => {
     if (!url) return
     setLoadedImageUrls((prev) => (prev[url] ? prev : { ...prev, [url]: true }))
@@ -741,26 +800,3 @@ export default function GalleryLightbox({
     </div>
   )
 }
-
-
-  const getItemKind = (item) => {
-    if (item?.isLink) return 'link'
-    if (item?.isVideo || item?.fileType?.startsWith?.('video/')) return 'video'
-    return 'image'
-  }
-  const getPreferredVideoWatchUrl = (item) => (
-    preferredVideoSource === 'udrop'
-      ? item?.udropWatchUrl || item?.filemoonWatchUrl || item?.udropUrl || item?.filemoonUrl || ''
-      : item?.filemoonWatchUrl || item?.udropWatchUrl || item?.filemoonUrl || item?.udropUrl || ''
-  )
-  const getPreferredVideoDirectUrl = (item) => (
-    preferredVideoSource === 'udrop'
-      ? item?.udropDirectUrl || item?.filemoonDirectUrl || ''
-      : item?.filemoonDirectUrl || item?.udropDirectUrl || ''
-  )
-  const getPreferredImageUrl = (item) => (
-    preferredProvider === 'pixvid'
-      ? item?.pixvidUrl || item?.imgbbUrl || item?.imgbbThumbUrl || item?.sourceImageUrl || ''
-      : item?.imgbbUrl || item?.imgbbThumbUrl || item?.pixvidUrl || item?.sourceImageUrl || ''
-  )
-  const getLinkPreviewImage = (item) => item?.linkPreviewImageUrl || getPreferredImageUrl(item) || ''

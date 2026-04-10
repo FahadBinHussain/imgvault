@@ -5,6 +5,11 @@ import { db } from '@/db'
 import { users, accounts, sessions } from '@/db/schema'
 
 const authConfig = {
+  secret:
+    process.env.AUTH_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    (process.env.NODE_ENV === 'development' ? 'imgvault-dev-auth-secret-change-me' : undefined),
+  trustHost: true,
   adapter: db
     ? DrizzleAdapter(db, {
         usersTable: users,

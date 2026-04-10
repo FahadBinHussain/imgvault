@@ -74,6 +74,12 @@ function getLinkPreviewImage(item, preferredProvider = 'imgbb') {
   )
 }
 
+function toProxyMediaUrl(url) {
+  if (!url || typeof url !== 'string') return ''
+  if (!/^https?:\/\//i.test(url)) return url
+  return `/api/media?url=${encodeURIComponent(url)}`
+}
+
 // Skeleton Loader Component with Shimmer
 function SkeletonCard({ viewMode }) {
   return (
@@ -562,7 +568,7 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
   const imageUrl = getPreferredImageUrl(image, preferredProvider)
   const videoWatchUrl = getPreferredVideoWatchUrl(image, preferredVideoSource)
   const videoDirectUrl = getPreferredVideoDirectUrl(image, preferredVideoSource)
-  const linkPreviewImage = getLinkPreviewImage(image, preferredProvider)
+  const linkPreviewImage = toProxyMediaUrl(getLinkPreviewImage(image, preferredProvider))
 
   return (
     <div 
