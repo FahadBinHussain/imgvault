@@ -25,6 +25,7 @@ export default function GalleryLightbox({
   redactedFields = [],
   omittedFields = [],
   preferredProvider = 'imgbb',
+  preferredVideoSource = 'filemoon',
   firebaseProjectId = '',
 }) {
   const [isLoading, setIsLoading] = useState(true)
@@ -187,10 +188,11 @@ export default function GalleryLightbox({
     setEditValues(toEditValues(image))
   }
 
-  const imageUrl =
-    preferredProvider === 'pixvid'
-      ? image.pixvidUrl || image.imgbbUrl || image.imgbbThumbUrl || image.sourceImageUrl
-      : image.imgbbUrl || image.imgbbThumbUrl || image.pixvidUrl || image.sourceImageUrl
+  const currentKind = getItemKind(image)
+  const imageUrl = getPreferredImageUrl(image)
+  const currentVideoWatchUrl = getPreferredVideoWatchUrl(image)
+  const currentVideoDirectUrl = getPreferredVideoDirectUrl(image)
+  const currentLinkPreview = getLinkPreviewImage(image)
   const mobileSheetClass = isInfoExpanded ? 'translate-y-0' : 'translate-y-full'
 
   useEffect(() => {
@@ -423,16 +425,8 @@ export default function GalleryLightbox({
 
   const previousImage = currentIndex > 0 ? images[currentIndex - 1] : null
   const nextImage = currentIndex < images.length - 1 ? images[currentIndex + 1] : null
-  const previousImageUrl = previousImage
-    ? preferredProvider === 'pixvid'
-      ? previousImage.pixvidUrl || previousImage.imgbbUrl || previousImage.imgbbThumbUrl || previousImage.sourceImageUrl
-      : previousImage.imgbbUrl || previousImage.imgbbThumbUrl || previousImage.pixvidUrl || previousImage.sourceImageUrl
-    : null
-  const nextImageUrl = nextImage
-    ? preferredProvider === 'pixvid'
-      ? nextImage.pixvidUrl || nextImage.imgbbUrl || nextImage.imgbbThumbUrl || nextImage.sourceImageUrl
-      : nextImage.imgbbUrl || nextImage.imgbbThumbUrl || nextImage.pixvidUrl || nextImage.sourceImageUrl
-    : null
+  const previousImageUrl = previousImage ? (getLinkPreviewImage(previousImage) || getPreferredImageUrl(previousImage)) : null
+  const nextImageUrl = nextImage ? (getLinkPreviewImage(nextImage) || getPreferredImageUrl(nextImage)) : null
   const markImageLoaded = (url) => {
     if (!url) return
     setLoadedImageUrls((prev) => (prev[url] ? prev : { ...prev, [url]: true }))
@@ -528,16 +522,60 @@ export default function GalleryLightbox({
             )}
 
             <div className="w-full shrink-0 flex items-center justify-center px-1">
-              <img
-                src={imageUrl}
-                alt={image.pageTitle || 'Image'}
-                className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
-                onLoad={() => {
-                  markImageLoaded(imageUrl)
-                  setIsLoading(false)
-                }}
-                draggable="false"
-              />
+              {currentKind === 'video' ? (
+                currentVideoDirectUrl ? (
+                  <video
+                    src={currentVideoDirectUrl}
+                    controls
+                    className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+                    onLoadedData={() => {
+                      markImageLoaded(currentVideoDirectUrl)
+                      setIsLoading(false)
+                    }}
+                  />
+                ) : currentVideoWatchUrl ? (
+                  <iframe
+                    src={currentVideoWatchUrl}
+                    className={`w-full max-w-[960px] aspect-video rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+                    frameBorder="0"
+                    allow="autoplay; fullscreen; picture-in-picture"
+                    onLoad={() => setIsLoading(false)}
+                  />
+                ) : (
+                  <img
+                    src={imageUrl}
+                    alt={image.pageTitle || 'Video'}
+                    className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+                    onLoad={() => {
+                      markImageLoaded(imageUrl)
+                      setIsLoading(false)
+                    }}
+                    draggable="false"
+                  />
+                )
+              ) : currentKind === 'link' ? (
+                <img
+                  src={currentLinkPreview || imageUrl}
+                  alt={image.pageTitle || 'Link preview'}
+                  className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+                  onLoad={() => {
+                    markImageLoaded(currentLinkPreview || imageUrl)
+                    setIsLoading(false)
+                  }}
+                  draggable="false"
+                />
+              ) : (
+                <img
+                  src={imageUrl}
+                  alt={image.pageTitle || 'Image'}
+                  className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+                  onLoad={() => {
+                    markImageLoaded(imageUrl)
+                    setIsLoading(false)
+                  }}
+                  draggable="false"
+                />
+              )}
             </div>
 
             {nextImageUrl ? (
@@ -705,3 +743,24 @@ export default function GalleryLightbox({
 }
 
 
+  const getItemKind = (item) => {
+    if (item?.isLink) return 'link'
+    if (item?.isVideo || item?.fileType?.startsWith?.('video/')) return 'video'
+    return 'image'
+  }
+  const getPreferredVideoWatchUrl = (item) => (
+    preferredVideoSource === 'udrop'
+      ? item?.udropWatchUrl || item?.filemoonWatchUrl || item?.udropUrl || item?.filemoonUrl || ''
+      : item?.filemoonWatchUrl || item?.udropWatchUrl || item?.filemoonUrl || item?.udropUrl || ''
+  )
+  const getPreferredVideoDirectUrl = (item) => (
+    preferredVideoSource === 'udrop'
+      ? item?.udropDirectUrl || item?.filemoonDirectUrl || ''
+      : item?.filemoonDirectUrl || item?.udropDirectUrl || ''
+  )
+  const getPreferredImageUrl = (item) => (
+    preferredProvider === 'pixvid'
+      ? item?.pixvidUrl || item?.imgbbUrl || item?.imgbbThumbUrl || item?.sourceImageUrl || ''
+      : item?.imgbbUrl || item?.imgbbThumbUrl || item?.pixvidUrl || item?.sourceImageUrl || ''
+  )
+  const getLinkPreviewImage = (item) => item?.linkPreviewImageUrl || getPreferredImageUrl(item) || ''

@@ -3,7 +3,7 @@ import Providers from './providers'
 import Script from 'next/script'
 
 export const metadata = {
-  title: 'ImgVault Next-Gen | Save Images with Context',
+  title: 'ImgVault',
   description: 'Next-generation Chrome extension for saving images with context preservation and advanced duplicate detection. Modern, fast, and beautiful.',
   keywords: 'chrome extension, image saver, image vault, duplicate detection, pixvid, imgbb',
   authors: [{ name: 'ImgVault Team' }],
@@ -13,7 +13,7 @@ export const metadata = {
     apple: '/api/brand/icon?size=128',
   },
   openGraph: {
-    title: 'ImgVault Next-Gen',
+    title: 'ImgVault',
     description: 'Save images with context and advanced duplicate detection',
     type: 'website',
     images: ['/api/brand/icon?size=128'],

@@ -13,6 +13,7 @@ const defaultSettings = {
   udropKey1: '',
   udropKey2: '',
   defaultGallerySource: 'imgbb',
+  defaultVideoSource: 'filemoon',
   downloadFolder: 'C:\\Users\\Admin\\Videos',
 }
 
@@ -104,18 +105,12 @@ export default function SettingsPage() {
     setError('')
     setSuccess('')
 
-    if (!parsedConfig) {
-      setSaving(false)
-      setError('Please enter a valid Firebase config JSON object')
-      return
-    }
-
     try {
       const res = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          firebaseConfig: parsedConfig,
+          firebaseConfig: parsedConfig || {},
           settings,
         }),
       })
@@ -266,7 +261,8 @@ export default function SettingsPage() {
                 <h2 className="text-xl font-semibold">Gallery Preferences</h2>
               </div>
 
-              <div>
+              <div className="space-y-5">
+                <div>
                 <label className="block text-sm font-medium text-base-content/85 mb-2">Default Image Source</label>
                 <select
                   value={settings.defaultGallerySource}
@@ -276,6 +272,19 @@ export default function SettingsPage() {
                   <option value="imgbb">ImgBB (Original Quality)</option>
                   <option value="pixvid">Pixvid (Compressed Quality)</option>
                 </select>
+              </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-base-content/85 mb-2">Default Video Source</label>
+                  <select
+                    value={settings.defaultVideoSource}
+                    onChange={(e) => updateSetting('defaultVideoSource', e.target.value)}
+                    className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                  >
+                    <option value="filemoon">Filemoon</option>
+                    <option value="udrop">UDrop</option>
+                  </select>
+                </div>
               </div>
             </div>
 

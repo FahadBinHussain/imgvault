@@ -43,6 +43,37 @@ function getPreferredImageUrl(image, preferredProvider = 'imgbb') {
   return image.imgbbUrl || image.imgbbThumbUrl || image.pixvidUrl || image.sourceImageUrl || null
 }
 
+function getItemKind(item) {
+  if (item?.isLink) return 'link'
+  if (item?.isVideo || item?.fileType?.startsWith?.('video/')) return 'video'
+  return 'image'
+}
+
+function getPreferredVideoWatchUrl(item, preferredVideoSource = 'filemoon') {
+  if (!item) return ''
+  if (preferredVideoSource === 'udrop') {
+    return item.udropWatchUrl || item.filemoonWatchUrl || item.udropUrl || item.filemoonUrl || ''
+  }
+  return item.filemoonWatchUrl || item.udropWatchUrl || item.filemoonUrl || item.udropUrl || ''
+}
+
+function getPreferredVideoDirectUrl(item, preferredVideoSource = 'filemoon') {
+  if (!item) return ''
+  if (preferredVideoSource === 'udrop') {
+    return item.udropDirectUrl || item.filemoonDirectUrl || ''
+  }
+  return item.filemoonDirectUrl || item.udropDirectUrl || ''
+}
+
+function getLinkPreviewImage(item, preferredProvider = 'imgbb') {
+  return (
+    item?.linkPreviewImageUrl ||
+    getPreferredImageUrl(item, preferredProvider) ||
+    item?.sourceImageUrl ||
+    ''
+  )
+}
+
 // Skeleton Loader Component with Shimmer
 function SkeletonCard({ viewMode }) {
   return (
@@ -524,11 +555,14 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
 }
 
 // Image Card Component
-function ImageCard({ image, index, viewMode, onClick, className = '', preferredProvider = 'imgbb' }) {
+function ImageCard({ image, index, viewMode, onClick, className = '', preferredProvider = 'imgbb', preferredVideoSource = 'filemoon' }) {
   const [isLoaded, setIsLoaded] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
-  
+  const kind = getItemKind(image)
   const imageUrl = getPreferredImageUrl(image, preferredProvider)
+  const videoWatchUrl = getPreferredVideoWatchUrl(image, preferredVideoSource)
+  const videoDirectUrl = getPreferredVideoDirectUrl(image, preferredVideoSource)
+  const linkPreviewImage = getLinkPreviewImage(image, preferredProvider)
 
   return (
     <div 
@@ -547,7 +581,52 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
         className={`${viewMode === 'list' ? 'w-28 h-24 sm:w-40 sm:h-28 flex-shrink-0' : 'h-auto'} bg-base-100 relative overflow-hidden`}
         style={viewMode !== 'list' && !isLoaded ? { minHeight: '220px' } : undefined}
       >
-        {imageUrl ? (
+        {kind === 'link' ? (
+          linkPreviewImage ? (
+            <img
+              src={linkPreviewImage}
+              alt={image.pageTitle || 'Saved link'}
+              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+              onLoad={() => setIsLoaded(true)}
+              onError={() => setIsLoaded(true)}
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center">
+              <FileText className="w-12 h-12 text-base-content/55" />
+            </div>
+          )
+        ) : kind === 'video' ? (
+          videoDirectUrl ? (
+            <video
+              src={videoDirectUrl}
+              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+              muted
+              playsInline
+              preload="metadata"
+              onLoadedData={() => setIsLoaded(true)}
+            />
+          ) : videoWatchUrl ? (
+            <iframe
+              src={videoWatchUrl}
+              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+              frameBorder="0"
+              scrolling="no"
+              onLoad={() => setIsLoaded(true)}
+            />
+          ) : imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={image.pageTitle || 'Saved video'}
+              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+              onLoad={() => setIsLoaded(true)}
+              onError={() => setIsLoaded(true)}
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center">
+              <FileText className="w-12 h-12 text-base-content/55" />
+            </div>
+          )
+        ) : imageUrl ? (
           <>
             {!isLoaded && (
               <div className="absolute inset-0 bg-base-200/70">
@@ -568,6 +647,15 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
         ) : (
           <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center">
             <Image className="w-12 h-12 text-base-content/55" />
+          </div>
+        )}
+        {kind === 'video' && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="bg-black/45 rounded-full p-3">
+              <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
           </div>
         )}
         
@@ -676,6 +764,7 @@ export default function GalleryPage() {
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [shareStatus, setShareStatus] = useState('')
   const [preferredProvider, setPreferredProvider] = useState('imgbb')
+  const [preferredVideoSource, setPreferredVideoSource] = useState('filemoon')
   const [firebaseProjectId, setFirebaseProjectId] = useState('')
 
   useEffect(() => {
@@ -696,6 +785,7 @@ export default function GalleryPage() {
       setHasConfig(configured)
       setFirebaseProjectId(data?.config?.projectId || '')
       setPreferredProvider(data?.settings?.defaultGallerySource === 'pixvid' ? 'pixvid' : 'imgbb')
+      setPreferredVideoSource(data?.settings?.defaultVideoSource === 'udrop' ? 'udrop' : 'filemoon')
 
       if (!configured) {
         setImages([])
@@ -734,6 +824,12 @@ export default function GalleryPage() {
 
     return haystack.includes(q)
   })
+  const counts = filteredImages.reduce((acc, item) => {
+    const kind = getItemKind(item)
+    acc.total += 1
+    acc[kind] += 1
+    return acc
+  }, { total: 0, image: 0, video: 0, link: 0 })
 
   const handleImageClick = useCallback((image, index) => {
     setShareStatus('')
@@ -843,9 +939,9 @@ export default function GalleryPage() {
                   <span className="gradient-text">Gallery</span>
                 </h1>
                 <p className="text-base-content/65">
-                  {images.length > 0 
-                    ? `${images.length} image${images.length > 1 ? 's' : ''} saved`
-                    : 'Your saved images from across the web'}
+                  {counts.total > 0
+                    ? `${counts.total} total · ${counts.image} images · ${counts.video} videos · ${counts.link} links`
+                    : 'Your saved media from across the web'}
                 </p>
                 {images.length > 0 && (
                   <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-primary-500/20 bg-primary-500/10 px-3 py-1 text-xs font-medium text-primary-300">
@@ -922,6 +1018,7 @@ export default function GalleryPage() {
                             index={globalIndex}
                             viewMode={viewMode}
                             preferredProvider={preferredProvider}
+                            preferredVideoSource={preferredVideoSource}
                             onClick={() => handleImageClick(img, globalIndex)}
                           />
                         )
@@ -949,6 +1046,7 @@ export default function GalleryPage() {
                             index={globalIndex}
                             viewMode={viewMode}
                             preferredProvider={preferredProvider}
+                            preferredVideoSource={preferredVideoSource}
                             onClick={() => handleImageClick(img, globalIndex)}
                           />
                         )
@@ -974,6 +1072,7 @@ export default function GalleryPage() {
           onShare={handleShareImage}
           shareStatus={shareStatus}
           preferredProvider={preferredProvider}
+          preferredVideoSource={preferredVideoSource}
           firebaseProjectId={firebaseProjectId}
         />
       )}
