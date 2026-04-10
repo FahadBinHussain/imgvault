@@ -99,11 +99,13 @@ export default function SettingsPage() {
             resolve(result.firebaseConfig);
           });
         });
+        const hasNeon = Boolean((neonDatabaseUrl || '').trim());
 
-        if (!firebaseConfig) return;
+        if (!firebaseConfig && !hasNeon) return;
 
         setFirebaseStatus('🔄 Connecting to Firebase...');
 
+        setFirebaseStatus(hasNeon ? 'Connecting to Neon DB...' : 'Connecting to Firebase...');
         // Import StorageManager dynamically
         const { StorageManager } = await import('../utils/storage.js');
         const storageManager = new StorageManager();
@@ -165,11 +167,11 @@ export default function SettingsPage() {
       }
     };
 
-    // Only auto-load if Firebase config is set
-    if (firebaseConfigRaw) {
+    // Auto-load if any backend is configured
+    if (firebaseConfigRaw || (neonDatabaseUrl || '').trim()) {
       loadFromFirebase();
     }
-  }, [firebaseConfigRaw]); // Only re-run when Firebase config changes
+  }, [firebaseConfigRaw, neonDatabaseUrl]); // Re-run when backend config changes
 
   const handleSave = async () => {
     // Parse and validate Firebase config
@@ -218,6 +220,9 @@ export default function SettingsPage() {
       }
     }
 
+    const trimmedNeonUrl = localNeonDatabaseUrl.trim();
+    await chrome.storage.sync.set({ neonDatabaseUrl: trimmedNeonUrl });
+
     // Save other settings locally
     setPixvidApiKey(localPixvid);
     setImgbbApiKey(localImgbb);
@@ -227,7 +232,7 @@ export default function SettingsPage() {
     setDefaultGallerySource(localGallerySource);
     setDefaultVideoSource(localVideoSource);
     setDownloadFolder(localDownloadFolder);
-    setNeonDatabaseUrl(localNeonDatabaseUrl.trim());
+    setNeonDatabaseUrl(trimmedNeonUrl);
 
     // Also save to Firebase if configured
     try {
@@ -237,7 +242,7 @@ export default function SettingsPage() {
         });
       });
 
-      if (firebaseConfig && (localPixvid || localImgbb || localFilemoon || localUdropKey1 || localUdropKey2)) {
+      if ((trimmedNeonUrl || firebaseConfig) && (localPixvid || localImgbb || localFilemoon || localUdropKey1 || localUdropKey2)) {
         setFirebaseStatus('☁️ Syncing to Firebase...');
         
         const { StorageManager } = await import('../utils/storage.js');
