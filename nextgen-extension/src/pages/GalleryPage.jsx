@@ -1320,6 +1320,11 @@ export default function GalleryPage() {
         ? modalImage.tags.join(', ')
         : (Array.isArray(selectedImage?.tags) ? selectedImage.tags.join(', ') : '');
       setEditValues({ ...editValues, [field]: tagsValue });
+    } else if (field === 'creationDate' && currentValue) {
+      const date = new Date(currentValue);
+      const offset = date.getTimezoneOffset() * 60000;
+      const localDate = new Date(date.getTime() - offset);
+      setEditValues({ ...editValues, [field]: localDate.toISOString().slice(0, 16) });
     } else {
       setEditValues({ ...editValues, [field]: currentValue });
     }
@@ -1330,6 +1335,8 @@ export default function GalleryPage() {
       let value = editValues[field];
       if (field === 'tags') {
         value = value.split(',').map(t => t.trim()).filter(t => t);
+      } else if (field === 'creationDate' && value) {
+        value = new Date(value).toISOString();
       }
       
       // Handle collectionId change specially - need to update counts
@@ -2628,6 +2635,41 @@ export default function GalleryPage() {
                                   {formatBaseFieldValue(modalImage?.description)}
                                 </p>
                                 <Button variant="ghost" size="sm" onClick={() => startEditing('description')}>
+                                  Edit
+                                </Button>
+                              </div>
+                            )
+                          ) : key === 'creationDate' ? (
+                            editingField === 'creationDate' ? (
+                              <div className="space-y-3">
+                                <input
+                                  type="datetime-local"
+                                  value={editValues.creationDate ?? (modalImage?.creationDate ? (() => { const d = new Date(modalImage.creationDate); const offset = d.getTimezoneOffset() * 60000; return new Date(d.getTime() - offset).toISOString().slice(0, 16); })() : '')}
+                                  onChange={(e) => setEditValues({ ...editValues, creationDate: e.target.value })}
+                                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 text-base-content focus:outline-none focus:border-primary font-mono text-sm"
+                                />
+                                <div className="flex gap-2">
+                                  <Button size="sm" onClick={() => saveEdit('creationDate')}>
+                                    Save Date
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditingField(null);
+                                      setEditValues((prev) => ({ ...prev, creationDate: modalImage?.creationDate || '' }));
+                                    }}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-base-content font-mono text-sm">
+                                  {modalImage?.creationDate ? new Date(modalImage.creationDate).toLocaleString() : 'N/A'}
+                                </p>
+                                <Button variant="ghost" size="sm" onClick={() => startEditing('creationDate')}>
                                   Edit
                                 </Button>
                               </div>

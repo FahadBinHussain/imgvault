@@ -802,6 +802,12 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'updateTrashedImage':
+        this.storage.updateTrashedImage(request.data.id, request.data.updates)
+          .then(() => sendResponse({ success: true }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'extractMetadata':
         this.extractMetadataOnly(request.imageUrl, request.pageUrl, request.fileName, request.fileMimeType, request.fileLastModified)
           .then(metadata => sendResponse({ success: true, metadata }))

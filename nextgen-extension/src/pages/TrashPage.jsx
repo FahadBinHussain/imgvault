@@ -29,6 +29,8 @@ export default function TrashPage() {
   const [activeTab, setActiveTab] = useState('noobs'); // 'noobs' or 'nerds'
   const [fullImageDetails, setFullImageDetails] = useState(null);
   const [loadingNerdsTab, setLoadingNerdsTab] = useState(false);
+  const [editingCreationDate, setEditingCreationDate] = useState(false);
+  const [editedCreationDate, setEditedCreationDate] = useState('');
 
   // Selection mode state
   const [selectionMode, setSelectionMode] = useState(false);
@@ -263,12 +265,74 @@ export default function TrashPage() {
     }
   };
 
+  const handleSaveCreationDate = async () => {
+    if (!fullImageDetails || !selectedImage) return;
+
+    const newDate = new Date(editedCreationDate);
+    if (isNaN(newDate.getTime())) {
+      showToast('❌ Invalid date format', 'error', 3000);
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'updateTrashedImage',
+        data: {
+          id: fullImageDetails.id,
+          updates: { creationDate: newDate.toISOString() }
+        }
+      });
+
+      if (response.success) {
+        const updatedDetails = { ...fullImageDetails, creationDate: newDate.toISOString() };
+        setFullImageDetails(updatedDetails);
+        setEditingCreationDate(false);
+        showToast('✅ Creation date updated', 'success', 3000);
+      } else {
+        throw new Error(response.error || 'Failed to update');
+      }
+    } catch (error) {
+      console.error('Failed to update creation date:', error);
+      showToast(`❌ ${error.message || 'Failed to update'}`, 'error', 4000);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const startEditingCreationDate = () => {
+    if (fullImageDetails?.creationDate) {
+      const date = new Date(fullImageDetails.creationDate);
+      const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+      setEditedCreationDate(localDate.toISOString().slice(0, 16));
+      setEditingCreationDate(true);
+    }
+  };
+
+  const cancelEditingCreationDate = () => {
+    setEditingCreationDate(false);
+    setEditedCreationDate('');
+  };
+
   const getImageUrl = (image, useFullSize = false) => {
     // For modal/detail view, use full size. For grid thumbnails, use thumb
     if (useFullSize) {
       return image.filemoonUrl || image.udropUrl || image.imgbbUrl || image.pixvidUrl || image.sourceImageUrl;
     }
     return image.imgbbThumbUrl || image.imgbbUrl || image.pixvidUrl || image.sourceImageUrl;
+  };
+
+  const isVideoItem = (image) => {
+    return Boolean(
+      image.isVideo ||
+      (typeof image.fileType === 'string' && image.fileType.startsWith('video/')) ||
+      image.filemoonUrl ||
+      image.udropUrl
+    );
+  };
+
+  const isLinkItem = (image) => {
+    return Boolean(image.isLink);
   };
 
   const formatDate = (dateString) => {
@@ -556,7 +620,7 @@ export default function TrashPage() {
                     )}
                     
                     {/* Loading skeleton with shimmer - only for non-video items */}
-                    {!loadedImages.has(image.id) && !image.filemoonUrl && (
+                    {!loadedImages.has(image.id) && !image.filemoonUrl && !isLinkItem(image) && (
                       <div className="absolute inset-0 bg-base-300 overflow-hidden">
                         <div className="absolute inset-0 shimmer"></div>
                       </div>
@@ -579,6 +643,27 @@ export default function TrashPage() {
                         style={{ pointerEvents: 'none' }}
                         onLoadedMetadata={() => handleImageLoad(image.id)}
                       />
+                    ) : isLinkItem(image) ? (
+                      <div className="w-full aspect-square bg-base-200 flex flex-col items-center justify-center gap-3">
+                        {image.linkPreviewImageUrl || image.imgbbUrl || image.pixvidUrl ? (
+                          <img
+                            src={image.linkPreviewImageUrl || image.imgbbUrl || image.pixvidUrl}
+                            alt={image.pageTitle || 'Link preview'}
+                            onLoad={() => handleImageLoad(image.id)}
+                            className={`w-full h-full object-cover transition-all duration-700 ease-out
+                                     group-hover:scale-110
+                                     ${loadedImages.has(image.id) 
+                                       ? 'opacity-100' 
+                                       : 'opacity-0'}`}
+                            loading="lazy"
+                          />
+                        ) : (
+                          <>
+                            <Link2 className="w-12 h-12 text-base-content/40" />
+                            <span className="text-xs text-base-content/50">Link</span>
+                          </>
+                        )}
+                      </div>
                     ) : (
                       <img
                         src={image.imgbbUrl || image.pixvidUrl}
@@ -668,6 +753,34 @@ export default function TrashPage() {
                     controls
                     className="w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10"
                   />
+                ) : isLinkItem(selectedImage) ? (
+                  <div className="w-full max-w-2xl rounded-[var(--radius-box)] shadow-2xl bg-base-100 overflow-hidden relative z-10">
+                    {(selectedImage.linkPreviewImageUrl || selectedImage.imgbbUrl || selectedImage.pixvidUrl) ? (
+                      <img
+                        src={selectedImage.linkPreviewImageUrl || selectedImage.imgbbUrl || selectedImage.pixvidUrl}
+                        alt={selectedImage.pageTitle || 'Link preview'}
+                        className="w-full h-auto max-h-[60vh] object-cover"
+                      />
+                    ) : (
+                      <div className="w-64 h-64 flex flex-col items-center justify-center gap-3 mx-auto">
+                        <Link2 className="w-16 h-16 text-base-content/40" />
+                        <span className="text-sm text-base-content/50">No preview available</span>
+                      </div>
+                    )}
+                    {selectedImage.linkUrl && (
+                      <div className="p-4 border-t border-base-content/10">
+                        <a
+                          href={selectedImage.linkUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 text-base-content hover:text-info transition-colors"
+                        >
+                          <Link2 className="w-5 h-5 flex-shrink-0" />
+                          <span className="font-medium truncate">{selectedImage.pageTitle || selectedImage.linkUrl}</span>
+                        </a>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <img
                     src={getImageUrl(selectedImage, true)}
@@ -830,8 +943,8 @@ export default function TrashPage() {
                           </div>
                         </div>
 
-                        {/* Pixvid URL - Only show for images (not videos) */}
-                        {selectedImage.pixvidUrl && !selectedImage.filemoonUrl && !selectedImage.udropUrl && (
+                        {/* Pixvid URL - Only show for images (not videos or links) */}
+                        {selectedImage.pixvidUrl && !selectedImage.filemoonUrl && !selectedImage.udropUrl && !isLinkItem(selectedImage) && (
                           <div>
                             <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Pixvid URL</div>
                             <div className="bg-base-200 rounded p-2">
@@ -847,7 +960,7 @@ export default function TrashPage() {
                           </div>
                         )}
 
-                        {selectedImage.imgbbUrl && (
+                        {selectedImage.imgbbUrl && !isLinkItem(selectedImage) && (
                           <div>
                             <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} ImgBB URL</div>
                             <div className="bg-base-200 rounded p-2">
@@ -891,6 +1004,34 @@ export default function TrashPage() {
                               >
                                 {selectedImage.udropUrl}
                               </a>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Link-specific fields */}
+                        {isLinkItem(selectedImage) && selectedImage.linkUrl && (
+                          <div>
+                            <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Link URL</div>
+                            <div className="bg-base-200 rounded p-2">
+                              <a
+                                href={selectedImage.linkUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-info hover:opacity-80 break-all text-sm flex items-center gap-2"
+                              >
+                                <Link2 className="w-4 h-4 flex-shrink-0" />
+                                {selectedImage.linkUrl}
+                              </a>
+                            </div>
+                          </div>
+                        )}
+
+                        {isLinkItem(selectedImage) && selectedImage.faviconUrl && (
+                          <div>
+                            <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Favicon</div>
+                            <div className="bg-base-200 rounded p-2 flex items-center gap-2">
+                              <img src={selectedImage.faviconUrl} alt="" className="w-4 h-4" onError={(e) => e.target.style.display = 'none'} />
+                              <span className="text-base-content text-sm truncate">{selectedImage.faviconUrl}</span>
                             </div>
                           </div>
                         )}
@@ -1051,12 +1192,48 @@ export default function TrashPage() {
                               <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                                 <Calendar className="w-3.5 h-3.5" />
                                 Creation Date
+                                {!editingCreationDate && (
+                                  <button
+                                    onClick={startEditingCreationDate}
+                                    className="ml-auto text-info hover:text-info-content text-xs px-2 py-0.5 rounded bg-info/20 hover:bg-info/30 transition-colors"
+                                    title="Edit"
+                                  >
+                                    Edit
+                                  </button>
+                                )}
                               </div>
-                              <div className="bg-base-200 rounded p-2">
-                                <p className="text-base-content font-mono text-sm">
-                                  {new Date(fullImageDetails.creationDate).toLocaleString()}
-                                </p>
-                              </div>
+                              {editingCreationDate ? (
+                                <div className="bg-base-200 rounded p-2 space-y-2">
+                                  <input
+                                    type="datetime-local"
+                                    value={editedCreationDate}
+                                    onChange={(e) => setEditedCreationDate(e.target.value)}
+                                    className="w-full bg-base-100 text-base-content font-mono text-sm px-2 py-1 rounded border border-base-content/30 focus:border-info focus:outline-none"
+                                  />
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={handleSaveCreationDate}
+                                      disabled={isProcessing}
+                                      className="px-3 py-1 text-xs rounded bg-success/20 text-success hover:bg-success/30 transition-colors disabled:opacity-50"
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      onClick={cancelEditingCreationDate}
+                                      disabled={isProcessing}
+                                      className="px-3 py-1 text-xs rounded bg-base-content/20 text-base-content hover:bg-base-content/30 transition-colors disabled:opacity-50"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="bg-base-200 rounded p-2">
+                                  <p className="text-base-content font-mono text-sm">
+                                    {new Date(fullImageDetails.creationDate).toLocaleString()}
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           )}
 
