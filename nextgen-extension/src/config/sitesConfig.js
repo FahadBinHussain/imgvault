@@ -16,7 +16,6 @@ export const sitesConfig = {
   ],
   goodQualitySites: [
     { url: 'facebook.com', displayName: 'Facebook' },
-    { url: 'slideshare.net', displayName: 'SlideShare' },
     { url: 'flickr.com', displayName: 'Flickr' },
     { url: 'wallpapercave.com', displayName: 'Wallpaper Cave' },
     { url: 'jngsainui.free.fr', displayName: 'JNGSainui' },

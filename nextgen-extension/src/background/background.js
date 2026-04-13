@@ -14,6 +14,29 @@ const NATIVE_DOWNLOAD_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 const TAB_NOT_FOCUSED_NOTIFICATION_ID = 'imgvault-native-tab-not-focused';
 const TAB_FOCUSED_NOTIFICATION_ID = 'imgvault-native-tab-focused';
 
+// Helper function to sanitize data for Neon database
+function sanitizeForNeon(data) {
+  if (typeof data === 'string') {
+    // Remove all Unicode characters that might cause issues
+    return data
+      .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '') // Control chars, zero-width chars
+      .replace(/[\uD800-\uDFFF]/g, '') // Surrogate pairs
+      .replace(/[\uFFF0-\uFFFF]/g, '') // Special Unicode
+      .substring(0, 1000); // Limit length
+  }
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeForNeon(item));
+  }
+  if (typeof data === 'object' && data !== null) {
+    const sanitized = {};
+    for (const [key, value] of Object.entries(data)) {
+      sanitized[key] = sanitizeForNeon(value);
+    }
+    return sanitized;
+  }
+  return data;
+}
+
 /**
  * @typedef {Object} ImageData
  * @property {string} imageUrl - The image URL or data URL
@@ -141,7 +164,7 @@ class ImgVaultServiceWorker {
       await this.storage.init();
       await this.setupDeclarativeNetRules();
       this.initialized = true;
-      console.log('✅ ImgVault Service Worker initialized');
+      // console.log('✅ ImgVault Service Worker initialized');
     } catch (error) {
       console.error('❌ Failed to initialize storage or rules:', error);
     }
@@ -173,7 +196,7 @@ class ImgVaultServiceWorker {
         removeRuleIds: [1],
         addRules: [pximgRule]
       });
-      console.log('✅ DeclarativeNetRequest rules updated for Pixiv');
+      // console.log('✅ DeclarativeNetRequest rules updated for Pixiv');
     } catch (e) {
       console.error('❌ Failed to update DNR rules:', e);
     }
@@ -191,28 +214,13 @@ class ImgVaultServiceWorker {
         contexts: ['image']
       }, () => {
         if (chrome.runtime.lastError) {
-          console.log('Context menu creation:', chrome.runtime.lastError.message);
+          // console.log('Context menu creation:', chrome.runtime.lastError.message);
         } else {
-          console.log('✅ Context menu created successfully');
+          // console.log('✅ Context menu created successfully');
         }
       });
       
-      // Add menu item for background images (rajce.idnes.cz and similar sites)
-      chrome.contextMenus.create({
-        id: 'saveBackgroundToImgVault',
-        title: 'Save Background Image to ImgVault',
-        contexts: ['all'],
-        documentUrlPatterns: [
-          '*://*.rajce.idnes.cz/*',
-          '*://*.flickr.com/*'
-        ]
-      }, () => {
-        if (chrome.runtime.lastError) {
-          console.log('Background context menu creation:', chrome.runtime.lastError.message);
-        } else {
-          console.log('✅ Background context menu created successfully');
-        }
-      });
+
 
       chrome.contextMenus.create({
         id: 'saveLinkToImgVault',
@@ -220,9 +228,9 @@ class ImgVaultServiceWorker {
         contexts: ['page', 'link']
       }, () => {
         if (chrome.runtime.lastError) {
-          console.log('Save link context menu creation:', chrome.runtime.lastError.message);
+          // console.log('Save link context menu creation:', chrome.runtime.lastError.message);
         } else {
-          console.log('✅ Save link context menu created successfully');
+          // console.log('✅ Save link context menu created successfully');
         }
       });
 
@@ -238,9 +246,9 @@ class ImgVaultServiceWorker {
         ]
       }, () => {
         if (chrome.runtime.lastError) {
-          console.log('YouTube frame context menu creation:', chrome.runtime.lastError.message);
+          // console.log('YouTube frame context menu creation:', chrome.runtime.lastError.message);
         } else {
-          console.log('✅ YouTube frame context menu created successfully');
+          // console.log('✅ YouTube frame context menu created successfully');
         }
       });
     });
@@ -442,56 +450,59 @@ class ImgVaultServiceWorker {
     }
 
     if (info.menuItemId === 'saveToImgVault') {
-      console.log('🎯 Context menu clicked!');
-      console.log('📸 info.srcUrl:', info.srcUrl);
-      console.log('📍 Page URL:', info.pageUrl || tab.url);
-      
+      // console.log('🎯 Context menu clicked!');
+      // console.log('📸 info.srcUrl:', info.srcUrl);
+      // console.log('📍 Page URL:', info.pageUrl || tab.url);
+
       const pageUrl = info.pageUrl || tab.url;
       let isWarning = isWarningSite(pageUrl);
       const warningSite = getSiteDisplayName(pageUrl, sitesConfig.warningSites);
       const isGood = isGoodQualitySite(pageUrl);
       const goodSite = getSiteDisplayName(pageUrl, sitesConfig.goodQualitySites);
-      
+
+      // Sanitize all string data to avoid Unicode issues
+      const sanitizeString = (str) => (str || '').replace(/[\u200B-\u200D\uFEFF]/g, '').substring(0, 500);
+
       const pendingData = {
-        srcUrl: info.srcUrl,
-        originalSourceUrl: info.srcUrl,
-        pageUrl,
-        pageTitle: tab.title,
+        srcUrl: sanitizeString(info.srcUrl),
+        originalSourceUrl: sanitizeString(info.srcUrl),
+        pageUrl: sanitizeString(pageUrl),
+        pageTitle: sanitizeString(tab.title),
         timestamp: Date.now(),
         isWarningSite: isWarning,
         warningSiteName: warningSite,
         isGoodQualitySite: isGood,
         goodQualitySiteName: goodSite
       };
-      
-      console.log('💾 Storing pending image data:', pendingData);
-      
+
+      // console.log('💾 Storing pending image data:', pendingData);
+
       await chrome.storage.local.set({
         pendingImage: pendingData
       });
-      
-      console.log('✅ Pending image stored!');
+
+      // console.log('✅ Pending image stored!');
       
       // Open the gallery page instead of popup
       chrome.tabs.create({
         url: chrome.runtime.getURL('index.html')
       });
     } else if (info.menuItemId === 'saveBackgroundToImgVault') {
-      console.log('🎯 Background image context menu clicked!');
-      
+      // console.log('🎯 Background image context menu clicked!');
+
       // Try to get the image URL from storage (set by content script on right-click)
       const storageData = await chrome.storage.local.get(['lastRightClickImageUrl', 'lastRightClickTimestamp']);
-      
+
       let imageUrl = null;
-      
+
       // Check if we have a recent right-click image (within 2 seconds)
-      if (storageData.lastRightClickImageUrl && 
-          storageData.lastRightClickTimestamp && 
+      if (storageData.lastRightClickImageUrl &&
+          storageData.lastRightClickTimestamp &&
           Date.now() - storageData.lastRightClickTimestamp < 2000) {
         imageUrl = storageData.lastRightClickImageUrl;
-        console.log('🎨 Using stored right-click image URL:', imageUrl);
+        // console.log('🎨 Using stored right-click image URL:', imageUrl);
       }
-      
+
       // If no stored URL, try content script
       if (!imageUrl) {
         try {
@@ -500,53 +511,53 @@ class ImgVaultServiceWorker {
             x: info.x || 0,
             y: info.y || 0
           });
-          
+
           if (response && response.imageUrl) {
             imageUrl = response.imageUrl;
-            console.log('🎨 Got image from content script:', imageUrl);
+            // console.log('🎨 Got image from content script:', imageUrl);
           }
         } catch (error) {
-          console.log('⚠️ Content script not responding:', error.message);
+          // console.log('⚠️ Content script not responding:', error.message);
         }
       }
-      
+
       // If still no URL, try inline script as fallback
       if (!imageUrl) {
-        console.log('⚠️ No stored URL, using inline script fallback...');
+        // console.log('⚠️ No stored URL, using inline script fallback...');
         try {
           const results = await chrome.scripting.executeScript({
             target: { tabId: tab.id },
             func: () => {
               // Try to find elements with background images
               const elements = document.querySelectorAll('[data-cover-image-url-set], [style*="background-image"]');
-              
+
               for (const el of elements) {
                 const coverImageUrlSet = el.getAttribute('data-cover-image-url-set');
                 if (coverImageUrlSet) {
                   const urls = coverImageUrlSet.split(',').map(s => s.trim().split(' ')[0]);
                   return urls[0];
                 }
-                
+
                 const style = el.getAttribute('style');
                 if (style && style.includes('background-image')) {
                   const match = style.match(/background-image:\s*url\(['"]?(.+?)['"]?\)/);
                   if (match) return match[1];
                 }
               }
-              
+
               return null;
             }
           });
-          
+
           if (results && results[0] && results[0].result) {
             imageUrl = results[0].result;
-            console.log('🎨 Found image with inline script:', imageUrl);
+            // console.log('🎨 Found image with inline script:', imageUrl);
           }
         } catch (error) {
-          console.error('❌ Inline script failed:', error);
+          // console.error('❌ Inline script failed:', error);
         }
       }
-      
+
       if (imageUrl) {
         const pageUrl = info.pageUrl || tab.url;
         const isWarning = isWarningSite(pageUrl);
@@ -554,10 +565,13 @@ class ImgVaultServiceWorker {
         const isGood = isGoodQualitySite(pageUrl);
         const goodSite = getSiteDisplayName(pageUrl, sitesConfig.goodQualitySites);
 
+        // Sanitize all string data to avoid Unicode issues
+        const sanitizeString = (str) => (str || '').replace(/[\u200B-\u200D\uFEFF]/g, '').substring(0, 500);
+
         const pendingData = {
-          srcUrl: imageUrl,
-          pageUrl,
-          pageTitle: tab.title,
+          srcUrl: sanitizeString(imageUrl),
+          pageUrl: sanitizeString(pageUrl),
+          pageTitle: sanitizeString(tab.title),
           timestamp: Date.now(),
           isBackgroundImage: true,
           isWarningSite: isWarning,
@@ -565,26 +579,26 @@ class ImgVaultServiceWorker {
           isGoodQualitySite: isGood,
           goodQualitySiteName: goodSite
         };
-        
-        console.log('💾 Storing background image data:', pendingData);
-        
+
+        // console.log('💾 Storing background image data:', pendingData);
+
         await chrome.storage.local.set({
           pendingImage: pendingData
         });
-        
+
         // Clear the stored right-click URL
         await chrome.storage.local.remove(['lastRightClickImageUrl', 'lastRightClickTimestamp']);
-        
-        console.log('✅ Background image stored!');
-        
+
+        // console.log('✅ Background image stored!');
+
         chrome.tabs.create({
           url: chrome.runtime.getURL('index.html')
         });
       } else {
-        console.log('❌ No background image found');
+        // console.log('❌ No background image found');
       }
     } else if (info.menuItemId === 'saveYouTubeFrameToImgVault') {
-      console.log('🎬 YouTube frame context menu clicked!');
+      // console.log('🎬 YouTube frame context menu clicked!');
 
       try {
         const frameId = Number.isInteger(info.frameId) ? info.frameId : undefined;
@@ -597,7 +611,7 @@ class ImgVaultServiceWorker {
             frameId !== undefined ? { frameId } : undefined
           );
         } catch (messageError) {
-          console.log('⚠️ Content script message failed, trying script injection fallback:', messageError.message);
+          // console.log('⚠️ Content script message failed, trying script injection fallback:', messageError.message);
         }
 
         // Fallback when content script is unavailable in the clicked frame
@@ -638,7 +652,7 @@ class ImgVaultServiceWorker {
                         return { imageUrl: canvas.toDataURL('image/png') };
                       }
                     } catch (error) {
-                      console.log('YouTube frame draw failed, trying artwork fallback:', error?.message);
+                      // console.log('YouTube frame draw failed, trying artwork fallback:', error?.message);
                     }
                   }
                 }
@@ -668,7 +682,7 @@ class ImgVaultServiceWorker {
         }
 
         if (!response?.imageUrl) {
-          console.log('❌ No paused YouTube frame available:', response?.error || 'Unknown reason');
+          // console.log('❌ No paused YouTube frame available:', response?.error || 'Unknown reason');
           return;
         }
 
@@ -678,11 +692,14 @@ class ImgVaultServiceWorker {
         const isGood = isGoodQualitySite(pageUrl);
         const goodSite = getSiteDisplayName(pageUrl, sitesConfig.goodQualitySites);
 
+        // Sanitize all string data to avoid Unicode issues
+        const sanitizeString = (str) => (str || '').replace(/[\u200B-\u200D\uFEFF]/g, '').substring(0, 500);
+
         const pendingData = {
-          srcUrl: response.imageUrl,
-          originalSourceUrl: info.srcUrl || pageUrl,
-          pageUrl,
-          pageTitle: tab.title,
+          srcUrl: sanitizeString(response.imageUrl),
+          originalSourceUrl: sanitizeString(info.srcUrl || pageUrl),
+          pageUrl: sanitizeString(pageUrl),
+          pageTitle: sanitizeString(tab.title),
           timestamp: Date.now(),
           isYouTubeFrame: true,
           isWarningSite: isWarning,
@@ -691,7 +708,7 @@ class ImgVaultServiceWorker {
           goodQualitySiteName: goodSite
         };
 
-        console.log('💾 Storing YouTube frame image data:', pendingData);
+        // console.log('💾 Storing YouTube frame image data:', pendingData);
         await chrome.storage.local.set({ pendingImage: pendingData });
 
         chrome.tabs.create({
@@ -1150,17 +1167,17 @@ class ImgVaultServiceWorker {
         creationDateSource = 'Current timestamp (no metadata available)';
       }
       
-      console.log('Extracted metadata:', {
-        sha256: metadata.sha256.substring(0, 16) + '...',
-        pHash: metadata.pHash.substring(0, 32) + '...',
-        width: metadata.width,
-        height: metadata.height,
-        size: metadata.size,
-        fileType,
-        fileTypeSource,
-        creationDate,
-        creationDateSource
-      });
+      // console.log('Extracted metadata:', {
+      //   sha256: metadata.sha256.substring(0, 16) + '...',
+      //   pHash: metadata.pHash.substring(0, 32) + '...',
+      //   width: metadata.width,
+      //   height: metadata.height,
+      //   size: metadata.size,
+      //   fileType,
+      //   fileTypeSource,
+      //   creationDate,
+      //   creationDateSource
+      // });
       
       // Check for duplicates unless user wants to ignore
       if (!data.ignoreDuplicate) {
@@ -1168,7 +1185,7 @@ class ImgVaultServiceWorker {
         
         const existingImages = await this.storage.getAllImagesForDuplicateCheck();
         
-        console.log(`Checking against ${existingImages.length} existing images`);
+        // console.log(`Checking against ${existingImages.length} existing images`);
         
         const duplicateCheck = await this.duplicateDetector.checkDuplicates(
           metadata, 
@@ -1182,7 +1199,7 @@ class ImgVaultServiceWorker {
           throw error;
         }
       } else {
-        console.log('⚠️ Duplicate check SKIPPED - User chose to ignore duplicates');
+        // console.log('⚠️ Duplicate check SKIPPED - User chose to ignore duplicates');
         await this.updateStatusWithLog('⚠️ Skipping duplicate check...', 'warning');
       }
       
@@ -1230,7 +1247,7 @@ class ImgVaultServiceWorker {
       
       // If it's a data URL (base64), it was uploaded via context menu - no real source URL
       if (cleanSourceImageUrl && cleanSourceImageUrl.startsWith('data:')) {
-        console.log('⚠️ [SAVE] Source is base64 data URL (context menu upload), setting source URL to empty');
+        // console.log('⚠️ [SAVE] Source is base64 data URL (context menu upload), setting source URL to empty');
         cleanSourceImageUrl = '';
       }
       
@@ -1262,7 +1279,10 @@ class ImgVaultServiceWorker {
         collectionId: data.collectionId || null
       };
       
-      const savedId = await this.storage.saveImage(imageMetadata);
+      // Sanitize data for Neon database compatibility
+      const sanitizedMetadata = sanitizeForNeon(imageMetadata);
+
+      const savedId = await this.storage.saveImage(sanitizedMetadata);
       
       await this.updateStatusWithLog('✅ Image saved successfully!', 'success');
       
@@ -1409,7 +1429,7 @@ class ImgVaultServiceWorker {
       let cleanSourceImageUrl = data.originalSourceUrl || data.imageUrl;
       
       if (cleanSourceImageUrl && cleanSourceImageUrl.startsWith('data:')) {
-        console.log('⚠️ [SAVE] Source is base64 data URL (manual upload), setting source URL to empty');
+        // console.log('⚠️ [SAVE] Source is base64 data URL (manual upload), setting source URL to empty');
         cleanSourceImageUrl = '';
       }
       
@@ -1471,7 +1491,10 @@ class ImgVaultServiceWorker {
         }
       }
 
-      const savedId = await this.storage.saveImage(videoMetadata);
+      // Sanitize data for Neon database compatibility
+      const sanitizedVideoMetadata = sanitizeForNeon(videoMetadata);
+
+      const savedId = await this.storage.saveImage(sanitizedVideoMetadata);
       await this.appendUploadLog(`📊 [SAVE VIDEO] Video metadata size: ${JSON.stringify(videoMetadata).length} bytes`);
       await this.appendUploadLog(`✅ [SAVE VIDEO] Saved successfully with ID: ${savedId}`, 'success');
       
@@ -1509,7 +1532,7 @@ class ImgVaultServiceWorker {
         throw new Error('Filemoon API key not configured');
       }
       
-      console.log(`📸 [FILEMOON] Fetching thumbnail for filecode: ${filecode}`);
+      // console.log(`📸 [FILEMOON] Fetching thumbnail for filecode: ${filecode}`);
       
       const response = await fetch(`https://api.byse.sx/images/thumb?key=${apiKey}&file_code=${filecode}`);
       
@@ -1518,10 +1541,10 @@ class ImgVaultServiceWorker {
       }
       
       const result = await response.json();
-      console.log(`📸 [FILEMOON] Thumbnail API response:`, result);
+      // console.log(`📸 [FILEMOON] Thumbnail API response:`, result);
       
       if (result.status === 200 && result.result?.thumbnail) {
-        console.log(`✅ [FILEMOON] Thumbnail URL: ${result.result.thumbnail}`);
+        // console.log(`✅ [FILEMOON] Thumbnail URL: ${result.result.thumbnail}`);
         return result.result.thumbnail;
       }
       
@@ -1540,7 +1563,7 @@ class ImgVaultServiceWorker {
    */
   async handleNativeDownload(url, requestId = '') {
     try {
-      console.log(`📥 [NATIVE] Sending download request for: ${url}`);
+      // console.log(`📥 [NATIVE] Sending download request for: ${url}`);
 
       const downloadFolder = await this.resolveNativeDownloadFolder();
       const cookies = await this.getYouTubeCookiesForYtDlp();
@@ -1548,16 +1571,16 @@ class ImgVaultServiceWorker {
       // Generate output path with timestamp
       const outputPath = `${downloadFolder}\\%(title)s [%(id)s].%(ext)s`;
       
-      console.log(`📁 [NATIVE] Download folder: ${downloadFolder}`);
-      console.log(`📝 [NATIVE] Output path template: ${outputPath}`);
-      console.log(`🍪 [NATIVE] Prepared ${cookies.length} cookies for native download`);
-      console.log(`🔌 [NATIVE] Attempting to connect to native host: com.imgvault.nativehost`);
+      // console.log(`📁 [NATIVE] Download folder: ${downloadFolder}`);
+      // console.log(`📝 [NATIVE] Output path template: ${outputPath}`);
+      // console.log(`🍪 [NATIVE] Prepared ${cookies.length} cookies for native download`);
+      // console.log(`🔌 [NATIVE] Attempting to connect to native host: com.imgvault.nativehost`);
       
       // Connect to native messaging host
       let port;
       try {
         port = chrome.runtime.connectNative('com.imgvault.nativehost');
-        console.log(`✅ [NATIVE] Port connected successfully`);
+        // console.log(`✅ [NATIVE] Port connected successfully`);
       } catch (connectError) {
         console.error(`❌ [NATIVE] Failed to connect:`, connectError);
         throw new Error('Failed to connect to native host: ' + connectError.message);
@@ -1578,7 +1601,7 @@ class ImgVaultServiceWorker {
         }, NATIVE_DOWNLOAD_TIMEOUT_MS);
         
         port.onMessage.addListener((response) => {
-          console.log(`📨 [NATIVE] Response from host:`, response);
+          // console.log(`📨 [NATIVE] Response from host:`, response);
           if (response?.event === 'progress') {
             chrome.runtime.sendMessage({
               action: 'nativeDownloadProgress',
@@ -1646,13 +1669,13 @@ class ImgVaultServiceWorker {
             cookies_data: cookies,
             request_id: activeRequestId,
           });
-          console.log(`✉️ [NATIVE] Message sent to native host:`, {
-            action: 'download',
-            url,
-            output_path: outputPath,
-            cookies_count: cookies.length,
-            request_id: activeRequestId,
-          });
+          // console.log(`✉️ [NATIVE] Message sent to native host:`, {
+          //   action: 'download',
+          //   url,
+          //   output_path: outputPath,
+          //   cookies_count: cookies.length,
+          //   request_id: activeRequestId,
+          // });
         } catch (sendError) {
           console.error(`❌ [NATIVE] Failed to send message:`, sendError);
           clearTimeout(timeout);
@@ -1685,13 +1708,13 @@ class ImgVaultServiceWorker {
     }
 
     await chrome.storage.sync.set({ downloadFolder: detectedFolder });
-    console.log(`📁 [NATIVE] Auto-detected default video folder: ${detectedFolder}`);
+    // console.log(`📁 [NATIVE] Auto-detected default video folder: ${detectedFolder}`);
     return detectedFolder;
   }
 
   async handleNativeHostCommand(command, data = {}) {
     try {
-      console.log(`[NATIVE] Sending host command: ${command}`, data);
+      // console.log(`[NATIVE] Sending host command: ${command}`, data);
 
       let port;
       try {
@@ -1833,7 +1856,7 @@ class ImgVaultServiceWorker {
         const urlPath = new URL(data.imageUrl).pathname;
         fileName = urlPath.split('/').pop().split('?')[0] || '';
       } catch (e) {
-        console.log('Could not extract filename from URL:', e);
+        // console.log('Could not extract filename from URL:', e);
       }
     }
     
@@ -1851,7 +1874,7 @@ class ImgVaultServiceWorker {
    */
   async extractMetadataOnly(imageUrl, pageUrl, fileName, fileMimeType, fileLastModified) {
     try {
-      console.log('🔍 Extracting metadata only...');
+      // console.log('🔍 Extracting metadata only...');
       
       // Fetch image with host-aware fetch logic (important for pximg/pixiv hotlink rules)
       const imageBlob = await this.fetchImage(imageUrl, undefined, pageUrl);
@@ -1907,9 +1930,9 @@ class ImgVaultServiceWorker {
         creationDateSource = 'Current timestamp (no metadata available)';
       }
       
-      console.log('✅ Metadata extracted:', metadata);
-      console.log('📋 File Type:', fileType, '(', fileTypeSource, ')');
-      console.log('📅 Creation Date:', creationDate, '(', creationDateSource, ')');
+      // console.log('✅ Metadata extracted:', metadata);
+      // console.log('📋 File Type:', fileType, '(', fileTypeSource, ')');
+      // console.log('📅 Creation Date:', creationDate, '(', creationDateSource, ')');
       
       return {
         ...metadata,
@@ -2060,7 +2083,10 @@ class ImgVaultServiceWorker {
     };
 
     await this.updateStatusWithLog('Saving video metadata...');
-    const savedId = await this.storage.saveImage(videoMetadata);
+    // Sanitize data for Neon database compatibility
+    const sanitizedVideoMetadata = sanitizeForNeon(videoMetadata);
+
+    const savedId = await this.storage.saveImage(sanitizedVideoMetadata);
     await this.appendUploadLog(`[SAVE VIDEO] Video metadata size: ${JSON.stringify(videoMetadata).length} bytes`);
     await this.appendUploadLog(`[SAVE VIDEO] Saved successfully with ID: ${savedId}`, 'success');
     await this.updateStatusWithLog('Video saved successfully!', 'success');

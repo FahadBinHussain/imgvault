@@ -237,7 +237,9 @@ export default function GalleryPage() {
       return (
         img.pageTitle?.toLowerCase().includes(query) ||
         img.description?.toLowerCase().includes(query) ||
-        img.tags?.some(tag => tag.toLowerCase().includes(query))
+        img.tags?.some(tag => tag.toLowerCase().includes(query)) ||
+        img.sourceImageUrl?.toLowerCase().includes(query) ||
+        img.sourcePageUrl?.toLowerCase().includes(query)
       );
     });
   }, [images, collectionId, searchQuery]);

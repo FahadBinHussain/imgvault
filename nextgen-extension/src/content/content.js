@@ -110,7 +110,7 @@ const messageHandlers = {
    */
   getPageInfo() {
     return {
-      title: document.title,
+      title: (document.title || '').replace(/[\u200B-\u200D\uFEFF]/g, '').substring(0, 200),
       url: window.location.href,
       description: getMetaContent('description'),
       keywords: getMetaContent('keywords')

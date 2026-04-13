@@ -40,26 +40,30 @@ export class URLNormalizer {
    * @returns {string} Normalized URL
    */
   static normalize(url) {
-    if (!url) return url;
-    
+    if (!url || typeof url !== 'string') return url;
+
     try {
+      // Basic validation - must contain :// and not have control characters
+      if (!url.includes('://') || /[\x00-\x1F\x7F-\x9F]/.test(url)) {
+        return url;
+      }
+
       const urlObj = new URL(url);
-      
+
       // For Facebook CDN URLs, keep only essential parameters
       if (urlObj.hostname.includes('fbcdn.net')) {
         return this.normalizeFacebookCDN(urlObj);
       }
-      
+
       // For other CDN URLs, remove all query params
       if (this.isCDN(urlObj.hostname)) {
         return `${urlObj.origin}${urlObj.pathname}`;
       }
-      
+
       // For regular URLs, keep as is
       return url;
     } catch (error) {
       // If URL parsing fails, return original
-      console.warn('URL normalization failed:', error);
       return url;
     }
   }
