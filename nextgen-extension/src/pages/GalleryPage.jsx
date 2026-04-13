@@ -3,7 +3,7 @@
  * @version 2.0.0
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -225,20 +225,22 @@ export default function GalleryPage() {
     }
   };
 
-  const filteredImages = images.filter(img => {
-    // Filter by collection if collectionId is provided
-    if (collectionId && img.collectionId !== collectionId) {
-      return false;
-    }
-    
-    // Filter by search query
-    const query = searchQuery.toLowerCase();
-    return (
-      img.pageTitle?.toLowerCase().includes(query) ||
-      img.description?.toLowerCase().includes(query) ||
-      img.tags?.some(tag => tag.toLowerCase().includes(query))
-    );
-  });
+  const filteredImages = useMemo(() => {
+    return images.filter(img => {
+      // Filter by collection if collectionId is provided
+      if (collectionId && img.collectionId !== collectionId) {
+        return false;
+      }
+
+      // Filter by search query
+      const query = searchQuery.toLowerCase();
+      return (
+        img.pageTitle?.toLowerCase().includes(query) ||
+        img.description?.toLowerCase().includes(query) ||
+        img.tags?.some(tag => tag.toLowerCase().includes(query))
+      );
+    });
+  }, [images, collectionId, searchQuery]);
 
   const isSelectedVideo = Boolean(
     (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.isVideo : selectedImage?.isVideo) ||
@@ -1514,7 +1516,7 @@ export default function GalleryPage() {
     return groups;
   };
 
-  const groupedImages = groupImagesByDate(filteredImages);
+  const groupedImages = useMemo(() => groupImagesByDate(filteredImages), [filteredImages]);
 
   // Build timeline data for scrollbar (grouped by month/year)
   useEffect(() => {
@@ -1897,7 +1899,7 @@ export default function GalleryPage() {
       <TimelineScrollbar dateGroups={timelineData} containerRef={pageContainerRef} />
 
       <GalleryNavbar
-        key={`gallery-navbar-${collectionId || 'all'}-${filteredImages.length}-${images.length}`}
+        key={`gallery-navbar-${collectionId || 'all'}`}
         collectionId={collectionId}
         currentCollection={currentCollection}
         navigate={navigate}
@@ -2080,14 +2082,14 @@ export default function GalleryPage() {
               {groupedImages[date].map((img, index) => (
                 <motion.div
                   key={img.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
                   transition={{
-                    duration: 0.5,
-                    delay: index * 0.05,
-                    ease: [0.25, 0.46, 0.45, 0.94]
+                    duration: 0.3,
+                    delay: Math.min(index * 0.02, 1.0), // Cap the delay to prevent excessive staggering
+                    ease: 'easeOut'
                   }}
-                  whileHover={{ scale: 1.02, y: -4 }}
+                  whileHover={{ scale: 1.01 }}
                   className="group relative cursor-pointer"
                   onClick={(e) => {
                     if (selectionMode) {
@@ -2107,10 +2109,9 @@ export default function GalleryPage() {
                                 transition-all duration-700 ease-out"></div>
                   
                   {/* Card with soft shadows and smooth animations */}
-                  <div className="relative bg-base-100/80 backdrop-blur-sm border border-base-content/20 
-                                rounded-[var(--radius-box)] overflow-hidden shadow-lg group-hover:shadow-2xl
-                                transform transition-all duration-500 ease-out 
-                                group-hover:scale-[1.04] group-hover:-translate-y-2">
+                  <div className="relative bg-base-100/80 backdrop-blur-sm border border-base-content/20
+                                rounded-[var(--radius-box)] overflow-hidden shadow-lg group-hover:shadow-xl
+                                transform transition-all duration-300 ease-out">
                     {/* Selection Checkbox - shown in selection mode */}
                     {selectionMode && (
                       <div className="absolute top-2 right-2 z-20">
@@ -3347,6 +3348,75 @@ export default function GalleryPage() {
                         </button>
                       </div>
 
+                      {/* Quality Tip for specific sites */}
+                      {(() => {
+                        if (uploadImageData?.isVideo) {
+                          return null;
+                        }
+
+                        const shouldShowWarning = isWarningSite(uploadPageUrl) || uploadImageData?.isWarningSite;
+                        const shouldShowGoodQuality = isGoodQualitySite(uploadPageUrl) || uploadImageData?.isGoodQualitySite;
+
+                        if (shouldShowWarning) {
+                          const siteName = getSiteDisplayName(uploadPageUrl, sitesConfig.warningSites);
+                          return (
+                            <div className="mt-3 p-3 rounded-[var(--radius-box)] bg-warning/10 border-2 border-warning/30 shadow-lg animate-pulse-slow">
+                              <div className="flex items-start gap-2">
+                                <div className="flex-shrink-0 text-error text-lg mt-0.5 animate-bounce">⚠️</div>
+                                <div className="flex-1">
+                                  <p className="text-warning font-bold text-sm mb-1">
+                                    🔥 Quality Warning
+                                  </p>
+                                  <p className="text-base-content/80 text-xs mb-2">
+                                    For best quality, download the image first from {siteName} instead of saving directly from the page. This ensures you get the highest quality version.
+                                  </p>
+                                  <input
+                                    type="file"
+                                    id="replaceUploadFile"
+                                    accept="image/*"
+                                    onChange={handleFileUpload}
+                                    className="hidden"
+                                  />
+                                  <button
+                                    onClick={() => document.getElementById('replaceUploadFile').click()}
+                                    className="mt-1 px-3 py-1.5 rounded-[var(--radius-box)] bg-warning hover:bg-warning/90
+                                              border-2 border-warning/40 text-warning-content text-xs font-bold
+                                              transition-all duration-200 hover:scale-105 active:scale-95
+                                              flex items-center gap-1.5 shadow-lg hover:shadow-xl"
+                                  >
+                                    <Upload className="w-3.5 h-3.5" />
+                                    Replace with Downloaded Image
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        if (shouldShowGoodQuality) {
+                          const siteName = getSiteDisplayName(uploadPageUrl, sitesConfig.goodQualitySites);
+                          return (
+                            <div className="mt-3 p-3 rounded-[var(--radius-box)] bg-success/10 border-2 border-success/30 shadow-lg">
+                              <div className="flex items-start gap-2">
+                                <div className="flex-shrink-0 text-success text-lg mt-0.5">✓</div>
+                                <div className="flex-1">
+                                  <p className="text-success font-bold text-sm mb-1">
+                                    ✨ Best Quality
+                                  </p>
+                                  <p className="text-base-content/80 text-xs">
+                                    This image from {siteName} is already in the best available quality. You're all set!
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
+
+
+                        return null;
+                      })()}
+
                       {(() => {
                         const isVideoUpload = Boolean(uploadImageData?.isVideo);
                         const normalizedSourceUrl = /^https?:\/\//i.test(String(uploadPageUrl || ''))
@@ -3609,74 +3679,7 @@ export default function GalleryPage() {
                                text-base-content placeholder-base-content/40 
                                focus:outline-none focus:border-primary focus:ring-2 
                                focus:ring-primary/20 transition-all"
-                    />
-                    
-                    {/* Quality Tip for specific sites */}
-                    {(() => {
-                      if (uploadImageData?.isVideo) {
-                        return null;
-                      }
-
-                      const shouldShowWarning = isWarningSite(uploadPageUrl);
-                      const shouldShowGoodQuality = isGoodQualitySite(uploadPageUrl);
-                      
-                      if (shouldShowWarning) {
-                        const siteName = getSiteDisplayName(uploadPageUrl, sitesConfig.warningSites);
-                        return (
-                          <div className="mt-3 p-3 rounded-[var(--radius-box)] bg-warning/10 border-2 border-warning/30 shadow-lg animate-pulse-slow">
-                            <div className="flex items-start gap-2">
-                              <div className="flex-shrink-0 text-error text-lg mt-0.5 animate-bounce">⚠️</div>
-                              <div className="flex-1">
-                                <p className="text-warning font-bold text-sm mb-1">
-                                  🔥 Quality Warning
-                                </p>
-                                <p className="text-base-content/80 text-xs mb-2">
-                                  For best quality, download the image first from {siteName} instead of saving directly from the page. This ensures you get the highest quality version.
-                                </p>
-                                <input
-                                  type="file"
-                                  id="replaceUploadFile"
-                                  accept="image/*"
-                                  onChange={handleFileUpload}
-                                  className="hidden"
-                                />
-                                <button
-                                  onClick={() => document.getElementById('replaceUploadFile').click()}
-                                  className="mt-1 px-3 py-1.5 rounded-[var(--radius-box)] bg-warning hover:bg-warning/90 
-                                           border-2 border-warning/40 text-warning-content text-xs font-bold
-                                           transition-all duration-200 hover:scale-105 active:scale-95
-                                           flex items-center gap-1.5 shadow-lg hover:shadow-xl"
-                                >
-                                  <Upload className="w-3.5 h-3.5" />
-                                  Replace with Downloaded Image
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }
-                      
-                      if (shouldShowGoodQuality) {
-                        const siteName = getSiteDisplayName(uploadPageUrl, sitesConfig.goodQualitySites);
-                        return (
-                          <div className="mt-3 p-3 rounded-[var(--radius-box)] bg-success/10 border-2 border-success/30 shadow-lg">
-                            <div className="flex items-start gap-2">
-                              <div className="flex-shrink-0 text-success text-lg mt-0.5">✓</div>
-                              <div className="flex-1">
-                                <p className="text-success font-bold text-sm mb-1">
-                                  ✨ Best Quality
-                                </p>
-                                <p className="text-base-content/80 text-xs">
-                                  This image from {siteName} is already in the best available quality. You're all set!
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }
-                      
-                      return null;
-                    })()}
+                     />
                   </div>
 
                   {/* tags */}

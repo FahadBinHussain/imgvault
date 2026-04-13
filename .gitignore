@@ -5,3 +5,4 @@
 *.pem
 backup.json
 *.backup.json
+last_input.txt

@@ -40,6 +40,10 @@ while True:
             except:
                 pass
             
+            # Write to last_input.txt so agent can reliably read
+            with open("last_input.txt", "w", encoding="utf-8") as out_f:
+                out_f.write(user_input if user_input else "stop")
+                
             # Print the result so the agent reads it, then exit the script
             print(f"User provided: {user_input if user_input else 'stop'}")
             sys.exit(0)

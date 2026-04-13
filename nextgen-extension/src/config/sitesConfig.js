@@ -12,12 +12,10 @@ export const sitesConfig = {
     { url: 'peakpx.com', displayName: 'PeakPX' },
     { url: 'airbnb.com', displayName: 'Airbnb' },
     { url: 'wallhere.com', displayName: 'WallHere' },
-    { url: 'sohu.com', displayName: 'Sohu' },
-    { url: 'pixiv.net', displayName: 'Pixiv' }
+    { url: 'sohu.com', displayName: 'Sohu' }
   ],
   goodQualitySites: [
     { url: 'facebook.com', displayName: 'Facebook' },
-    { url: 'instagram.com', displayName: 'Instagram' },
     { url: 'slideshare.net', displayName: 'SlideShare' },
     { url: 'flickr.com', displayName: 'Flickr' },
     { url: 'wallpapercave.com', displayName: 'Wallpaper Cave' },
@@ -35,18 +33,30 @@ export const sitesConfig = {
     { url: 'axoftglobal.ru', displayName: 'Axoft Global' },
     { url: '10eastern.com', displayName: '10 Eastern' },
     { url: 'wallpaperflare.com', displayName: 'WallpaperFlare' },
+    { url: 'pixiv.net', displayName: 'Pixiv' },
+    { url: 'fbcdn.net', displayName: 'Facebook CDN' }
   ],
 };
 
 // Helper functions to check if a URL matches any site in the lists
 export const isWarningSite = (pageUrl) => {
-  const lowerUrl = pageUrl?.toLowerCase() || '';
-  return sitesConfig.warningSites.some(site => lowerUrl.includes(site.url));
+  try {
+    const hostname = new URL(pageUrl).hostname.toLowerCase();
+    return sitesConfig.warningSites.some(site => hostname.includes(site.url));
+  } catch (error) {
+    const lowerUrl = pageUrl?.toLowerCase() || '';
+    return sitesConfig.warningSites.some(site => lowerUrl.includes(site.url));
+  }
 };
 
 export const isGoodQualitySite = (pageUrl) => {
-  const lowerUrl = pageUrl?.toLowerCase() || '';
-  return sitesConfig.goodQualitySites.some(site => lowerUrl.includes(site.url));
+  try {
+    const hostname = new URL(pageUrl).hostname.toLowerCase();
+    return sitesConfig.goodQualitySites.some(site => hostname.includes(site.url));
+  } catch (error) {
+    const lowerUrl = pageUrl?.toLowerCase() || '';
+    return sitesConfig.goodQualitySites.some(site => lowerUrl.includes(site.url));
+  }
 };
 
 export const getSiteDisplayName = (pageUrl, siteList) => {

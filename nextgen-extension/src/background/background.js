@@ -549,13 +549,21 @@ class ImgVaultServiceWorker {
       
       if (imageUrl) {
         const pageUrl = info.pageUrl || tab.url;
-        
+        const isWarning = isWarningSite(pageUrl);
+        const warningSite = getSiteDisplayName(pageUrl, sitesConfig.warningSites);
+        const isGood = isGoodQualitySite(pageUrl);
+        const goodSite = getSiteDisplayName(pageUrl, sitesConfig.goodQualitySites);
+
         const pendingData = {
           srcUrl: imageUrl,
           pageUrl,
           pageTitle: tab.title,
           timestamp: Date.now(),
-          isBackgroundImage: true
+          isBackgroundImage: true,
+          isWarningSite: isWarning,
+          warningSiteName: warningSite,
+          isGoodQualitySite: isGood,
+          goodQualitySiteName: goodSite
         };
         
         console.log('💾 Storing background image data:', pendingData);
@@ -665,13 +673,22 @@ class ImgVaultServiceWorker {
         }
 
         const pageUrl = info.pageUrl || tab.url;
+        const isWarning = isWarningSite(pageUrl);
+        const warningSite = getSiteDisplayName(pageUrl, sitesConfig.warningSites);
+        const isGood = isGoodQualitySite(pageUrl);
+        const goodSite = getSiteDisplayName(pageUrl, sitesConfig.goodQualitySites);
+
         const pendingData = {
           srcUrl: response.imageUrl,
           originalSourceUrl: info.srcUrl || pageUrl,
           pageUrl,
           pageTitle: tab.title,
           timestamp: Date.now(),
-          isYouTubeFrame: true
+          isYouTubeFrame: true,
+          isWarningSite: isWarning,
+          warningSiteName: warningSite,
+          isGoodQualitySite: isGood,
+          goodQualitySiteName: goodSite
         };
 
         console.log('💾 Storing YouTube frame image data:', pendingData);
