@@ -14,7 +14,8 @@
     "nativeMessaging",
     "cookies",
     "downloads",
-    "notifications"
+    "notifications",
+    "declarativeNetRequest"
   ],
   
   "host_permissions": [

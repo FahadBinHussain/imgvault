@@ -139,10 +139,43 @@ class ImgVaultServiceWorker {
   async init() {
     try {
       await this.storage.init();
+      await this.setupDeclarativeNetRules();
       this.initialized = true;
       console.log('✅ ImgVault Service Worker initialized');
     } catch (error) {
-      console.error('❌ Failed to initialize storage:', error);
+      console.error('❌ Failed to initialize storage or rules:', error);
+    }
+  }
+
+  async setupDeclarativeNetRules() {
+    try {
+      if (!chrome.declarativeNetRequest) {
+        console.warn('declarativeNetRequest API not available.');
+        return;
+      }
+      
+      const pximgRule = {
+        id: 1,
+        priority: 1,
+        action: {
+          type: 'modifyHeaders',
+          requestHeaders: [
+            { header: 'Referer', operation: 'set', value: 'https://www.pixiv.net/' }
+          ]
+        },
+        condition: {
+          urlFilter: '||pximg.net*',
+          resourceTypes: ['xmlhttprequest', 'image', 'other']
+        }
+      };
+
+      await chrome.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds: [1],
+        addRules: [pximgRule]
+      });
+      console.log('✅ DeclarativeNetRequest rules updated for Pixiv');
+    } catch (e) {
+      console.error('❌ Failed to update DNR rules:', e);
     }
   }
 
@@ -1726,11 +1759,6 @@ class ImgVaultServiceWorker {
     );
   }
 
-  /**
-   * Fetch image from URL or data URL
-   * @param {string} imageUrl - Image URL or data URL
-   * @returns {Promise<Blob>} Image blob
-   */
   async fetchImage(imageUrl, signal, pageUrl = '') {
     if (imageUrl instanceof Blob) {
       return imageUrl;
@@ -1748,12 +1776,12 @@ class ImgVaultServiceWorker {
       try {
         const parsed = new URL(imageUrl);
         const isPixivCdn = /(^|\.)pximg\.net$/i.test(parsed.hostname);
+        
         if (isPixivCdn) {
-          const pixivReferrer = 'https://www.pixiv.net/';
+          // declarativeNetRequest handles the Referer header automatically for pximg.net
+          // Just ensure credentials are included if needed
           fetchOptions = {
             ...fetchOptions,
-            referrer: pixivReferrer,
-            referrerPolicy: 'strict-origin-when-cross-origin',
             credentials: 'include',
           };
         } else if (typeof pageUrl === 'string' && /^https?:\/\//i.test(pageUrl)) {
@@ -1769,7 +1797,7 @@ class ImgVaultServiceWorker {
 
       const response = await fetch(imageUrl, fetchOptions);
       if (!response.ok) {
-        throw new Error('Failed to fetch image');
+        throw new Error('Failed to fetch image: HTTP ' + response.status);
       }
       return response.blob();
     }

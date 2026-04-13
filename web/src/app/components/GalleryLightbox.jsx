@@ -542,6 +542,12 @@ export default function GalleryLightbox({
         <button
           onClick={onClose}
         className="absolute top-3 right-3 sm:top-6 sm:right-6 p-2 sm:p-3 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 text-base-content shadow-lg hover:bg-base-200 transition-all duration-300 z-10"
+        style={{
+          backgroundColor: 'var(--color-base-100)',
+          backdropFilter: 'none',
+          WebkitBackdropFilter: 'none',
+          opacity: 1,
+        }}
         >
           <X className="w-5 h-5 sm:w-6 sm:h-6" />
         </button>
@@ -553,6 +559,12 @@ export default function GalleryLightbox({
             setIsInfoExpanded((prev) => !prev)
           }}
           className="lg:hidden absolute top-3 left-3 p-2.5 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 text-base-content shadow-lg hover:bg-base-100 transition-all duration-300 z-10"
+          style={{
+            backgroundColor: 'var(--color-base-100)',
+            backdropFilter: 'none',
+            WebkitBackdropFilter: 'none',
+            opacity: 1,
+          }}
         >
           <Info className="w-5 h-5" />
         </button>
