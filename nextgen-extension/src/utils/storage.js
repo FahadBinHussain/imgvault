@@ -431,6 +431,8 @@ export class StorageManager {
         }
       } else if (typeof value === 'boolean') {
         fields[key] = { booleanValue: value };
+      } else if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?/.test(value)) {
+        fields[key] = { timestampValue: value };
       } else if (Array.isArray(value)) {
         fields[key] = {
           arrayValue: {
@@ -1134,6 +1136,67 @@ export class StorageManager {
       console.log('✅ [PERMANENT DELETE] Successfully deleted permanently');
     } catch (error) {
       console.error('❌ [PERMANENT DELETE] Error during permanent deletion:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a trashed image's fields
+   * @param {string} trashId - Trash document ID
+   * @param {Object} updates - Fields to update
+   * @returns {Promise<void>}
+   */
+  async updateTrashedImage(trashId, updates) {
+    await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.updateTrashedImageNeon(trashId, updates);
+    }
+
+    try {
+      console.log('✏️ [UPDATE TRASH] Updating trash item:', trashId, updates);
+      
+      const url = this.buildUrl(`trash/${trashId}`);
+      
+      // Get current document
+      const getResponse = await fetch(url);
+      if (!getResponse.ok) {
+        throw new Error('Trashed image not found');
+      }
+      
+      const doc = await getResponse.json();
+      const fields = doc.fields;
+      
+      // Build update payload
+      const updateFields = {};
+      for (const [key, value] of Object.entries(updates)) {
+        if (key === 'creationDate') {
+          updateFields[key] = { timestampValue: value };
+        } else {
+          updateFields[key] = { stringValue: String(value) };
+        }
+      }
+      
+      // Update the document
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fields: {
+            ...fields,
+            ...updateFields
+          }
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update trashed image');
+      }
+      
+      console.log('✅ [UPDATE TRASH] Successfully updated trash item');
+    } catch (error) {
+      console.error('❌ [UPDATE TRASH] Error updating trashed image:', error);
       throw error;
     }
   }
@@ -1922,6 +1985,31 @@ export class StorageManager {
       await this.permanentlyDeleteNeon(item.id);
     }
     return trashed.length;
+  }
+
+  async updateTrashedImageNeon(id, updates) {
+    const sql = this.ensureNeonReady();
+    const setClauses = [];
+    const params = [];
+    let paramIndex = 1;
+
+    if (updates.creationDate !== undefined) {
+      setClauses.push(`creation_date = $${paramIndex}`);
+      params.push(new Date(updates.creationDate));
+      paramIndex++;
+    }
+
+    if (setClauses.length === 0) {
+      return;
+    }
+
+    setClauses.push(`updated_at = now()`);
+    
+    const query = `UPDATE public.media_items SET ${setClauses.join(', ')} WHERE id = $${paramIndex}`;
+    params.push(id);
+    
+    await sql`${sql.unsafe(query)}`.bind(...params);
+    return true;
   }
 
   async updateImageNeon(id, updates) {
