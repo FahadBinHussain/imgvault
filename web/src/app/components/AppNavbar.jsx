@@ -2,15 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import { signIn, useSession } from 'next-auth/react'
-import { Github, Images, Link2, LogIn, Menu, Settings, Trash2, X } from 'lucide-react'
+import { Github, Images, Link2, Loader2, LogIn, Menu, Settings, Trash2, X } from 'lucide-react'
 import ThemeSwitcher from './ThemeSwitcher'
 import UserDropdown from './UserDropdown'
 import BrandLogo from './BrandLogo'
 
 export default function AppNavbar({ mode = 'dashboard', activeRoute }) {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   const [scrolled, setScrolled] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const authLoading = status === 'loading'
 
   useEffect(() => {
     if (mode !== 'landing') {
@@ -45,11 +46,15 @@ export default function AppNavbar({ mode = 'dashboard', activeRoute }) {
               <UserDropdown user={session.user} avatarClassName="w-8 h-8 rounded-full" />
             ) : (
               <button
-                onClick={() => signIn('google')}
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary-600 to-primary-500 rounded-[var(--radius-box)] font-semibold text-sm hover:shadow-lg hover:shadow-primary-500/25 transition-all"
+                onClick={() => {
+                  if (authLoading) return
+                  signIn('google')
+                }}
+                disabled={authLoading}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary-600 to-primary-500 rounded-[var(--radius-box)] font-semibold text-sm hover:shadow-lg hover:shadow-primary-500/25 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                <LogIn className="w-4 h-4" />
-                Sign In
+                {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
+                {authLoading ? 'Checking...' : 'Sign In'}
               </button>
             )}
           </div>
@@ -60,11 +65,15 @@ export default function AppNavbar({ mode = 'dashboard', activeRoute }) {
               <UserDropdown user={session.user} avatarClassName="w-8 h-8 rounded-full" />
             ) : (
               <button
-                onClick={() => signIn('google')}
-                className="flex items-center justify-center w-9 h-9 rounded-[var(--radius-box)] bg-base-content/10 hover:bg-base-content/20 border border-base-content/20 transition-colors"
-                title="Sign In"
+                onClick={() => {
+                  if (authLoading) return
+                  signIn('google')
+                }}
+                disabled={authLoading}
+                className="flex items-center justify-center w-9 h-9 rounded-[var(--radius-box)] bg-base-content/10 hover:bg-base-content/20 border border-base-content/20 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+                title={authLoading ? 'Checking sign-in state' : 'Sign In'}
               >
-                <LogIn className="w-4 h-4" />
+                {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
               </button>
             )}
             <button className="text-base-content p-1" onClick={() => setMobileMenuOpen((open) => !open)}>
@@ -131,11 +140,15 @@ export default function AppNavbar({ mode = 'dashboard', activeRoute }) {
             />
           ) : (
             <button
-              onClick={() => signIn('google')}
-              className="flex items-center justify-center w-9 h-9 rounded-[var(--radius-box)] bg-base-content/10 hover:bg-base-content/20 border border-base-content/20 transition-colors"
-              title="Sign In"
+              onClick={() => {
+                if (authLoading) return
+                signIn('google')
+              }}
+              disabled={authLoading}
+              className="flex items-center justify-center w-9 h-9 rounded-[var(--radius-box)] bg-base-content/10 hover:bg-base-content/20 border border-base-content/20 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+              title={authLoading ? 'Checking sign-in state' : 'Sign In'}
             >
-              <LogIn className="w-4 h-4" />
+              {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
             </button>
           )}
         </div>

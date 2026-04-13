@@ -252,7 +252,7 @@ export default function GalleryLightbox({
   const currentVideoWatchUrl = getPreferredVideoWatchUrl(image)
   const currentVideoDirectUrl = getPreferredVideoDirectUrl(image)
   const currentLinkPreview = toProxyMediaUrl(getLinkPreviewImage(image))
-  const mobileSheetClass = isInfoExpanded ? 'translate-y-0' : 'translate-y-full'
+  const mobileSheetClass = 'translate-y-0'
 
   useEffect(() => {
     setIsEditing(false)
@@ -287,6 +287,19 @@ export default function GalleryLightbox({
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [currentIndex, images.length, onClose, onNavigate])
+
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow
+    const originalOverscrollBehavior = document.body.style.overscrollBehavior
+
+    document.body.style.overflow = 'hidden'
+    document.body.style.overscrollBehavior = 'none'
+
+    return () => {
+      document.body.style.overflow = originalOverflow
+      document.body.style.overscrollBehavior = originalOverscrollBehavior
+    }
+  }, [])
 
   useEffect(() => {
     if (!pendingSwipeNavigationRef.current) return
@@ -408,7 +421,7 @@ export default function GalleryLightbox({
             <FileText className="w-3.5 h-3.5" />
             {`${index + 1}. ${label}`}
           </div>
-          <div className="bg-base-200/60 rounded p-2">
+          <div className="rounded p-2 bg-base-200">
             <p className="text-base-content text-sm break-all font-mono">{displayValue}</p>
           </div>
         </div>
@@ -417,9 +430,25 @@ export default function GalleryLightbox({
 
     return (
       <div key={key}>
-        <div className="text-xs font-semibold text-base-content/65 mb-1 flex items-center gap-2">
-          <FileText className="w-3.5 h-3.5" />
-          {`${index + 1}. ${label}`}
+        <div className="text-xs font-semibold text-base-content/65 mb-1 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <FileText className="w-3.5 h-3.5" />
+            {`${index + 1}. ${label}`}
+          </div>
+          {key === 'description' && activeTab === 'noobs' && onSaveEdits && !isEditing && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setIsEditing(true)
+                setSaveError('')
+              }}
+              className="inline-flex items-center gap-1 rounded-[var(--radius-box)] bg-base-content/10 px-2 py-1 text-[11px] font-semibold text-base-content/80 hover:bg-base-content/15 transition-colors"
+            >
+              <Pencil className="w-3 h-3" />
+              Edit
+            </button>
+          )}
         </div>
 
         {isEditableField ? (
@@ -429,7 +458,7 @@ export default function GalleryLightbox({
               onChange={(e) => setEditValues((prev) => ({ ...prev, description: e.target.value }))}
               onClick={(e) => e.stopPropagation()}
               rows={4}
-              className="w-full bg-base-200/70 border border-base-content/15 rounded p-2 text-sm text-base-content focus:outline-none focus:border-primary-500/50"
+              className="w-full bg-base-200 border border-base-content/15 rounded p-2 text-sm text-base-content focus:outline-none focus:border-primary-500/50"
               placeholder="Enter description"
             />
           ) : key === 'tags' ? (
@@ -438,7 +467,7 @@ export default function GalleryLightbox({
               value={editValues.tags}
               onChange={(e) => setEditValues((prev) => ({ ...prev, tags: e.target.value }))}
               onClick={(e) => e.stopPropagation()}
-              className="w-full bg-base-200/70 border border-base-content/15 rounded p-2 text-sm text-base-content focus:outline-none focus:border-primary-500/50"
+              className="w-full bg-base-200 border border-base-content/15 rounded p-2 text-sm text-base-content focus:outline-none focus:border-primary-500/50"
               placeholder="tag1, tag2, tag3"
             />
           ) : (
@@ -447,7 +476,7 @@ export default function GalleryLightbox({
               value={editValues[key] ?? ''}
               onChange={(e) => setEditValues((prev) => ({ ...prev, [key]: e.target.value }))}
               onClick={(e) => e.stopPropagation()}
-              className="w-full bg-base-200/70 border border-base-content/15 rounded p-2 text-sm text-base-content focus:outline-none focus:border-primary-500/50"
+              className="w-full bg-base-200 border border-base-content/15 rounded p-2 text-sm text-base-content focus:outline-none focus:border-primary-500/50"
               placeholder={`Enter ${label}`}
             />
           )
@@ -463,7 +492,7 @@ export default function GalleryLightbox({
             ))}
           </div>
         ) : isUrlField(key) && typeof rawValue === 'string' && rawValue ? (
-          <div className="bg-base-200/60 rounded p-2">
+          <div className="rounded p-2 bg-base-200">
             <a
               href={rawValue}
               target="_blank"
@@ -474,7 +503,7 @@ export default function GalleryLightbox({
             </a>
           </div>
         ) : (
-          <div className="bg-base-200/60 rounded p-2">
+          <div className="rounded p-2 bg-base-200">
             <p className="text-base-content text-sm break-all font-mono">{displayValue}</p>
           </div>
         )}
@@ -499,16 +528,20 @@ export default function GalleryLightbox({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex flex-col lg:flex-row bg-base-100/92 text-base-content backdrop-blur-xl animate-fade-in"
+      className="fixed inset-0 z-[100] flex flex-col bg-base-100 text-base-content animate-fade-in lg:flex-row"
+      style={{
+        backgroundColor: 'var(--color-base-100)',
+        opacity: 1,
+      }}
     >
       <div
-        className="flex-1 flex items-center justify-center p-3 sm:p-6 lg:p-8 relative min-h-[100dvh] lg:min-h-0"
+        className="h-[25dvh] min-h-[25dvh] flex-none flex items-center justify-center p-2 sm:p-4 lg:p-8 relative lg:flex-1 lg:h-auto lg:min-h-0"
         onTouchStart={handleMediaTouchStart}
         onTouchEnd={handleMediaTouchEnd}
       >
         <button
           onClick={onClose}
-        className="absolute top-3 right-3 sm:top-6 sm:right-6 p-2 sm:p-3 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/80 text-base-content shadow-lg backdrop-blur-xl hover:bg-base-100 transition-all duration-300 z-10"
+        className="absolute top-3 right-3 sm:top-6 sm:right-6 p-2 sm:p-3 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 text-base-content shadow-lg hover:bg-base-200 transition-all duration-300 z-10"
         >
           <X className="w-5 h-5 sm:w-6 sm:h-6" />
         </button>
@@ -519,7 +552,7 @@ export default function GalleryLightbox({
             e.stopPropagation()
             setIsInfoExpanded((prev) => !prev)
           }}
-          className="lg:hidden absolute top-3 left-3 p-2.5 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/80 text-base-content shadow-lg backdrop-blur-xl hover:bg-base-100 transition-all duration-300 z-10"
+          className="lg:hidden absolute top-3 left-3 p-2.5 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 text-base-content shadow-lg hover:bg-base-100 transition-all duration-300 z-10"
         >
           <Info className="w-5 h-5" />
         </button>
@@ -530,7 +563,7 @@ export default function GalleryLightbox({
               e.stopPropagation()
               onNavigate(currentIndex - 1)
             }}
-            className="hidden lg:block absolute left-2 sm:left-6 p-2 sm:p-4 glass rounded-[var(--radius-box)] hover:bg-base-content/20 transition-all duration-300 hover:-translate-x-1"
+            className="hidden lg:block absolute left-2 sm:left-6 p-2 sm:p-4 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 hover:bg-base-200 transition-all duration-300 hover:-translate-x-1"
           >
             <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
@@ -542,7 +575,7 @@ export default function GalleryLightbox({
               e.stopPropagation()
               onNavigate(currentIndex + 1)
             }}
-            className="hidden lg:block absolute right-2 sm:right-6 p-2 sm:p-4 glass rounded-[var(--radius-box)] hover:bg-base-content/20 transition-all duration-300 hover:translate-x-1"
+            className="hidden lg:block absolute right-2 sm:right-6 p-2 sm:p-4 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 hover:bg-base-200 transition-all duration-300 hover:translate-x-1"
           >
             <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
@@ -653,15 +686,22 @@ export default function GalleryLightbox({
           </div>
         </div>
 
-        <div className="absolute bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 glass rounded-full text-sm">
-          {currentIndex + 1} / {images.length}
-        </div>
       </div>
 
       <div
-          className={`fixed lg:static left-0 right-0 bottom-0 w-full lg:w-[400px] h-[78dvh] lg:h-auto max-h-[78dvh] lg:max-h-none bg-base-100/95 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-base-content/15 overflow-y-auto flex flex-col rounded-[var(--radius-box)] lg:rounded-none transition-transform duration-300 ${mobileSheetClass} lg:translate-y-0`}
+          className={`fixed lg:static left-0 right-0 bottom-0 w-full lg:w-[400px] h-[75dvh] lg:h-auto max-h-[75dvh] lg:max-h-none bg-base-100 border-t lg:border-t-0 lg:border-l border-base-content/15 overflow-y-auto flex flex-col rounded-none lg:rounded-none transition-transform duration-300 ${mobileSheetClass} lg:translate-y-0`}
+          style={{
+            backgroundColor: 'var(--color-base-100)',
+            opacity: 1,
+          }}
       >
-        <div className="p-6 flex-1">
+        <div
+          className="p-6 flex-1 bg-base-100"
+          style={{
+            backgroundColor: 'var(--color-base-100)',
+            opacity: 1,
+          }}
+        >
           <div className="lg:hidden flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-base-content/80">Image Details</h3>
             <button
@@ -677,13 +717,13 @@ export default function GalleryLightbox({
             </button>
           </div>
 
-          <div className="flex gap-2 mb-6 border-b border-base-content/15 pb-4">
+          <div className="flex gap-2 mb-6 border-b border-base-content/15 pb-4 rounded-[var(--radius-box)] bg-base-100">
             <button
               onClick={(e) => { e.stopPropagation(); setActiveTab('noobs') }}
-              className={`px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] flex items-center gap-2 ${
+              className={`px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] flex items-center gap-2 border ${
                 activeTab === 'noobs'
-                  ? 'bg-primary-500/20 text-primary-400'
-                  : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'
+                  ? 'bg-primary text-primary-content border-primary shadow-sm ring-2 ring-primary/25'
+                  : 'bg-base-100 border-base-content/15 text-base-content/65 hover:text-base-content hover:bg-base-content/5'
               }`}
             >
               For Noobs
@@ -693,10 +733,10 @@ export default function GalleryLightbox({
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); setActiveTab('nerds') }}
-              className={`px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] flex items-center gap-2 ${
+              className={`px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] flex items-center gap-2 border ${
                 activeTab === 'nerds'
-                  ? 'bg-success/20 text-success'
-                  : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'
+                  ? 'bg-success text-success-content border-success shadow-sm ring-2 ring-success/25'
+                  : 'bg-base-100 border-base-content/15 text-base-content/65 hover:text-base-content hover:bg-base-content/5'
               }`}
             >
               For Nerds
@@ -771,7 +811,7 @@ export default function GalleryLightbox({
                   <FileText className="w-3.5 h-3.5" />
                   firestoreDocumentId
                 </div>
-                <div className="bg-base-200/60 rounded p-2">
+                <div className="rounded p-2 bg-base-200">
                   <p className="text-base-content text-sm break-all font-mono">{formatFieldValue('id', image?.id)}</p>
                   {canOpenFirestoreConsole && (
                     <a

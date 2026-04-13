@@ -414,25 +414,21 @@ class ImgVaultServiceWorker {
       console.log('📍 Page URL:', info.pageUrl || tab.url);
       
       const pageUrl = info.pageUrl || tab.url;
-      const isWarning = isWarningSite(pageUrl);
+      let isWarning = isWarningSite(pageUrl);
       const warningSite = getSiteDisplayName(pageUrl, sitesConfig.warningSites);
       const isGood = isGoodQualitySite(pageUrl);
       const goodSite = getSiteDisplayName(pageUrl, sitesConfig.goodQualitySites);
       
-      // Check if image is base64
-      const isBase64 = info.srcUrl && info.srcUrl.startsWith('data:image');
-      console.log('🔍 Is Base64?', isBase64);
-      
       const pendingData = {
         srcUrl: info.srcUrl,
+        originalSourceUrl: info.srcUrl,
         pageUrl,
         pageTitle: tab.title,
         timestamp: Date.now(),
         isWarningSite: isWarning,
         warningSiteName: warningSite,
         isGoodQualitySite: isGood,
-        goodQualitySiteName: goodSite,
-        isBase64
+        goodQualitySiteName: goodSite
       };
       
       console.log('💾 Storing pending image data:', pendingData);
@@ -1049,7 +1045,7 @@ class ImgVaultServiceWorker {
       
       // Fetch the image
       const imageSource = data.fileBlob instanceof Blob ? data.fileBlob : data.imageUrl;
-      const imageBlob = await this.fetchImage(imageSource, uploadController.signal);
+      const imageBlob = await this.fetchImage(imageSource, uploadController.signal, data.pageUrl);
       
       await this.updateStatusWithLog('🔍 Extracting image metadata...');
       
@@ -1261,7 +1257,7 @@ class ImgVaultServiceWorker {
       
       // Fetch the video once
       const videoSource = data.fileBlob instanceof Blob ? data.fileBlob : data.imageUrl;
-      const videoBlob = await this.fetchImage(videoSource);
+      const videoBlob = await this.fetchImage(videoSource, undefined, data.pageUrl);
       const expectedSize = Number.isFinite(data.fileSize) ? data.fileSize : null;
 
       if (!(videoBlob instanceof Blob) || videoBlob.size <= 0) {
@@ -1735,7 +1731,7 @@ class ImgVaultServiceWorker {
    * @param {string} imageUrl - Image URL or data URL
    * @returns {Promise<Blob>} Image blob
    */
-  async fetchImage(imageUrl, signal) {
+  async fetchImage(imageUrl, signal, pageUrl = '') {
     if (imageUrl instanceof Blob) {
       return imageUrl;
     }
@@ -1748,7 +1744,30 @@ class ImgVaultServiceWorker {
       const response = await fetch(imageUrl, { signal });
       return response.blob();
     } else {
-      const response = await fetch(imageUrl, { signal });
+      let fetchOptions = { signal };
+      try {
+        const parsed = new URL(imageUrl);
+        const isPixivCdn = /(^|\.)pximg\.net$/i.test(parsed.hostname);
+        if (isPixivCdn) {
+          const pixivReferrer = 'https://www.pixiv.net/';
+          fetchOptions = {
+            ...fetchOptions,
+            referrer: pixivReferrer,
+            referrerPolicy: 'strict-origin-when-cross-origin',
+            credentials: 'include',
+          };
+        } else if (typeof pageUrl === 'string' && /^https?:\/\//i.test(pageUrl)) {
+          fetchOptions = {
+            ...fetchOptions,
+            referrer: pageUrl,
+            referrerPolicy: 'no-referrer-when-downgrade',
+          };
+        }
+      } catch (_) {
+        // Keep default fetch options when URL parsing fails.
+      }
+
+      const response = await fetch(imageUrl, fetchOptions);
       if (!response.ok) {
         throw new Error('Failed to fetch image');
       }
@@ -1789,9 +1808,8 @@ class ImgVaultServiceWorker {
     try {
       console.log('🔍 Extracting metadata only...');
       
-      // Fetch image
-      const response = await fetch(imageUrl);
-      const imageBlob = await response.blob();
+      // Fetch image with host-aware fetch logic (important for pximg/pixiv hotlink rules)
+      const imageBlob = await this.fetchImage(imageUrl, undefined, pageUrl);
       
       // Extract metadata using duplicate detector
       const metadata = await this.duplicateDetector.extractMetadata(

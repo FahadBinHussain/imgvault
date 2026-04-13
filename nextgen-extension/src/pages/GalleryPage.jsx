@@ -111,6 +111,7 @@ export default function GalleryPage() {
         // and would make us drop into picker every time.
         return handle;
       }
+      console.log('ℹ️ [IDB] No directory handle found in storage');
       return null;
     } catch (err) {
       console.error('❌ [IDB] Failed to get directory handle:', err);
@@ -337,44 +338,117 @@ export default function GalleryPage() {
     return parts[parts.length - 1] || '';
   };
 
+  const normalizeFileToken = (value = '') =>
+    String(value || '')
+      .normalize('NFKC')
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+
   const extractMediaIdFromName = (name = '') => {
     const text = String(name || '');
-    const match = text.match(/\[([^\]]+)\](?:\.[^.]+)?$/);
-    return match?.[1] || '';
+    const endBracketMatch = text.match(/\[([^\]]+)\](?:\.[^.]+)?$/);
+    if (endBracketMatch?.[1]) return endBracketMatch[1];
+    const genericBracketMatch = text.match(/\[([0-9A-Za-z_-]{6,})\]/);
+    if (genericBracketMatch?.[1]) return genericBracketMatch[1];
+    const genericIdMatch = text.match(/([0-9]{10,})/);
+    return genericIdMatch?.[1] || '';
   };
 
   const getFileFromDirectoryHandle = async (dirHandle, expectedFileName, sourcePathForFallback = '') => {
+    console.log('🔎 [AUTO-LOAD] Resolver input:', {
+      expectedFileName,
+      sourcePathForFallback,
+      directoryName: dirHandle?.name || '(unknown)',
+    });
+
+    const mediaId =
+      extractMediaIdFromName(expectedFileName) ||
+      extractMediaIdFromName(getFileNameFromPath(sourcePathForFallback)) ||
+      extractMediaIdFromName(sourcePathForFallback);
+
+    console.log('🧩 [AUTO-LOAD] Extracted mediaId:', mediaId || '(none)');
+
+    if (mediaId) {
+      const normalizedNeedle = normalizeFileToken(`[${mediaId}]`);
+      const matchingFiles = [];
+      let scannedCount = 0;
+      for await (const [entryName, entryHandle] of dirHandle.entries()) {
+        if (entryHandle?.kind !== 'file') continue;
+        scannedCount += 1;
+        const normalizedEntryName = normalizeFileToken(entryName);
+        if (!normalizedEntryName.includes(normalizedNeedle) && !normalizedEntryName.includes(normalizeFileToken(mediaId))) {
+          continue;
+        }
+        console.log('🎯 [AUTO-LOAD] ID match candidate:', entryName);
+        const file = await entryHandle.getFile();
+        matchingFiles.push(file);
+      }
+      console.log(`📚 [AUTO-LOAD] ID scan complete. Scanned files: ${scannedCount}, candidates: ${matchingFiles.length}`);
+
+      if (matchingFiles.length > 0) {
+        matchingFiles.sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
+        console.log('✅ [AUTO-LOAD] Using ID-matched file:', matchingFiles[0].name);
+        return matchingFiles[0];
+      }
+    }
+
+    const expectedNormalized = normalizeFileToken(expectedFileName);
+    if (expectedNormalized) {
+      let scannedCount = 0;
+      for await (const [entryName, entryHandle] of dirHandle.entries()) {
+        if (entryHandle?.kind !== 'file') continue;
+        scannedCount += 1;
+        if (normalizeFileToken(entryName) !== expectedNormalized) continue;
+        console.log('✅ [AUTO-LOAD] Using normalized exact filename match:', entryName);
+        return await entryHandle.getFile();
+      }
+      console.log(`⚠️ [AUTO-LOAD] No normalized exact filename match after scanning ${scannedCount} files`);
+    }
+
     try {
       const exactHandle = await dirHandle.getFileHandle(expectedFileName);
+      console.log('✅ [AUTO-LOAD] Using native exact getFileHandle match');
       return await exactHandle.getFile();
     } catch (exactErr) {
+      console.log('⚠️ [AUTO-LOAD] Native exact getFileHandle failed:', exactErr?.name, exactErr?.message);
       if (exactErr?.name !== 'NotFoundError') {
         throw exactErr;
       }
     }
 
-    const mediaId =
-      extractMediaIdFromName(expectedFileName) ||
-      extractMediaIdFromName(getFileNameFromPath(sourcePathForFallback));
+    const fallbackName = getFileNameFromPath(sourcePathForFallback);
+    const extensionMatch = (expectedFileName || fallbackName || '').match(/\.([a-z0-9]+)$/i);
+    const extension = extensionMatch?.[1]?.toLowerCase() || '';
+    if (extension) {
+      const now = Date.now();
+      const recentCandidates = [];
+      let scannedCount = 0;
+      for await (const [entryName, entryHandle] of dirHandle.entries()) {
+        if (entryHandle?.kind !== 'file') continue;
+        scannedCount += 1;
+        if (!entryName.toLowerCase().endsWith(`.${extension}`)) continue;
+        const file = await entryHandle.getFile();
+        const ageMs = Math.abs(now - (file.lastModified || 0));
+        if (ageMs > 10 * 60 * 1000) continue;
+        console.log(`🕒 [AUTO-LOAD] Recent extension candidate (${extension}):`, file.name, `ageMs=${ageMs}`);
+        recentCandidates.push(file);
+      }
+      console.log(`📚 [AUTO-LOAD] Extension fallback scan complete. Scanned files: ${scannedCount}, recent candidates: ${recentCandidates.length}`);
+      if (recentCandidates.length > 0) {
+        recentCandidates.sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
+        console.log(`✅ [AUTO-LOAD] Using newest recent .${extension} fallback:`, recentCandidates[0].name);
+        return recentCandidates[0];
+      }
+    }
 
     if (!mediaId) {
+      console.log('❌ [AUTO-LOAD] Resolver failed: no mediaId and no fallback match');
       throw new DOMException('A requested file or directory could not be found at the time an operation was processed.', 'NotFoundError');
     }
-
-    const matchingFiles = [];
-    for await (const [entryName, entryHandle] of dirHandle.entries()) {
-      if (entryHandle?.kind !== 'file') continue;
-      if (!entryName.includes(`[${mediaId}]`)) continue;
-      const file = await entryHandle.getFile();
-      matchingFiles.push(file);
-    }
-
-    if (matchingFiles.length === 0) {
-      throw new DOMException('A requested file or directory could not be found at the time an operation was processed.', 'NotFoundError');
-    }
-
-    matchingFiles.sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
-    return matchingFiles[0];
+    console.log('❌ [AUTO-LOAD] Resolver failed: mediaId exists but no file matched');
+    throw new DOMException('A requested file or directory could not be found at the time an operation was processed.', 'NotFoundError');
   };
   const getPreferredVideoDirectUrl = (item) => {
     if (!item) return '';
@@ -829,7 +903,6 @@ export default function GalleryPage() {
     if (isVideo) {
       uploadPreviewUrlRef.current = previewUrl;
     }
-
     setUploadImageData({
       srcUrl: previewUrl,
       fileName: file.name,
@@ -953,11 +1026,7 @@ export default function GalleryPage() {
 
           // Keep the saved folder for transient misses (e.g. file not moved yet)
           // and only clear when the handle itself is invalid/forbidden.
-          if (
-            errorName !== 'NotFoundError' &&
-            errorName !== 'NotAllowedError' &&
-            errorName !== 'SecurityError'
-          ) {
+          if (errorName === 'NotAllowedError' || errorName === 'SecurityError') {
             await clearDirectoryHandle();
           }
         }
@@ -1504,7 +1573,6 @@ export default function GalleryPage() {
               srcUrl: pendingImage.srcUrl,
               fileName: pendingImage.srcUrl.split('/').pop().split('?')[0] || 'image.jpg',
               pageTitle: pendingImage.pageTitle || '',
-              isBase64: pendingImage.isBase64 || false,
               isWarningSite: pendingImage.isWarningSite || false,
               warningSiteName: pendingImage.warningSiteName || '',
               isGoodQualitySite: pendingImage.isGoodQualitySite || false,
@@ -1635,6 +1703,7 @@ export default function GalleryPage() {
         const loadDownloadedFile = async () => {
           try {
             const fileName = getFileNameFromPath(location.state.downloadFilePath);
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             console.log('� [AUTO-LOAD] Extracted filename:', fileName);
             
             // Try to get saved directory handle
@@ -1643,8 +1712,23 @@ export default function GalleryPage() {
             if (dirHandle) {
               try {
                 console.log('✅ [AUTO-LOAD] Using saved directory handle');
-                // Try to access the file
-                const file = await getFileFromDirectoryHandle(dirHandle, fileName, location.state.downloadFilePath);
+                // Retry briefly in case file visibility lags after host completion.
+                let file = null;
+                let lastErr = null;
+                for (let attempt = 1; attempt <= 30; attempt++) {
+                  try {
+                    file = await getFileFromDirectoryHandle(dirHandle, fileName, location.state.downloadFilePath);
+                    break;
+                  } catch (candidateErr) {
+                    lastErr = candidateErr;
+                    if (candidateErr?.name !== 'NotFoundError' || attempt === 30) {
+                      throw candidateErr;
+                    }
+                    console.log(`⏳ [AUTO-LOAD] File not visible yet (attempt ${attempt}/30). Retrying...`);
+                    await sleep(500);
+                  }
+                }
+                if (!file && lastErr) throw lastErr;
                 
                 console.log('✅ [AUTO-LOAD] File loaded successfully:', file.name, file.size, 'bytes');
                 
@@ -1657,12 +1741,8 @@ export default function GalleryPage() {
               } catch (fileErr) {
                 console.log('⚠️ [AUTO-LOAD] Failed to access file with saved handle:', fileErr.message);
                 const errorName = fileErr?.name || '';
-                if (errorName !== 'NotFoundError') {
-                  // Clear only invalid/forbidden handles, keep valid folder handles
-                  // when the downloaded file is simply not present yet.
-                  if (errorName !== 'NotAllowedError' && errorName !== 'SecurityError') {
-                    await clearDirectoryHandle();
-                  }
+                if (errorName === 'NotAllowedError' || errorName === 'SecurityError') {
+                  await clearDirectoryHandle();
                 }
               }
             }
@@ -2513,6 +2593,42 @@ export default function GalleryPage() {
                                 </div>
                               </div>
                             )
+                          ) : key === 'description' ? (
+                            editingField === 'description' ? (
+                              <div className="space-y-3">
+                                <textarea
+                                  value={editValues.description ?? (modalImage?.description || '')}
+                                  onChange={(e) => setEditValues({ ...editValues, description: e.target.value })}
+                                  rows={4}
+                                  placeholder="Add a description..."
+                                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 text-base-content focus:outline-none focus:border-primary resize-y"
+                                />
+                                <div className="flex gap-2">
+                                  <Button size="sm" onClick={() => saveEdit('description')}>
+                                    Save Description
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditingField(null);
+                                      setEditValues((prev) => ({ ...prev, description: modalImage?.description || '' }));
+                                    }}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-start justify-between gap-3">
+                                <p className="text-base-content font-mono text-sm whitespace-pre-wrap break-words flex-1">
+                                  {formatBaseFieldValue(modalImage?.description)}
+                                </p>
+                                <Button variant="ghost" size="sm" onClick={() => startEditing('description')}>
+                                  Edit
+                                </Button>
+                              </div>
+                            )
                           ) : (
                             <p className="text-base-content font-mono text-sm break-all">
                               {formatBaseFieldValue(modalImage?.[key])}
@@ -2848,41 +2964,8 @@ export default function GalleryPage() {
                       </button>
                     </div>
                     
-                    {/* Base64 Warning */}
-                    {uploadImageData?.isBase64 && !uploadImageData.isVideo && (
-                      <div className="p-4 rounded-[var(--radius-box)] bg-orange-500/20 border-2 border-orange-500/50">
-                        <div className="flex items-start gap-3">
-                          <span className="text-2xl flex-shrink-0">⚠️</span>
-                          <div className="flex-1">
-                            <h4 className="text-warning font-bold text-sm mb-2">
-                              Low Quality Image Detected
-                            </h4>
-                            <p className="text-base-content/85 text-xs leading-relaxed">
-                              This is a placeholder/thumbnail image (base64 data URL). For best quality, wait for the page to fully load, download the full-resolution image, then replace it using the button below.
-                            </p>
-                            <input
-                              type="file"
-                              id="replaceBase64Upload"
-                              accept="image/*"
-                              onChange={handleFileUpload}
-                              className="hidden"
-                            />
-                            <button
-                              onClick={() => document.getElementById('replaceBase64Upload').click()}
-                              className="mt-3 w-full px-4 py-2 rounded-[var(--radius-box)] bg-warning hover:brightness-95 
-                                       text-warning-content text-sm font-bold transition-colors
-                                       flex items-center justify-center gap-2"
-                            >
-                              <Upload className="w-4 h-4" />
-                              Replace with Full Quality Image
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    
                     {/* Site-specific replace tips */}
-                    {uploadImageData?.isWallHere && !uploadImageData?.isBase64 && (
+                    {uploadImageData?.isWallHere && (
                       <div className="p-3 rounded-[var(--radius-box)] bg-error/20 border-2 border-error/50 shadow-lg animate-pulse-slow">
                         <div className="flex items-start gap-2">
                           <div className="flex-shrink-0 text-error text-lg animate-bounce">⚠️</div>
@@ -2916,7 +2999,7 @@ export default function GalleryPage() {
                     )}
                     
                     {/* Sohu replace tip */}
-                    {uploadImageData?.isSohu && !uploadImageData?.isBase64 && (
+                    {uploadImageData?.isSohu && (
                       <div className="p-3 rounded-[var(--radius-box)] bg-error/20 border-2 border-error/50 shadow-lg animate-pulse-slow">
                         <div className="flex items-start gap-2">
                           <div className="flex-shrink-0 text-error text-lg animate-bounce">⚠️</div>
@@ -2950,7 +3033,7 @@ export default function GalleryPage() {
                     )}
                     
                     {/* Airbnb replace tip */}
-                    {uploadImageData?.isAirbnb && !uploadImageData?.isBase64 && (
+                    {uploadImageData?.isAirbnb && (
                       <div className="p-3 rounded-[var(--radius-box)] bg-error/20 border-2 border-error/50 shadow-lg animate-pulse-slow">
                         <div className="flex items-start gap-2">
                           <div className="flex-shrink-0 text-error text-lg animate-bounce">⚠️</div>

@@ -12,7 +12,8 @@ export const sitesConfig = {
     { url: 'peakpx.com', displayName: 'PeakPX' },
     { url: 'airbnb.com', displayName: 'Airbnb' },
     { url: 'wallhere.com', displayName: 'WallHere' },
-    { url: 'sohu.com', displayName: 'Sohu' }
+    { url: 'sohu.com', displayName: 'Sohu' },
+    { url: 'pixiv.net', displayName: 'Pixiv' }
   ],
   goodQualitySites: [
     { url: 'facebook.com', displayName: 'Facebook' },
