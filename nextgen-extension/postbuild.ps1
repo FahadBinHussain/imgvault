@@ -17,6 +17,10 @@ Copy-Item -Path "slideshare-fix.css" -Destination "dist/slideshare-fix.css" -For
 Write-Host "Copying rajce-fix.css..." -ForegroundColor Yellow
 Copy-Item -Path "rajce-fix.css" -Destination "dist/rajce-fix.css" -Force
 
+# Copy contextmenu-unlock.js
+Write-Host "Copying contextmenu-unlock.js..." -ForegroundColor Yellow
+Copy-Item -Path "src/content/contextmenu-unlock.js" -Destination "dist/contextmenu-unlock.js" -Force
+
 # Copy icons folder
 Write-Host "Copying icons..." -ForegroundColor Yellow
 if (Test-Path "dist/icons") {

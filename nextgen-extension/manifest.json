@@ -71,6 +71,12 @@
       "css": ["rajce-fix.css"],
       "run_at": "document_start",
       "all_frames": true
+    },
+    {
+      "matches": ["https://open.spotify.com/*"],
+      "js": ["contextmenu-unlock.js"],
+      "run_at": "document_start",
+      "all_frames": true
     }
   ],
   
