@@ -119,7 +119,8 @@ jobs:
           tag_name: ${{ github.event_name == 'push' && format('build-{0}-{1}', github.ref_name, github.sha) || github.event.release.tag_name }}
           name: ${{ github.event_name == 'push' && format('ImgVault build ({0} {1})', github.ref_name, github.sha) || github.event.release.name }}
           body: ${{ github.event_name == 'push' && format('Automated build from `{0}` at commit `{1}`.', github.ref_name, github.sha) || '' }}
-          prerelease: ${{ github.event_name == 'push' }}
+          prerelease: false
+          draft: false
           files: |
             nextgen-extension/artifacts/*.zip
             nextgen-extension/artifacts/*.crx
@@ -159,6 +160,7 @@ jobs:
           tag_name: ${{ github.event_name == 'push' && format('build-{0}-{1}', github.ref_name, github.sha) || github.event.release.tag_name }}
           name: ${{ github.event_name == 'push' && format('ImgVault build ({0} {1})', github.ref_name, github.sha) || github.event.release.name }}
           body: ${{ github.event_name == 'push' && format('Automated build from `{0}` at commit `{1}`.', github.ref_name, github.sha) || '' }}
-          prerelease: ${{ github.event_name == 'push' }}
+          prerelease: false
+          draft: false
           files: |
             native-host/artifacts/ImgVault-Native-Host.exe
