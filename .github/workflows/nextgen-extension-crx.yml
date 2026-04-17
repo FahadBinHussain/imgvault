@@ -8,6 +8,7 @@ on:
       - '.github/workflows/nextgen-extension-crx.yml'
       - 'nextgen-extension/**'
       - 'native-host/**'
+  workflow_dispatch:
   release:
     types:
       - published
@@ -69,15 +70,15 @@ jobs:
 
       - name: Prepare signing key
         env:
-          EXTENSION_PRIVATE_KEY_B64: ${{ secrets.EXTENSION_PRIVATE_KEY_B64 }}
+          IMGVAULT_EXTENSION_PEM_B64: ${{ secrets.IMGVAULT_EXTENSION_PEM_B64 }}
         run: |
-          if [ -z "$EXTENSION_PRIVATE_KEY_B64" ]; then
-            echo "Missing required secret: EXTENSION_PRIVATE_KEY_B64" >&2
+          if [ -z "$IMGVAULT_EXTENSION_PEM_B64" ]; then
+            echo "Missing required secret: IMGVAULT_EXTENSION_PEM_B64" >&2
             exit 1
           fi
 
           mkdir -p "$(dirname "$KEY_PATH")" "$ARTIFACT_DIR"
-          printf '%s' "$EXTENSION_PRIVATE_KEY_B64" | base64 --decode > "$KEY_PATH"
+          printf '%s' "$IMGVAULT_EXTENSION_PEM_B64" | base64 --decode > "$KEY_PATH"
 
       - name: Create ZIP package
         run: |
