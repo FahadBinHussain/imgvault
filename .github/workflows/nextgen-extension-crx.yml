@@ -123,7 +123,7 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || format('v{0}-build.{1}', steps.extension-version.outputs.version, github.run_number) }}
           name: ${{ github.event_name == 'release' && github.event.release.name || format('ImgVault v{0} Build {1}', steps.extension-version.outputs.version, github.run_number) }}
-          body: ${{ github.event_name == 'release' && github.event.release.body || format('Automated production build from `{0}` (run #{1}).', github.ref_name, github.run_number) }}
+          body: ${{ github.event_name == 'release' && github.event.release.body || format('Automated production build from `{0}` (run {1}).', github.ref_name, github.run_number) }}
           prerelease: ${{ github.event_name == 'release' && github.event.release.prerelease || false }}
           draft: ${{ github.event_name == 'release' && github.event.release.draft || false }}
           files: |
@@ -164,7 +164,7 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || format('vhost-build.{0}', github.run_number) }}
           name: ${{ github.event_name == 'release' && github.event.release.name || format('ImgVault Native Host Build {0}', github.run_number) }}
-          body: ${{ github.event_name == 'release' && github.event.release.body || format('Automated native host production build from `{0}` (run #{1}).', github.ref_name, github.run_number) }}
+          body: ${{ github.event_name == 'release' && github.event.release.body || format('Automated native host production build from `{0}` (run {1}).', github.ref_name, github.run_number) }}
           prerelease: ${{ github.event_name == 'release' && github.event.release.prerelease || false }}
           draft: ${{ github.event_name == 'release' && github.event.release.draft || false }}
           files: |
