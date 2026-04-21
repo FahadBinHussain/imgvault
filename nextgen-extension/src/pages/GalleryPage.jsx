@@ -244,18 +244,48 @@ export default function GalleryPage() {
     });
   }, [images, collectionId, searchQuery]);
 
+  const selectedItemForType =
+    fullImageDetails?.id === selectedImage?.id ? fullImageDetails : selectedImage;
+
+  const isTruthyFlag = (value) =>
+    value === true ||
+    value === 1 ||
+    value === '1' ||
+    (typeof value === 'string' && value.trim().toLowerCase() === 'true');
+
+  const hasMeaningfulValue = (value) => {
+    if (value === undefined || value === null) return false;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (!normalized || normalized === 'false' || normalized === 'null' || normalized === 'n/a') {
+        return false;
+      }
+      return true;
+    }
+    if (typeof value === 'number') return Number.isFinite(value) && value > 0;
+    return Boolean(value);
+  };
+
+  const isHttpUrl = (value) =>
+    typeof value === 'string' && /^https?:\/\//i.test(value.trim());
+
+  const hasVideoHostUrl = (
+    isHttpUrl(selectedItemForType?.filemoonWatchUrl) ||
+    isHttpUrl(selectedItemForType?.udropWatchUrl) ||
+    isHttpUrl(selectedItemForType?.filemoonDirectUrl) ||
+    isHttpUrl(selectedItemForType?.udropDirectUrl)
+  );
+
+  const hasExplicitVideoType = (
+    isTruthyFlag(selectedItemForType?.isVideo) ||
+    selectedItemForType?.fileType?.startsWith?.('video/')
+  );
+
   const isSelectedVideo = Boolean(
-    (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.isVideo : selectedImage?.isVideo) ||
-    (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.fileType : selectedImage?.fileType)?.startsWith?.('video/') ||
-    (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.duration : selectedImage?.duration) ||
-    (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.filemoonWatchUrl : selectedImage?.filemoonWatchUrl) ||
-    (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.udropWatchUrl : selectedImage?.udropWatchUrl) ||
-    (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.filemoonDirectUrl : selectedImage?.filemoonDirectUrl) ||
-    (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.udropDirectUrl : selectedImage?.udropDirectUrl)
+    hasExplicitVideoType ||
+    hasVideoHostUrl
   );
-  const isSelectedLink = Boolean(
-    (fullImageDetails?.id === selectedImage?.id ? fullImageDetails?.isLink : selectedImage?.isLink)
-  );
+  const isSelectedLink = isTruthyFlag(selectedItemForType?.isLink);
 
   const modalImage =
     fullImageDetails?.id === selectedImage?.id
