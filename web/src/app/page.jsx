@@ -291,11 +291,11 @@ function DownloadSection() {
   const [loadingAssets, setLoadingAssets] = useState(true)
   const [assetError, setAssetError] = useState('')
 
-  const steps = [
-    'Download or clone the repository',
+  const userSteps = [
+    'Download the latest release below',
     'Open Chrome and go to chrome://extensions/',
     'Enable Developer mode',
-    'Click "Load unpacked" and select the dist folder'
+    'Extract the ZIP and load the unpacked folder'
   ]
 
   useEffect(() => {
@@ -350,110 +350,129 @@ function DownloadSection() {
           <div className="hidden sm:block absolute top-0 right-0 w-96 h-96 bg-primary-500/10 rounded-full blur-[100px]"></div>
           <div className="hidden sm:block absolute bottom-0 left-0 w-80 h-80 bg-primary-600/10 rounded-full blur-[80px]"></div>
           
-          <div className="relative z-10 grid lg:grid-cols-2 gap-8 sm:gap-12 items-center">
-            <div className="min-w-0">
+          <div className="relative z-10">
+            <div className="max-w-3xl">
               <div className="inline-flex items-center gap-2 glass rounded-full px-5 py-2 mb-6">
                 <Download className="w-4 h-4 text-primary-400" />
-                <span className="text-sm text-base-content/80">Get Started</span>
+                <span className="text-sm text-base-content/80">Install ImgVault</span>
               </div>
               <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-6 break-words">
-                Ready to <span className="gradient-text">Transform</span> Your Workflow?
+                Ready to <span className="gradient-text">Start Saving</span>?
               </h2>
               <p className="text-base sm:text-lg text-base-content/65 mb-8 leading-relaxed">
-                Install ImgVault in seconds and start saving images like a pro.
+                Use the release files if you just want to install it. Build from source only if you are developing ImgVault.
               </p>
-
-              <div className="mb-5 text-sm text-base-content/70">
-                {loadingAssets ? 'Loading latest release assets...' : (latestRelease?.releaseTag ? `Latest release: ${latestRelease.releaseTag}` : 'Latest release ready')}
-              </div>
-
-              {assetError && (
-                <div className="mb-5 rounded-[var(--radius-box)] border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
-                  {assetError}
-                </div>
-              )}
-
-              <div className="flex flex-col gap-4 mb-8">
-                {steps.map((step, i) => (
-                  <div key={i} className="flex items-start gap-4 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-primary-500/20 flex items-center justify-center shrink-0">
-                      <span className="text-sm font-semibold text-primary-400">{i + 1}</span>
-                    </div>
-                    <p className="text-base-content/75 break-words">{step}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-4 mb-3">
-                <a 
-                  href={latestRelease?.releaseUrl || 'https://github.com/FahadBinHussain/imgvault/releases/latest'} 
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group w-full sm:w-auto px-6 sm:px-8 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-[var(--radius-box)] font-semibold text-center transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/25 hover:-translate-y-0.5 flex items-center justify-center gap-2"
-                >
-                  <Github className="w-5 h-5" />
-                  View Latest Release
-                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </a>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <a
-                  href={isReady ? latestRelease.assets.zip : '#'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-disabled={!isReady}
-                  className={`w-full px-4 py-3 rounded-[var(--radius-box)] font-semibold text-center transition-all duration-300 flex items-center justify-center gap-2 border border-base-content/20 bg-base-100 ${isReady ? 'hover:bg-base-content/10' : 'opacity-50 pointer-events-none cursor-not-allowed'}`}
-                >
-                  <Download className="w-4 h-4" />
-                  Extension ZIP
-                </a>
-
-                <a
-                  href={isReady ? latestRelease.assets.crx : '#'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-disabled={!isReady}
-                  className={`w-full px-4 py-3 rounded-[var(--radius-box)] font-semibold text-center transition-all duration-300 flex items-center justify-center gap-2 border border-base-content/20 bg-base-100 ${isReady ? 'hover:bg-base-content/10' : 'opacity-50 pointer-events-none cursor-not-allowed'}`}
-                >
-                  <Download className="w-4 h-4" />
-                  Extension CRX
-                </a>
-
-                <a
-                  href={isReady ? latestRelease.assets.nativeHost : '#'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-disabled={!isReady}
-                  className={`w-full px-4 py-3 rounded-[var(--radius-box)] font-semibold text-center transition-all duration-300 flex items-center justify-center gap-2 border border-base-content/20 bg-base-100 ${isReady ? 'hover:bg-base-content/10' : 'opacity-50 pointer-events-none cursor-not-allowed'}`}
-                >
-                  <Download className="w-4 h-4" />
-                  Native Host EXE
-                </a>
-              </div>
             </div>
 
-            <div className="glass rounded-[var(--radius-box)] p-4 sm:p-6 bg-base-200/70 min-w-0 overflow-hidden">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-3 h-3 rounded-full bg-error/80"></div>
-                <div className="w-3 h-3 rounded-full bg-warning/80"></div>
-                <div className="w-3 h-3 rounded-full bg-success/80"></div>
+            <div className="mb-6 text-sm text-base-content/70">
+                {loadingAssets ? 'Loading latest release assets...' : (latestRelease?.releaseTag ? `Latest release: ${latestRelease.releaseTag}` : 'Latest release ready')}
+            </div>
+
+            {assetError && (
+              <div className="mb-6 rounded-[var(--radius-box)] border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+                {assetError}
               </div>
-              <pre className="text-xs sm:text-sm text-base-content/75 font-mono overflow-x-auto max-w-full">
-                <code>{`# Clone the repository
-git clone https://github.com/FahadBinHussain/imgvault.git
+            )}
 
-# Navigate to extension
-cd nextgen-extension
+            <div className="grid xl:grid-cols-[1.45fr_0.95fr] gap-6 xl:gap-8 items-start">
+              <div className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-100/85 p-6 sm:p-8 shadow-sm">
+                <div className="mb-6 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-lg font-semibold">For Users</p>
+                    <p className="text-sm text-base-content/60">Fastest way to get started</p>
+                  </div>
+                  <div className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                    Recommended
+                  </div>
+                </div>
 
-# Install dependencies
+                <div className="flex flex-col gap-4 mb-8">
+                  {userSteps.map((step, i) => (
+                    <div key={i} className="flex items-start gap-4 min-w-0">
+                      <div className="w-8 h-8 rounded-full bg-primary-500/15 flex items-center justify-center shrink-0">
+                        <span className="text-sm font-semibold text-primary">{i + 1}</span>
+                      </div>
+                      <p className="text-base-content/75 break-words">{step}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                  <a 
+                    href={latestRelease?.releaseUrl || 'https://github.com/FahadBinHussain/imgvault/releases/latest'} 
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group w-full sm:w-auto px-6 sm:px-8 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-[var(--radius-box)] font-semibold text-center transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/25 hover:-translate-y-0.5 flex items-center justify-center gap-2"
+                  >
+                    <Github className="w-5 h-5" />
+                    View Latest Release
+                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </a>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <a
+                    href={isReady ? latestRelease.assets.zip : '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-disabled={!isReady}
+                    className={`w-full px-4 py-4 rounded-[var(--radius-box)] font-semibold text-center transition-all duration-300 flex items-center justify-center gap-2 border border-base-content/15 bg-base-100 ${isReady ? 'hover:bg-base-content/5' : 'opacity-50 pointer-events-none cursor-not-allowed'}`}
+                  >
+                    <Download className="w-4 h-4" />
+                    Extension ZIP
+                  </a>
+
+                  <a
+                    href={isReady ? latestRelease.assets.crx : '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-disabled={!isReady}
+                    className={`w-full px-4 py-4 rounded-[var(--radius-box)] font-semibold text-center transition-all duration-300 flex items-center justify-center gap-2 border border-base-content/15 bg-base-100 ${isReady ? 'hover:bg-base-content/5' : 'opacity-50 pointer-events-none cursor-not-allowed'}`}
+                  >
+                    <Download className="w-4 h-4" />
+                    Extension CRX
+                  </a>
+
+                  <a
+                    href={isReady ? latestRelease.assets.nativeHost : '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-disabled={!isReady}
+                    className={`w-full px-4 py-4 rounded-[var(--radius-box)] font-semibold text-center transition-all duration-300 flex items-center justify-center gap-2 border border-base-content/15 bg-base-100 ${isReady ? 'hover:bg-base-content/5' : 'opacity-50 pointer-events-none cursor-not-allowed'}`}
+                  >
+                    <Download className="w-4 h-4" />
+                    Native Host EXE
+                  </a>
+                </div>
+              </div>
+
+              <div className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-100/70 p-6 sm:p-7 min-w-0 overflow-hidden">
+                <div className="mb-5 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-lg font-semibold">For Developers</p>
+                    <p className="text-sm text-base-content/60">Build from source</p>
+                  </div>
+                  <a
+                    href="https://github.com/FahadBinHussain/imgvault"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Repository
+                  </a>
+                </div>
+
+                <pre className="text-xs sm:text-sm text-base-content/75 font-mono overflow-x-auto max-w-full rounded-[var(--radius-box)] bg-base-200/60 p-4">
+                  <code>{`git clone https://github.com/FahadBinHussain/imgvault.git
+cd imgvault/nextgen-extension
 pnpm install
+pnpm build`}</code>
+                </pre>
 
-# Build for production
-pnpm build
-
-# Load dist/ folder in Chrome`}</code>
-              </pre>
+                <p className="mt-4 text-sm text-base-content/60">
+                  After build, load the generated `dist` folder in Chrome.
+                </p>
+              </div>
             </div>
           </div>
         </div>
