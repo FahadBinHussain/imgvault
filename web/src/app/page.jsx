@@ -287,12 +287,61 @@ function DemoSection() {
 }
 
 function DownloadSection() {
+  const [latestRelease, setLatestRelease] = useState(null)
+  const [loadingAssets, setLoadingAssets] = useState(true)
+  const [assetError, setAssetError] = useState('')
+
   const steps = [
     'Download or clone the repository',
     'Open Chrome and go to chrome://extensions/',
     'Enable Developer mode',
     'Click "Load unpacked" and select the dist folder'
   ]
+
+  useEffect(() => {
+    let isActive = true
+
+    const loadLatestAssets = async () => {
+      try {
+        setLoadingAssets(true)
+        setAssetError('')
+
+        const response = await fetch('/api/releases/latest-assets', {
+          cache: 'no-store',
+        })
+
+        const payload = await response.json()
+        if (!response.ok) {
+          throw new Error(payload?.error || 'Failed to load latest release assets')
+        }
+
+        if (isActive) {
+          setLatestRelease(payload)
+        }
+      } catch (error) {
+        if (isActive) {
+          setAssetError(error?.message || 'Failed to load latest release assets')
+          setLatestRelease(null)
+        }
+      } finally {
+        if (isActive) {
+          setLoadingAssets(false)
+        }
+      }
+    }
+
+    loadLatestAssets()
+
+    return () => {
+      isActive = false
+    }
+  }, [])
+
+  const isReady = Boolean(
+    latestRelease?.assets?.zip &&
+    latestRelease?.assets?.crx &&
+    latestRelease?.assets?.nativeHost
+  )
 
   return (
     <section id="download" className="py-20 md:py-32 relative">
@@ -311,8 +360,18 @@ function DownloadSection() {
                 Ready to <span className="gradient-text">Transform</span> Your Workflow?
               </h2>
               <p className="text-base sm:text-lg text-base-content/65 mb-8 leading-relaxed">
-                Install ImgVault Next-Gen in seconds and start saving images like a pro.
+                Install ImgVault in seconds and start saving images like a pro.
               </p>
+
+              <div className="mb-5 text-sm text-base-content/70">
+                {loadingAssets ? 'Loading latest release assets...' : (latestRelease?.releaseTag ? `Latest release: ${latestRelease.releaseTag}` : 'Latest release ready')}
+              </div>
+
+              {assetError && (
+                <div className="mb-5 rounded-[var(--radius-box)] border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+                  {assetError}
+                </div>
+              )}
 
               <div className="flex flex-col gap-4 mb-8">
                 {steps.map((step, i) => (
@@ -325,23 +384,51 @@ function DownloadSection() {
                 ))}
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex flex-col sm:flex-row gap-4 mb-3">
                 <a 
-                  href="https://github.com/FahadBinHussain/ImgVault" 
+                  href={latestRelease?.releaseUrl || 'https://github.com/FahadBinHussain/imgvault/releases/latest'} 
                   target="_blank"
                   rel="noopener noreferrer"
                   className="group w-full sm:w-auto px-6 sm:px-8 py-4 bg-gradient-to-r from-primary-600 to-primary-500 rounded-[var(--radius-box)] font-semibold text-center transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/25 hover:-translate-y-0.5 flex items-center justify-center gap-2"
                 >
                   <Github className="w-5 h-5" />
-                  View on GitHub
+                  View Latest Release
                   <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </a>
-                <a 
-                  href="https://github.com/FahadBinHussain/ImgVault/archive/refs/heads/main.zip"
-                  className="w-full sm:w-auto px-6 sm:px-8 py-4 glass rounded-[var(--radius-box)] font-semibold text-center hover:bg-base-content/10 transition-all duration-300 flex items-center justify-center gap-2"
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <a
+                  href={isReady ? latestRelease.assets.zip : '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-disabled={!isReady}
+                  className={`w-full px-4 py-3 rounded-[var(--radius-box)] font-semibold text-center transition-all duration-300 flex items-center justify-center gap-2 border border-base-content/20 bg-base-100 ${isReady ? 'hover:bg-base-content/10' : 'opacity-50 pointer-events-none cursor-not-allowed'}`}
                 >
-                  <Download className="w-5 h-5" />
-                  Download ZIP
+                  <Download className="w-4 h-4" />
+                  Extension ZIP
+                </a>
+
+                <a
+                  href={isReady ? latestRelease.assets.crx : '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-disabled={!isReady}
+                  className={`w-full px-4 py-3 rounded-[var(--radius-box)] font-semibold text-center transition-all duration-300 flex items-center justify-center gap-2 border border-base-content/20 bg-base-100 ${isReady ? 'hover:bg-base-content/10' : 'opacity-50 pointer-events-none cursor-not-allowed'}`}
+                >
+                  <Download className="w-4 h-4" />
+                  Extension CRX
+                </a>
+
+                <a
+                  href={isReady ? latestRelease.assets.nativeHost : '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-disabled={!isReady}
+                  className={`w-full px-4 py-3 rounded-[var(--radius-box)] font-semibold text-center transition-all duration-300 flex items-center justify-center gap-2 border border-base-content/20 bg-base-100 ${isReady ? 'hover:bg-base-content/10' : 'opacity-50 pointer-events-none cursor-not-allowed'}`}
+                >
+                  <Download className="w-4 h-4" />
+                  Native Host EXE
                 </a>
               </div>
             </div>
@@ -354,7 +441,7 @@ function DownloadSection() {
               </div>
               <pre className="text-xs sm:text-sm text-base-content/75 font-mono overflow-x-auto max-w-full">
                 <code>{`# Clone the repository
-git clone https://github.com/FahadBinHussain/ImgVault.git
+git clone https://github.com/FahadBinHussain/imgvault.git
 
 # Navigate to extension
 cd nextgen-extension
@@ -382,7 +469,7 @@ function Footer() {
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
             <BrandLogo href="/" className="w-8 h-8" />
-            <span className="font-semibold">ImgVault Next-Gen</span>
+            <span className="font-semibold">ImgVault</span>
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-sm text-base-content/55">
