@@ -57,6 +57,9 @@ export default function GalleryPage() {
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploadTags, setUploadTags] = useState('');
   const [uploadMetadata, setUploadMetadata] = useState(null);
+  const [uploadPreviewSrc, setUploadPreviewSrc] = useState('');
+  const [uploadPreviewResolving, setUploadPreviewResolving] = useState(false);
+  const [uploadPreviewFallbackTried, setUploadPreviewFallbackTried] = useState(false);
   const [duplicateData, setDuplicateData] = useState(null);
   const [isLocalUpload, setIsLocalUpload] = useState(false); // Track if current image is from local file
   const [selectedCollectionId, setSelectedCollectionId] = useState(''); // Selected collection for upload
@@ -867,6 +870,9 @@ export default function GalleryPage() {
     setUploadDescription('');
     setUploadTags('');
     setUploadMetadata(null);
+    setUploadPreviewSrc('');
+    setUploadPreviewResolving(false);
+    setUploadPreviewFallbackTried(false);
     setDuplicateData(null);
     setIsLocalUpload(false);
     setSelectedCollectionId('');
@@ -879,6 +885,37 @@ export default function GalleryPage() {
 
     if (uploading) {
       showToast('Upload will continue in the background. You can reopen the modal to check logs later.', 'info', 3500);
+    }
+  };
+
+  useEffect(() => {
+    setUploadPreviewSrc(uploadImageData?.srcUrl || '');
+    setUploadPreviewResolving(false);
+    setUploadPreviewFallbackTried(false);
+  }, [uploadImageData?.srcUrl]);
+
+  const resolveProtectedUploadPreview = async () => {
+    if (!uploadImageData?.srcUrl || uploadImageData?.isVideo || uploadPreviewFallbackTried) {
+      return;
+    }
+
+    setUploadPreviewFallbackTried(true);
+    setUploadPreviewResolving(true);
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'resolveImagePreview',
+        imageUrl: uploadImageData.srcUrl,
+        pageUrl: uploadPageUrl || uploadImageData.pageUrl || ''
+      });
+
+      if (response?.success && response?.dataUrl) {
+        setUploadPreviewSrc(response.dataUrl);
+      }
+    } catch (error) {
+      console.error('Failed to resolve protected upload preview:', error);
+    } finally {
+      setUploadPreviewResolving(false);
     }
   };
 
@@ -3027,11 +3064,23 @@ export default function GalleryPage() {
                           className="w-full h-auto max-h-96 object-contain"
                         />
                       ) : (
-                        <img
-                          src={uploadImageData.srcUrl}
-                          alt="Preview"
-                          className="w-full h-auto max-h-96 object-contain"
-                        />
+                        <>
+                          {uploadPreviewResolving && !uploadPreviewSrc ? (
+                            <div className="w-full h-64 max-h-96 flex items-center justify-center">
+                              <div className="text-center space-y-3">
+                                <Spinner size="md" />
+                                <div className="text-sm text-base-content/70">Loading preview...</div>
+                              </div>
+                            </div>
+                          ) : (
+                            <img
+                              src={uploadPreviewSrc || uploadImageData.srcUrl}
+                              alt="Preview"
+                              className="w-full h-auto max-h-96 object-contain"
+                              onError={resolveProtectedUploadPreview}
+                            />
+                          )}
+                        </>
                       )}
                       <button
                         onClick={() => setUploadImageData(null)}

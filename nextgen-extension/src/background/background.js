@@ -828,6 +828,12 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'resolveImagePreview':
+        this.fetchImageAsDataUrl(request.imageUrl, request.pageUrl)
+          .then(dataUrl => sendResponse({ success: true, dataUrl }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'createCollection':
         this.storage.createCollection(request.data)
           .then(collection => sendResponse({ success: true, data: collection }))
@@ -1861,6 +1867,20 @@ class ImgVaultServiceWorker {
       }
       return response.blob();
     }
+  }
+
+  async fetchImageAsDataUrl(imageUrl, pageUrl = '') {
+    const blob = await this.fetchImage(imageUrl, undefined, pageUrl);
+    const buffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000;
+    let binary = '';
+
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+
+    return `data:${blob.type || 'image/png'};base64,${btoa(binary)}`;
   }
 
   /**
