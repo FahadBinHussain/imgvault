@@ -460,14 +460,19 @@ class ImgVaultServiceWorker {
       const isGood = isGoodQualitySite(pageUrl);
       const goodSite = getSiteDisplayName(pageUrl, sitesConfig.goodQualitySites);
 
-      // Sanitize all string data to avoid Unicode issues
-      const sanitizeString = (str) => (str || '').replace(/[\u200B-\u200D\uFEFF]/g, '').substring(0, 500);
+      // Keep full media/data URLs intact. Truncating data URLs corrupts captured frames.
+      const sanitizeText = (str, maxLength = 500) =>
+        (str || '').replace(/[\u200B-\u200D\uFEFF]/g, '').substring(0, maxLength);
+      const sanitizeUrl = (str) => {
+        const cleaned = (str || '').replace(/[\u200B-\u200D\uFEFF]/g, '');
+        return cleaned.startsWith('data:') ? cleaned : cleaned.substring(0, 4000);
+      };
 
       const pendingData = {
-        srcUrl: sanitizeString(info.srcUrl),
-        originalSourceUrl: sanitizeString(info.srcUrl),
-        pageUrl: sanitizeString(pageUrl),
-        pageTitle: sanitizeString(tab.title),
+        srcUrl: sanitizeUrl(info.srcUrl),
+        originalSourceUrl: sanitizeUrl(info.srcUrl),
+        pageUrl: sanitizeUrl(pageUrl),
+        pageTitle: sanitizeText(tab.title),
         timestamp: Date.now(),
         isWarningSite: isWarning,
         warningSiteName: warningSite,
@@ -692,14 +697,23 @@ class ImgVaultServiceWorker {
         const isGood = isGoodQualitySite(pageUrl);
         const goodSite = getSiteDisplayName(pageUrl, sitesConfig.goodQualitySites);
 
-        // Sanitize all string data to avoid Unicode issues
-        const sanitizeString = (str) => (str || '').replace(/[\u200B-\u200D\uFEFF]/g, '').substring(0, 500);
+        // Keep full media/data URLs intact. Truncating data URLs corrupts captured frames.
+        const sanitizeText = (str, maxLength = 500) =>
+          (str || '').replace(/[\u200B-\u200D\uFEFF]/g, '').substring(0, maxLength);
+        const sanitizeUrl = (str) => {
+          const cleaned = (str || '').replace(/[\u200B-\u200D\uFEFF]/g, '');
+          return cleaned.startsWith('data:') ? cleaned : cleaned.substring(0, 4000);
+        };
+        const inferredFileName = response.imageUrl?.startsWith('data:')
+          ? 'youtube-frame.png'
+          : '';
 
         const pendingData = {
-          srcUrl: sanitizeString(response.imageUrl),
-          originalSourceUrl: sanitizeString(info.srcUrl || pageUrl),
-          pageUrl: sanitizeString(pageUrl),
-          pageTitle: sanitizeString(tab.title),
+          srcUrl: sanitizeUrl(response.imageUrl),
+          originalSourceUrl: sanitizeUrl(info.srcUrl || pageUrl),
+          pageUrl: sanitizeUrl(pageUrl),
+          pageTitle: sanitizeText(tab.title),
+          fileName: inferredFileName,
           timestamp: Date.now(),
           isYouTubeFrame: true,
           isWarningSite: isWarning,

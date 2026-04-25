@@ -1609,10 +1609,14 @@ export default function GalleryPage() {
           
           if (pendingImage.srcUrl) {
             console.log('✅ Pending image found! Opening modal...');
+            const derivedFileName = pendingImage.fileName ||
+              (pendingImage.srcUrl.startsWith('data:')
+                ? (pendingImage.isYouTubeFrame ? 'youtube-frame.png' : 'image.png')
+                : (pendingImage.srcUrl.split('/').pop().split('?')[0] || 'image.jpg'));
             // Normal flow - has srcUrl
             setUploadImageData({
               srcUrl: pendingImage.srcUrl,
-              fileName: pendingImage.srcUrl.split('/').pop().split('?')[0] || 'image.jpg',
+              fileName: derivedFileName,
               pageTitle: pendingImage.pageTitle || '',
               isWarningSite: pendingImage.isWarningSite || false,
               warningSiteName: pendingImage.warningSiteName || '',
@@ -1631,7 +1635,7 @@ export default function GalleryPage() {
                 action: 'extractMetadata',
                 imageUrl: pendingImage.srcUrl,
                 pageUrl: pendingImage.pageUrl,
-                fileName: pendingImage.srcUrl.split('/').pop().split('?')[0]
+                fileName: derivedFileName
               });
 
               if (response.success) {

@@ -60,6 +60,30 @@ The core idea is simple: media is not useful without context. ImgVault stores th
 - Video hosts: Filemoon, UDrop
 - Release assets published through GitHub Actions
 
+## Screenshots
+
+<p align="center">
+  <img src="https://i.ibb.co.com/zWh6MX4t/image-197.png" alt="ImgVault Screenshot 9" width="30%" />
+  <img src="https://i.ibb.co.com/Sw0JtSxD/image-192.png" alt="ImgVault Screenshot 4" width="30%" />
+  <img src="https://i.ibb.co.com/vxQLpwGr/image-195.png" alt="ImgVault Screenshot 7" width="30%" />
+  
+  
+</p>
+
+<p align="center">
+  <img src="https://i.ibb.co.com/jZqphFcJ/image-190.png" alt="ImgVault Screenshot 2" width="30%" />
+  <img src="https://i.ibb.co.com/WpNhsyv8/image-189.png" alt="ImgVault Screenshot 1" width="30%" />
+  <img src="https://i.ibb.co.com/RpKnQxn3/image-193.png" alt="ImgVault Screenshot 5" width="30%" />
+  
+</p>
+
+<p align="center">
+  <img src="https://i.ibb.co.com/gL15g2rp/image-194.png" alt="ImgVault Screenshot 6" width="30%" />
+  <img src="https://i.ibb.co.com/DfrwkjKF/image-191.png" alt="ImgVault Screenshot 3" width="30%" />
+  <img src="https://i.ibb.co.com/Q3wPSx3V/image-196.png" alt="ImgVault Screenshot 8" width="30%" />
+  
+</p>
+
 ## Repository Layout
 
 | Path | Purpose |
