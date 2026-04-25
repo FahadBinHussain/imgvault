@@ -17,9 +17,10 @@ let lastRightClickElement = null;
 document.addEventListener('contextmenu', (e) => {
   lastRightClickElement = e.target;
   console.log('📍 Right-click captured on element:', e.target);
-  
-  // Also try to extract and store background image immediately
-  const imageUrl = extractBackgroundImage(e.target);
+
+  // Store the best resolved media URL immediately so background handlers
+  // can still access it even if the click target is a wrapper element.
+  const imageUrl = extractImageUrlFromElement(e.target) || extractBackgroundImage(e.target);
   if (imageUrl) {
     console.log('💾 Storing right-click image URL:', imageUrl);
     chrome.storage.local.set({
@@ -69,6 +70,53 @@ function extractBackgroundImage(element) {
     depth++;
   }
   
+  return null;
+}
+
+function extractImageUrlFromElement(element) {
+  if (!element) return null;
+
+  const getImgUrl = (img) => {
+    if (!img) return null;
+    return img.currentSrc || img.src || img.getAttribute('src') || null;
+  };
+
+  if (element.tagName === 'IMG') {
+    return getImgUrl(element);
+  }
+
+  if (typeof element.closest === 'function') {
+    const closestImg = element.closest('img');
+    if (closestImg) {
+      return getImgUrl(closestImg);
+    }
+  }
+
+  if (typeof element.querySelector === 'function') {
+    const nestedImg = element.querySelector('img');
+    if (nestedImg) {
+      return getImgUrl(nestedImg);
+    }
+  }
+
+  let parent = element.parentElement;
+  let depth = 0;
+  while (parent && depth < 5) {
+    if (parent.tagName === 'IMG') {
+      return getImgUrl(parent);
+    }
+
+    if (typeof parent.querySelector === 'function') {
+      const nestedImg = parent.querySelector('img');
+      if (nestedImg) {
+        return getImgUrl(nestedImg);
+      }
+    }
+
+    parent = parent.parentElement;
+    depth++;
+  }
+
   return null;
 }
 
@@ -208,6 +256,32 @@ const messageHandlers = {
     }
     
     console.log('❌ No background image found');
+    return { imageUrl: null };
+  },
+
+  /**
+   * Get the best media URL from the last clicked element.
+   * Useful on sites like Instagram where the context target is a wrapper, not the image itself.
+   * @param {number} x - Click X coordinate
+   * @param {number} y - Click Y coordinate
+   * @returns {{imageUrl: string | null}}
+   */
+  getClickedMedia(x, y) {
+    const element = lastRightClickElement || document.elementFromPoint(x, y);
+    if (!element) {
+      return { imageUrl: null };
+    }
+
+    const imageUrl = extractImageUrlFromElement(element);
+    if (imageUrl) {
+      return { imageUrl };
+    }
+
+    const backgroundImageUrl = extractBackgroundImage(element);
+    if (backgroundImageUrl) {
+      return { imageUrl: backgroundImageUrl };
+    }
+
     return { imageUrl: null };
   },
 

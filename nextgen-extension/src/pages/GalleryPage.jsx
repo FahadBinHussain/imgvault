@@ -3643,9 +3643,20 @@ export default function GalleryPage() {
                                 <label className="block text-xs font-medium text-base-content/60 mb-1">
                                   {`${index + 1}. ${key}`}
                                 </label>
-                                <div className="px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-content/10 text-base-content text-xs break-all font-mono">
-                                  {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                                </div>
+                                {key === 'description' ? (
+                                  <Textarea
+                                    value={uploadDescription}
+                                    onChange={(e) => setUploadDescription(e.target.value)}
+                                    placeholder="Add a description..."
+                                    rows={3}
+                                    className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-content/10 text-base-content text-xs break-all font-mono resize-none
+                                             focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                  />
+                                ) : (
+                                  <div className="px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-content/10 text-base-content text-xs break-all font-mono">
+                                    {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>

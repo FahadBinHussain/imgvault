@@ -219,6 +219,22 @@ class ImgVaultServiceWorker {
           // console.log('✅ Context menu created successfully');
         }
       });
+
+      chrome.contextMenus.create({
+        id: 'saveWrappedMediaToImgVault',
+        title: 'Save to ImgVault',
+        contexts: ['all'],
+        documentUrlPatterns: [
+          'https://www.instagram.com/*',
+          'https://instagram.com/*'
+        ]
+      }, () => {
+        if (chrome.runtime.lastError) {
+          // console.log('Wrapped media context menu creation:', chrome.runtime.lastError.message);
+        } else {
+          // console.log('✅ Wrapped media context menu created successfully');
+        }
+      });
       
 
 
@@ -403,9 +419,22 @@ class ImgVaultServiceWorker {
    * @param {chrome.tabs.Tab} tab - Active tab
    */
   async handleContextMenuClick(info, tab) {
+    console.log('[ImgVault][ContextMenu] Click received', {
+      menuItemId: info?.menuItemId,
+      srcUrl: info?.srcUrl || null,
+      pageUrl: info?.pageUrl || null,
+      linkUrl: info?.linkUrl || null,
+      x: info?.x ?? null,
+      y: info?.y ?? null,
+      tabId: tab?.id ?? null,
+      tabUrl: tab?.url || null,
+    });
+
     if (info.menuItemId === 'saveLinkToImgVault') {
+      console.log('[ImgVault][ContextMenu] Handling saveLinkToImgVault');
       const targetUrl = (info.linkUrl || info.pageUrl || tab?.url || '').trim();
       if (!targetUrl) {
+        console.warn('[ImgVault][ContextMenu] No target URL for saveLinkToImgVault');
         return;
       }
 
@@ -443,6 +472,7 @@ class ImgVaultServiceWorker {
         await this.updateActionIconForTab(tab.id, tab.url || targetUrl);
       }
 
+      console.log('[ImgVault][ContextMenu] Link saved, opening gallery tab');
       chrome.tabs.create({
         url: chrome.runtime.getURL('index.html')
       });
@@ -450,6 +480,7 @@ class ImgVaultServiceWorker {
     }
 
     if (info.menuItemId === 'saveToImgVault') {
+      console.log('[ImgVault][ContextMenu] Handling saveToImgVault');
       // console.log('🎯 Context menu clicked!');
       // console.log('📸 info.srcUrl:', info.srcUrl);
       // console.log('📍 Page URL:', info.pageUrl || tab.url);
@@ -480,11 +511,20 @@ class ImgVaultServiceWorker {
         goodQualitySiteName: goodSite
       };
 
+      console.log('[ImgVault][ContextMenu] Prepared pending image data for saveToImgVault', {
+        hasSrcUrl: Boolean(pendingData.srcUrl),
+        srcUrlPreview: pendingData.srcUrl ? pendingData.srcUrl.substring(0, 200) : null,
+        pageUrl: pendingData.pageUrl,
+        pageTitle: pendingData.pageTitle,
+      });
+
       // console.log('💾 Storing pending image data:', pendingData);
 
       await chrome.storage.local.set({
         pendingImage: pendingData
       });
+
+      console.log('[ImgVault][ContextMenu] Stored pending image for saveToImgVault, opening gallery');
 
       // console.log('✅ Pending image stored!');
       
@@ -492,7 +532,189 @@ class ImgVaultServiceWorker {
       chrome.tabs.create({
         url: chrome.runtime.getURL('index.html')
       });
+    } else if (info.menuItemId === 'saveWrappedMediaToImgVault') {
+      console.log('[ImgVault][ContextMenu] Handling saveWrappedMediaToImgVault');
+      let resolvedImageUrl = '';
+
+      const storageData = await chrome.storage.local.get([
+        'lastRightClickImageUrl',
+        'lastRightClickTimestamp'
+      ]);
+
+      console.log('[ImgVault][ContextMenu] Stored right-click media lookup', {
+        hasStoredUrl: Boolean(storageData.lastRightClickImageUrl),
+        storedUrlPreview: storageData.lastRightClickImageUrl
+          ? String(storageData.lastRightClickImageUrl).substring(0, 200)
+          : null,
+        ageMs: storageData.lastRightClickTimestamp
+          ? Date.now() - storageData.lastRightClickTimestamp
+          : null,
+      });
+
+      if (
+        storageData.lastRightClickImageUrl &&
+        storageData.lastRightClickTimestamp &&
+        Date.now() - storageData.lastRightClickTimestamp < 5000
+      ) {
+        resolvedImageUrl = storageData.lastRightClickImageUrl;
+        console.log('[ImgVault][ContextMenu] Using stored right-click media URL');
+      }
+
+      if (!resolvedImageUrl) {
+        try {
+          const response = await chrome.tabs.sendMessage(tab.id, {
+            action: 'getClickedMedia',
+            x: info.x || 0,
+            y: info.y || 0
+          });
+          resolvedImageUrl = response?.imageUrl || '';
+          console.log('[ImgVault][ContextMenu] Content script fallback response', {
+            hasImageUrl: Boolean(resolvedImageUrl),
+            imageUrlPreview: resolvedImageUrl ? resolvedImageUrl.substring(0, 200) : null,
+          });
+        } catch (error) {
+          console.warn('[ImgVault][ContextMenu] Failed to resolve wrapped media from content script', error);
+        }
+      }
+
+      if (!resolvedImageUrl) {
+        try {
+          const executionTarget = {
+            tabId: tab.id,
+            ...(typeof info.frameId === 'number' ? { frameIds: [info.frameId] } : {}),
+          };
+
+          const scriptResults = await chrome.scripting.executeScript({
+            target: executionTarget,
+            func: (pageHref) => {
+              const getImageUrl = (img) =>
+                img?.currentSrc || img?.src || img?.getAttribute?.('src') || '';
+
+              const parseCarouselIndex = () => {
+                try {
+                  const parsedUrl = new URL(pageHref || window.location.href);
+                  const rawIndex = parsedUrl.searchParams.get('img_index');
+                  const numericIndex = Number.parseInt(rawIndex || '', 10);
+                  return Number.isFinite(numericIndex) && numericIndex > 0 ? numericIndex - 1 : -1;
+                } catch (_) {
+                  return -1;
+                }
+              };
+
+              const carouselIndex = parseCarouselIndex();
+
+              const getVisibleArea = (element) => {
+                const rect = element.getBoundingClientRect();
+                return rect.width * rect.height;
+              };
+
+              const getInstagramCarouselCandidates = () =>
+                Array.from(document.querySelectorAll('main article li[tabindex="-1"] ._aagv img, main article ._aagv img'))
+                  .filter((img) => {
+                    const rect = img.getBoundingClientRect();
+                    return rect.width > 120 && rect.height > 120;
+                  });
+
+              const carouselCandidates = getInstagramCarouselCandidates();
+              if (carouselIndex >= 0 && carouselCandidates[carouselIndex]) {
+                const exactCarouselUrl = getImageUrl(carouselCandidates[carouselIndex]);
+                if (exactCarouselUrl) {
+                  return exactCarouselUrl;
+                }
+              }
+
+              const selectors = [
+                'main article li[tabindex="-1"] ._aagv img',
+                'main article ._aagv img',
+                'main article img[crossorigin="anonymous"]',
+                'article ._aagv img',
+                'img[crossorigin="anonymous"]',
+              ];
+
+              for (const selector of selectors) {
+                const matches = Array.from(document.querySelectorAll(selector));
+                const visibleMatch = matches.find((img) => {
+                  const rect = img.getBoundingClientRect();
+                  return rect.width > 120 && rect.height > 120;
+                });
+                const url = getImageUrl(visibleMatch || matches[0]);
+                if (url) {
+                  return url;
+                }
+              }
+
+              const allImages = Array.from(document.images || [])
+                .filter((img) => {
+                  const rect = img.getBoundingClientRect();
+                  return rect.width > 120 && rect.height > 120;
+                })
+                .sort((a, b) => getVisibleArea(b) - getVisibleArea(a));
+
+              return getImageUrl(allImages[0]) || '';
+            },
+            args: [info.pageUrl || tab.url || ''],
+          });
+
+          resolvedImageUrl = scriptResults?.[0]?.result || '';
+          console.log('[ImgVault][ContextMenu] Script injection fallback response', {
+            hasImageUrl: Boolean(resolvedImageUrl),
+            imageUrlPreview: resolvedImageUrl ? resolvedImageUrl.substring(0, 200) : null,
+            frameId: typeof info.frameId === 'number' ? info.frameId : null,
+          });
+        } catch (error) {
+          console.warn('[ImgVault][ContextMenu] Script injection fallback failed for wrapped media', error);
+        }
+      }
+
+      if (!resolvedImageUrl) {
+        console.warn('[ImgVault][ContextMenu] No wrapped media URL resolved, aborting');
+        return;
+      }
+
+      const pageUrl = info.pageUrl || tab.url;
+      const isWarning = isWarningSite(pageUrl);
+      const warningSite = getSiteDisplayName(pageUrl, sitesConfig.warningSites);
+      const isGood = isGoodQualitySite(pageUrl);
+      const goodSite = getSiteDisplayName(pageUrl, sitesConfig.goodQualitySites);
+
+      const sanitizeText = (str, maxLength = 500) =>
+        (str || '').replace(/[\u200B-\u200D\uFEFF]/g, '').substring(0, maxLength);
+      const sanitizeUrl = (str) =>
+        (str || '').replace(/[\u200B-\u200D\uFEFF]/g, '').substring(0, 4000);
+
+      const pendingData = {
+        srcUrl: sanitizeUrl(resolvedImageUrl),
+        originalSourceUrl: sanitizeUrl(resolvedImageUrl),
+        pageUrl: sanitizeUrl(pageUrl),
+        pageTitle: sanitizeText(tab.title),
+        timestamp: Date.now(),
+        isWarningSite: isWarning,
+        warningSiteName: warningSite,
+        isGoodQualitySite: isGood,
+        goodQualitySiteName: goodSite
+      };
+
+      console.log('[ImgVault][ContextMenu] Prepared pending image data for saveWrappedMediaToImgVault', {
+        hasSrcUrl: Boolean(pendingData.srcUrl),
+        srcUrlPreview: pendingData.srcUrl ? pendingData.srcUrl.substring(0, 200) : null,
+        pageUrl: pendingData.pageUrl,
+        pageTitle: pendingData.pageTitle,
+      });
+
+      await chrome.storage.local.set({
+        pendingImage: pendingData
+      });
+
+      console.log('[ImgVault][ContextMenu] Stored pending image for wrapped media');
+
+      await chrome.storage.local.remove(['lastRightClickImageUrl', 'lastRightClickTimestamp']);
+      console.log('[ImgVault][ContextMenu] Cleared right-click media cache, opening gallery');
+
+      chrome.tabs.create({
+        url: chrome.runtime.getURL('index.html')
+      });
     } else if (info.menuItemId === 'saveBackgroundToImgVault') {
+      console.log('[ImgVault][ContextMenu] Handling saveBackgroundToImgVault');
       // console.log('🎯 Background image context menu clicked!');
 
       // Try to get the image URL from storage (set by content script on right-click)
@@ -505,6 +727,9 @@ class ImgVaultServiceWorker {
           storageData.lastRightClickTimestamp &&
           Date.now() - storageData.lastRightClickTimestamp < 2000) {
         imageUrl = storageData.lastRightClickImageUrl;
+        console.log('[ImgVault][ContextMenu] Using stored background image URL', {
+          imageUrlPreview: String(imageUrl).substring(0, 200)
+        });
         // console.log('🎨 Using stored right-click image URL:', imageUrl);
       }
 
@@ -519,9 +744,13 @@ class ImgVaultServiceWorker {
 
           if (response && response.imageUrl) {
             imageUrl = response.imageUrl;
+            console.log('[ImgVault][ContextMenu] Content script resolved background image URL', {
+              imageUrlPreview: String(imageUrl).substring(0, 200)
+            });
             // console.log('🎨 Got image from content script:', imageUrl);
           }
         } catch (error) {
+          console.warn('[ImgVault][ContextMenu] Content script did not resolve background image', error);
           // console.log('⚠️ Content script not responding:', error.message);
         }
       }
@@ -556,9 +785,13 @@ class ImgVaultServiceWorker {
 
           if (results && results[0] && results[0].result) {
             imageUrl = results[0].result;
+            console.log('[ImgVault][ContextMenu] Inline script fallback resolved background image URL', {
+              imageUrlPreview: String(imageUrl).substring(0, 200)
+            });
             // console.log('🎨 Found image with inline script:', imageUrl);
           }
         } catch (error) {
+          console.warn('[ImgVault][ContextMenu] Inline script fallback failed for background image', error);
           // console.error('❌ Inline script failed:', error);
         }
       }
@@ -591,6 +824,11 @@ class ImgVaultServiceWorker {
           pendingImage: pendingData
         });
 
+        console.log('[ImgVault][ContextMenu] Stored pending image for background image, opening gallery', {
+          hasSrcUrl: Boolean(pendingData.srcUrl),
+          srcUrlPreview: pendingData.srcUrl ? pendingData.srcUrl.substring(0, 200) : null,
+        });
+
         // Clear the stored right-click URL
         await chrome.storage.local.remove(['lastRightClickImageUrl', 'lastRightClickTimestamp']);
 
@@ -600,6 +838,7 @@ class ImgVaultServiceWorker {
           url: chrome.runtime.getURL('index.html')
         });
       } else {
+        console.warn('[ImgVault][ContextMenu] No background image found after all fallbacks');
         // console.log('❌ No background image found');
       }
     } else if (info.menuItemId === 'saveYouTubeFrameToImgVault') {
