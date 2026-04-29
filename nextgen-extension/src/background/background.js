@@ -13,6 +13,7 @@ import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } fro
 const NATIVE_DOWNLOAD_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 const TAB_NOT_FOCUSED_NOTIFICATION_ID = 'imgvault-native-tab-not-focused';
 const TAB_FOCUSED_NOTIFICATION_ID = 'imgvault-native-tab-focused';
+const ACTIVE_NATIVE_DOWNLOAD_KEY = 'activeNativeDownload';
 
 // Helper function to sanitize data for Neon database
 function sanitizeForNeon(data) {
@@ -58,6 +59,7 @@ class ImgVaultServiceWorker {
     this.filemoonUploader = new FilemoonUploader();
     this.udropUploader = new UDropUploader();
     this.activeUploadController = null;
+    this.activeNativeDownloadPorts = new Map();
     this.initialized = false;
     this.defaultActionIcon = {
       16: 'icons/1.png',
@@ -225,8 +227,12 @@ class ImgVaultServiceWorker {
         title: 'Save to ImgVault',
         contexts: ['all'],
         documentUrlPatterns: [
+          'https://www.behance.net/*',
+          'https://behance.net/*',
           'https://www.instagram.com/*',
-          'https://instagram.com/*'
+          'https://instagram.com/*',
+          'https://www.skidrowreloaded.com/*',
+          'https://skidrowreloaded.com/*'
         ]
       }, () => {
         if (chrome.runtime.lastError) {
@@ -1145,6 +1151,12 @@ class ImgVaultServiceWorker {
           });
         return true;
 
+      case 'cancelNativeDownload':
+        this.cancelNativeDownload(request.requestId)
+          .then(result => sendResponse({ success: true, data: result }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'nativeHostCommand':
         this.handleNativeHostCommand(request.command, request.data || {})
           .then(result => sendResponse({ success: true, data: result }))
@@ -1192,6 +1204,144 @@ class ImgVaultServiceWorker {
   async updateStatusWithLog(message, type = 'info') {
     this.updateStatus(message);
     await this.appendUploadLog(message, type);
+  }
+
+  buildNativeDownloadLogEntry(message, type = 'info', stream = '') {
+    return {
+      timestamp: new Date().toLocaleTimeString(),
+      createdAt: Date.now(),
+      message,
+      type,
+      stream,
+    };
+  }
+
+  async getActiveNativeDownloadRecord() {
+    const result = await chrome.storage.local.get(ACTIVE_NATIVE_DOWNLOAD_KEY);
+    return result?.[ACTIVE_NATIVE_DOWNLOAD_KEY] || null;
+  }
+
+  async setActiveNativeDownloadRecord(record) {
+    await chrome.storage.local.set({
+      [ACTIVE_NATIVE_DOWNLOAD_KEY]: record,
+    });
+  }
+
+  async appendNativeDownloadLog(requestId, message, type = 'info', stream = '') {
+    const current = await this.getActiveNativeDownloadRecord();
+    if (!current || current.requestId !== requestId) {
+      return;
+    }
+
+    const entry = this.buildNativeDownloadLogEntry(message, type, stream);
+    const settlesCancellation =
+      current.status === 'cancelling' &&
+      /yt-dlp failed|download stopped|stop signal sent|native host disconnected unexpectedly|native host download failed/i.test(
+        String(message || '')
+      );
+
+    await this.setActiveNativeDownloadRecord({
+      ...current,
+      status: settlesCancellation ? 'cancelled' : current.status,
+      updatedAt: Date.now(),
+      completedAt: settlesCancellation ? Date.now() : current.completedAt,
+      lastMessage: settlesCancellation ? 'Download stopped.' : message,
+      logs: [entry, ...(current.logs || [])].slice(0, 300),
+    });
+  }
+
+  async updateActiveNativeDownload(requestId, updates = {}) {
+    const current = await this.getActiveNativeDownloadRecord();
+    if (!current || current.requestId !== requestId) {
+      return;
+    }
+
+    await this.setActiveNativeDownloadRecord({
+      ...current,
+      ...updates,
+      updatedAt: Date.now(),
+    });
+  }
+
+  async startActiveNativeDownload(requestId, url) {
+    const startMessage = `Sending native download request: ${url}`;
+    await this.setActiveNativeDownloadRecord({
+      requestId,
+      url,
+      status: 'running',
+      startedAt: Date.now(),
+      updatedAt: Date.now(),
+      lastMessage: startMessage,
+      logs: [this.buildNativeDownloadLogEntry(startMessage)],
+    });
+  }
+
+  async finishActiveNativeDownload(requestId, updates = {}) {
+    const current = await this.getActiveNativeDownloadRecord();
+    if (!current || current.requestId !== requestId) {
+      return;
+    }
+
+    await this.setActiveNativeDownloadRecord({
+      ...current,
+      ...updates,
+      updatedAt: Date.now(),
+      completedAt: Date.now(),
+    });
+  }
+
+  async getActiveNativeDownloadStatus(requestId) {
+    const current = await this.getActiveNativeDownloadRecord();
+    if (!current || current.requestId !== requestId) {
+      return '';
+    }
+
+    return String(current.status || '');
+  }
+
+  async cancelNativeDownload(requestId = '') {
+    const activeRequestId = String(requestId || '').trim();
+    if (!activeRequestId) {
+      throw new Error('Missing native download request id.');
+    }
+
+    await this.updateActiveNativeDownload(activeRequestId, {
+      status: 'cancelling',
+      lastMessage: 'Stopping native download...',
+    });
+    await this.appendNativeDownloadLog(activeRequestId, 'Stopping native download...', 'warning', 'system');
+
+    try {
+      const result = await this.handleNativeHostCommand('cancel_download', {
+        request_id: activeRequestId,
+      });
+
+      await this.finishActiveNativeDownload(activeRequestId, {
+        status: 'cancelled',
+        lastMessage: result?.message || 'Download stopped.',
+        error: '',
+      });
+      await this.appendNativeDownloadLog(
+        activeRequestId,
+        result?.message || 'Download stopped.',
+        'warning',
+        'system'
+      );
+
+      return result;
+    } catch (error) {
+      await this.updateActiveNativeDownload(activeRequestId, {
+        status: 'failed',
+        lastMessage: error?.message || 'Failed to stop native download.',
+      });
+      await this.appendNativeDownloadLog(
+        activeRequestId,
+        error?.message || 'Failed to stop native download.',
+        'error',
+        'system'
+      );
+      throw error;
+    }
   }
 
   formatBytes(bytes) {
@@ -1852,15 +2002,23 @@ class ImgVaultServiceWorker {
       }
       
       const activeRequestId = requestId || `native-download-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      await this.startActiveNativeDownload(activeRequestId, url);
 
       return new Promise((resolve, reject) => {
         let responseReceived = false;
+        this.activeNativeDownloadPorts.set(activeRequestId, port);
         
         // Large yt-dlp jobs can take a long time before the native host replies.
         const timeout = setTimeout(() => {
           if (!responseReceived) {
             console.error(`⏱️ [NATIVE] Timeout waiting for response`);
             port.disconnect();
+            this.activeNativeDownloadPorts.delete(activeRequestId);
+            this.finishActiveNativeDownload(activeRequestId, {
+              status: 'failed',
+              error: 'Download timed out while waiting for the native host to finish. The file may still be downloading in the background.',
+              lastMessage: 'Download timed out while waiting for the native host to finish. The file may still be downloading in the background.',
+            }).catch(() => {});
             reject(new Error('Download timed out while waiting for the native host to finish. The file may still be downloading in the background.'));
           }
         }, NATIVE_DOWNLOAD_TIMEOUT_MS);
@@ -1868,6 +2026,19 @@ class ImgVaultServiceWorker {
         port.onMessage.addListener((response) => {
           // console.log(`📨 [NATIVE] Response from host:`, response);
           if (response?.event === 'progress') {
+            const progressLine = response.line || '';
+            const progressType =
+              response.stream === 'stderr' && /^error:/i.test(String(progressLine).trim())
+                ? 'error'
+                : 'info';
+
+            this.appendNativeDownloadLog(
+              response.requestId || activeRequestId,
+              `[yt-dlp] ${progressLine}`,
+              progressType,
+              response.stream || 'stdout'
+            ).catch(() => {});
+
             chrome.runtime.sendMessage({
               action: 'nativeDownloadProgress',
               requestId: response.requestId || activeRequestId,
@@ -1892,6 +2063,19 @@ class ImgVaultServiceWorker {
               };
 
               await chrome.storage.local.set({ pendingAutoUpload });
+              await this.finishActiveNativeDownload(activeRequestId, {
+                status: 'completed',
+                filePath: response.filePath || '',
+                lastMessage: response.message || 'Download complete',
+              });
+              await this.appendNativeDownloadLog(
+                activeRequestId,
+                response.filePath
+                  ? `Downloaded to: ${response.filePath}`
+                  : (response.message || 'Download complete'),
+                'success',
+                'system'
+              );
               if (!focused) {
                 await this.notifyTabNotFocused();
               }
@@ -1903,25 +2087,101 @@ class ImgVaultServiceWorker {
                 resolve(response);
               });
           } else {
-            reject({
-              message: response.message || 'Native host download failed',
-              filePath: response.filePath,
-              stdout: response.stdout,
-              stderr: response.stderr
+            (async () => {
+              const currentStatus = await this.getActiveNativeDownloadStatus(activeRequestId);
+              const isUserCancelled =
+                currentStatus === 'cancelling' || currentStatus === 'cancelled';
+
+              if (isUserCancelled) {
+                await this.finishActiveNativeDownload(activeRequestId, {
+                  status: 'cancelled',
+                  filePath: response.filePath || '',
+                  error: '',
+                  lastMessage: 'Download stopped.',
+                });
+                await this.appendNativeDownloadLog(
+                  activeRequestId,
+                  'Download stopped.',
+                  'warning',
+                  'system'
+                );
+                reject({
+                  message: 'Download stopped.',
+                  filePath: response.filePath,
+                  stdout: response.stdout,
+                  stderr: response.stderr,
+                  cancelled: true,
+                });
+                return;
+              }
+
+              await this.finishActiveNativeDownload(activeRequestId, {
+                status: 'failed',
+                error: response.message || 'Native host download failed',
+                filePath: response.filePath || '',
+                lastMessage: response.message || 'Native host download failed',
+              });
+              await this.appendNativeDownloadLog(
+                activeRequestId,
+                response.message || 'Native host download failed',
+                'error',
+                'system'
+              );
+              reject({
+                message: response.message || 'Native host download failed',
+                filePath: response.filePath,
+                stdout: response.stdout,
+                stderr: response.stderr
+              });
+            })().catch((error) => {
+              reject(error);
             });
           }
           
+          this.activeNativeDownloadPorts.delete(activeRequestId);
           port.disconnect();
         });
         
         port.onDisconnect.addListener(() => {
           clearTimeout(timeout);
           if (!responseReceived) {
-            console.error(`❌ [NATIVE] Port disconnected without response`);
-            const error = chrome.runtime.lastError;
-            const errorMsg = error ? error.message : 'Native host disconnected unexpectedly. Make sure the native host is registered.';
-            console.error(`❌ [NATIVE] Error details:`, errorMsg);
-            reject(new Error(errorMsg));
+            (async () => {
+              console.error(`❌ [NATIVE] Port disconnected without response`);
+              const error = chrome.runtime.lastError;
+              const errorMsg = error ? error.message : 'Native host disconnected unexpectedly. Make sure the native host is registered.';
+              console.error(`❌ [NATIVE] Error details:`, errorMsg);
+              this.activeNativeDownloadPorts.delete(activeRequestId);
+
+              const currentStatus = await this.getActiveNativeDownloadStatus(activeRequestId);
+              const isUserCancelled =
+                currentStatus === 'cancelling' || currentStatus === 'cancelled';
+
+              if (isUserCancelled) {
+                await this.finishActiveNativeDownload(activeRequestId, {
+                  status: 'cancelled',
+                  error: '',
+                  lastMessage: 'Download stopped.',
+                });
+                await this.appendNativeDownloadLog(
+                  activeRequestId,
+                  'Download stopped.',
+                  'warning',
+                  'system'
+                );
+                reject(new Error('Download stopped.'));
+                return;
+              }
+
+              await this.finishActiveNativeDownload(activeRequestId, {
+                status: 'failed',
+                error: errorMsg,
+                lastMessage: errorMsg,
+              });
+              await this.appendNativeDownloadLog(activeRequestId, errorMsg, 'error', 'system');
+              reject(new Error(errorMsg));
+            })().catch((disconnectError) => {
+              reject(disconnectError);
+            });
           }
         });
         
@@ -1944,6 +2204,12 @@ class ImgVaultServiceWorker {
         } catch (sendError) {
           console.error(`❌ [NATIVE] Failed to send message:`, sendError);
           clearTimeout(timeout);
+          this.activeNativeDownloadPorts.delete(activeRequestId);
+          this.finishActiveNativeDownload(activeRequestId, {
+            status: 'failed',
+            error: 'Failed to send message to native host: ' + sendError.message,
+            lastMessage: 'Failed to send message to native host: ' + sendError.message,
+          }).catch(() => {});
           reject(new Error('Failed to send message to native host: ' + sendError.message));
         }
       });

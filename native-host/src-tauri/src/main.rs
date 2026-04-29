@@ -130,6 +130,90 @@ fn get_output_directory(output_path: &str) -> Result<PathBuf, String> {
         .ok_or_else(|| "Failed to determine download directory from output_path".to_string())
 }
 
+fn sanitize_request_id(request_id: &str) -> String {
+    request_id
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn get_request_pid_path(request_id: &str) -> PathBuf {
+    env::temp_dir().join(format!(
+        "imgvault-native-download-{}.pid",
+        sanitize_request_id(request_id)
+    ))
+}
+
+fn write_request_pid(request_id: &str, pid: u32) -> Result<(), String> {
+    fs::write(get_request_pid_path(request_id), pid.to_string())
+        .map_err(|e| format!("Failed to write request pid file: {}", e))
+}
+
+fn remove_request_pid(request_id: &str) {
+    let _ = fs::remove_file(get_request_pid_path(request_id));
+}
+
+#[cfg(target_os = "windows")]
+fn kill_process_tree(pid: u32) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    let status = Command::new("taskkill")
+        .arg("/PID")
+        .arg(pid.to_string())
+        .arg("/T")
+        .arg("/F")
+        .creation_flags(CREATE_NO_WINDOW)
+        .status()
+        .map_err(|e| format!("Failed to execute taskkill: {}", e))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("taskkill failed with exit code {:?}", status.code()))
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn kill_process_tree(pid: u32) -> Result<(), String> {
+    let status = Command::new("kill")
+        .arg("-9")
+        .arg(pid.to_string())
+        .status()
+        .map_err(|e| format!("Failed to execute kill: {}", e))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("kill failed with exit code {:?}", status.code()))
+    }
+}
+
+fn cancel_download_request(request_id: &str) -> Result<String, String> {
+    let pid_path = get_request_pid_path(request_id);
+    if !pid_path.exists() {
+        return Err(format!("No active native download found for request id: {}", request_id));
+    }
+
+    let pid_text = fs::read_to_string(&pid_path)
+        .map_err(|e| format!("Failed to read request pid file: {}", e))?;
+    let pid = pid_text
+        .trim()
+        .parse::<u32>()
+        .map_err(|e| format!("Failed to parse request pid: {}", e))?;
+
+    kill_process_tree(pid)?;
+    remove_request_pid(request_id);
+
+    Ok(format!("Stop signal sent for request {}", request_id))
+}
+
 fn write_temp_cookies_file(cookies: &[BrowserCookie]) -> Result<PathBuf, String> {
     let temp_dir = env::temp_dir();
     let timestamp = SystemTime::now()
@@ -609,6 +693,12 @@ fn download_video_with_progress(
         stderr: String::new(),
     })?;
 
+    if let Some(active_request_id) = request_id {
+        if let Err(error) = write_request_pid(active_request_id, child.id()) {
+            eprintln!("[NATIVE] Failed to persist request pid: {}", error);
+        }
+    }
+
     let stdout_pipe = child.stdout.take().ok_or_else(|| DownloadOutcome {
         message: "Failed to capture yt-dlp stdout".to_string(),
         file_path: None,
@@ -705,6 +795,10 @@ fn download_video_with_progress(
         stdout: String::new(),
         stderr: String::new(),
     })?;
+
+    if let Some(active_request_id) = request_id {
+        remove_request_pid(active_request_id);
+    }
 
     cleanup_temp_cookies_file(&cookies_path);
 
@@ -991,6 +1085,45 @@ fn handle_native_messaging() {
                                 event: Some("complete".to_string()),
                                 request_id: native_msg.request_id.clone(),
                                 message: Some(e),
+                                line: None,
+                                stream: None,
+                                file_path: None,
+                                stdout: None,
+                                stderr: None,
+                            },
+                        }
+                    }
+                    "cancel_download" => {
+                        match native_msg.request_id.as_deref() {
+                            Some(request_id) => match cancel_download_request(request_id) {
+                                Ok(message) => NativeResponse {
+                                    success: true,
+                                    event: Some("complete".to_string()),
+                                    request_id: Some(request_id.to_string()),
+                                    message: Some(message),
+                                    line: None,
+                                    stream: None,
+                                    file_path: None,
+                                    stdout: None,
+                                    stderr: None,
+                                },
+                                Err(e) => NativeResponse {
+                                    success: false,
+                                    event: Some("complete".to_string()),
+                                    request_id: Some(request_id.to_string()),
+                                    message: Some(e),
+                                    line: None,
+                                    stream: None,
+                                    file_path: None,
+                                    stdout: None,
+                                    stderr: None,
+                                },
+                            },
+                            None => NativeResponse {
+                                success: false,
+                                event: Some("complete".to_string()),
+                                request_id: None,
+                                message: Some("Missing request_id for cancel_download".to_string()),
                                 line: None,
                                 stream: None,
                                 file_path: None,

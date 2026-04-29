@@ -80,7 +80,19 @@
       "all_frames": true
     },
     {
+      "matches": ["https://www.behance.net/*", "https://behance.net/*"],
+      "js": ["contextmenu-unlock.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
       "matches": ["https://www.instagram.com/*", "https://instagram.com/*"],
+      "js": ["contextmenu-unlock.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": ["https://www.skidrowreloaded.com/*", "https://skidrowreloaded.com/*"],
       "js": ["contextmenu-unlock.js"],
       "run_at": "document_start",
       "all_frames": true

@@ -145,8 +145,10 @@ export default function HostPage() {
   const [navbarHeight, setNavbarHeight] = useState(0);
   const [downloadUrl, setDownloadUrl] = useState('');
   const [logs, setLogs] = useState([]);
+  const [downloadLogs, setDownloadLogs] = useState([]);
   const [busyAction, setBusyAction] = useState('');
   const activeDownloadRequestIdRef = useRef('');
+  const [activeNativeDownload, setActiveNativeDownload] = useState(null);
   const [hostStatus, setHostStatus] = useState({
     checking: true,
     reachable: false,
@@ -166,6 +168,7 @@ export default function HostPage() {
   const addLog = (message, type = 'info') => {
     setLogs((prev) => [
       {
+        createdAt: Date.now(),
         timestamp: new Date().toLocaleTimeString(),
         message,
         type,
@@ -173,6 +176,15 @@ export default function HostPage() {
       ...prev,
     ]);
   };
+
+  const mergedLogs = [...downloadLogs, ...logs].sort(
+    (a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0)
+  );
+
+  const isNativeDownloadRunning = activeNativeDownload?.status === 'running';
+  const isNativeDownloadCancelling = activeNativeDownload?.status === 'cancelling';
+  const hasActiveNativeDownload =
+    isNativeDownloadRunning || isNativeDownloadCancelling;
 
   const runHostCommand = async (command, data = {}) => {
     setBusyAction(command);
@@ -282,6 +294,47 @@ export default function HostPage() {
   }, [location.search]);
 
   useEffect(() => {
+    let mounted = true;
+
+    const syncFromStorage = async () => {
+      const result = await chrome.storage.local.get('activeNativeDownload');
+      const activeRecord = result?.activeNativeDownload || null;
+      if (!mounted) {
+        return;
+      }
+
+      setActiveNativeDownload(activeRecord);
+      setDownloadLogs(Array.isArray(activeRecord?.logs) ? activeRecord.logs : []);
+      activeDownloadRequestIdRef.current = activeRecord?.requestId || '';
+
+      if (activeRecord?.url) {
+        setDownloadUrl((current) => current || activeRecord.url);
+      }
+    };
+
+    const handleStorageChange = (changes, areaName) => {
+      if (areaName !== 'local' || !changes.activeNativeDownload) {
+        return;
+      }
+
+      const nextValue = changes.activeNativeDownload.newValue || null;
+      setActiveNativeDownload(nextValue);
+      setDownloadLogs(Array.isArray(nextValue?.logs) ? nextValue.logs : []);
+      activeDownloadRequestIdRef.current = nextValue?.requestId || '';
+    };
+
+    syncFromStorage().catch((error) => {
+      console.error('Failed to restore active native download state:', error);
+    });
+
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    return () => {
+      mounted = false;
+      chrome.storage.onChanged.removeListener(handleStorageChange);
+    };
+  }, []);
+
+  useEffect(() => {
     const handleRuntimeMessage = (message) => {
       if (message?.action !== 'nativeDownloadProgress') {
         return;
@@ -295,10 +348,6 @@ export default function HostPage() {
       if (!rawLine) {
         return;
       }
-
-      const type = message.stream === 'stderr' && /^error:/i.test(rawLine) ? 'error' : 'info';
-      const prefix = message.stream === 'stderr' ? '[yt-dlp] ' : '[yt-dlp] ';
-      addLog(`${prefix}${rawLine}`, type);
     };
 
     chrome.runtime.onMessage.addListener(handleRuntimeMessage);
@@ -366,6 +415,11 @@ export default function HostPage() {
       return;
     }
 
+    if (hasActiveNativeDownload) {
+      addLog('A native download is already running.', 'warning');
+      return;
+    }
+
     setBusyAction('download');
     addLog(`Sending native download request: ${downloadUrl}`);
 
@@ -405,6 +459,34 @@ export default function HostPage() {
       addLog(error?.error || error?.message || 'Download failed', 'error');
     } finally {
       activeDownloadRequestIdRef.current = '';
+      setBusyAction('');
+    }
+  };
+
+  const handleStopNativeDownload = async () => {
+    const requestId = activeNativeDownload?.requestId || activeDownloadRequestIdRef.current;
+    if (!requestId) {
+      addLog('No active native download request found.', 'error');
+      return;
+    }
+
+    setBusyAction('stop_download');
+    addLog('Sending stop signal to native host...', 'warning');
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'cancelNativeDownload',
+        requestId,
+      });
+
+      if (!response?.success) {
+        throw new Error(response?.error || 'Failed to stop native download');
+      }
+
+      addLog(response.data?.message || 'Stop signal sent to native host.', 'warning');
+    } catch (error) {
+      addLog(error.message || 'Failed to stop native download.', 'error');
+    } finally {
       setBusyAction('');
     }
   };
@@ -598,17 +680,56 @@ export default function HostPage() {
 
               <Button
                 onClick={handleNativeDownload}
-                disabled={busyAction === 'download' || !downloadUrl.trim()}
+                disabled={busyAction === 'download' || isNativeDownloadRunning || !downloadUrl.trim()}
                 variant="primary"
                 className="w-full justify-center gap-2 !text-base-content border border-primary/20 shadow-lg shadow-primary/10 hover:shadow-xl hover:shadow-primary/20 disabled:border-base-content/10 disabled:shadow-none"
               >
                 <Download className="w-4 h-4" />
-                {busyAction === 'download' ? 'Downloading... this can take a few minutes' : 'Download with Host'}
+                {hasActiveNativeDownload
+                  ? (isNativeDownloadCancelling
+                    ? 'Stopping download...'
+                    : 'Downloading... this can take a few minutes')
+                  : (busyAction === 'download'
+                    ? 'Downloading... this can take a few minutes'
+                    : 'Download with Host')}
               </Button>
 
-              <p className="text-xs text-base-content/60">
-                Large video downloads may take several minutes before the native host sends its final completion message.
-              </p>
+              {hasActiveNativeDownload && (
+                <Button
+                  onClick={handleStopNativeDownload}
+                  disabled={busyAction === 'stop_download' || isNativeDownloadCancelling}
+                  variant="ghost"
+                  className="w-full justify-center gap-2 border border-error/20 bg-error/10 text-error hover:bg-error/20"
+                >
+                  <AlertCircle className="w-4 h-4" />
+                  {isNativeDownloadCancelling ? 'Stopping...' : 'Stop Download'}
+                </Button>
+              )}
+
+              {hasActiveNativeDownload && (
+                <p className="text-xs text-base-content/60">
+                  {isNativeDownloadCancelling
+                    ? 'Waiting for the native host to settle the stop request...'
+                    : 'Large video downloads may take several minutes before the native host sends its final completion message.'}
+                </p>
+              )}
+
+              {activeNativeDownload?.requestId && (
+                <div className="rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 p-3 space-y-2">
+                  <div className="text-xs font-semibold text-base-content/75">Active Download State</div>
+                  <div className="text-xs text-base-content/70 break-all">
+                    Request: <span className="font-mono">{activeNativeDownload.requestId}</span>
+                  </div>
+                  <div className="text-xs text-base-content/70">
+                    Status: <span className="font-medium">{activeNativeDownload.status || 'unknown'}</span>
+                  </div>
+                  {activeNativeDownload.lastMessage && (
+                    <div className="text-xs text-base-content/70 break-all">
+                      Last update: {activeNativeDownload.lastMessage}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 p-3 space-y-2">
                 <div className="text-xs font-semibold text-base-content/75">Saved Source Fields Preview</div>
@@ -665,7 +786,10 @@ export default function HostPage() {
                 <p className="text-sm text-base-content/65 mt-1">Recent commands and responses.</p>
               </div>
               <button
-                onClick={() => setLogs([])}
+                onClick={() => {
+                  setLogs([]);
+                  setDownloadLogs([]);
+                }}
                 className="text-sm text-base-content/60 hover:text-base-content"
               >
                 Clear
@@ -674,12 +798,12 @@ export default function HostPage() {
 
             <div className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-200/40 p-3">
               <div className="space-y-3 max-h-[min(48vh,440px)] overflow-auto pr-1">
-                {logs.length === 0 ? (
+                {mergedLogs.length === 0 ? (
                   <div className="rounded-[var(--radius-box)] border border-dashed border-base-content/20 px-4 py-8 text-center text-sm text-base-content/60">
                     No host commands sent yet.
                   </div>
                 ) : (
-                  logs.map((entry, index) => <HostLog key={`${entry.timestamp}-${index}`} entry={entry} />)
+                  mergedLogs.map((entry, index) => <HostLog key={`${entry.createdAt || entry.timestamp}-${index}`} entry={entry} />)
                 )}
               </div>
             </div>

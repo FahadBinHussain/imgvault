@@ -25,6 +25,7 @@ export const sitesConfig = {
     { url: 'glampinghub.com', displayName: 'Glamping Hub' },
     { url: 'goodfon.com', displayName: 'GoodFon' },
     { url: 'jngsainui.free.fr', displayName: 'JNGSainui' },
+    { url: 'lexica.art', displayName: 'Lexica' },
     { url: 'note.com', displayName: 'Note' },
     { url: 'photos.google.com', displayName: 'Google Photos' },
     { url: 'pixiv.net', displayName: 'Pixiv' },

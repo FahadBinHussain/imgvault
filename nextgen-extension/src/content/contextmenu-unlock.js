@@ -1,5 +1,9 @@
 (() => {
   const RIGHT_CLICK_UNLOCK_HOSTS = [
+    'behance.net',
+    'www.behance.net',
+    'skidrowreloaded.com',
+    'www.skidrowreloaded.com',
     'open.spotify.com',
     'www.instagram.com',
     'instagram.com',
