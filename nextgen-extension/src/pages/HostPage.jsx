@@ -41,6 +41,31 @@ function HostLog({ entry }) {
   );
 }
 
+function summarizeActiveDownloadMessage(message = '') {
+  const raw = String(message || '').trim();
+  if (!raw) {
+    return '';
+  }
+
+  if (/yt-dlp failed/i.test(raw)) {
+    return 'yt-dlp failed. Check the host logs below for full details.';
+  }
+
+  if (/download stopped/i.test(raw)) {
+    return 'Download stopped.';
+  }
+
+  if (/native host disconnected unexpectedly/i.test(raw)) {
+    return 'Native host disconnected unexpectedly.';
+  }
+
+  if (/download timed out/i.test(raw)) {
+    return 'Download timed out while waiting for the native host.';
+  }
+
+  return raw.split(/\r?\n/)[0].slice(0, 180);
+}
+
 function getVideoPreview(url) {
   if (!url) {
     return null;
@@ -180,6 +205,7 @@ export default function HostPage() {
   const mergedLogs = [...downloadLogs, ...logs].sort(
     (a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0)
   );
+  const activeDownloadSummary = summarizeActiveDownloadMessage(activeNativeDownload?.lastMessage);
 
   const isNativeDownloadRunning = activeNativeDownload?.status === 'running';
   const isNativeDownloadCancelling = activeNativeDownload?.status === 'cancelling';
@@ -716,16 +742,20 @@ export default function HostPage() {
 
               {activeNativeDownload?.requestId && (
                 <div className="rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 p-3 space-y-2">
-                  <div className="text-xs font-semibold text-base-content/75">Active Download State</div>
-                  <div className="text-xs text-base-content/70 break-all">
-                    Request: <span className="font-mono">{activeNativeDownload.requestId}</span>
+                  <div className="text-xs font-semibold text-base-content/75">
+                    {hasActiveNativeDownload ? 'Active Download State' : 'Last Download Result'}
                   </div>
+                  {hasActiveNativeDownload && (
+                    <div className="text-xs text-base-content/70 break-all">
+                      Request: <span className="font-mono">{activeNativeDownload.requestId}</span>
+                    </div>
+                  )}
                   <div className="text-xs text-base-content/70">
                     Status: <span className="font-medium">{activeNativeDownload.status || 'unknown'}</span>
                   </div>
-                  {activeNativeDownload.lastMessage && (
+                  {activeDownloadSummary && (
                     <div className="text-xs text-base-content/70 break-all">
-                      Last update: {activeNativeDownload.lastMessage}
+                      Last update: {activeDownloadSummary}
                     </div>
                   )}
                 </div>

@@ -1216,6 +1216,39 @@ class ImgVaultServiceWorker {
     };
   }
 
+  summarizeNativeDownloadMessage(message, fallback = '') {
+    const raw = String(message || '').trim();
+    if (!raw) {
+      return fallback;
+    }
+
+    if (/yt-dlp failed/i.test(raw)) {
+      if (/sign in to confirm your age/i.test(raw)) {
+        return 'yt-dlp failed. The video appears to require an age-confirmed session.';
+      }
+      if (/sign in to confirm you[\'’]?re not a bot/i.test(raw)) {
+        return 'yt-dlp failed. The site is asking for a logged-in session.';
+      }
+      if (/unable to open for writing/i.test(raw)) {
+        return 'yt-dlp failed. The output file could not be created.';
+      }
+      if (/cookies/i.test(raw) && /not found|failed|expired|invalid/i.test(raw)) {
+        return 'yt-dlp failed. The cookies used for this download were rejected.';
+      }
+      return 'yt-dlp failed. Check the logs below for the full output.';
+    }
+
+    if (/native host disconnected unexpectedly/i.test(raw)) {
+      return 'Native host disconnected unexpectedly.';
+    }
+
+    if (/download timed out/i.test(raw)) {
+      return 'Download timed out while waiting for the native host.';
+    }
+
+    return raw.split(/\r?\n/)[0].slice(0, 220);
+  }
+
   async getActiveNativeDownloadRecord() {
     const result = await chrome.storage.local.get(ACTIVE_NATIVE_DOWNLOAD_KEY);
     return result?.[ACTIVE_NATIVE_DOWNLOAD_KEY] || null;
@@ -2119,7 +2152,10 @@ class ImgVaultServiceWorker {
                 status: 'failed',
                 error: response.message || 'Native host download failed',
                 filePath: response.filePath || '',
-                lastMessage: response.message || 'Native host download failed',
+                lastMessage: this.summarizeNativeDownloadMessage(
+                  response.message,
+                  'Native host download failed'
+                ),
               });
               await this.appendNativeDownloadLog(
                 activeRequestId,
@@ -2175,7 +2211,10 @@ class ImgVaultServiceWorker {
               await this.finishActiveNativeDownload(activeRequestId, {
                 status: 'failed',
                 error: errorMsg,
-                lastMessage: errorMsg,
+                lastMessage: this.summarizeNativeDownloadMessage(
+                  errorMsg,
+                  'Native host disconnected unexpectedly.'
+                ),
               });
               await this.appendNativeDownloadLog(activeRequestId, errorMsg, 'error', 'system');
               reject(new Error(errorMsg));
