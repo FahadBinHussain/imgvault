@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Cable, RotateCw, Download, CheckCircle2, AlertCircle, Activity } from 'lucide-react';
+import PremiumBackground from '../components/PremiumBackground';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { Button, Input } from '../components/UI';
 
@@ -31,7 +32,7 @@ function HostLog({ entry }) {
       ? 'bg-error/10 text-error border-error/20'
       : entry.type === 'success'
         ? 'bg-success/10 text-success border-success/20'
-        : 'bg-base-200/70 text-base-content/80 border-base-content/10';
+        : 'bg-base-200/70 text-base-content/80 border-base-300';
 
   return (
     <div className={`rounded-[var(--radius-box)] border px-3 py-2 text-sm leading-5 ${colorClass}`}>
@@ -572,7 +573,8 @@ export default function HostPage() {
   };
 
   return (
-    <div className="min-h-screen bg-base-200 text-base-content p-3 sm:p-6">
+    <div className="min-h-screen bg-base-200 text-base-content prem-page">
+      <PremiumBackground />
       <GalleryNavbar
         navigate={navigate}
         images={[]}
@@ -599,7 +601,7 @@ export default function HostPage() {
       <div style={{ height: navbarHeight ? `${navbarHeight + 8}px` : '90px' }} />
 
       <div className="max-w-5xl mx-auto space-y-5">
-        <div className="bg-base-100 border border-base-content/15 rounded-[var(--radius-box)] shadow-xl p-5 sm:p-6">
+        <div className="bg-base-100 border border-base-300 rounded-[var(--radius-box)] shadow-xl p-5 sm:p-6">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-[var(--radius-box)] bg-primary/15 text-primary flex items-center justify-center">
               <Cable className="w-6 h-6" />
@@ -614,9 +616,9 @@ export default function HostPage() {
         </div>
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)] items-start">
-          <div className="min-w-0 bg-base-100 border border-base-content/15 rounded-[var(--radius-box)] shadow-xl p-5 sm:p-6 space-y-4">
+          <div className="min-w-0 bg-base-100 border border-base-300 rounded-[var(--radius-box)] shadow-xl p-5 sm:p-6 space-y-4">
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(260px,0.95fr)] items-stretch">
-              <div className="rounded-[var(--radius-box)] border border-base-content/15 bg-base-200/60 p-4 space-y-3">
+              <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 p-4 space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <Activity className="w-4 h-4" />
@@ -643,7 +645,7 @@ export default function HostPage() {
               </div>
 
               {videoPreview ? (
-                <div className="overflow-hidden rounded-[var(--radius-box)] border border-base-content/15 bg-base-200/60 shadow-sm">
+                <div className="overflow-hidden rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 shadow-sm">
                   {videoPreview.thumbnailUrl ? (
                     <div className="aspect-video overflow-hidden bg-base-300">
                       <img
@@ -677,7 +679,7 @@ export default function HostPage() {
                   </div>
                 </div>
               ) : (
-                <div className="rounded-[var(--radius-box)] border border-dashed border-base-content/15 bg-base-200/40 p-5 flex items-center justify-center min-h-[220px]">
+                <div className="rounded-[var(--radius-box)] border border-dashed border-base-300 bg-base-200/40 p-5 flex items-center justify-center min-h-[220px]">
                   <div className="text-center max-w-xs">
                     <Cable className="w-10 h-10 mx-auto text-primary/70 mb-3" />
                     <h3 className="font-semibold text-base-content">Video Preview</h3>
@@ -689,7 +691,7 @@ export default function HostPage() {
               )}
             </div>
 
-            <div className="rounded-[var(--radius-box)] border border-base-content/15 bg-base-200/60 p-4 space-y-3">
+            <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <Download className="w-4 h-4" />
                 <h3 className="font-medium">Native Download</h3>
@@ -700,7 +702,7 @@ export default function HostPage() {
                 value={downloadUrl}
                 onChange={(e) => setDownloadUrl(e.target.value)}
                 placeholder="https://www.youtube.com/watch?v=..."
-                className="bg-base-100 border-base-content/15 shadow-sm"
+                className="bg-base-100 border-base-300 shadow-sm"
                 disabled={busyAction === 'download'}
               />
 
@@ -708,7 +710,7 @@ export default function HostPage() {
                 onClick={handleNativeDownload}
                 disabled={busyAction === 'download' || isNativeDownloadRunning || !downloadUrl.trim()}
                 variant="primary"
-                className="w-full justify-center gap-2 !text-base-content border border-primary/20 shadow-lg shadow-primary/10 hover:shadow-xl hover:shadow-primary/20 disabled:border-base-content/10 disabled:shadow-none"
+                className="w-full justify-center gap-2 !text-base-content border border-primary/20 shadow-lg shadow-primary/10 hover:shadow-xl hover:shadow-primary/20 disabled:border-base-300 disabled:shadow-none"
               >
                 <Download className="w-4 h-4" />
                 {hasActiveNativeDownload
@@ -741,7 +743,7 @@ export default function HostPage() {
               )}
 
               {activeNativeDownload?.requestId && (
-                <div className="rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 p-3 space-y-2">
+                <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-100/70 p-3 space-y-2">
                   <div className="text-xs font-semibold text-base-content/75">
                     {hasActiveNativeDownload ? 'Active Download State' : 'Last Download Result'}
                   </div>
@@ -761,7 +763,7 @@ export default function HostPage() {
                 </div>
               )}
 
-              <div className="rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 p-3 space-y-2">
+              <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-100/70 p-3 space-y-2">
                 <div className="text-xs font-semibold text-base-content/75">Saved Source Fields Preview</div>
                 <div>
                   <div className="text-[11px] uppercase tracking-wide text-base-content/55">sourceImageUrl</div>
@@ -782,7 +784,7 @@ export default function HostPage() {
               <button
                 onClick={handleReloadPath}
                 disabled={busyAction === 'reload_path'}
-                className="w-full rounded-[var(--radius-box)] bg-base-200 hover:bg-base-300 border border-base-content/15 px-4 py-3 text-left transition-colors disabled:opacity-60"
+                className="w-full rounded-[var(--radius-box)] bg-base-200 hover:bg-base-300 border border-base-300 px-4 py-3 text-left transition-colors disabled:opacity-60"
               >
                 <div className="flex items-center gap-3">
                   <RotateCw className={`w-5 h-5 ${busyAction === 'reload_path' ? 'animate-spin' : ''}`} />
@@ -796,7 +798,7 @@ export default function HostPage() {
               <button
                 onClick={handleExportYoutubeCookies}
                 disabled={busyAction === 'export_cookies'}
-                className="w-full rounded-[var(--radius-box)] bg-base-200 hover:bg-base-300 border border-base-content/15 px-4 py-3 text-left transition-colors disabled:opacity-60"
+                className="w-full rounded-[var(--radius-box)] bg-base-200 hover:bg-base-300 border border-base-300 px-4 py-3 text-left transition-colors disabled:opacity-60"
               >
                 <div className="flex items-center gap-3">
                   <Download className={`w-5 h-5 ${busyAction === 'export_cookies' ? 'animate-pulse' : ''}`} />
@@ -809,7 +811,7 @@ export default function HostPage() {
             </div>
           </div>
 
-          <div className="min-w-0 bg-base-100 border border-base-content/15 rounded-[var(--radius-box)] shadow-xl p-5 sm:p-6 overflow-hidden">
+          <div className="min-w-0 bg-base-100 border border-base-300 rounded-[var(--radius-box)] shadow-xl p-5 sm:p-6 overflow-hidden">
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
                 <h2 className="text-lg font-semibold">Host Log</h2>
@@ -826,10 +828,10 @@ export default function HostPage() {
               </button>
             </div>
 
-            <div className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-200/40 p-3">
+            <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/40 p-3">
               <div className="space-y-3 max-h-[min(48vh,440px)] overflow-auto pr-1">
                 {mergedLogs.length === 0 ? (
-                  <div className="rounded-[var(--radius-box)] border border-dashed border-base-content/20 px-4 py-8 text-center text-sm text-base-content/60">
+                  <div className="rounded-[var(--radius-box)] border border-dashed border-base-300 px-4 py-8 text-center text-sm text-base-content/60">
                     No host commands sent yet.
                   </div>
                 ) : (

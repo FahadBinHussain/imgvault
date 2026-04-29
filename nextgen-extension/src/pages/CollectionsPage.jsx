@@ -9,6 +9,7 @@ import { motion } from 'framer-motion';
 import { FolderOpen, Trash2, Plus, X, Edit2, Check } from 'lucide-react';
 import { Button, Input, Modal, Spinner, Toast } from '../components/UI';
 import { useCollections, useImages, useChromeStorage } from '../hooks/useChromeExtension';
+import PremiumBackground from '../components/PremiumBackground';
 import GalleryNavbar from '../components/GalleryNavbar';
 
 export default function CollectionsPage() {
@@ -106,7 +107,7 @@ export default function CollectionsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-base-200 text-base-content">
+    <div className="min-h-screen bg-base-200 text-base-content prem-page">`n      <PremiumBackground />
       <GalleryNavbar
         navigate={navigate}
         images={images}
@@ -132,7 +133,7 @@ export default function CollectionsPage() {
       <div style={{ height: navbarHeight ? `${navbarHeight + 8}px` : '90px' }} />
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-16 space-y-6">
-        <div className="bg-base-100 border border-base-content/15 rounded-[var(--radius-box)] shadow-xl p-5 sm:p-6">
+        <div className="bg-base-100 border border-base-300 rounded-[var(--radius-box)] shadow-xl p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-start gap-4">
               <div className="w-12 h-12 rounded-[var(--radius-box)] bg-primary/15 text-primary flex items-center justify-center">
@@ -158,7 +159,7 @@ export default function CollectionsPage() {
         </div>
 
         {collections.length === 0 ? (
-          <div className="bg-base-100 border border-base-content/15 rounded-[var(--radius-box)] shadow-xl text-center py-20 px-6">
+          <div className="bg-base-100 border border-base-300 rounded-[var(--radius-box)] shadow-xl text-center py-20 px-6">
             <FolderOpen className="w-20 h-20 text-base-content/25 mx-auto mb-4" />
             <p className="text-base-content/70 text-xl mb-6">No collections yet</p>
             <Button onClick={() => setShowCreateModal(true)} variant="primary">
@@ -177,7 +178,7 @@ export default function CollectionsPage() {
                   key={collection.id}
                   initial={{ opacity: 0, scale: 0.96 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 p-6 shadow-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
+                  className="rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-6 shadow-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
                 >
                   {isEditing ? (
                     <div className="space-y-3">
@@ -185,13 +186,13 @@ export default function CollectionsPage() {
                         value={editingCollection.name}
                         onChange={(e) => setEditingCollection({ ...editingCollection, name: e.target.value })}
                         placeholder="Collection name"
-                        className="bg-base-200 border-base-content/15"
+                        className="bg-base-200 border-base-300"
                       />
                       <Input
                         value={editingCollection.description || ''}
                         onChange={(e) => setEditingCollection({ ...editingCollection, description: e.target.value })}
                         placeholder="Description (optional)"
-                        className="bg-base-200 border-base-content/15"
+                        className="bg-base-200 border-base-300"
                       />
                       <div className="flex gap-2">
                         <Button
@@ -223,7 +224,7 @@ export default function CollectionsPage() {
                         <div className="flex gap-2">
                           <button
                             onClick={() => setEditingCollection({ ...collection })}
-                            className="p-2 rounded-[var(--radius-box)] bg-base-200 hover:bg-base-300 border border-base-content/10 transition-all duration-200"
+                            className="p-2 rounded-[var(--radius-box)] bg-base-200 hover:bg-base-300 border border-base-300 transition-all duration-200"
                             title="Edit collection"
                           >
                             <Edit2 className="w-4 h-4 text-base-content/70" />
@@ -233,7 +234,7 @@ export default function CollectionsPage() {
                               setCollectionToDelete(collection);
                               setShowDeleteConfirm(true);
                             }}
-                            className="p-2 rounded-[var(--radius-box)] bg-base-200 hover:bg-base-300 border border-base-content/10 transition-all duration-200"
+                            className="p-2 rounded-[var(--radius-box)] bg-base-200 hover:bg-base-300 border border-base-300 transition-all duration-200"
                             title="Delete collection"
                           >
                             <Trash2 className="w-4 h-4 text-error" />

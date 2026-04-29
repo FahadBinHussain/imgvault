@@ -354,7 +354,7 @@ export default function GalleryPage() {
   const activeBaseFieldKeys = isSelectedLink ? baseLinkFieldKeys : (isSelectedVideo ? baseVideoFieldKeys : baseImageFieldKeys);
   const displayedBaseFieldKeys = activeBaseFieldKeys;
   const countedBaseFieldCount = displayedBaseFieldKeys.length;
-  const inlineActionClass = 'shrink-0 inline-flex items-center gap-1.5 rounded-full border border-base-content/12 bg-base-200/70 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-base-content/72 transition-all duration-200 hover:border-base-content/22 hover:bg-base-200 hover:text-base-content hover:shadow-sm active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40';
+  const inlineActionClass = 'shrink-0 inline-flex items-center gap-1.5 rounded-full border border-base-300 bg-base-200/70 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-base-content/72 transition-all duration-200 hover:border-base-content/22 hover:bg-base-200 hover:text-base-content hover:shadow-sm active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40';
   const firebaseProjectId = firebaseConfig?.projectId || '';
   const firestoreCollectionName = modalImage?.deletedAt ? 'trash' : 'images';
   const canOpenFirestoreConsole = Boolean(firebaseProjectId && selectedImage?.id);
@@ -559,7 +559,7 @@ export default function GalleryPage() {
         ? 'bg-success/10 text-success border-success/20'
         : type === 'warning'
           ? 'bg-warning/10 text-warning border-warning/20'
-          : 'bg-base-200/70 text-base-content/80 border-base-content/10';
+          : 'bg-base-200/70 text-base-content/80 border-base-300';
 
   const renderUploadLog = (entry, index) => {
     const colorClass = getUploadLogColorClass(entry.type);
@@ -2317,11 +2317,11 @@ export default function GalleryPage() {
                     const linkPreviewUrl = modalImage?.linkUrl || modalImage?.sourcePageUrl || '';
                     const linkPreviewImage = getLinkPreviewImage(modalImage);
                     return (
-                      <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 overflow-hidden border border-base-content/10 bg-base-100
+                      <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 overflow-hidden border border-base-300 bg-base-100
                                  transition-all duration-700 ease-out
                                  ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
                         <div className="h-full p-4 sm:p-6">
-                          <div className="h-full rounded-[var(--radius-box)] border border-base-content/12 bg-base-100 overflow-hidden">
+                          <div className="h-full rounded-[var(--radius-box)] border border-base-300 bg-base-100 overflow-hidden">
                             <div className="h-full flex flex-col md:flex-row">
                               <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between min-w-0">
                                 <div className="space-y-3">
@@ -2345,7 +2345,7 @@ export default function GalleryPage() {
                                   {linkPreviewUrl || 'N/A'}
                                 </a>
                               </div>
-                              <div className="md:w-[42%] lg:w-[40%] h-48 md:h-auto bg-base-200 border-t md:border-t-0 md:border-l border-base-content/10">
+                              <div className="md:w-[42%] lg:w-[40%] h-48 md:h-auto bg-base-200 border-t md:border-t-0 md:border-l border-base-300">
                                 {linkPreviewImage ? (
                                   <img
                                     src={linkPreviewImage}
@@ -2501,7 +2501,7 @@ export default function GalleryPage() {
                                 <select
                                   value={editValues.collectionId ?? (modalImage?.collectionId || '')}
                                   onChange={(e) => setEditValues({ ...editValues, collectionId: e.target.value })}
-                                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 text-base-content focus:outline-none focus:border-primary"
+                                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content focus:outline-none focus:border-primary"
                                 >
                                   <option value="">No Collection</option>
                                   {collections.map((collection) => (
@@ -2572,7 +2572,7 @@ export default function GalleryPage() {
                                       ? 'https://example.com/image.jpg'
                                       : 'https://example.com/page'
                                   }
-                                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 text-base-content focus:outline-none focus:border-primary"
+                                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content focus:outline-none focus:border-primary"
                                 />
                                 <div className="flex gap-2">
                                   <Button size="sm" onClick={() => saveEdit(key)}>
@@ -2619,7 +2619,7 @@ export default function GalleryPage() {
                                   onChange={(e) => setEditValues({ ...editValues, description: e.target.value })}
                                   rows={4}
                                   placeholder="Add a description..."
-                                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 text-base-content focus:outline-none focus:border-primary resize-y"
+                                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content focus:outline-none focus:border-primary resize-y"
                                 />
                                 <div className="flex gap-2">
                                   <Button size="sm" onClick={() => saveEdit('description')}>
@@ -2654,7 +2654,7 @@ export default function GalleryPage() {
                                   type="datetime-local"
                                   value={editValues.creationDate ?? (modalImage?.creationDate ? (() => { const d = new Date(modalImage.creationDate); const offset = d.getTimezoneOffset() * 60000; return new Date(d.getTime() - offset).toISOString().slice(0, 16); })() : '')}
                                   onChange={(e) => setEditValues({ ...editValues, creationDate: e.target.value })}
-                                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 text-base-content focus:outline-none focus:border-primary font-mono text-sm"
+                                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content focus:outline-none focus:border-primary font-mono text-sm"
                                 />
                                 <div className="flex gap-2">
                                   <Button size="sm" onClick={() => saveEdit('creationDate')}>
@@ -2692,7 +2692,7 @@ export default function GalleryPage() {
                     ))}
                   </div>
 
-                    <div className="pt-4 border-t border-base-content/20">
+                    <div className="pt-4 border-t border-base-300">
                       {isResolvingModalMediaType ? (
                         <div className="text-sm text-base-content/60 italic">
                           Loading media details...
@@ -2851,14 +2851,14 @@ export default function GalleryPage() {
           isOpen={showUploadModal}
           onClose={closeUploadModal}
           fullscreen={true}
-          className="!bg-base-100 !backdrop-blur-none !border-base-content/20 shadow-2xl"
+          className="!bg-base-100 !backdrop-blur-none !border-base-300 shadow-2xl"
           title={
             <div className="flex items-center justify-between w-full">
               <span>Upload Image</span>
               <div className="flex gap-2">
                 <button
                   onClick={uploading ? terminateUploadJob : closeUploadModal}
-                  className="px-4 py-2 rounded-[var(--radius-box)] border border-base-content/15 bg-base-200 hover:bg-base-300
+                  className="px-4 py-2 rounded-[var(--radius-box)] border border-base-300 bg-base-200 hover:bg-base-300
                            text-base-content text-sm font-medium transition-colors"
                 >
                   {uploading ? 'Terminate Upload' : 'Cancel'}
@@ -2907,7 +2907,7 @@ export default function GalleryPage() {
                 
                 <label className="block">
                   <div className="flex items-center justify-center w-full min-h-[calc(100vh-16rem)] px-4 transition 
-                                bg-base-200 border-2 border-dashed border-base-content/20 rounded-[var(--radius-box)] 
+                                bg-base-200 border-2 border-dashed border-base-300 rounded-[var(--radius-box)] 
                                 hover:border-primary hover:bg-base-300/60 cursor-pointer
                                 group">
                     <div className="text-center">
@@ -2938,7 +2938,7 @@ export default function GalleryPage() {
                 {/* Left Column - Sticky Media Preview */}
                 <div className="min-h-0 xl:pr-2 xl:overflow-y-auto">
                   <div className="space-y-3">
-                    <div className="relative rounded-[var(--radius-box)] overflow-hidden bg-base-200 border border-base-content/15">
+                    <div className="relative rounded-[var(--radius-box)] overflow-hidden bg-base-200 border border-base-300">
                       {uploadImageData.isVideo ? (
                         <video
                           src={uploadImageData.srcUrl}
@@ -3162,7 +3162,7 @@ export default function GalleryPage() {
                             </div>
                           </div>
                         </div>
-                        <div className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-100/70 p-3">
+                        <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-100/70 p-3">
                           <div className="mb-3 flex items-center justify-between gap-3">
                             <div>
                               <h4 className="text-sm font-semibold text-base-content">Live Upload Log</h4>
@@ -3181,7 +3181,7 @@ export default function GalleryPage() {
 
                           <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
                             {uploadLogs.length === 0 ? (
-                              <div className="rounded-[var(--radius-box)] border border-dashed border-base-content/15 px-4 py-6 text-center text-sm text-base-content/60">
+                              <div className="rounded-[var(--radius-box)] border border-dashed border-base-300 px-4 py-6 text-center text-sm text-base-content/60">
                                 Waiting for uploader logs...
                               </div>
                             ) : (
@@ -3247,7 +3247,7 @@ export default function GalleryPage() {
                                         {dup.sourcePageUrl}
                                       </p>
                                     )}
-                                    <div className="mt-2 pt-2 border-t border-base-content/10">
+                                    <div className="mt-2 pt-2 border-t border-base-300">
                                       <p className="text-xs text-base-content/75">
                                         {matchReason}
                                         {similarity && ` - ${similarity}% similar`}
@@ -3311,7 +3311,7 @@ export default function GalleryPage() {
                   {/* Form Fields - Alphabetically ordered */}
                   {uploadImageData ? (
                     <div className="space-y-4">
-                      <div className="flex gap-2 border-b border-base-content/15 pb-3">
+                      <div className="flex gap-2 border-b border-base-300 pb-3">
                         <button
                           onClick={() => setUploadModalMetaTab('noobs')}
                           className={`px-3 py-1.5 rounded-[var(--radius-box)] text-sm font-semibold transition-colors ${
@@ -3493,20 +3493,20 @@ export default function GalleryPage() {
                         if (uploadModalMetaTab === 'nerds') {
                           if (nerdEntries.length === 0) {
                             return (
-                              <div className="rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 p-4 text-sm text-base-content/70">
+                              <div className="rounded-[var(--radius-box)] bg-base-200 border border-base-300 p-4 text-sm text-base-content/70">
                                 {`No extra metadata fields detected for this ${isVideoUpload ? 'video' : 'image'}.`}
                               </div>
                             );
                           }
 
                           return (
-                            <div className="space-y-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 p-4">
+                            <div className="space-y-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 p-4">
                               {nerdEntries.map(([key, value], index) => (
                                 <div key={key}>
                                   <label className="block text-xs font-medium text-base-content/60 mb-1">
                                     {`${index + 1}. ${key}`}
                                   </label>
-                                  <div className="px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-content/10 text-base-content text-xs break-all font-mono">
+                                  <div className="px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-300 text-base-content text-xs break-all font-mono">
                                     {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                                   </div>
                                 </div>
@@ -3516,7 +3516,7 @@ export default function GalleryPage() {
                         }
 
                         return (
-                          <div className="space-y-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 p-4">
+                          <div className="space-y-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 p-4">
                             <div className="text-sm font-medium text-base-content/80 mb-1">
                               {`${isVideoUpload ? 'Video' : 'Image'} Fields To Save (${noobsFields.length})`}
                             </div>
@@ -3531,11 +3531,11 @@ export default function GalleryPage() {
                                     onChange={(e) => setUploadDescription(e.target.value)}
                                     placeholder="Add a description..."
                                     rows={3}
-                                    className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-content/10 text-base-content text-xs break-all font-mono resize-none
+                                    className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-300 text-base-content text-xs break-all font-mono resize-none
                                              focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                                   />
                                 ) : (
-                                  <div className="px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-content/10 text-base-content text-xs break-all font-mono">
+                                  <div className="px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-300 text-base-content text-xs break-all font-mono">
                                     {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                                   </div>
                                 )}
@@ -3558,7 +3558,7 @@ export default function GalleryPage() {
                       onChange={(e) => setUploadDescription(e.target.value)}
                       placeholder="Add a description..."
                       rows={3}
-                      className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 
+                      className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 
                                text-base-content placeholder-base-content/40 
                                focus:outline-none focus:border-primary focus:ring-2 
                                focus:ring-primary/20 transition-all resize-none"
@@ -3580,7 +3580,7 @@ export default function GalleryPage() {
                           setShowCreateCollection(false);
                         }
                       }}
-                      className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 
+                      className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 
                                text-base-content 
                                focus:outline-none focus:border-primary focus:ring-2 
                                focus:ring-primary/20 transition-all"
@@ -3601,7 +3601,7 @@ export default function GalleryPage() {
                           value={newCollectionName}
                           onChange={(e) => setNewCollectionName(e.target.value)}
                           placeholder="Collection name"
-                          className="flex-1 px-4 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 
+                          className="flex-1 px-4 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-300 
                                    text-base-content placeholder-base-content/40 
                                    focus:outline-none focus:border-primary focus:ring-2 
                                    focus:ring-primary/20 transition-all"
@@ -3663,7 +3663,7 @@ export default function GalleryPage() {
                       value={uploadImageData?.pageTitle || ''}
                       onChange={(e) => setUploadImageData(prev => ({ ...prev, pageTitle: e.target.value }))}
                       placeholder="Page title"
-                      className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 
+                      className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 
                                text-base-content placeholder-base-content/40 
                                focus:outline-none focus:border-primary focus:ring-2 
                                focus:ring-primary/20 transition-all"
@@ -3676,7 +3676,7 @@ export default function GalleryPage() {
                       <label className="block text-sm font-medium text-base-content/70 mb-2">
                         sourceImageUrl
                       </label>
-                      <div className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 
+                      <div className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 
                                     text-base-content/75 font-mono text-xs break-all">
                         {/^https?:\/\//i.test(String(uploadPageUrl || ''))
                           ? uploadPageUrl
@@ -3695,7 +3695,7 @@ export default function GalleryPage() {
                       value={uploadPageUrl}
                       onChange={(e) => setUploadPageUrl(e.target.value)}
                       placeholder="https://example.com/page"
-                      className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/15 
+                      className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 
                                text-base-content placeholder-base-content/40 
                                focus:outline-none focus:border-primary focus:ring-2 
                                focus:ring-primary/20 transition-all"
@@ -3712,7 +3712,7 @@ export default function GalleryPage() {
                       value={uploadTags}
                       onChange={(e) => setUploadTags(e.target.value)}
                       placeholder="nature, sunset, photography"
-                      className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 
+                      className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 
                                text-base-content placeholder-base-content/40 
                                focus:outline-none focus:border-primary-500 focus:ring-2 
                                focus:ring-primary-500/20 transition-all"
@@ -3756,7 +3756,7 @@ export default function GalleryPage() {
                       ];
 
                       return (
-                        <div className="space-y-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 p-4">
+                        <div className="space-y-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 p-4">
                           <div className="text-sm font-medium text-base-content/80 mb-1">
                             Video Fields To Save (21)
                           </div>
@@ -3765,7 +3765,7 @@ export default function GalleryPage() {
                               <label className="block text-xs font-medium text-base-content/60 mb-1">
                                 {`${index + 1}. ${key}`}
                               </label>
-                              <div className="px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-content/10 text-base-content text-xs break-all font-mono">
+                              <div className="px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-300 text-base-content text-xs break-all font-mono">
                                 {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                               </div>
                             </div>
@@ -3799,7 +3799,7 @@ export default function GalleryPage() {
                     );
 
                     return (
-                      <details className="space-y-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10 p-4" open={false}>
+                      <details className="space-y-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 p-4" open={false}>
                         <summary className="cursor-pointer list-none text-sm font-medium text-base-content/80 mb-3">
                           Raw Metadata Fields ({sortedFields.length})
                         </summary>
@@ -3808,7 +3808,7 @@ export default function GalleryPage() {
                             <label className="block text-xs font-medium text-base-content/60 mb-1">
                               {key}
                             </label>
-                            <div className="px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-content/10 text-base-content text-xs break-all font-mono">
+                            <div className="px-3 py-2 rounded-[var(--radius-box)] bg-base-100 border border-base-300 text-base-content text-xs break-all font-mono">
                               {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                             </div>
                           </div>
@@ -3843,7 +3843,7 @@ export default function GalleryPage() {
         {/* Folder Selection Prompt for Auto-Upload */}
         {showFolderPrompt && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-base-content/50 backdrop-blur-sm">
-            <div className="bg-base-100 border border-base-content/10 rounded-[var(--radius-box)] p-8 max-w-md w-full shadow-2xl text-base-content">
+            <div className="bg-base-100 border border-base-300 rounded-[var(--radius-box)] p-8 max-w-md w-full shadow-2xl text-base-content">
               <div className="text-center space-y-6">
                 <div className="w-16 h-16 mx-auto bg-primary text-primary-content rounded-full flex items-center justify-center">
                   <FolderOpen className="w-8 h-8" />

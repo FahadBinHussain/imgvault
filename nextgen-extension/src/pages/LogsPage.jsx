@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Activity, AlertCircle, CheckCircle2, Clock3, FileText } from 'lucide-react';
+import PremiumBackground from '../components/PremiumBackground';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { Button } from '../components/UI';
 import { useChromeStorage, useCollections, useImageUpload, useImages, useTrash } from '../hooks/useChromeExtension';
@@ -27,7 +28,7 @@ function getLogColorClass(type) {
     return 'border-warning/20 bg-warning/10 text-warning';
   }
 
-  return 'border-base-content/10 bg-base-200/70 text-base-content/80';
+  return 'border-base-300 bg-base-200/70 text-base-content/80';
 }
 
 function LogLine({ entry }) {
@@ -72,7 +73,7 @@ export default function LogsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-base-200 text-base-content">
+    <div className="min-h-screen bg-base-200 text-base-content prem-page">`n      <PremiumBackground />
       <GalleryNavbar
         navigate={navigate}
         images={images}
@@ -99,7 +100,7 @@ export default function LogsPage() {
       />
 
       <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 pb-8 sm:px-6" style={{ paddingTop: navbarHeight + 16 }}>
-        <section className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 p-5 shadow-sm">
+        <section className="rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm font-medium text-primary">
@@ -127,7 +128,7 @@ export default function LogsPage() {
         </section>
 
         <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 p-4 shadow-sm">
+          <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-4 shadow-sm">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-base font-semibold text-base-content">Live Upload Log</h3>
@@ -140,7 +141,7 @@ export default function LogsPage() {
               </span>
             </div>
 
-            <div className="max-h-[420px] space-y-2 overflow-y-auto rounded-[var(--radius-box)] border border-base-content/10 bg-base-200/50 p-3">
+            <div className="max-h-[420px] space-y-2 overflow-y-auto rounded-[var(--radius-box)] border border-base-300 bg-base-200/50 p-3">
               {logs.length === 0 ? (
                 <div className="flex min-h-48 flex-col items-center justify-center gap-2 text-center text-sm text-base-content/60">
                   <Activity className="h-5 w-5" />
@@ -152,18 +153,18 @@ export default function LogsPage() {
             </div>
           </div>
 
-          <div className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 p-4 shadow-sm">
+          <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-4 shadow-sm">
             <h3 className="text-base font-semibold text-base-content">Summary</h3>
             <div className="mt-4 space-y-3">
-              <div className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-200/50 p-3">
+              <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/50 p-3">
                 <div className="text-xs uppercase tracking-wide text-base-content/50">Current state</div>
                 <div className="mt-1 text-sm font-medium text-base-content">{uploading ? 'Uploading now' : 'Idle'}</div>
               </div>
-              <div className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-200/50 p-3">
+              <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/50 p-3">
                 <div className="text-xs uppercase tracking-wide text-base-content/50">Saved runs</div>
                 <div className="mt-1 text-sm font-medium text-base-content">{sortedHistory.length}</div>
               </div>
-              <div className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-200/50 p-3">
+              <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/50 p-3">
                 <div className="text-xs uppercase tracking-wide text-base-content/50">Latest status</div>
                 <div className="mt-1 text-sm font-medium text-base-content">{progress || 'No recent upload status yet.'}</div>
               </div>
@@ -171,7 +172,7 @@ export default function LogsPage() {
           </div>
         </section>
 
-        <section className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 p-4 shadow-sm">
+        <section className="rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-4 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h3 className="text-base font-semibold text-base-content">Previous Upload Logs</h3>
@@ -181,7 +182,7 @@ export default function LogsPage() {
           </div>
 
           {sortedHistory.length === 0 ? (
-            <div className="flex min-h-48 flex-col items-center justify-center gap-2 rounded-[var(--radius-box)] border border-dashed border-base-content/15 bg-base-200/40 text-center text-sm text-base-content/60">
+            <div className="flex min-h-48 flex-col items-center justify-center gap-2 rounded-[var(--radius-box)] border border-dashed border-base-300 bg-base-200/40 text-center text-sm text-base-content/60">
               <Clock3 className="h-5 w-5" />
               <p>No saved upload runs yet.</p>
             </div>
@@ -197,7 +198,7 @@ export default function LogsPage() {
                       : 'badge-error';
 
                 return (
-                  <div key={run.id} className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-200/35">
+                  <div key={run.id} className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/35">
                     <button
                       type="button"
                       onClick={() => toggleRun(run.id)}
@@ -214,7 +215,7 @@ export default function LogsPage() {
                     </button>
 
                     {isExpanded && (
-                      <div className="border-t border-base-content/10 px-4 py-3">
+                      <div className="border-t border-base-300 px-4 py-3">
                         {(run.logs || []).length === 0 ? (
                           <div className="text-sm text-base-content/60">
                             <div className="flex items-center gap-2">
@@ -223,7 +224,7 @@ export default function LogsPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="max-h-[320px] space-y-2 overflow-y-auto rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 p-3">
+                          <div className="max-h-[320px] space-y-2 overflow-y-auto rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-3">
                             {(run.logs || []).map((entry, index) => (
                               <LogLine key={`${run.id}-${index}`} entry={entry} />
                             ))}

@@ -14,6 +14,7 @@ import {
 import { Button, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
 import { useTrash } from '../hooks/useChromeExtension';
 import TimelineScrollbar from '../components/TimelineScrollbar';
+import PremiumBackground from '../components/PremiumBackground';
 import GalleryNavbar from '../components/GalleryNavbar';
 
 export default function TrashPage() {
@@ -422,7 +423,7 @@ export default function TrashPage() {
   }, [groupedImages]);
 
   return (
-  <div ref={pageContainerRef} className="min-h-screen bg-base-200 text-base-content overflow-y-auto">
+  <div ref={pageContainerRef} className="min-h-screen bg-base-200 text-base-content overflow-y-auto prem-page">`n      <PremiumBackground />
       {/* Timeline Scrollbar */}
       <TimelineScrollbar dateGroups={timelineData} containerRef={pageContainerRef} />
       
@@ -545,7 +546,7 @@ export default function TrashPage() {
 
         {/* Empty State */}
         {!loading && trashedImages.length === 0 && (
-          <div className="glass-card rounded-[var(--radius-box)] backdrop-blur-xl bg-base-100/70 border border-base-content/20 
+          <div className="glass-card rounded-[var(--radius-box)] backdrop-blur-xl bg-base-100/70 border border-base-300 
                         shadow-2xl p-16 text-center">
             <div className="relative inline-block mb-6">
               <div className="absolute inset-0 bg-gradient-to-r from-error to-warning rounded-full blur-3xl opacity-30"></div>
@@ -599,7 +600,7 @@ export default function TrashPage() {
                                 transition-all duration-700 ease-out"></div>
                   
                   {/* Card with soft shadows and smooth animations */}
-                  <div className="relative bg-base-100/80 backdrop-blur-sm border border-base-content/20 
+                  <div className="relative bg-base-100 border border-base-300 
                                 rounded-[var(--radius-box)] overflow-hidden shadow-lg group-hover:shadow-2xl
                                 transform transition-all duration-500 ease-out 
                                 group-hover:scale-[1.04] group-hover:-translate-y-2">
@@ -768,7 +769,7 @@ export default function TrashPage() {
                       </div>
                     )}
                     {selectedImage.linkUrl && (
-                      <div className="p-4 border-t border-base-content/10">
+                      <div className="p-4 border-t border-base-300">
                         <a
                           href={selectedImage.linkUrl}
                           target="_blank"
@@ -793,9 +794,9 @@ export default function TrashPage() {
               </div>
 
               {/* RIGHT SIDE - DETAILS */}
-  <div className="w-full lg:w-[550px] lg:flex-shrink-0 bg-base-100/90 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-base-content/20 
+  <div className="w-full lg:w-[550px] lg:flex-shrink-0 bg-base-100/90 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-base-300 
                             overflow-y-auto flex flex-col relative z-10"
-       style={{ scrollbarWidth: 'thin', scrollbarColor: 'hsl(var(--er)) hsl(var(--b3))' }}
+       style={{ scrollbarWidth: 'thin', scrollbarColor: 'var(--color-base-300) transparent' }}
               >
                 {/* Close Button */}
                 <button
@@ -816,7 +817,7 @@ export default function TrashPage() {
                   </h2>
 
                   {/* Tab Navigation */}
-                  <div className="flex gap-2 mb-4 border-b border-base-content/10 overflow-x-auto whitespace-nowrap">
+                  <div className="flex gap-2 mb-4 border-b border-base-300 overflow-x-auto whitespace-nowrap">
                     <button
                       onClick={() => handleTabSwitch('noobs')}
                       className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${
@@ -1369,7 +1370,7 @@ export default function TrashPage() {
                   )}
 
                   {/* Action Buttons */}
-                  <div className="flex gap-2 pt-6 border-t border-base-content/10 mt-6">
+                  <div className="flex gap-2 pt-6 border-t border-base-300 mt-6">
                     <button
                       onClick={() => setShowRestoreConfirm(true)}
                       disabled={isProcessing}
@@ -1414,7 +1415,7 @@ export default function TrashPage() {
       <Modal isOpen={showRestoreConfirm} onClose={() => setShowRestoreConfirm(false)}>
         <div className="text-center space-y-6">
           {/* Animated icon */}
-          <div className="text-7xl animate-bounce">♻️</div>
+          <div className="flex items-center justify-center mb-4"><Undo2 size={48} style={{color:"var(--color-success)",opacity:.7}} /></div>
           
           <h3 className="text-2xl font-bold text-success">
             Restore Image?
@@ -1430,7 +1431,7 @@ export default function TrashPage() {
             <button
               onClick={() => setShowRestoreConfirm(false)}
               disabled={isProcessing}
-              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300
                        text-base-content font-medium
                        hover:bg-base-300 hover:scale-105
                        active:scale-95
@@ -1477,7 +1478,7 @@ export default function TrashPage() {
       <Modal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)}>
         <div className="text-center space-y-6">
           {/* Animated warning icon */}
-          <div className="text-7xl animate-bounce">🔥</div>
+          <div className="flex items-center justify-center mb-4"><AlertTriangle size={48} style={{color:"var(--color-error)",opacity:.7}} /></div>
           
           <h3 className="text-2xl font-bold text-error">
             Permanently Delete?
@@ -1505,7 +1506,7 @@ export default function TrashPage() {
             <button
               onClick={() => setShowDeleteConfirm(false)}
               disabled={isProcessing}
-              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300
                        text-base-content font-medium
                        hover:bg-base-300 hover:scale-105
                        active:scale-95
@@ -1552,7 +1553,7 @@ export default function TrashPage() {
       <Modal isOpen={showBulkRestoreConfirm} onClose={() => !isProcessing && setShowBulkRestoreConfirm(false)}>
         <div className="text-center space-y-6">
           {/* Animated icon */}
-          <div className="text-7xl animate-bounce">♻️</div>
+          <div className="flex items-center justify-center mb-4"><Undo2 size={48} style={{color:"var(--color-success)",opacity:.7}} /></div>
           
           <h3 className="text-2xl font-bold text-success">
             Restore {selectedImages.size} Image{selectedImages.size > 1 ? 's' : ''}?
@@ -1568,7 +1569,7 @@ export default function TrashPage() {
             <button
               onClick={() => setShowBulkRestoreConfirm(false)}
               disabled={isProcessing}
-              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300
                        text-base-content font-medium
                        hover:bg-base-300 hover:scale-105
                        active:scale-95
@@ -1614,7 +1615,7 @@ export default function TrashPage() {
       <Modal isOpen={showBulkDeleteConfirm} onClose={() => !isProcessing && setShowBulkDeleteConfirm(false)}>
         <div className="text-center space-y-6">
           {/* Animated warning icon */}
-          <div className="text-7xl animate-bounce">💥</div>
+          <div className="flex items-center justify-center mb-4"><Trash2 size={48} style={{color:"var(--color-error)",opacity:.7}} /></div>
           
           <h3 className="text-2xl font-bold text-error">
             Permanently Delete {selectedImages.size} Item{selectedImages.size > 1 ? 's' : ''}?
@@ -1639,7 +1640,7 @@ export default function TrashPage() {
             <button
               onClick={() => setShowBulkDeleteConfirm(false)}
               disabled={isProcessing}
-              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300
                        text-base-content font-medium
                        hover:bg-base-300 hover:scale-105
                        active:scale-95
@@ -1685,7 +1686,7 @@ export default function TrashPage() {
       <Modal isOpen={showEmptyTrashConfirm} onClose={() => setShowEmptyTrashConfirm(false)}>
         <div className="text-center space-y-6">
           {/* Animated warning icon */}
-          <div className="text-7xl animate-bounce">💥</div>
+          <div className="flex items-center justify-center mb-4"><Trash2 size={48} style={{color:"var(--color-error)",opacity:.7}} /></div>
           
           <h3 className="text-2xl font-bold text-error">
             Empty Entire Trash?
@@ -1710,7 +1711,7 @@ export default function TrashPage() {
             <button
               onClick={() => setShowEmptyTrashConfirm(false)}
               disabled={isProcessing}
-              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300
                        text-base-content font-medium
                        hover:bg-base-300 hover:scale-105
                        active:scale-95
