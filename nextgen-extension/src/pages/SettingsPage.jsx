@@ -20,69 +20,69 @@ const CSS = `
 .s-page { font-family: 'Outfit', system-ui, sans-serif; }
 
 .s-orb{position:absolute;border-radius:50%;filter:blur(90px);pointer-events:none;will-change:transform}
-.s-orb-a{width:520px;height:520px;background:hsl(var(--p)/0.07);top:-12%;right:-8%;animation:s-drift-a 26s ease-in-out infinite}
-.s-orb-b{width:420px;height:420px;background:hsl(var(--s)/0.06);bottom:-14%;left:-6%;animation:s-drift-b 32s ease-in-out infinite}
-.s-orb-c{width:320px;height:320px;background:hsl(var(--p)/0.04);top:38%;left:28%;animation:s-drift-c 22s ease-in-out infinite}
+.s-orb-a{width:520px;height:520px;background:oklch(from var(--color-primary) l c h / 0.07);top:-12%;right:-8%;animation:s-drift-a 26s ease-in-out infinite}
+.s-orb-b{width:420px;height:420px;background:oklch(from var(--color-secondary) l c h / 0.06);bottom:-14%;left:-6%;animation:s-drift-b 32s ease-in-out infinite}
+.s-orb-c{width:320px;height:320px;background:oklch(from var(--color-primary) l c h / 0.04);top:38%;left:28%;animation:s-drift-c 22s ease-in-out infinite}
 @keyframes s-drift-a{0%,100%{transform:translate(0,0) scale(1)}25%{transform:translate(-50px,40px) scale(1.06)}50%{transform:translate(25px,-55px) scale(.94)}75%{transform:translate(35px,25px) scale(1.03)}}
 @keyframes s-drift-b{0%,100%{transform:translate(0,0) scale(1)}25%{transform:translate(40px,-30px) scale(1.04)}50%{transform:translate(-30px,50px) scale(.96)}75%{transform:translate(-40px,-15px) scale(1.02)}}
 @keyframes s-drift-c{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(60px,-40px) scale(1.1)}66%{transform:translate(-40px,60px) scale(.9)}}
 
-.s-grid{position:fixed;inset:0;pointer-events:none;background-image:radial-gradient(circle,hsl(var(--bc)/0.03) 1px,transparent 1px);background-size:28px 28px;z-index:0}
+.s-grid{position:fixed;inset:0;pointer-events:none;background-image:radial-gradient(circle,oklch(from var(--color-base-content) l c h / 0.03) 1px,transparent 1px);background-size:28px 28px;z-index:0}
 
-.s-glass{background:hsl(var(--b1)/0.45);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border:1px solid hsl(var(--bc)/0.06);border-radius:16px;position:relative;overflow:hidden;transition:border-color .3s,box-shadow .3s}
-.s-glass:hover{border-color:hsl(var(--bc)/0.1)}
-.s-glass::before{content:'';position:absolute;top:0;left:12%;right:12%;height:1px;background:linear-gradient(90deg,transparent,hsl(var(--p)/0.2),hsl(var(--s)/0.15),transparent);z-index:2}
+.s-glass{background:oklch(from var(--color-base-100) l c h / 0.45);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border:1px solid oklch(from var(--color-base-content) l c h / 0.06);border-radius:16px;position:relative;overflow:hidden;transition:border-color .3s,box-shadow .3s}
+.s-glass:hover{border-color:oklch(from var(--color-base-content) l c h / 0.1)}
+.s-glass::before{content:'';position:absolute;top:0;left:12%;right:12%;height:1px;background:linear-gradient(90deg,transparent,oklch(from var(--color-primary) l c h / 0.2),oklch(from var(--color-secondary) l c h / 0.15),transparent);z-index:2}
 .s-glass::after{content:'';position:absolute;inset:0;border-radius:inherit;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");opacity:.018;pointer-events:none;mix-blend-mode:overlay;z-index:1}
 
-.s-inp{width:100%;height:40px;padding:0 14px;font-size:13px;font-family:'Outfit',system-ui,sans-serif;color:hsl(var(--bc));background:hsl(var(--b1)/0.35);border:1px solid hsl(var(--bc)/0.07);border-radius:10px;outline:none;transition:all .2s ease}
-.s-inp:focus{border-color:hsl(var(--p)/0.4);background:hsl(var(--b1)/0.65);box-shadow:0 0 0 3px hsl(var(--p)/0.07),0 0 24px hsl(var(--p)/0.04)}
-.s-inp::placeholder{color:hsl(var(--bc)/0.2)}
+.s-inp{width:100%;height:40px;padding:0 14px;font-size:13px;font-family:'Outfit',system-ui,sans-serif;color:var(--color-base-content);background:oklch(from var(--color-base-100) l c h / 0.35);border:1px solid oklch(from var(--color-base-content) l c h / 0.07);border-radius:10px;outline:none;transition:all .2s ease}
+.s-inp:focus{border-color:oklch(from var(--color-primary) l c h / 0.4);background:oklch(from var(--color-base-100) l c h / 0.65);box-shadow:0 0 0 3px oklch(from var(--color-primary) l c h / 0.07),0 0 24px oklch(from var(--color-primary) l c h / 0.04)}
+.s-inp::placeholder{color:oklch(from var(--color-base-content) l c h / 0.2)}
 .s-inp::-ms-reveal{filter:brightness(0)}
 
-.s-ta{width:100%;padding:12px 14px;font-size:13px;font-family:'Outfit',system-ui,sans-serif;color:hsl(var(--bc));background:hsl(var(--b1)/0.35);border:1px solid hsl(var(--bc)/0.07);border-radius:10px;outline:none;resize:none;transition:all .2s ease;line-height:1.6}
-.s-ta:focus{border-color:hsl(var(--p)/0.4);background:hsl(var(--b1)/0.65);box-shadow:0 0 0 3px hsl(var(--p)/0.07),0 0 24px hsl(var(--p)/0.04)}
-.s-ta::placeholder{color:hsl(var(--bc)/0.2)}
+.s-ta{width:100%;padding:12px 14px;font-size:13px;font-family:'Outfit',system-ui,sans-serif;color:var(--color-base-content);background:oklch(from var(--color-base-100) l c h / 0.35);border:1px solid oklch(from var(--color-base-content) l c h / 0.07);border-radius:10px;outline:none;resize:none;transition:all .2s ease;line-height:1.6}
+.s-ta:focus{border-color:oklch(from var(--color-primary) l c h / 0.4);background:oklch(from var(--color-base-100) l c h / 0.65);box-shadow:0 0 0 3px oklch(from var(--color-primary) l c h / 0.07),0 0 24px oklch(from var(--color-primary) l c h / 0.04)}
+.s-ta::placeholder{color:oklch(from var(--color-base-content) l c h / 0.2)}
 
-.s-sel{width:100%;height:40px;padding:0 36px 0 14px;font-size:13px;font-family:'Outfit',system-ui,sans-serif;color:hsl(var(--bc));background:hsl(var(--b1)/0.35);border:1px solid hsl(var(--bc)/0.07);border-radius:10px;outline:none;appearance:none;cursor:pointer;transition:all .2s ease;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
-.s-sel:focus{border-color:hsl(var(--p)/0.4);background-color:hsl(var(--b1)/0.65);box-shadow:0 0 0 3px hsl(var(--p)/0.07),0 0 24px hsl(var(--p)/0.04)}
+.s-sel{width:100%;height:40px;padding:0 36px 0 14px;font-size:13px;font-family:'Outfit',system-ui,sans-serif;color:var(--color-base-content);background:oklch(from var(--color-base-100) l c h / 0.35);border:1px solid oklch(from var(--color-base-content) l c h / 0.07);border-radius:10px;outline:none;appearance:none;cursor:pointer;transition:all .2s ease;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+.s-sel:focus{border-color:oklch(from var(--color-primary) l c h / 0.4);background-color:oklch(from var(--color-base-100) l c h / 0.65);box-shadow:0 0 0 3px oklch(from var(--color-primary) l c h / 0.07),0 0 24px oklch(from var(--color-primary) l c h / 0.04)}
 
-.s-save{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:42px;padding:0 28px;font-size:13px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;letter-spacing:-.01em;color:hsl(var(--pc));background:linear-gradient(135deg,hsl(var(--p)),hsl(var(--s)));border:none;border-radius:10px;cursor:pointer;position:relative;overflow:hidden;transition:all .2s ease;box-shadow:0 2px 20px hsl(var(--p)/0.3);min-width:150px}
-.s-save:hover{transform:translateY(-1px);box-shadow:0 6px 28px hsl(var(--p)/0.4);filter:brightness(1.1)}
+.s-save{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:42px;padding:0 28px;font-size:13px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;letter-spacing:-.01em;color:var(--color-primary-content);background:linear-gradient(135deg,var(--color-primary),var(--color-secondary));border:none;border-radius:10px;cursor:pointer;position:relative;overflow:hidden;transition:all .2s ease;box-shadow:0 2px 20px oklch(from var(--color-primary) l c h / 0.3);min-width:150px}
+.s-save:hover{transform:translateY(-1px);box-shadow:0 6px 28px oklch(from var(--color-primary) l c h / 0.4);filter:brightness(1.1)}
 .s-save:active{transform:translateY(0) scale(.98)}
 .s-save::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,hsl(0 0% 100%/.12),transparent);transform:translateX(-100%);animation:s-shimmer 3s infinite}
-.s-save-ok{background:hsl(var(--su));box-shadow:0 2px 20px hsl(var(--su)/0.3)}
+.s-save-ok{background:var(--color-success);box-shadow:0 2px 20px oklch(from var(--color-success) l c h / 0.3)}
 .s-save-ok::after{display:none}
 @keyframes s-shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
 
-.s-nav-btn{display:flex;align-items:center;gap:10px;padding:8px 12px 8px 16px;border-radius:10px;font-size:13px;font-weight:500;color:hsl(var(--bc)/0.4);cursor:pointer;transition:all .15s ease;position:relative;border:none;background:none;width:100%;text-align:left;font-family:'Outfit',system-ui,sans-serif}
-.s-nav-btn:hover{color:hsl(var(--bc)/0.75);background:hsl(var(--bc)/0.03)}
-.s-nav-on{color:hsl(var(--bc))!important;background:hsl(var(--bc)/0.04)!important}
+.s-nav-btn{display:flex;align-items:center;gap:10px;padding:8px 12px 8px 16px;border-radius:10px;font-size:13px;font-weight:500;color:oklch(from var(--color-base-content) l c h / 0.4);cursor:pointer;transition:all .15s ease;position:relative;border:none;background:none;width:100%;text-align:left;font-family:'Outfit',system-ui,sans-serif}
+.s-nav-btn:hover{color:oklch(from var(--color-base-content) l c h / 0.75);background:oklch(from var(--color-base-content) l c h / 0.03)}
+.s-nav-on{color:var(--color-base-content)!important;background:oklch(from var(--color-base-content) l c h / 0.04)!important}
 
 .s-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:500;font-family:'Outfit',system-ui,sans-serif}
-.s-pill-ok{color:hsl(var(--su));background:hsl(var(--su)/0.07)}
-.s-pill-err{color:hsl(var(--er));background:hsl(var(--er)/0.07)}
-.s-pill-load{color:hsl(var(--in));background:hsl(var(--in)/0.07)}
-.s-pill-muted{color:hsl(var(--bc)/0.45);background:hsl(var(--bc)/0.04)}
+.s-pill-ok{color:var(--color-success);background:oklch(from var(--color-success) l c h / 0.07)}
+.s-pill-err{color:var(--color-error);background:oklch(from var(--color-error) l c h / 0.07)}
+.s-pill-load{color:var(--color-info);background:oklch(from var(--color-info) l c h / 0.07)}
+.s-pill-muted{color:oklch(from var(--color-base-content) l c h / 0.45);background:oklch(from var(--color-base-content) l c h / 0.04)}
 
-.s-scroll{scrollbar-width:thin;scrollbar-color:hsl(var(--bc)/0.06) transparent}
+.s-scroll{scrollbar-width:thin;scrollbar-color:oklch(from var(--color-base-content) l c h / 0.06) transparent}
 .s-scroll::-webkit-scrollbar{width:5px}
 .s-scroll::-webkit-scrollbar-track{background:transparent}
-.s-scroll::-webkit-scrollbar-thumb{background:hsl(var(--bc)/0.06);border-radius:3px}
-.s-scroll::-webkit-scrollbar-thumb:hover{background:hsl(var(--bc)/0.12)}
+.s-scroll::-webkit-scrollbar-thumb{background:oklch(from var(--color-base-content) l c h / 0.06);border-radius:3px}
+.s-scroll::-webkit-scrollbar-thumb:hover{background:oklch(from var(--color-base-content) l c h / 0.12)}
 
-.s-divider{height:1px;background:linear-gradient(90deg,transparent,hsl(var(--bc)/0.06),transparent);margin:20px 0}
+.s-divider{height:1px;background:linear-gradient(90deg,transparent,oklch(from var(--color-base-content) l c h / 0.06),transparent);margin:20px 0}
 
 .s-link{display:flex;align-items:center;justify-content:between;padding:10px 12px;border-radius:10px;transition:all .15s;text-decoration:none;color:inherit}
-.s-link:hover{background:hsl(var(--bc)/0.03)}
+.s-link:hover{background:oklch(from var(--color-base-content) l c h / 0.03)}
 
-.s-kbd{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 5px;font-size:10px;font-family:'Outfit',system-ui,sans-serif;font-weight:600;color:hsl(var(--bc)/0.3);background:hsl(var(--bc)/0.04);border:1px solid hsl(var(--bc)/0.07);border-radius:5px;line-height:1}
+.s-kbd{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 5px;font-size:10px;font-family:'Outfit',system-ui,sans-serif;font-weight:600;color:oklch(from var(--color-base-content) l c h / 0.3);background:oklch(from var(--color-base-content) l c h / 0.04);border:1px solid oklch(from var(--color-base-content) l c h / 0.07);border-radius:5px;line-height:1}
 
 .s-label{display:flex;align-items:center;gap:6px;margin-bottom:6px}
-.s-label-text{font-size:13px;font-weight:500;color:hsl(var(--bc)/0.65)}
-.s-label-icon{color:hsl(var(--bc)/0.25)}
-.s-label-req{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--p)/0.6);background:hsl(var(--p)/0.07);padding:2px 6px;border-radius:4px}
+.s-label-text{font-size:13px;font-weight:500;color:oklch(from var(--color-base-content) l c h / 0.65)}
+.s-label-icon{color:oklch(from var(--color-base-content) l c h / 0.25)}
+.s-label-req{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:oklch(from var(--color-primary) l c h / 0.6);background:oklch(from var(--color-primary) l c h / 0.07);padding:2px 6px;border-radius:4px}
 
-.s-hint{font-size:11px;color:hsl(var(--bc)/0.3);line-height:1.6;margin-top:6px}
+.s-hint{font-size:11px;color:oklch(from var(--color-base-content) l c h / 0.3);line-height:1.6;margin-top:6px}
 
 .s-backdrop{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
 `;
@@ -115,13 +115,13 @@ function Sidebar({ active, onChange }) {
                   layoutId="s-glow"
                   className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-full"
                   style={{
-                    background: 'hsl(var(--p))',
-                    boxShadow: '0 0 10px hsl(var(--p)/0.45), 0 0 3px hsl(var(--p)/0.6)',
+                    background: 'var(--color-primary)',
+                    boxShadow: '0 0 10px oklch(from var(--color-primary) l c h / 0.45), 0 0 3px oklch(from var(--color-primary) l c h / 0.6)',
                   }}
                   transition={{ type: 'spring', stiffness: 500, damping: 32 }}
                 />
               )}
-              <item.icon className="w-4 h-4 flex-shrink-0" style={on ? { color: 'hsl(var(--p))' } : undefined} />
+              <item.icon className="w-4 h-4 flex-shrink-0" style={on ? { color: 'var(--color-primary)' } : undefined} />
               <span>{item.label}</span>
             </button>
           );
@@ -129,7 +129,7 @@ function Sidebar({ active, onChange }) {
         <div className="mt-8 px-3 flex items-center gap-1.5">
           <span className="s-kbd">{navigator.platform?.includes('Mac') ? '⌘' : 'Ctrl'}</span>
           <span className="s-kbd">S</span>
-          <span className="text-[10px] ml-1" style={{ color: 'hsl(var(--bc)/0.2)' }}>save</span>
+          <span className="text-[10px] ml-1" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.2)' }}>save</span>
         </div>
       </div>
     </nav>
@@ -138,7 +138,7 @@ function Sidebar({ active, onChange }) {
 
 function MobileTabs({ active, onChange }) {
   return (
-    <div className="flex lg:hidden gap-1 overflow-x-auto pb-3 mb-5 -mx-0.5 px-0.5" style={{ borderBottom: '1px solid hsl(var(--bc)/0.05)' }}>
+    <div className="flex lg:hidden gap-1 overflow-x-auto pb-3 mb-5 -mx-0.5 px-0.5" style={{ borderBottom: '1px solid oklch(from var(--color-base-content) l c h / 0.05)' }}>
       {NAV.map(item => {
         const on = active === item.id;
         return (
@@ -147,8 +147,8 @@ function MobileTabs({ active, onChange }) {
             onClick={() => onChange(item.id)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all duration-150"
             style={{
-              color: on ? 'hsl(var(--p))' : 'hsl(var(--bc)/0.4)',
-              background: on ? 'hsl(var(--p)/0.08)' : 'transparent',
+              color: on ? 'var(--color-primary)' : 'oklch(from var(--color-base-content) l c h / 0.4)',
+              background: on ? 'oklch(from var(--color-primary) l c h / 0.08)' : 'transparent',
             }}
           >
             <item.icon className="w-3.5 h-3.5" />
@@ -194,10 +194,10 @@ function ResourceLink({ icon: Icon, label, href }) {
   return (
     <a href={href} target="_blank" rel="noopener noreferrer" className="s-link group">
       <div className="flex items-center gap-2.5 flex-1 min-w-0">
-        <Icon className="w-4 h-4 flex-shrink-0 transition-colors" style={{ color: 'hsl(var(--bc)/0.25)' }} />
-        <span className="text-[13px] truncate transition-colors" style={{ color: 'hsl(var(--bc)/0.55)' }}>{label}</span>
+        <Icon className="w-4 h-4 flex-shrink-0 transition-colors" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.25)' }} />
+        <span className="text-[13px] truncate transition-colors" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.55)' }}>{label}</span>
       </div>
-      <ExternalLink className="w-3 h-3 flex-shrink-0 transition-colors" style={{ color: 'hsl(var(--bc)/0.15)' }} />
+      <ExternalLink className="w-3 h-3 flex-shrink-0 transition-colors" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.15)' }} />
     </a>
   );
 }
@@ -356,8 +356,8 @@ export default function SettingsPage() {
         {section === 'keys' && (
           <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-5">
             <motion.div variants={fadeUp}>
-              <h2 className="text-[17px] font-semibold tracking-tight" style={{ color: 'hsl(var(--bc))' }}>API Keys</h2>
-              <p className="text-[13px] mt-1" style={{ color: 'hsl(var(--bc)/0.35)' }}>Authentication credentials for upload services</p>
+              <h2 className="text-[17px] font-semibold tracking-tight" style={{ color: 'var(--color-base-content)' }}>API Keys</h2>
+              <p className="text-[13px] mt-1" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.35)' }}>Authentication credentials for upload services</p>
             </motion.div>
             <div className="s-divider" />
             <Field label="Pixvid API Key" icon={Zap} required>
@@ -389,8 +389,8 @@ export default function SettingsPage() {
           <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-5">
             <motion.div variants={fadeUp} className="flex items-start justify-between gap-3 flex-wrap">
               <div>
-                <h2 className="text-[17px] font-semibold tracking-tight" style={{ color: 'hsl(var(--bc))' }}>Cloud & Database</h2>
-                <p className="text-[13px] mt-1" style={{ color: 'hsl(var(--bc)/0.35)' }}>Sync settings across devices</p>
+                <h2 className="text-[17px] font-semibold tracking-tight" style={{ color: 'var(--color-base-content)' }}>Cloud & Database</h2>
+                <p className="text-[13px] mt-1" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.35)' }}>Sync settings across devices</p>
               </div>
               <AnimatePresence><StatusPill status={cloudStatus} /></AnimatePresence>
             </motion.div>
@@ -402,19 +402,19 @@ export default function SettingsPage() {
               <input className="s-inp" type="password" value={f.neon} onChange={e => set('neon', e.target.value)} placeholder="postgresql://user:pass@ep-xxx.neon.tech/db" style={{ fontFamily: "'Outfit', monospace", fontSize: 12 }} />
             </Field>
             <div className="s-divider" />
-            <motion.div variants={fadeUp} className="flex items-center justify-between gap-4 p-4 rounded-xl" style={{ background: 'hsl(var(--bc)/0.02)', border: '1px solid hsl(var(--bc)/0.05)' }}>
+            <motion.div variants={fadeUp} className="flex items-center justify-between gap-4 p-4 rounded-xl" style={{ background: 'oklch(from var(--color-base-content) l c h / 0.02)', border: '1px solid oklch(from var(--color-base-content) l c h / 0.05)' }}>
               <div>
-                <p className="text-[13px] font-medium" style={{ color: 'hsl(var(--bc)/0.65)' }}>Full Firestore Backup</p>
-                <p className="text-[11px] mt-0.5" style={{ color: 'hsl(var(--bc)/0.3)' }}>Export all collections to a local JSON file</p>
+                <p className="text-[13px] font-medium" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.65)' }}>Full Firestore Backup</p>
+                <p className="text-[11px] mt-0.5" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.3)' }}>Export all collections to a local JSON file</p>
               </div>
               <button
                 onClick={handleExport}
                 disabled={exporting}
                 className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium transition-all duration-150"
                 style={{
-                  background: 'hsl(var(--bc)/0.04)',
-                  border: '1px solid hsl(var(--bc)/0.07)',
-                  color: 'hsl(var(--bc)/0.55)',
+                  background: 'oklch(from var(--color-base-content) l c h / 0.04)',
+                  border: '1px solid oklch(from var(--color-base-content) l c h / 0.07)',
+                  color: 'oklch(from var(--color-base-content) l c h / 0.55)',
                   opacity: exporting ? 0.5 : 1,
                 }}
               >
@@ -422,15 +422,15 @@ export default function SettingsPage() {
                 <span>{exporting ? 'Exporting...' : 'Export'}</span>
               </button>
             </motion.div>
-            {exportStatus && <motion.p variants={fadeUp} className="text-[11px] font-medium" style={{ color: 'hsl(var(--bc)/0.35)' }}>{exportStatus}</motion.p>}
+            {exportStatus && <motion.p variants={fadeUp} className="text-[11px] font-medium" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.35)' }}>{exportStatus}</motion.p>}
           </motion.div>
         )}
 
         {section === 'prefs' && (
           <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-5">
             <motion.div variants={fadeUp}>
-              <h2 className="text-[17px] font-semibold tracking-tight" style={{ color: 'hsl(var(--bc))' }}>Preferences</h2>
-              <p className="text-[13px] mt-1" style={{ color: 'hsl(var(--bc)/0.35)' }}>Default sources for gallery display</p>
+              <h2 className="text-[17px] font-semibold tracking-tight" style={{ color: 'var(--color-base-content)' }}>Preferences</h2>
+              <p className="text-[13px] mt-1" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.35)' }}>Default sources for gallery display</p>
             </motion.div>
             <div className="s-divider" />
             <Field label="Default Image Source" icon={Image}>
@@ -451,8 +451,8 @@ export default function SettingsPage() {
         {section === 'links' && (
           <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-4">
             <motion.div variants={fadeUp}>
-              <h2 className="text-[17px] font-semibold tracking-tight" style={{ color: 'hsl(var(--bc))' }}>Resources</h2>
-              <p className="text-[13px] mt-1" style={{ color: 'hsl(var(--bc)/0.35)' }}>Where to get API keys and credentials</p>
+              <h2 className="text-[17px] font-semibold tracking-tight" style={{ color: 'var(--color-base-content)' }}>Resources</h2>
+              <p className="text-[13px] mt-1" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.35)' }}>Where to get API keys and credentials</p>
             </motion.div>
             <div className="s-divider" />
             <motion.div variants={fadeUp} className="space-y-0.5">
@@ -469,7 +469,7 @@ export default function SettingsPage() {
   );
 
   return (
-    <div className="min-h-screen s-page" style={{ background: 'hsl(var(--b2))', color: 'hsl(var(--bc))' }}>
+    <div className="min-h-screen s-page" style={{ background: 'var(--color-base-200)', color: 'var(--color-base-content)' }}>
       <style>{CSS}</style>
 
       {/* ── Background ── */}
@@ -502,16 +502,16 @@ export default function SettingsPage() {
             <div
               className="flex items-center justify-center w-9 h-9 rounded-xl"
               style={{
-                background: 'linear-gradient(135deg, hsl(var(--p)/0.15), hsl(var(--s)/0.12))',
-                border: '1px solid hsl(var(--p)/0.1)',
+                background: 'linear-gradient(135deg, oklch(from var(--color-primary) l c h / 0.15), oklch(from var(--color-secondary) l c h / 0.12))',
+                border: '1px solid oklch(from var(--color-primary) l c h / 0.1)',
               }}
             >
-              <Settings2 className="w-[18px] h-[18px]" style={{ color: 'hsl(var(--p))' }} />
+              <Settings2 className="w-[18px] h-[18px]" style={{ color: 'var(--color-primary)' }} />
             </div>
             <h1
               className="text-[18px] font-bold tracking-tight"
               style={{
-                background: 'linear-gradient(135deg, hsl(var(--p)), hsl(var(--s)))',
+                background: 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
               }}
@@ -536,7 +536,7 @@ export default function SettingsPage() {
               {sectionContent}
 
               {section !== 'links' && (
-                <div className="mt-8 pt-5" style={{ borderTop: '1px solid hsl(var(--bc)/0.05)' }}>
+                <div className="mt-8 pt-5" style={{ borderTop: '1px solid oklch(from var(--color-base-content) l c h / 0.05)' }}>
                   <button
                     onClick={handleSave}
                     disabled={saving}

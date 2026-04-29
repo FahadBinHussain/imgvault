@@ -1858,8 +1858,50 @@ export default function GalleryPage() {
     }
   }, [location.state]);
 
+  const galleryCSS = `
+    .g-page{font-family:'Outfit',system-ui,sans-serif;position:relative}
+    .g-orb{position:fixed;border-radius:50%;filter:blur(90px);pointer-events:none;will-change:transform;z-index:0}
+    .g-orb-a{width:480px;height:480px;background:oklch(from var(--color-primary) l c h / 0.06);top:-10%;right:-6%;animation:g-drift-a 26s ease-in-out infinite}
+    .g-orb-b{width:380px;height:380px;background:oklch(from var(--color-secondary) l c h / 0.05);bottom:-12%;left:-5%;animation:g-drift-b 32s ease-in-out infinite}
+    @keyframes g-drift-a{0%,100%{transform:translate(0,0) scale(1)}25%{transform:translate(-40px,30px) scale(1.04)}50%{transform:translate(20px,-45px) scale(.96)}75%{transform:translate(30px,20px) scale(1.02)}}
+    @keyframes g-drift-b{0%,100%{transform:translate(0,0) scale(1)}25%{transform:translate(35px,-25px) scale(1.03)}50%{transform:translate(-25px,40px) scale(.97)}75%{transform:translate(-35px,-10px) scale(1.01)}}
+    .g-grid-bg{position:fixed;inset:0;pointer-events:none;background-image:radial-gradient(circle,oklch(from var(--color-base-content) l c h / 0.025) 1px,transparent 1px);background-size:28px 28px;z-index:0}
+    .g-card{position:relative;background:oklch(from var(--color-base-100) l c h / 0.5);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid oklch(from var(--color-base-content) l c h / 0.06);border-radius:12px;overflow:hidden;transition:all .3s ease}
+    .g-card:hover{border-color:oklch(from var(--color-base-content) l c h / 0.1);box-shadow:0 8px 32px oklch(from var(--color-base-content) l c h / 0.06)}
+    .g-date{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+    .g-date-line{width:3px;height:20px;border-radius:2px;background:linear-gradient(180deg,var(--color-primary),var(--color-secondary))}
+    .g-date-text{font-size:16px;font-weight:600;color:oklch(from var(--color-base-content) l c h / 0.7);letter-spacing:-.01em}
+    .g-fab{position:fixed;bottom:32px;right:32px;z-index:50;width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,var(--color-primary),var(--color-secondary));color:var(--color-primary-content);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .25s ease;box-shadow:0 4px 24px oklch(from var(--color-primary) l c h / 0.3);overflow:hidden}
+    .g-fab:hover{transform:translateY(-2px) scale(1.05);box-shadow:0 8px 32px oklch(from var(--color-primary) l c h / 0.4)}
+    .g-fab:active{transform:scale(.95)}
+    .g-fab::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,hsl(0 0% 100%/.12),transparent);transform:translateX(-100%);animation:g-shimmer 3s infinite}
+    @keyframes g-shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+    .g-modal-close{position:absolute;top:16px;right:16px;z-index:50;width:40px;height:40px;border-radius:10px;background:oklch(from var(--color-error) l c h / 0.1);border:1px solid oklch(from var(--color-error) l c h / 0.2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s ease;color:var(--color-error)}
+    .g-modal-close:hover{background:oklch(from var(--color-error) l c h / 0.18);border-color:oklch(from var(--color-error) l c h / 0.35);transform:scale(1.08) rotate(90deg)}
+    .g-tab{padding:8px 16px;font-size:13px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;cursor:pointer;transition:all .15s ease;border:none;background:none;border-bottom:2px solid transparent;color:oklch(from var(--color-base-content) l c h / 0.4)}
+    .g-tab:hover{color:oklch(from var(--color-base-content) l c h / 0.7)}
+    .g-tab-on{color:var(--color-primary)!important;border-bottom-color:var(--color-primary)!important}
+    .g-tab-succ{color:var(--color-success)!important;border-bottom-color:var(--color-success)!important}
+    .g-field{padding:8px 10px;border-radius:8px;background:oklch(from var(--color-base-100) l c h / 0.4);border:1px solid oklch(from var(--color-base-content) l c h / 0.04)}
+    .g-action{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:7px;font-size:11px;font-weight:500;font-family:'Outfit',system-ui,sans-serif;cursor:pointer;transition:all .15s ease;border:1px solid oklch(from var(--color-base-content) l c h / 0.08);background:oklch(from var(--color-base-content) l c h / 0.03);color:oklch(from var(--color-base-content) l c h / 0.6)}
+    .g-action:hover{color:var(--color-primary);border-color:oklch(from var(--color-primary) l c h / 0.2);background:oklch(from var(--color-primary) l c h / 0.05)}
+    .g-action-prim{color:var(--color-primary-content);background:linear-gradient(135deg,var(--color-primary),var(--color-secondary));border:none;box-shadow:0 2px 10px oklch(from var(--color-primary) l c h / 0.2)}
+    .g-action-prim:hover{filter:brightness(1.1);transform:translateY(-1px)}
+    .g-action-err{color:var(--color-error);background:oklch(from var(--color-error) l c h / 0.07);border-color:oklch(from var(--color-error) l c h / 0.12)}
+    .g-action-err:hover{background:oklch(from var(--color-error) l c h / 0.12);border-color:oklch(from var(--color-error) l c h / 0.2)}
+    .g-action-warn{color:var(--color-warning);background:oklch(from var(--color-warning) l c h / 0.07);border-color:oklch(from var(--color-warning) l c h / 0.12)}
+    .g-action-warn:hover{background:oklch(from var(--color-warning) l c h / 0.12);border-color:oklch(from var(--color-warning) l c h / 0.2)}
+    .g-input{width:100%;padding:8px 12px;font-size:13px;font-family:'Outfit',system-ui,sans-serif;color:var(--color-base-content);background:oklch(from var(--color-base-100) l c h / 0.4);border:1px solid oklch(from var(--color-base-content) l c h / 0.07);border-radius:8px;outline:none;transition:all .2s ease}
+    .g-input:focus{border-color:oklch(from var(--color-primary) l c h / 0.35);background:oklch(from var(--color-base-100) l c h / 0.7);box-shadow:0 0 0 2px oklch(from var(--color-primary) l c h / 0.06)}
+    .g-input::placeholder{color:oklch(from var(--color-base-content) l c h / 0.2)}
+  `;
+
   return (
-  <div ref={pageContainerRef} className="min-h-screen bg-base-200 text-base-content overflow-y-auto">
+  <div ref={pageContainerRef} className="min-h-screen bg-base-200 text-base-content overflow-y-auto g-page">
+      <style>{galleryCSS}</style>
+      <div className="g-grid-bg" />
+      <div className="g-orb g-orb-a" />
+      <div className="g-orb g-orb-b" />
       {/* Drag & Drop Overlay with Animated Highlights */}
       <AnimatePresence>
         {isDragging && (
@@ -2011,42 +2053,31 @@ export default function GalleryPage() {
   <div className="px-0">
         {/* Loading State */}
         {loading && (
-          <div className="flex flex-col justify-center items-center py-32">
+          <div className="flex flex-col justify-center items-center py-32 relative z-10">
             <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-full blur-2xl opacity-50 animate-pulse"></div>
+              <div className="absolute inset-0 rounded-full blur-2xl opacity-30 animate-pulse" style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))' }}></div>
               <Spinner size="lg" className="relative z-10" />
             </div>
-            <p className="mt-6 text-base-content/85 text-lg font-medium">Loading your vault...</p>
+            <p className="mt-6 text-[14px] font-medium" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.5)' }}>Loading your vault...</p>
           </div>
         )}
 
         {/* Empty State */}
         {!loading && images.length === 0 && (
           <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
-            className="glass-card rounded-[var(--radius-box)] backdrop-blur-xl bg-base-100/80 border border-base-content/20 
-                      shadow-2xl p-16 text-center relative overflow-hidden"
-            style={{ willChange: 'transform, opacity' }}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+            className="relative z-10 rounded-2xl backdrop-blur-xl p-16 text-center overflow-hidden"
+            style={{
+              background: 'oklch(from var(--color-base-100) l c h / 0.45)',
+              border: '1px solid oklch(from var(--color-base-content) l c h / 0.06)',
+              boxShadow: '0 8px 32px oklch(from var(--color-base-content) l c h / 0.04)',
+              willChange: 'transform, opacity',
+            }}
           >
-            {/* Animated background gradient */}
-            <motion.div
-              className="absolute inset-0 opacity-20"
-              style={{ willChange: 'background' }}
-              animate={{
-                background: [
-                  'radial-gradient(circle at 20% 50%, rgba(139, 92, 246, 0.3) 0%, transparent 50%)',
-                  'radial-gradient(circle at 80% 50%, rgba(236, 72, 153, 0.3) 0%, transparent 50%)',
-                  'radial-gradient(circle at 50% 80%, rgba(139, 92, 246, 0.3) 0%, transparent 50%)',
-                  'radial-gradient(circle at 50% 20%, rgba(236, 72, 153, 0.3) 0%, transparent 50%)',
-                  'radial-gradient(circle at 20% 50%, rgba(139, 92, 246, 0.3) 0%, transparent 50%)',
-                ],
-              }}
-              transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-            />
+            <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(135deg, oklch(from var(--color-primary) l c h / 0.03), oklch(from var(--color-secondary) l c h / 0.02))' }} />
             
-            {/* Icon with pulse animation */}
             <motion.div 
               className="relative inline-block mb-8"
               initial={{ scale: 0 }}
@@ -2055,121 +2086,89 @@ export default function GalleryPage() {
               style={{ willChange: 'transform' }}
             >
               <motion.div 
-                className="absolute inset-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-full blur-3xl"
-                style={{ willChange: 'transform, opacity' }}
-                animate={{ 
-                  scale: [1, 1.2, 1],
-                  opacity: [0.3, 0.5, 0.3]
-                }}
+                className="absolute inset-0 rounded-full blur-3xl"
+                style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))', willChange: 'transform, opacity' }}
+                animate={{ scale: [1, 1.2, 1], opacity: [0.15, 0.3, 0.15] }}
                 transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
               />
               <motion.div 
-                className="text-9xl relative z-10 drop-shadow-2xl"
-                style={{ willChange: 'transform' }}
-                animate={{ 
-                  y: [0, -10, 0],
-                }}
+                className="text-8xl relative z-10"
+                style={{ willChange: 'transform', filter: 'drop-shadow(0 8px 24px oklch(from var(--color-base-content) l c h / 0.1))' }}
+                animate={{ y: [0, -8, 0] }}
                 transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
               >
-                🖼️
+                <ImageIcon style={{ width: 80, height: 80, color: 'oklch(from var(--color-primary) l c h / 0.4)' }} />
               </motion.div>
             </motion.div>
             
-            {/* Text with stagger animation */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15, duration: 0.3 }}
-              style={{ willChange: 'transform, opacity' }}
-            >
-              <h3 className="text-4xl font-bold mb-4 drop-shadow-lg bg-gradient-to-r from-base-content to-base-content/70 bg-clip-text text-transparent">
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.3 }} style={{ willChange: 'transform, opacity' }}>
+              <h3 className="text-3xl font-bold mb-3" style={{ color: 'var(--color-base-content)' }}>
                 Your Vault is Empty
               </h3>
-              <p className="text-base-content/70 text-lg mb-10 max-w-md mx-auto leading-relaxed">
+              <p className="text-[15px] mb-10 max-w-md mx-auto leading-relaxed" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.4)' }}>
                 Start building your collection by uploading your first image
               </p>
             </motion.div>
             
-            {/* CTA Button with hover effects */}
             <motion.button
               onClick={openUploadModal}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25, duration: 0.3 }}
-              whileHover={{ scale: 1.05, y: -2 }}
-              whileTap={{ scale: 0.95 }}
-              style={{ willChange: 'transform' }}
-              className="group relative px-10 py-5 rounded-[var(--radius-box)] bg-gradient-to-r from-primary-500 to-secondary-500 
-                       text-primary-content font-bold text-lg shadow-2xl overflow-hidden
-                       transition-all duration-150"
+              whileHover={{ scale: 1.04, y: -2 }}
+              whileTap={{ scale: 0.96 }}
+              style={{
+                willChange: 'transform',
+                padding: '14px 32px',
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))',
+                color: 'var(--color-primary-content)',
+                fontWeight: 600,
+                fontSize: 15,
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow: '0 4px 20px oklch(from var(--color-primary) l c h / 0.3)',
+                position: 'relative',
+                overflow: 'hidden',
+                fontFamily: "'Outfit', system-ui, sans-serif",
+              }}
             >
-              {/* Button shine effect */}
               <motion.div
-                className="absolute inset-0 bg-gradient-to-r from-transparent via-base-content/20 to-transparent"
+                className="absolute inset-0"
+                style={{ background: 'linear-gradient(90deg, transparent, hsl(0 0% 100% / 0.15), transparent)' }}
                 initial={{ x: '-100%' }}
                 whileHover={{ x: '100%' }}
                 transition={{ duration: 0.4 }}
-                style={{ willChange: 'transform' }}
               />
-              
-              <span className="relative z-10 flex items-center gap-3">
-                <Upload className="w-6 h-6" />
+              <span className="relative z-10 flex items-center gap-2.5">
+                <Upload style={{ width: 18, height: 18 }} />
                 Upload First Image
               </span>
-              
-              {/* Glow effect on hover */}
-              <motion.div
-                className="absolute inset-0 bg-gradient-to-r from-primary-400 to-secondary-400 blur-xl opacity-0 group-hover:opacity-50 transition-opacity duration-150"
-                style={{ zIndex: -1 }}
-              />
             </motion.button>
-            
-            {/* Floating particles */}
-            {[...Array(6)].map((_, i) => (
-              <motion.div
-                key={i}
-                className="absolute w-2 h-2 bg-base-content/20 rounded-full"
-                style={{
-                  left: `${20 + i * 12}%`,
-                  top: `${30 + (i % 3) * 20}%`,
-                  willChange: 'transform, opacity'
-                }}
-                animate={{
-                  y: [0, -20, 0],
-                  opacity: [0.2, 0.5, 0.2],
-                }}
-                transition={{
-                  duration: 2 + i * 0.3,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                  delay: i * 0.15,
-                }}
-              />
-            ))}
           </motion.div>
         )}
 
         {/* Gallery Grid */}
         {!loading && Object.keys(groupedImages).map(date => (
-          <div key={date} className="mb-10" ref={el => dateGroupRefs.current[date] = el}>
-            <h2 className="text-2xl font-bold text-base-content mb-6 flex items-center gap-3">
-              <span className="bg-gradient-to-r from-primary-500 to-secondary-500 w-1 h-8 rounded-full"></span>
-              {date}
-            </h2>
+          <div key={date} className="mb-10 relative z-10" ref={el => dateGroupRefs.current[date] = el}>
+            <div className="g-date">
+              <span className="g-date-line" />
+              <span className="g-date-text">{date}</span>
+            </div>
             
             {/* Horizontal row-first grid (left-to-right ordering by time) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 md:gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
               {groupedImages[date].map((img, index) => (
                 <motion.div
                   key={img.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
                   transition={{
                     duration: 0.3,
-                    delay: Math.min(index * 0.02, 1.0), // Cap the delay to prevent excessive staggering
+                    delay: Math.min(index * 0.02, 1.0),
                     ease: 'easeOut'
                   }}
-                  whileHover={{ scale: 1.01 }}
+                  whileHover={{ scale: 1.02, y: -2 }}
                   className="group relative cursor-pointer"
                   onClick={(e) => {
                     if (selectionMode) {
@@ -2183,128 +2182,95 @@ export default function GalleryPage() {
                     }
                   }}
                 >
-                  {/* Soft glow effect on hover */}
-                  <div className="absolute -inset-1 bg-gradient-to-r from-primary-500/40 to-secondary-500/40 
-                                rounded-[var(--radius-box)] opacity-0 group-hover:opacity-100 blur-xl 
-                                transition-all duration-700 ease-out"></div>
+                  {/* Hover glow */}
+                  <div className="absolute -inset-1 rounded-2xl opacity-0 group-hover:opacity-100 blur-xl transition-all duration-500"
+                    style={{ background: 'linear-gradient(135deg, oklch(from var(--color-primary) l c h / 0.2), oklch(from var(--color-secondary) l c h / 0.15))' }} />
                   
-                  {/* Card with soft shadows and smooth animations */}
-                  <div className="relative bg-base-100/80 backdrop-blur-sm border border-base-content/20
-                                rounded-[var(--radius-box)] overflow-hidden shadow-lg group-hover:shadow-xl
-                                transform transition-all duration-300 ease-out">
-                    {/* Selection Checkbox - shown in selection mode */}
+                  {/* Card */}
+                  <div className="g-card">
+                    {/* Selection Checkbox */}
                     {selectionMode && (
                       <div className="absolute top-2 right-2 z-20">
-                        <div className={`w-6 h-6 rounded-[var(--radius-box)] border-2 flex items-center justify-center
-                                      transition-all duration-200 ${
-                          selectedImages.has(img.id)
-                            ? 'bg-primary-500 border-primary-400'
-                            : 'bg-base-300/70 border-base-content/40 backdrop-blur-sm'
-                        }`}>
+                        <div style={{
+                          width: 22, height: 22, borderRadius: 6,
+                          border: selectedImages.has(img.id) ? '2px solid var(--color-primary)' : '2px solid oklch(from var(--color-base-content) l c h / 0.2)',
+                          background: selectedImages.has(img.id) ? 'var(--color-primary)' : 'oklch(from var(--color-base-100) l c h / 0.6)',
+                          backdropFilter: 'blur(8px)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          transition: 'all .15s ease',
+                        }}>
                           {selectedImages.has(img.id) && (
-                            <span className="text-sm font-bold">✓</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-primary-content)' }}>✓</span>
                           )}
                         </div>
                       </div>
                     )}
                     
-                    {/* Loading skeleton with shimmer - only show for non-video items */}
+                    {/* Loading skeleton */}
                     {!loadedImages.has(img.id) && !getPreferredVideoWatchUrl(img) && !img.isLink && (
-                        <div className="absolute inset-0 bg-base-300 overflow-hidden">
-                          <div className="absolute inset-0 shimmer"></div>
-                        </div>
-                      )}
-                      
-                    {/* Render image or video thumbnail/embed */}
+                      <div className="absolute inset-0 overflow-hidden" style={{ background: 'var(--color-base-300)' }}>
+                        <div className="absolute inset-0 shimmer" />
+                      </div>
+                    )}
+                    
+                    {/* Media */}
                     {img.isLink ? (
-                        (() => {
-                          const linkPreviewImage = getLinkPreviewImage(img);
-                          return (
-                            <div className="relative w-full aspect-video bg-base-200">
-                              {linkPreviewImage ? (
-                                <img
-                                  src={linkPreviewImage}
-                                  alt={img.pageTitle || 'Link preview'}
-                                  className="w-full h-full object-cover"
-                                  loading="lazy"
-                                  onLoad={() => handleImageLoad(img.id)}
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-base-content/45">
-                                  <Link2 className="w-10 h-10" />
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()
-                      ) : getPreferredVideoWatchUrl(img) ? (
-                        shouldRenderModalVideoPlayer(img) ? (
-                          <video
-                            src={getPreferredVideoDirectUrl(img)}
-                            className="w-full aspect-video object-cover pointer-events-none"
-                            muted
-                            playsInline
-                            preload="metadata"
-                            onLoadedData={() => handleImageLoad(img.id)}
-                          />
-                        ) : (
-                          <iframe
-                           src={getPreferredVideoWatchUrl(img)}
-                            className="w-full aspect-video object-cover pointer-events-none"
-                            frameBorder="0"
-                            scrolling="no"
-                            style={{ pointerEvents: 'none' }}
-                            onLoad={() => handleImageLoad(img.id)}
-                          />
-                        )
+                      (() => {
+                        const linkPreviewImage = getLinkPreviewImage(img);
+                        return (
+                          <div className="relative w-full aspect-video" style={{ background: 'var(--color-base-200)' }}>
+                            {linkPreviewImage ? (
+                              <img src={linkPreviewImage} alt={img.pageTitle || 'Link preview'} className="w-full h-full object-cover" loading="lazy" onLoad={() => handleImageLoad(img.id)} />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.3)' }}>
+                                <Link2 style={{ width: 32, height: 32 }} />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()
+                    ) : getPreferredVideoWatchUrl(img) ? (
+                      shouldRenderModalVideoPlayer(img) ? (
+                        <video src={getPreferredVideoDirectUrl(img)} className="w-full aspect-video object-cover pointer-events-none" muted playsInline preload="metadata" onLoadedData={() => handleImageLoad(img.id)} />
                       ) : (
-                        <img
-                          src={img.imgbbUrl || img.pixvidUrl}
+                        <iframe src={getPreferredVideoWatchUrl(img)} className="w-full aspect-video object-cover pointer-events-none" frameBorder="0" scrolling="no" style={{ pointerEvents: 'none' }} onLoad={() => handleImageLoad(img.id)} />
+                      )
+                    ) : (
+                      <img
+                        src={img.imgbbUrl || img.pixvidUrl}
                         alt={img.pageTitle}
                         onLoad={() => handleImageLoad(img.id)}
-                        className={`w-full object-cover transition-all duration-700 ease-out
-                                 group-hover:scale-110
-                                 ${loadedImages.has(img.id) 
-                                   ? 'opacity-100' 
-                                   : 'opacity-0'}`}
+                        className={`w-full object-cover transition-all duration-500 ease-out group-hover:scale-110 ${loadedImages.has(img.id) ? 'opacity-100' : 'opacity-0'}`}
                         loading="lazy"
                       />
                     )}
                     
-                    {/* Video play icon overlay */}
+                    {/* Video play overlay */}
                     {getPreferredVideoWatchUrl(img) && (
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="bg-base-300/80 backdrop-blur-sm rounded-full p-4">
-                          <svg className="w-12 h-12 text-base-content" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M8 5v14l11-7z"/>
-                          </svg>
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div style={{ background: 'oklch(from var(--color-base-100) l c h / 0.7)', backdropFilter: 'blur(8px)', borderRadius: '50%', padding: 12 }}>
+                          <svg width="36" height="36" viewBox="0 0 24 24" fill="oklch(from var(--color-base-content) l c h / 0.7)"><path d="M8 5v14l11-7z"/></svg>
                         </div>
                       </div>
                     )}
                     
-                    {/* Gradient Overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent 
-                                  opacity-0 group-hover:opacity-100 transition-all duration-500 ease-out">
-                      <div className="absolute bottom-0 left-0 right-0 p-4 space-y-2 
-                                    transform translate-y-2 group-hover:translate-y-0 
-                                    transition-transform duration-500 ease-out">
-                        <p className="text-base-content text-sm font-semibold truncate drop-shadow-xl">
+                    {/* Gradient overlay on hover */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-400">
+                      <div className="absolute bottom-0 left-0 right-0 p-3 space-y-1.5 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-400">
+                        <p className="text-white text-xs font-semibold truncate" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>
                           {img.pageTitle || 'Untitled'}
                         </p>
                         {img.tags && img.tags.length > 0 && (
-                          <div className="flex gap-1.5 flex-wrap">
+                          <div className="flex gap-1 flex-wrap">
                             {img.tags.slice(0, 2).map(tag => (
-                              <span
-                                key={tag}
-                                className="text-xs px-2.5 py-1 rounded-[var(--radius-box)] bg-base-100/70 backdrop-blur-sm 
-                                         text-base-content border border-base-content/30 font-medium shadow-lg"
-                              >
+                              <span key={tag} className="text-[10px] px-2 py-0.5 rounded-md font-medium"
+                                style={{ background: 'hsl(0 0% 100% / 0.15)', backdropFilter: 'blur(8px)', color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.1)' }}>
                                 {tag}
                               </span>
                             ))}
                             {img.tags.length > 2 && (
-                              <span className="text-xs px-2.5 py-1 rounded-[var(--radius-box)] bg-base-100/70 backdrop-blur-sm 
-                                             text-base-content border border-base-content/30 font-medium shadow-lg">
+                              <span className="text-[10px] px-2 py-0.5 rounded-md font-medium"
+                                style={{ background: 'hsl(0 0% 100% / 0.15)', backdropFilter: 'blur(8px)', color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.1)' }}>
                                 +{img.tags.length - 2}
                               </span>
                             )}
@@ -2440,28 +2406,29 @@ export default function GalleryPage() {
                 )}
               </div>
 
-              {/* RIGHT SIDE - DETAILS with Slide-up Animation */}
-  <div className={`w-full lg:w-[550px] lg:flex-shrink-0 bg-base-100 border-t lg:border-t-0 lg:border-l border-base-content/20 
-                            overflow-y-auto flex flex-col relative z-10
+              {/* RIGHT SIDE - DETAILS */}
+  <div className={`w-full lg:w-[550px] lg:flex-shrink-0 overflow-y-auto flex flex-col relative z-10
                             transition-all duration-500 ease-out
                             ${isModalAnimating ? 'translate-y-8 opacity-0' : 'translate-y-0 opacity-100'}`}
-          style={{ scrollbarWidth: 'thin', scrollbarColor: 'hsl(var(--p)) hsl(var(--b3))' }}
+          style={{
+            scrollbarWidth: 'thin', scrollbarColor: 'oklch(from var(--color-base-content) l c h / 0.06) transparent',
+            background: 'oklch(from var(--color-base-100) l c h / 0.8)',
+            backdropFilter: 'blur(24px)',
+            borderLeft: '1px solid oklch(from var(--color-base-content) l c h / 0.06)',
+            fontFamily: "'Outfit', system-ui, sans-serif",
+          }}
               >
-                {/* Close Button with Fade Animation */}
+                {/* Close Button */}
                 <button
                   onClick={() => {
                     setSelectedImage(null);
                     setActiveTab('noobs');
                     setFullImageDetails(null);
                   }}
-                  className={`absolute top-4 right-4 z-50 w-11 h-11 rounded-full bg-error/20 
-                           hover:bg-error/35 border border-error/50 hover:border-error 
-                           flex items-center justify-center transition-all duration-300 
-                           hover:scale-110 hover:rotate-90 group shadow-xl
-                           ${isModalAnimating ? 'opacity-0' : 'opacity-100'}`}
+                  className={`g-modal-close ${isModalAnimating ? 'opacity-0' : 'opacity-100'}`}
                   title="Close"
                 >
-                  <span className="text-error group-hover:text-error-content text-2xl font-bold">✕</span>
+                  <span style={{ fontSize: 16, fontWeight: 700 }}>✕</span>
                 </button>
 
                 <div className="p-6 flex-1 pt-16">
@@ -2471,59 +2438,36 @@ export default function GalleryPage() {
               </h2>
 
               {/* Tab Navigation */}
-              <div className="flex items-center justify-between gap-3 mb-4 border-b border-base-content/20">
-                {!isSelectedLink && <div className="flex gap-2 overflow-x-auto whitespace-nowrap">
+              <div className="flex items-center justify-between gap-3 mb-4" style={{ borderBottom: '1px solid oklch(from var(--color-base-content) l c h / 0.06)' }}>
+                {!isSelectedLink && <div className="flex gap-1 overflow-x-auto whitespace-nowrap">
                 <button
                   onClick={() => handleTabSwitch('noobs')}
-                  className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${
-                    activeTab === 'noobs'
-            ? 'text-info border-b-2 border-info'
-            : 'text-base-content/60 hover:text-base-content/85'
-                  }`}
+                  className={`g-tab ${activeTab === 'noobs' ? 'g-tab-on' : ''}`}
                 >
-                  <span>For Noobs 👶</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    activeTab === 'noobs' 
-            ? 'bg-info/20 text-info' 
-            : 'bg-base-300/70 text-base-content/60'
-                  }`}>
+                  <span>Overview</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-md ml-1.5"
+                    style={{ background: activeTab === 'noobs' ? 'oklch(from var(--color-primary) l c h / 0.1)' : 'oklch(from var(--color-base-content) l c h / 0.05)', color: activeTab === 'noobs' ? 'var(--color-primary)' : 'oklch(from var(--color-base-content) l c h / 0.4)' }}>
                     {countedBaseFieldCount}
                   </span>
                 </button>
                 <button
                   onClick={() => handleTabSwitch('nerds')}
-                  className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${
-                    activeTab === 'nerds'
-            ? 'text-success border-b-2 border-success'
-            : 'text-base-content/60 hover:text-base-content/85'
-                  }`}
+                  className={`g-tab ${activeTab === 'nerds' ? 'g-tab-succ' : ''}`}
                 >
-                  <span>For Nerds 🤓</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    activeTab === 'nerds' 
-            ? 'bg-success/20 text-success' 
-            : 'bg-base-300/70 text-base-content/60'
-                  }`}>
+                  <span>Technical</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-md ml-1.5"
+                    style={{ background: activeTab === 'nerds' ? 'oklch(from var(--color-success) l c h / 0.1)' : 'oklch(from var(--color-base-content) l c h / 0.05)', color: activeTab === 'nerds' ? 'var(--color-success)' : 'oklch(from var(--color-base-content) l c h / 0.4)' }}>
                     {nerdsVisibleFieldCount}
                   </span>
                 </button>
                 </div>}
                 <button
-                  onClick={() => {
-                    setShowDeleteConfirm(true);
-                  }}
-                  className="group relative shrink-0 px-4 py-2 rounded-[var(--radius-box)] overflow-hidden
-                           bg-error text-error-content
-                           border border-error/30
-                           transition-all duration-300
-                           hover:scale-105 hover:shadow-xl
-                           active:scale-95
-                           disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="g-action g-action-err"
+                  style={{ height: 32, padding: '0 14px' }}
                 >
-                  <div className="relative flex items-center gap-2 font-semibold">
-                    <Trash2 className="w-4 h-4 group-hover:rotate-12 transition-transform duration-300" />
-                    <span>Delete</span>
-                  </div>
+                  <Trash2 style={{ width: 13, height: 13 }} />
+                  <span>Delete</span>
                 </button>
               </div>
 
@@ -2532,32 +2476,25 @@ export default function GalleryPage() {
                 <div className="space-y-4">
                   <div className="space-y-3 pr-2">
                     <div>
-                      <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                        <span className="font-mono">firestoreDocumentId</span>
-                      </div>
-                      <div className="bg-base-100/60 rounded p-2 flex items-start justify-between gap-3">
-                        <p className="text-base-content font-mono text-sm break-all flex-1">
-                          {formatBaseFieldValue(selectedImage?.id)}
-                        </p>
-                        {canOpenFirestoreConsole && (
-                          <a
-                            href={firestoreConsoleUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={inlineActionClass}
-                          >
-                            Open
-                          </a>
-                        )}
-                      </div>
+                        <div className="text-[11px] font-semibold mb-1 flex items-center gap-2" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
+                          <span className="font-mono">firestoreDocumentId</span>
+                        </div>
+                        <div className="g-field flex items-start justify-between gap-3">
+                          <p className="text-base-content font-mono text-sm break-all flex-1">
+                            {formatBaseFieldValue(selectedImage?.id)}
+                          </p>
+                          {canOpenFirestoreConsole && (
+                            <a href={firestoreConsoleUrl} target="_blank" rel="noopener noreferrer" className="g-action">Open</a>
+                          )}
+                        </div>
                     </div>
                     {displayedBaseFieldKeys.map((key, index) => (
                       <div key={key}>
-                        <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                          <span className="text-primary font-bold">{index + 1}.</span>
+                        <div className="text-[11px] font-semibold mb-1 flex items-center gap-2" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
+                          <span style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{index + 1}.</span>
                           <span className="font-mono">{key}</span>
                         </div>
-                        <div className="bg-base-100/60 rounded p-2">
+                        <div className="g-field">
                           {key === 'collectionId' ? (
                             editingField === 'collectionId' ? (
                               <div className="space-y-3">
@@ -2787,8 +2724,8 @@ export default function GalleryPage() {
 
                       {fullImageDetails && nerdsEntries.map(([key, value], index) => (
                           <div key={key}>
-                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                              <span className="text-primary font-bold">{index + 1}.</span>
+                            <div className="text-[11px] font-semibold mb-1 flex items-center gap-2" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
+                              <span style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{index + 1}.</span>
                               {key === 'sha256' ? (
                                 <Fingerprint className="w-3.5 h-3.5" />
                               ) : key === 'pHash' || key === 'aHash' || key === 'dHash' ? (
@@ -2798,7 +2735,7 @@ export default function GalleryPage() {
                               )}
                               {key === 'sha256' ? 'SHA-256' : key}
                             </div>
-                            <div className="bg-base-100/60 rounded p-2">
+                            <div className="g-field">
                               <p className="text-base-content font-mono text-sm break-all">
                                 {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                               </p>
@@ -2818,30 +2755,27 @@ export default function GalleryPage() {
 
         {/* Delete Confirmation Modal */}
         <Modal isOpen={showDeleteConfirm} onClose={() => !isDeleting && setShowDeleteConfirm(false)}>
-          <div className="text-center space-y-6">
-            {/* Animated warning icon */}
-            <div className="text-7xl animate-bounce">🗑️</div>
+          <div className="text-center space-y-6" style={{ fontFamily: "'Outfit', system-ui, sans-serif" }}>
+            <div style={{ width: 56, height: 56, borderRadius: 14, background: 'oklch(from var(--color-warning) l c h / 0.1)', border: '1px solid oklch(from var(--color-warning) l c h / 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
+              <Trash2 style={{ width: 24, height: 24, color: 'var(--color-warning)' }} />
+            </div>
             
-            <h3 className="text-2xl font-bold text-warning">
+            <h3 className="text-xl font-semibold" style={{ color: 'var(--color-base-content)' }}>
               Move to Trash?
             </h3>
             
-            <p className="text-base-content/80 text-lg leading-relaxed">
+            <p className="text-[14px] leading-relaxed" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.5)' }}>
               This will move the image to trash. The image will remain accessible on hosting providers.
               <br />
-              <span className="font-semibold text-warning">You can restore it later from the trash.</span>
+              <span className="font-medium" style={{ color: 'var(--color-warning)' }}>You can restore it later from the trash.</span>
             </p>
             
-            <div className="flex gap-4 justify-center pt-4">
+            <div className="flex gap-3 justify-center pt-2">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
                 disabled={isDeleting}
-                className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10
-                         text-base-content font-medium
-                         hover:bg-base-300 hover:scale-105
-                         active:scale-95
-                         transition-all duration-200
-                         disabled:opacity-50 disabled:cursor-not-allowed"
+                className="g-action"
+                style={{ height: 36, padding: '0 20px', fontSize: 13 }}
               >
                 Cancel
               </button>
@@ -2849,31 +2783,14 @@ export default function GalleryPage() {
               <button
                 onClick={handleDelete}
                 disabled={isDeleting}
-                className="group relative px-8 py-3 rounded-[var(--radius-box)] overflow-hidden
-                         bg-warning text-warning-content
-                         border border-warning/40
-                         transform transition-all duration-300
-                         hover:scale-105 hover:shadow-xl
-                         active:scale-95
-                         disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                className="g-action g-action-warn"
+                style={{ height: 36, padding: '0 20px', fontSize: 13, fontWeight: 600 }}
               >
-                {/* Animated pulse effect when deleting */}
-                {isDeleting && (
-                  <div className="absolute inset-0 bg-warning-content animate-ping opacity-10" />
+                {isDeleting ? (
+                  <><div className="w-4 h-4 border-2 rounded-full animate-spin" style={{ borderColor: 'oklch(from var(--color-warning) l c h / 0.3)', borderTopColor: 'var(--color-warning)' }} /> Moving...</>
+                ) : (
+                  <><Trash2 style={{ width: 14, height: 14 }} /> Move to Trash</>
                 )}
-                <div className="relative flex items-center gap-2 font-bold text-lg">
-                  {isDeleting ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-warning-content/30 border-t-warning-content rounded-full animate-spin" />
-                      <span>Moving...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
-                      <span>Move to Trash</span>
-                    </>
-                  )}
-                </div>
               </button>
             </div>
           </div>
@@ -2881,30 +2798,27 @@ export default function GalleryPage() {
 
         {/* Bulk Delete Confirmation Modal */}
         <Modal isOpen={showBulkDeleteConfirm} onClose={() => !isDeleting && setShowBulkDeleteConfirm(false)}>
-          <div className="text-center space-y-6">
-            {/* Animated warning icon */}
-            <div className="text-7xl animate-bounce">🗑️</div>
+          <div className="text-center space-y-6" style={{ fontFamily: "'Outfit', system-ui, sans-serif" }}>
+            <div style={{ width: 56, height: 56, borderRadius: 14, background: 'oklch(from var(--color-warning) l c h / 0.1)', border: '1px solid oklch(from var(--color-warning) l c h / 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
+              <Trash2 style={{ width: 24, height: 24, color: 'var(--color-warning)' }} />
+            </div>
             
-            <h3 className="text-2xl font-bold text-warning">
+            <h3 className="text-xl font-semibold" style={{ color: 'var(--color-base-content)' }}>
               Move {selectedImages.size} Image{selectedImages.size > 1 ? 's' : ''} to Trash?
             </h3>
             
-            <p className="text-base-content/80 text-lg leading-relaxed">
+            <p className="text-[14px] leading-relaxed" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.5)' }}>
               This will move {selectedImages.size} image{selectedImages.size > 1 ? 's' : ''} to trash. The images will remain accessible on hosting providers.
               <br />
-              <span className="font-semibold text-warning">You can restore them later from the trash.</span>
+              <span className="font-medium" style={{ color: 'var(--color-warning)' }}>You can restore them later from the trash.</span>
             </p>
             
-            <div className="flex gap-4 justify-center pt-4">
+            <div className="flex gap-3 justify-center pt-2">
               <button
                 onClick={() => setShowBulkDeleteConfirm(false)}
                 disabled={isDeleting}
-                className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-content/10
-                         text-base-content font-medium
-                         hover:bg-base-300 hover:scale-105
-                         active:scale-95
-                         transition-all duration-200
-                         disabled:opacity-50 disabled:cursor-not-allowed"
+                className="g-action"
+                style={{ height: 36, padding: '0 20px', fontSize: 13 }}
               >
                 Cancel
               </button>
@@ -2912,55 +2826,23 @@ export default function GalleryPage() {
               <button
                 onClick={handleBulkDelete}
                 disabled={isDeleting}
-                className="group relative px-8 py-3 rounded-[var(--radius-box)] overflow-hidden
-                         bg-warning text-warning-content
-                         border border-warning/40
-                         transform transition-all duration-300
-                         hover:scale-105 hover:shadow-xl
-                         active:scale-95
-                         disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                className="g-action g-action-warn"
+                style={{ height: 36, padding: '0 20px', fontSize: 13, fontWeight: 600 }}
               >
-                {/* Animated pulse effect when deleting */}
-                {isDeleting && (
-                  <div className="absolute inset-0 bg-warning-content animate-ping opacity-10" />
+                {isDeleting ? (
+                  <><div className="w-4 h-4 border-2 rounded-full animate-spin" style={{ borderColor: 'oklch(from var(--color-warning) l c h / 0.3)', borderTopColor: 'var(--color-warning)' }} /> Moving...</>
+                ) : (
+                  <><Trash2 style={{ width: 14, height: 14 }} /> Move to Trash</>
                 )}
-                <div className="relative flex items-center gap-2 font-bold text-lg">
-                  {isDeleting ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-warning-content/30 border-t-warning-content rounded-full animate-spin" />
-                      <span>Moving...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
-                      <span>Move to Trash</span>
-                    </>
-                  )}
-                </div>
               </button>
             </div>
           </div>
         </Modal>
 
-        {/* Floating Action Button (FAB) - Google Photos Style */}
+        {/* Floating Action Button */}
         {!loading && images.length > 0 && (
-          <button
-            onClick={openUploadModal}
-            className="fixed bottom-8 right-8 z-50 w-16 h-16 rounded-full 
-                     bg-gradient-to-r from-primary-500 to-secondary-500
-                     text-primary-content shadow-2xl hover:shadow-[0_8px_30px_rgb(99,102,241,0.4)]
-                     transform transition-all duration-300 ease-out
-                     hover:scale-110 active:scale-95
-                     flex items-center justify-center
-                     group"
-            title="Upload Image"
-          >
-            {/* Pulsing ring effect */}
-            <div className="absolute inset-0 rounded-full bg-primary-400 animate-ping opacity-20"></div>
-            
-            {/* Icon */}
-            <Upload className="w-7 h-7 relative z-10 transition-transform duration-300 
-                             group-hover:rotate-12" />
+          <button onClick={openUploadModal} className="g-fab" title="Upload Image" style={{ position: 'fixed', bottom: 32, right: 32, zIndex: 50 }}>
+            <Upload style={{ width: 22, height: 22, position: 'relative', zIndex: 1 }} />
           </button>
         )}
 

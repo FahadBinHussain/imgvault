@@ -8,8 +8,8 @@
 @layer base {
   body {
     @apply antialiased font-inter tracking-tight;
-    background-color: hsl(var(--b2));
-    color: hsl(var(--bc));
+    background-color: var(--color-base-200);
+    color: var(--color-base-content);
     background-attachment: fixed;
     min-height: 100vh;
   }
@@ -40,9 +40,9 @@
     animation: shimmer 2s infinite linear;
     background: linear-gradient(
       90deg,
-      hsl(var(--bc) / 0) 0%,
-      hsl(var(--bc) / 0.25) 50%,
-      hsl(var(--bc) / 0) 100%
+      oklch(from var(--color-base-content) l c h / 0) 0%,
+      oklch(from var(--color-base-content) l c h / 0.25) 50%,
+      oklch(from var(--color-base-content) l c h / 0) 100%
     );
     background-size: 1000px 100%;
   }

@@ -4,48 +4,16 @@ import { Check, Palette } from 'lucide-react';
 const STORAGE_KEY = 'imgvault-theme';
 
 const THEMES = [
-  'light',
-  'dark',
-  'cupcake',
-  'bumblebee',
-  'emerald',
-  'corporate',
-  'synthwave',
-  'retro',
-  'cyberpunk',
-  'valentine',
-  'halloween',
-  'garden',
-  'forest',
-  'aqua',
-  'lofi',
-  'pastel',
-  'fantasy',
-  'wireframe',
-  'black',
-  'luxury',
-  'dracula',
-  'cmyk',
-  'autumn',
-  'business',
-  'acid',
-  'lemonade',
-  'night',
-  'coffee',
-  'winter',
-  'dim',
-  'nord',
-  'sunset',
-  'caramellatte',
-  'abyss',
-  'silk',
+  'light', 'dark', 'cupcake', 'bumblebee', 'emerald', 'corporate',
+  'synthwave', 'retro', 'cyberpunk', 'valentine', 'halloween', 'garden',
+  'forest', 'aqua', 'lofi', 'pastel', 'fantasy', 'wireframe', 'black',
+  'luxury', 'dracula', 'cmyk', 'autumn', 'business', 'acid', 'lemonade',
+  'night', 'coffee', 'winter', 'dim', 'nord', 'sunset', 'caramellatte',
+  'abyss', 'silk',
 ];
 
-function formatThemeName(themeName) {
-  return themeName
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/[-_]+/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+function formatThemeName(name) {
+  return name.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function getSystemTheme() {
@@ -54,117 +22,99 @@ function getSystemTheme() {
 }
 
 function applyTheme(theme, { persist = true } = {}) {
-  const root = document.documentElement;
-  root.setAttribute('data-theme', theme);
-  if (persist) {
-    localStorage.setItem(STORAGE_KEY, theme);
-  }
+  document.documentElement.setAttribute('data-theme', theme);
+  if (persist) localStorage.setItem(STORAGE_KEY, theme);
 }
+
+const CSS = `
+.iv-theme-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:9px;border:1px solid var(--color-base-300);background:var(--color-base-100);color:var(--color-base-content);opacity:.6;cursor:pointer;transition:all .15s ease;font-family:inherit}
+.iv-theme-btn:hover{opacity:1;background:var(--color-base-200)}
+.iv-theme-dropdown{position:absolute;right:0;margin-top:8px;width:220px;border:1px solid var(--color-base-300);background:var(--color-base-100);border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,0.25);padding:6px;z-index:99999;overflow:hidden;font-family:'Outfit',system-ui,sans-serif}
+.iv-theme-header{padding:8px 10px;margin-bottom:4px;border-bottom:1px solid var(--color-base-300)}
+.iv-theme-header-label{font-size:10px;color:var(--color-base-content);opacity:.5;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.iv-theme-header-name{font-size:13px;font-weight:500;color:var(--color-base-content);margin-top:2px}
+.iv-theme-list{max-height:256px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--color-base-300) transparent}
+.iv-theme-list::-webkit-scrollbar{width:4px}
+.iv-theme-list::-webkit-scrollbar-track{background:transparent}
+.iv-theme-list::-webkit-scrollbar-thumb{background:var(--color-base-300);border-radius:2px}
+.iv-theme-item{display:flex;align-items:center;justify-content:space-between;width:100%;padding:7px 10px;border-radius:8px;font-size:12px;font-weight:500;color:var(--color-base-content);opacity:.6;cursor:pointer;transition:all .12s ease;border:none;background:none;text-align:left;font-family:inherit}
+.iv-theme-item:hover{opacity:1;background:var(--color-base-200)}
+.iv-theme-item-on{opacity:1!important;color:var(--color-primary)!important;background:oklch(from var(--color-primary) l c h / 0.08)!important}
+`;
 
 export default function ThemeToggleButton({ className = '' }) {
   const rootRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [theme, setTheme] = useState('dark');
 
-  const selectTheme = (nextTheme) => {
-    if (!nextTheme) return;
-
-    setTheme(nextTheme);
-    applyTheme(nextTheme, { persist: true });
+  const selectTheme = (next) => {
+    if (!next) return;
+    setTheme(next);
+    applyTheme(next, { persist: true });
     setOpen(false);
   };
 
   useEffect(() => {
-    const storedTheme = localStorage.getItem(STORAGE_KEY);
-    const currentTheme =
-      storedTheme ||
-      document.documentElement.getAttribute('data-theme') ||
-      getSystemTheme();
-    const initialTheme = THEMES.includes(currentTheme) ? currentTheme : getSystemTheme();
-
-    setTheme(initialTheme);
-    applyTheme(initialTheme, { persist: Boolean(storedTheme) });
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const current = stored || document.documentElement.getAttribute('data-theme') || getSystemTheme();
+    const initial = THEMES.includes(current) ? current : getSystemTheme();
+    setTheme(initial);
+    applyTheme(initial, { persist: Boolean(stored) });
   }, []);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-
-    const handleSystemThemeChange = () => {
-      if (localStorage.getItem(STORAGE_KEY)) {
-        return;
-      }
-
-      const nextTheme = mediaQuery.matches ? 'dark' : 'light';
-      setTheme(nextTheme);
-      applyTheme(nextTheme, { persist: false });
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = () => {
+      if (localStorage.getItem(STORAGE_KEY)) return;
+      const next = mq.matches ? 'dark' : 'light';
+      setTheme(next);
+      applyTheme(next, { persist: false });
     };
-
-    mediaQuery.addEventListener('change', handleSystemThemeChange);
-
-    return () => {
-      mediaQuery.removeEventListener('change', handleSystemThemeChange);
-    };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
   }, []);
 
   useEffect(() => {
-    const handleOutsideClick = (event) => {
-      if (!rootRef.current?.contains(event.target)) {
-        setOpen(false);
-      }
-    };
-
-    const handleEscape = (event) => {
-      if (event.key === 'Escape') {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleOutsideClick);
-    document.addEventListener('keydown', handleEscape);
-
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
-      document.removeEventListener('keydown', handleEscape);
-    };
+    const onClick = (e) => { if (!rootRef.current?.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onClick); document.removeEventListener('keydown', onKey); };
   }, []);
 
   return (
     <div ref={rootRef} className={`relative ${className}`}>
+      <style>{CSS}</style>
       <button
         type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        className="btn btn-ghost btn-sm border border-transparent text-base-content/70 hover:text-base-content hover:bg-base-100/70 hover:border-base-content/20"
+        onClick={() => setOpen(p => !p)}
+        className="iv-theme-btn"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Open theme selector"
-        title="Theme settings"
+        title="Theme"
       >
-        <Palette className="w-4 h-4" />
+        <Palette style={{ width: 14, height: 14 }} />
       </button>
 
       {open && (
-  <div className="absolute right-0 mt-2 w-56 border border-base-content/20 bg-base-100 shadow-xl p-2 z-[9999] overflow-hidden">
-          <div className="px-2 py-2 mb-1 border-b border-base-content/15">
-            <p className="text-xs text-base-content/60">Current theme</p>
-            <p className="text-sm font-medium text-base-content">{formatThemeName(theme)}</p>
+        <div className="iv-theme-dropdown">
+          <div className="iv-theme-header">
+            <div className="iv-theme-header-label">Theme</div>
+            <div className="iv-theme-header-name">{formatThemeName(theme)}</div>
           </div>
-
-          <div className="max-h-64 overflow-y-auto pr-1 space-y-0.5">
-            {THEMES.map((themeName) => {
-              const isActive = themeName === theme;
+          <div className="iv-theme-list">
+            {THEMES.map(t => {
+              const active = t === theme;
               return (
                 <button
-                  key={themeName}
+                  key={t}
                   type="button"
-                  onClick={() => selectTheme(themeName)}
-                  className={`btn btn-sm w-full flex items-center justify-between gap-2 px-2 py-2 text-sm transition-colors ${
-                    isActive
-                      ? 'bg-primary/20 text-primary'
-                      : 'btn-ghost text-base-content/80 hover:text-base-content hover:bg-base-200/70'
-                  }`}
+                  onClick={() => selectTheme(t)}
+                  className={`iv-theme-item ${active ? 'iv-theme-item-on' : ''}`}
                 >
-                  <span>{formatThemeName(themeName)}</span>
-                  {isActive && <Check className="w-4 h-4" />}
+                  <span>{formatThemeName(t)}</span>
+                  {active && <Check style={{ width: 14, height: 14 }} />}
                 </button>
               );
             })}
