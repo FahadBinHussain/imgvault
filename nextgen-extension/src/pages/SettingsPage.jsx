@@ -1,17 +1,211 @@
-/**
- * @fileoverview Settings Page Component
- * @version 2.0.0
- */
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Save, Check, Package, Download } from 'lucide-react';
-import { Button, Input, Textarea, Card } from '../components/UI';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Save, Check, Download, Key, Image, Film, HardDrive,
+  Cloud, Database, FolderOpen, Settings2, Sparkles,
+  ExternalLink, Loader2, Shield, Zap, CheckCircle2, AlertCircle
+} from 'lucide-react';
 import { useChromeStorage } from '../hooks/useChromeExtension';
 import GalleryNavbar from '../components/GalleryNavbar';
 
+const NAV = [
+  { id: 'keys', label: 'API Keys', icon: Key },
+  { id: 'cloud', label: 'Cloud & Database', icon: Cloud },
+  { id: 'prefs', label: 'Preferences', icon: Sparkles },
+  { id: 'links', label: 'Resources', icon: ExternalLink },
+];
+
+const CSS = `
+.s-page { font-family: 'Outfit', system-ui, sans-serif; }
+
+.s-orb{position:absolute;border-radius:50%;filter:blur(90px);pointer-events:none;will-change:transform}
+.s-orb-a{width:520px;height:520px;background:hsl(var(--p)/0.07);top:-12%;right:-8%;animation:s-drift-a 26s ease-in-out infinite}
+.s-orb-b{width:420px;height:420px;background:hsl(var(--s)/0.06);bottom:-14%;left:-6%;animation:s-drift-b 32s ease-in-out infinite}
+.s-orb-c{width:320px;height:320px;background:hsl(var(--p)/0.04);top:38%;left:28%;animation:s-drift-c 22s ease-in-out infinite}
+@keyframes s-drift-a{0%,100%{transform:translate(0,0) scale(1)}25%{transform:translate(-50px,40px) scale(1.06)}50%{transform:translate(25px,-55px) scale(.94)}75%{transform:translate(35px,25px) scale(1.03)}}
+@keyframes s-drift-b{0%,100%{transform:translate(0,0) scale(1)}25%{transform:translate(40px,-30px) scale(1.04)}50%{transform:translate(-30px,50px) scale(.96)}75%{transform:translate(-40px,-15px) scale(1.02)}}
+@keyframes s-drift-c{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(60px,-40px) scale(1.1)}66%{transform:translate(-40px,60px) scale(.9)}}
+
+.s-grid{position:fixed;inset:0;pointer-events:none;background-image:radial-gradient(circle,hsl(var(--bc)/0.03) 1px,transparent 1px);background-size:28px 28px;z-index:0}
+
+.s-glass{background:hsl(var(--b1)/0.45);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border:1px solid hsl(var(--bc)/0.06);border-radius:16px;position:relative;overflow:hidden;transition:border-color .3s,box-shadow .3s}
+.s-glass:hover{border-color:hsl(var(--bc)/0.1)}
+.s-glass::before{content:'';position:absolute;top:0;left:12%;right:12%;height:1px;background:linear-gradient(90deg,transparent,hsl(var(--p)/0.2),hsl(var(--s)/0.15),transparent);z-index:2}
+.s-glass::after{content:'';position:absolute;inset:0;border-radius:inherit;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");opacity:.018;pointer-events:none;mix-blend-mode:overlay;z-index:1}
+
+.s-inp{width:100%;height:40px;padding:0 14px;font-size:13px;font-family:'Outfit',system-ui,sans-serif;color:hsl(var(--bc));background:hsl(var(--b1)/0.35);border:1px solid hsl(var(--bc)/0.07);border-radius:10px;outline:none;transition:all .2s ease}
+.s-inp:focus{border-color:hsl(var(--p)/0.4);background:hsl(var(--b1)/0.65);box-shadow:0 0 0 3px hsl(var(--p)/0.07),0 0 24px hsl(var(--p)/0.04)}
+.s-inp::placeholder{color:hsl(var(--bc)/0.2)}
+.s-inp::-ms-reveal{filter:brightness(0)}
+
+.s-ta{width:100%;padding:12px 14px;font-size:13px;font-family:'Outfit',system-ui,sans-serif;color:hsl(var(--bc));background:hsl(var(--b1)/0.35);border:1px solid hsl(var(--bc)/0.07);border-radius:10px;outline:none;resize:none;transition:all .2s ease;line-height:1.6}
+.s-ta:focus{border-color:hsl(var(--p)/0.4);background:hsl(var(--b1)/0.65);box-shadow:0 0 0 3px hsl(var(--p)/0.07),0 0 24px hsl(var(--p)/0.04)}
+.s-ta::placeholder{color:hsl(var(--bc)/0.2)}
+
+.s-sel{width:100%;height:40px;padding:0 36px 0 14px;font-size:13px;font-family:'Outfit',system-ui,sans-serif;color:hsl(var(--bc));background:hsl(var(--b1)/0.35);border:1px solid hsl(var(--bc)/0.07);border-radius:10px;outline:none;appearance:none;cursor:pointer;transition:all .2s ease;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+.s-sel:focus{border-color:hsl(var(--p)/0.4);background-color:hsl(var(--b1)/0.65);box-shadow:0 0 0 3px hsl(var(--p)/0.07),0 0 24px hsl(var(--p)/0.04)}
+
+.s-save{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:42px;padding:0 28px;font-size:13px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;letter-spacing:-.01em;color:hsl(var(--pc));background:linear-gradient(135deg,hsl(var(--p)),hsl(var(--s)));border:none;border-radius:10px;cursor:pointer;position:relative;overflow:hidden;transition:all .2s ease;box-shadow:0 2px 20px hsl(var(--p)/0.3);min-width:150px}
+.s-save:hover{transform:translateY(-1px);box-shadow:0 6px 28px hsl(var(--p)/0.4);filter:brightness(1.1)}
+.s-save:active{transform:translateY(0) scale(.98)}
+.s-save::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,hsl(0 0% 100%/.12),transparent);transform:translateX(-100%);animation:s-shimmer 3s infinite}
+.s-save-ok{background:hsl(var(--su));box-shadow:0 2px 20px hsl(var(--su)/0.3)}
+.s-save-ok::after{display:none}
+@keyframes s-shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+
+.s-nav-btn{display:flex;align-items:center;gap:10px;padding:8px 12px 8px 16px;border-radius:10px;font-size:13px;font-weight:500;color:hsl(var(--bc)/0.4);cursor:pointer;transition:all .15s ease;position:relative;border:none;background:none;width:100%;text-align:left;font-family:'Outfit',system-ui,sans-serif}
+.s-nav-btn:hover{color:hsl(var(--bc)/0.75);background:hsl(var(--bc)/0.03)}
+.s-nav-on{color:hsl(var(--bc))!important;background:hsl(var(--bc)/0.04)!important}
+
+.s-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:500;font-family:'Outfit',system-ui,sans-serif}
+.s-pill-ok{color:hsl(var(--su));background:hsl(var(--su)/0.07)}
+.s-pill-err{color:hsl(var(--er));background:hsl(var(--er)/0.07)}
+.s-pill-load{color:hsl(var(--in));background:hsl(var(--in)/0.07)}
+.s-pill-muted{color:hsl(var(--bc)/0.45);background:hsl(var(--bc)/0.04)}
+
+.s-scroll{scrollbar-width:thin;scrollbar-color:hsl(var(--bc)/0.06) transparent}
+.s-scroll::-webkit-scrollbar{width:5px}
+.s-scroll::-webkit-scrollbar-track{background:transparent}
+.s-scroll::-webkit-scrollbar-thumb{background:hsl(var(--bc)/0.06);border-radius:3px}
+.s-scroll::-webkit-scrollbar-thumb:hover{background:hsl(var(--bc)/0.12)}
+
+.s-divider{height:1px;background:linear-gradient(90deg,transparent,hsl(var(--bc)/0.06),transparent);margin:20px 0}
+
+.s-link{display:flex;align-items:center;justify-content:between;padding:10px 12px;border-radius:10px;transition:all .15s;text-decoration:none;color:inherit}
+.s-link:hover{background:hsl(var(--bc)/0.03)}
+
+.s-kbd{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 5px;font-size:10px;font-family:'Outfit',system-ui,sans-serif;font-weight:600;color:hsl(var(--bc)/0.3);background:hsl(var(--bc)/0.04);border:1px solid hsl(var(--bc)/0.07);border-radius:5px;line-height:1}
+
+.s-label{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.s-label-text{font-size:13px;font-weight:500;color:hsl(var(--bc)/0.65)}
+.s-label-icon{color:hsl(var(--bc)/0.25)}
+.s-label-req{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--p)/0.6);background:hsl(var(--p)/0.07);padding:2px 6px;border-radius:4px}
+
+.s-hint{font-size:11px;color:hsl(var(--bc)/0.3);line-height:1.6;margin-top:6px}
+
+.s-backdrop{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+`;
+
+const ease = [0.25, 0.46, 0.45, 0.94];
+
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.04 } },
+};
+const fadeUp = {
+  hidden: { opacity: 0, y: 10 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.3, ease } },
+};
+
+function Sidebar({ active, onChange }) {
+  return (
+    <nav className="w-52 flex-shrink-0 hidden lg:block">
+      <div className="sticky top-28 space-y-0.5">
+        {NAV.map(item => {
+          const on = active === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => onChange(item.id)}
+              className={`s-nav-btn ${on ? 's-nav-on' : ''}`}
+            >
+              {on && (
+                <motion.div
+                  layoutId="s-glow"
+                  className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-full"
+                  style={{
+                    background: 'hsl(var(--p))',
+                    boxShadow: '0 0 10px hsl(var(--p)/0.45), 0 0 3px hsl(var(--p)/0.6)',
+                  }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+                />
+              )}
+              <item.icon className="w-4 h-4 flex-shrink-0" style={on ? { color: 'hsl(var(--p))' } : undefined} />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+        <div className="mt-8 px-3 flex items-center gap-1.5">
+          <span className="s-kbd">{navigator.platform?.includes('Mac') ? '⌘' : 'Ctrl'}</span>
+          <span className="s-kbd">S</span>
+          <span className="text-[10px] ml-1" style={{ color: 'hsl(var(--bc)/0.2)' }}>save</span>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+function MobileTabs({ active, onChange }) {
+  return (
+    <div className="flex lg:hidden gap-1 overflow-x-auto pb-3 mb-5 -mx-0.5 px-0.5" style={{ borderBottom: '1px solid hsl(var(--bc)/0.05)' }}>
+      {NAV.map(item => {
+        const on = active === item.id;
+        return (
+          <button
+            key={item.id}
+            onClick={() => onChange(item.id)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all duration-150"
+            style={{
+              color: on ? 'hsl(var(--p))' : 'hsl(var(--bc)/0.4)',
+              background: on ? 'hsl(var(--p)/0.08)' : 'transparent',
+            }}
+          >
+            <item.icon className="w-3.5 h-3.5" />
+            <span>{item.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Field({ label, hint, required, icon: Icon, children }) {
+  return (
+    <motion.div variants={fadeUp} className="space-y-1.5">
+      <div className="s-label">
+        {Icon && <Icon className="w-3.5 h-3.5 s-label-icon" />}
+        <span className="s-label-text">{label}</span>
+        {required && <span className="s-label-req">Required</span>}
+      </div>
+      {children}
+      {hint && <p className="s-hint">{hint}</p>}
+    </motion.div>
+  );
+}
+
+function StatusPill({ status }) {
+  if (!status) return null;
+  const ok = status.includes('✅') || status.includes('✓');
+  const err = status.includes('❌') || status.includes('⚠');
+  const load = status.includes('...') || status.includes('Connecting') || status.includes('Syncing');
+  const cls = ok ? 's-pill-ok' : err ? 's-pill-err' : load ? 's-pill-load' : 's-pill-muted';
+  return (
+    <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={`s-pill ${cls}`}>
+      {load && <Loader2 className="w-3 h-3 animate-spin" />}
+      {ok && <CheckCircle2 className="w-3 h-3" />}
+      {err && <AlertCircle className="w-3 h-3" />}
+      <span>{status}</span>
+    </motion.div>
+  );
+}
+
+function ResourceLink({ icon: Icon, label, href }) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="s-link group">
+      <div className="flex items-center gap-2.5 flex-1 min-w-0">
+        <Icon className="w-4 h-4 flex-shrink-0 transition-colors" style={{ color: 'hsl(var(--bc)/0.25)' }} />
+        <span className="text-[13px] truncate transition-colors" style={{ color: 'hsl(var(--bc)/0.55)' }}>{label}</span>
+      </div>
+      <ExternalLink className="w-3 h-3 flex-shrink-0 transition-colors" style={{ color: 'hsl(var(--bc)/0.15)' }} />
+    </a>
+  );
+}
+
 export default function SettingsPage() {
   const navigate = useNavigate();
+  const [section, setSection] = useState('keys');
+
   const [pixvidApiKey, setPixvidApiKey] = useChromeStorage('pixvidApiKey', '', 'sync');
   const [imgbbApiKey, setImgbbApiKey] = useChromeStorage('imgbbApiKey', '', 'sync');
   const [filemoonApiKey, setFilemoonApiKey] = useChromeStorage('filemoonApiKey', '', 'sync');
@@ -22,673 +216,354 @@ export default function SettingsPage() {
   const [defaultGallerySource, setDefaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
   const [defaultVideoSource, setDefaultVideoSource] = useChromeStorage('defaultVideoSource', 'filemoon', 'sync');
   const [downloadFolder, setDownloadFolder] = useChromeStorage('downloadFolder', '', 'sync');
-  
-  const [localPixvid, setLocalPixvid] = useState('');
-  const [localImgbb, setLocalImgbb] = useState('');
-  const [localFilemoon, setLocalFilemoon] = useState('');
-  const [localUdropKey1, setLocalUdropKey1] = useState('');
-  const [localUdropKey2, setLocalUdropKey2] = useState('');
-  const [localFirebase, setLocalFirebase] = useState('');
-  const [localNeonDatabaseUrl, setLocalNeonDatabaseUrl] = useState('');
-  const [localGallerySource, setLocalGallerySource] = useState('imgbb');
-  const [localVideoSource, setLocalVideoSource] = useState('filemoon');
-  const [localDownloadFolder, setLocalDownloadFolder] = useState('');
+
+  const [f, setF] = useState({
+    pixvid: '', imgbb: '', filemoon: '', udrop1: '', udrop2: '',
+    firebase: '', neon: '', gallerySrc: 'imgbb', videoSrc: 'filemoon', dlFolder: '',
+  });
   const [saved, setSaved] = useState(false);
-  const [firebaseStatus, setFirebaseStatus] = useState('');
-  const [exportingBackup, setExportingBackup] = useState(false);
-  const [backupStatus, setBackupStatus] = useState('');
-  const [navbarHeight, setNavbarHeight] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState('');
+  const [navH, setNavH] = useState(0);
+
+  const set = (k, v) => setF(prev => ({ ...prev, [k]: v }));
 
   useEffect(() => {
-    setLocalPixvid(pixvidApiKey || '');
-    setLocalImgbb(imgbbApiKey || '');
-    setLocalFilemoon(filemoonApiKey || '');
-    setLocalUdropKey1(udropKey1 || '');
-    setLocalUdropKey2(udropKey2 || '');
-    setLocalFirebase(firebaseConfigRaw || '');
-    setLocalNeonDatabaseUrl(neonDatabaseUrl || '');
-    setLocalGallerySource(defaultGallerySource || 'imgbb');
-    setLocalVideoSource(defaultVideoSource || 'filemoon');
-    setLocalDownloadFolder(downloadFolder || '');
+    setF({
+      pixvid: pixvidApiKey || '', imgbb: imgbbApiKey || '', filemoon: filemoonApiKey || '',
+      udrop1: udropKey1 || '', udrop2: udropKey2 || '', firebase: firebaseConfigRaw || '',
+      neon: neonDatabaseUrl || '', gallerySrc: defaultGallerySource || 'imgbb',
+      videoSrc: defaultVideoSource || 'filemoon', dlFolder: downloadFolder || '',
+    });
   }, [pixvidApiKey, imgbbApiKey, filemoonApiKey, udropKey1, udropKey2, firebaseConfigRaw, neonDatabaseUrl, defaultGallerySource, defaultVideoSource, downloadFolder]);
 
   useEffect(() => {
-    if ((downloadFolder || '').trim()) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const detectDefaultVideoFolder = async () => {
+    if ((downloadFolder || '').trim()) return;
+    let stop = false;
+    (async () => {
       try {
-        const response = await chrome.runtime.sendMessage({
-          action: 'nativeHostCommand',
-          command: 'get_default_video_directory',
-          data: {},
-        });
-
-        if (!response?.success) {
-          return;
-        }
-
-        const detectedFolder = (response.data?.filePath || response.data?.message || '').trim();
-        if (!detectedFolder || cancelled) {
-          return;
-        }
-
-        setLocalDownloadFolder(detectedFolder);
-        setDownloadFolder(detectedFolder);
-      } catch (error) {
-        console.debug('Default video folder auto-detect skipped:', error);
-      }
-    };
-
-    detectDefaultVideoFolder();
-
-    return () => {
-      cancelled = true;
-    };
+        const r = await chrome.runtime.sendMessage({ action: 'nativeHostCommand', command: 'get_default_video_directory', data: {} });
+        if (!r?.success) return;
+        const dir = (r.data?.filePath || r.data?.message || '').trim();
+        if (!dir || stop) return;
+        set('dlFolder', dir);
+        setDownloadFolder(dir);
+      } catch {}
+    })();
+    return () => { stop = true; };
   }, [downloadFolder, setDownloadFolder]);
 
-  // Auto-load settings from Firebase
   useEffect(() => {
-    const loadFromFirebase = async () => {
+    (async () => {
       try {
-        const firebaseConfig = await new Promise((resolve) => {
-          chrome.storage.sync.get(['firebaseConfig'], (result) => {
-            resolve(result.firebaseConfig);
-          });
-        });
+        const fc = await new Promise(r => chrome.storage.sync.get(['firebaseConfig'], r)).then(r => r.firebaseConfig);
         const hasNeon = Boolean((neonDatabaseUrl || '').trim());
-
-        if (!firebaseConfig && !hasNeon) return;
-
-        setFirebaseStatus('🔄 Connecting to Firebase...');
-
-        setFirebaseStatus(hasNeon ? 'Connecting to Neon DB...' : 'Connecting to Firebase...');
-        // Import StorageManager dynamically
+        if (!fc && !hasNeon) return;
+        setCloudStatus('Connecting...');
         const { StorageManager } = await import('../utils/storage.js');
-        const storageManager = new StorageManager();
-        await storageManager.init();
-
-        const firebaseSettings = await storageManager.getUserSettings();
-
-        if (firebaseSettings) {
-          let updated = false;
-
-          // Only update if local values are empty AND Firebase has non-empty values
-          if (!localPixvid && firebaseSettings.pixvidApiKey?.trim()) {
-            setLocalPixvid(firebaseSettings.pixvidApiKey);
-            setPixvidApiKey(firebaseSettings.pixvidApiKey);
-            updated = true;
-          }
-          if (!localImgbb && firebaseSettings.imgbbApiKey?.trim()) {
-            setLocalImgbb(firebaseSettings.imgbbApiKey);
-            setImgbbApiKey(firebaseSettings.imgbbApiKey);
-            updated = true;
-          }
-          if (!localFilemoon && firebaseSettings.filemoonApiKey?.trim()) {
-            setLocalFilemoon(firebaseSettings.filemoonApiKey);
-            setFilemoonApiKey(firebaseSettings.filemoonApiKey);
-            updated = true;
-          }
-          if (!localUdropKey1 && firebaseSettings.udropKey1?.trim()) {
-            setLocalUdropKey1(firebaseSettings.udropKey1);
-            setUdropKey1(firebaseSettings.udropKey1);
-            updated = true;
-          }
-          if (!localUdropKey2 && firebaseSettings.udropKey2?.trim()) {
-            setLocalUdropKey2(firebaseSettings.udropKey2);
-            setUdropKey2(firebaseSettings.udropKey2);
-            updated = true;
-          }
-          if (firebaseSettings.defaultGallerySource?.trim()) {
-            setLocalGallerySource(firebaseSettings.defaultGallerySource);
-            setDefaultGallerySource(firebaseSettings.defaultGallerySource);
-            updated = true;
-          }
-          if (firebaseSettings.defaultVideoSource?.trim()) {
-            setLocalVideoSource(firebaseSettings.defaultVideoSource);
-            setDefaultVideoSource(firebaseSettings.defaultVideoSource);
-            updated = true;
-          }
-
-          if (updated) {
-            setFirebaseStatus('✅ Settings loaded from Firebase');
-          } else {
-            setFirebaseStatus('ℹ️ Local settings already configured');
-          }
+        const sm = new StorageManager(); await sm.init();
+        const cloud = await sm.getUserSettings();
+        if (cloud) {
+          let up = false;
+          if (!f.pixvid && cloud.pixvidApiKey?.trim()) { set('pixvid', cloud.pixvidApiKey); setPixvidApiKey(cloud.pixvidApiKey); up = true; }
+          if (!f.imgbb && cloud.imgbbApiKey?.trim()) { set('imgbb', cloud.imgbbApiKey); setImgbbApiKey(cloud.imgbbApiKey); up = true; }
+          if (!f.filemoon && cloud.filemoonApiKey?.trim()) { set('filemoon', cloud.filemoonApiKey); setFilemoonApiKey(cloud.filemoonApiKey); up = true; }
+          if (!f.udrop1 && cloud.udropKey1?.trim()) { set('udrop1', cloud.udropKey1); setUdropKey1(cloud.udropKey1); up = true; }
+          if (!f.udrop2 && cloud.udropKey2?.trim()) { set('udrop2', cloud.udropKey2); setUdropKey2(cloud.udropKey2); up = true; }
+          if (cloud.defaultGallerySource?.trim()) { set('gallerySrc', cloud.defaultGallerySource); setDefaultGallerySource(cloud.defaultGallerySource); up = true; }
+          if (cloud.defaultVideoSource?.trim()) { set('videoSrc', cloud.defaultVideoSource); setDefaultVideoSource(cloud.defaultVideoSource); up = true; }
+          setCloudStatus(up ? '✅ Synced from cloud' : '✓ Up to date');
         } else {
-          setFirebaseStatus('ℹ️ No cloud settings found');
+          setCloudStatus('No cloud settings found');
         }
-      } catch (error) {
-        console.error('Error loading from Firebase:', error);
-        setFirebaseStatus('❌ Firebase sync failed');
+      } catch { setCloudStatus('❌ Sync failed'); }
+    })();
+  }, [firebaseConfigRaw, neonDatabaseUrl]);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    try {
+      if (f.firebase) {
+        let cfg;
+        try { cfg = JSON.parse(f.firebase); } catch {
+          const ex = k => { const m = f.firebase.match(new RegExp(`["']?${k}["']?\\s*:\\s*["']([^"']+)["']`, 'i')); return m?.[1]; };
+          cfg = { apiKey: ex('apiKey'), authDomain: ex('authDomain'), projectId: ex('projectId'), storageBucket: ex('storageBucket'), messagingSenderId: ex('messagingSenderId'), appId: ex('appId'), measurementId: ex('measurementId') };
+          Object.keys(cfg).forEach(k => { if (!cfg[k]) delete cfg[k]; });
+        }
+        if (!cfg.apiKey || !cfg.projectId) { alert('Firebase config missing critical fields'); setSaving(false); return; }
+        await chrome.storage.sync.set({ firebaseConfig: cfg, firebaseConfigRaw: f.firebase });
       }
-    };
-
-    // Auto-load if any backend is configured
-    if (firebaseConfigRaw || (neonDatabaseUrl || '').trim()) {
-      loadFromFirebase();
-    }
-  }, [firebaseConfigRaw, neonDatabaseUrl]); // Re-run when backend config changes
-
-  const handleSave = async () => {
-    // Parse and validate Firebase config
-    if (localFirebase) {
+      const nUrl = f.neon.trim();
+      await chrome.storage.sync.set({ neonDatabaseUrl: nUrl });
+      setPixvidApiKey(f.pixvid); setImgbbApiKey(f.imgbb); setFilemoonApiKey(f.filemoon);
+      setUdropKey1(f.udrop1); setUdropKey2(f.udrop2);
+      setDefaultGallerySource(f.gallerySrc); setDefaultVideoSource(f.videoSrc);
+      setDownloadFolder(f.dlFolder); setNeonDatabaseUrl(nUrl);
       try {
-        let config;
-        try {
-          config = JSON.parse(localFirebase);
-        } catch {
-          // Try to extract from JavaScript object format
-          const extractValue = (key) => {
-            const regex = new RegExp(`["']?${key}["']?\\s*:\\s*["']([^"']+)["']`, 'i');
-            const match = localFirebase.match(regex);
-            return match ? match[1] : null;
-          };
-
-          config = {
-            apiKey: extractValue('apiKey'),
-            authDomain: extractValue('authDomain'),
-            projectId: extractValue('projectId'),
-            storageBucket: extractValue('storageBucket'),
-            messagingSenderId: extractValue('messagingSenderId'),
-            appId: extractValue('appId'),
-            measurementId: extractValue('measurementId')
-          };
-
-          // Remove null values
-          Object.keys(config).forEach(key => {
-            if (!config[key]) delete config[key];
-          });
+        const fc = await new Promise(r => chrome.storage.sync.get(['firebaseConfig'], r)).then(r => r.firebaseConfig);
+        if ((nUrl || fc) && (f.pixvid || f.imgbb || f.filemoon || f.udrop1 || f.udrop2)) {
+          setCloudStatus('Syncing...');
+          const { StorageManager } = await import('../utils/storage.js');
+          const sm = new StorageManager(); await sm.init();
+          const s = {};
+          if (f.pixvid) s.pixvidApiKey = f.pixvid;
+          if (f.imgbb) s.imgbbApiKey = f.imgbb;
+          if (f.filemoon) s.filemoonApiKey = f.filemoon;
+          if (f.udrop1) s.udropKey1 = f.udrop1;
+          if (f.udrop2) s.udropKey2 = f.udrop2;
+          if (f.gallerySrc) s.defaultGallerySource = f.gallerySrc;
+          if (f.videoSrc) s.defaultVideoSource = f.videoSrc;
+          if (Object.keys(s).length) { await sm.saveUserSettings(s); setCloudStatus('✅ Synced to cloud'); }
+          else setCloudStatus('Nothing to sync');
         }
+      } catch { setCloudStatus('⚠️ Local saved, cloud sync failed'); }
+      setSaved(true); setTimeout(() => setSaved(false), 2500);
+    } finally { setSaving(false); }
+  }, [f]);
 
-        // Validate critical fields
-        if (!config.apiKey || !config.projectId) {
-          alert('⚠️ Firebase config is missing critical fields (apiKey, projectId)');
-          return;
-        }
+  useEffect(() => {
+    const onKey = e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); if (!saving && section !== 'links') handleSave(); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleSave, saving, section]);
 
-        await chrome.storage.sync.set({ 
-          firebaseConfig: config,
-          firebaseConfigRaw: localFirebase 
-        });
-      } catch (error) {
-        alert('⚠️ Invalid Firebase configuration. Please check the format.');
-        return;
-      }
-    }
-
-    const trimmedNeonUrl = localNeonDatabaseUrl.trim();
-    await chrome.storage.sync.set({ neonDatabaseUrl: trimmedNeonUrl });
-
-    // Save other settings locally
-    setPixvidApiKey(localPixvid);
-    setImgbbApiKey(localImgbb);
-    setFilemoonApiKey(localFilemoon);
-    setUdropKey1(localUdropKey1);
-    setUdropKey2(localUdropKey2);
-    setDefaultGallerySource(localGallerySource);
-    setDefaultVideoSource(localVideoSource);
-    setDownloadFolder(localDownloadFolder);
-    setNeonDatabaseUrl(trimmedNeonUrl);
-
-    // Also save to Firebase if configured
+  const handleExport = async () => {
+    setExporting(true); setExportStatus('Preparing...');
     try {
-      const firebaseConfig = await new Promise((resolve) => {
-        chrome.storage.sync.get(['firebaseConfig'], (result) => {
-          resolve(result.firebaseConfig);
-        });
-      });
-
-      if ((trimmedNeonUrl || firebaseConfig) && (localPixvid || localImgbb || localFilemoon || localUdropKey1 || localUdropKey2)) {
-        setFirebaseStatus('☁️ Syncing to Firebase...');
-        
-        const { StorageManager } = await import('../utils/storage.js');
-        const storageManager = new StorageManager();
-        await storageManager.init();
-
-        // Only save non-empty values to Firebase
-        const settingsToSave = {};
-        if (localPixvid) settingsToSave.pixvidApiKey = localPixvid;
-        if (localImgbb) settingsToSave.imgbbApiKey = localImgbb;
-        if (localFilemoon) settingsToSave.filemoonApiKey = localFilemoon;
-        if (localUdropKey1) settingsToSave.udropKey1 = localUdropKey1;
-        if (localUdropKey2) settingsToSave.udropKey2 = localUdropKey2;
-        if (localGallerySource) settingsToSave.defaultGallerySource = localGallerySource;
-        if (localVideoSource) settingsToSave.defaultVideoSource = localVideoSource;
-
-        console.log('📤 [SETTINGS] Saving to Firebase:', Object.keys(settingsToSave));
-        console.log('📤 [SETTINGS] UDrop Key 1:', localUdropKey1 ? '✓ Set' : '✗ Empty');
-        console.log('📤 [SETTINGS] UDrop Key 2:', localUdropKey2 ? '✓ Set' : '✗ Empty');
-
-        if (Object.keys(settingsToSave).length > 0) {
-          await storageManager.saveUserSettings(settingsToSave);
-          setFirebaseStatus('✅ Settings saved to Firebase');
-          console.log('✅ [SETTINGS] Successfully saved to Firebase');
-        } else {
-          setFirebaseStatus('ℹ️ No settings to sync to Firebase');
-          console.log('ℹ️ [SETTINGS] No settings to save');
-        }
-      }
-    } catch (error) {
-      console.error('Error saving to Firebase:', error);
-      setFirebaseStatus('⚠️ Saved locally, but Firebase sync failed');
-    }
-
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+      const r = await chrome.runtime.sendMessage({ action: 'exportFirestoreBackup' });
+      if (!r?.success || !r?.data) throw new Error(r?.error || 'Export failed');
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const name = `imgvault-backup-${ts}.json`;
+      const blob = new Blob([JSON.stringify(r.data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = Object.assign(document.createElement('a'), { href: url, download: name });
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      setExportStatus(`Exported ${name}`);
+    } catch (e) { setExportStatus(`Failed: ${e.message}`); }
+    finally { setExporting(false); }
   };
 
-  const handleExportFirestoreBackup = async () => {
-    setExportingBackup(true);
-    setBackupStatus('Preparing full Firestore backup...');
-
-    try {
-      const response = await chrome.runtime.sendMessage({
-        action: 'exportFirestoreBackup'
-      });
-
-      if (!response?.success || !response?.data) {
-        throw new Error(response?.error || 'Backup export failed');
-      }
-
-      const backupData = response.data;
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const fileName = `imgvault-firestore-backup-${timestamp}.json`;
-
-      const blob = new Blob([JSON.stringify(backupData, null, 2)], {
-        type: 'application/json'
-      });
-      const objectUrl = URL.createObjectURL(blob);
-
-      const anchor = document.createElement('a');
-      anchor.href = objectUrl;
-      anchor.download = fileName;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(objectUrl);
-
-      setBackupStatus(`Backup exported: ${fileName}`);
-    } catch (error) {
-      console.error('Firestore backup export failed:', error);
-      setBackupStatus(`Backup failed: ${error.message}`);
-    } finally {
-      setExportingBackup(false);
-    }
-  };
-
-  return (
-  <div className="min-h-screen bg-base-200 text-base-content p-3 sm:p-6">
-      <GalleryNavbar
-        navigate={navigate}
-        images={[]}
-        reload={() => {}}
-        toggleSelectionMode={() => {}}
-        selectionMode={false}
-        collectionsLoading={false}
-        collections={[]}
-        trashLoading={false}
-        trashedImages={[]}
-        openUploadModal={() => {}}
-        searchQuery=""
-        setSearchQuery={() => {}}
-        selectedImages={new Set()}
-        selectAll={() => {}}
-        filteredImages={[]}
-        deselectAll={() => {}}
-        setShowBulkDeleteConfirm={() => {}}
-        isDeleting={false}
-        onHeightChange={setNavbarHeight}
-        isSettingsPage={true}
-      />
-
-      <div style={{ height: navbarHeight ? `${navbarHeight + 8}px` : '90px' }} />
-
-      <div className="max-w-3xl mx-auto w-full">
-        {/* Header */}
-  <div className="bg-base-100 border border-base-content/20 shadow-xl rounded-[var(--radius-box)] p-4 sm:p-6 mb-6">
-          <div className="flex items-start sm:items-center gap-3 sm:gap-4">
-            <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-primary to-secondary rounded-[var(--radius-box)] blur-md opacity-50"></div>
-              <img src="/icons/1.png" alt="ImgVault" className="w-12 h-12 relative z-10 rounded-[var(--radius-box)] shadow-lg" />
+  const sectionContent = (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={section}
+        initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
+        animate={{ opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.3, ease } }}
+        exit={{ opacity: 0, y: -8, filter: 'blur(4px)', transition: { duration: 0.15 } }}
+      >
+        {section === 'keys' && (
+          <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-5">
+            <motion.div variants={fadeUp}>
+              <h2 className="text-[17px] font-semibold tracking-tight" style={{ color: 'hsl(var(--bc))' }}>API Keys</h2>
+              <p className="text-[13px] mt-1" style={{ color: 'hsl(var(--bc)/0.35)' }}>Authentication credentials for upload services</p>
+            </motion.div>
+            <div className="s-divider" />
+            <Field label="Pixvid API Key" icon={Zap} required>
+              <input className="s-inp" type="password" value={f.pixvid} onChange={e => set('pixvid', e.target.value)} placeholder="Enter your Pixvid API key" />
+            </Field>
+            <Field label="ImgBB API Key" icon={Image} hint="Optional fallback image host for original quality uploads">
+              <input className="s-inp" type="password" value={f.imgbb} onChange={e => set('imgbb', e.target.value)} placeholder="Enter your ImgBB API key" />
+            </Field>
+            <div className="s-divider" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Filemoon API Key" icon={Film}>
+                <input className="s-inp" type="password" value={f.filemoon} onChange={e => set('filemoon', e.target.value)} placeholder="For video uploads" />
+              </Field>
+              <Field label="UDrop Key 1" icon={HardDrive}>
+                <input className="s-inp" type="password" value={f.udrop1} onChange={e => set('udrop1', e.target.value)} placeholder="64 characters" />
+              </Field>
             </div>
-            <div className="flex-1">
-              <h1 className="text-2xl sm:text-3xl font-bold text-base-content">Settings</h1>
-              <p className="text-sm text-base-content/80 mt-1">Configure your ImgVault extension</p>
-            </div>
-          </div>
-        </div>
+            <Field label="UDrop Key 2" icon={HardDrive}>
+              <input className="s-inp" type="password" value={f.udrop2} onChange={e => set('udrop2', e.target.value)} placeholder="64 characters" />
+            </Field>
+            <div className="s-divider" />
+            <Field label="Video Download Folder" icon={FolderOpen} hint="Leave blank to auto-detect your Windows Videos folder. Use double backslashes if setting manually.">
+              <input className="s-inp" style={{ fontFamily: "'Outfit', monospace", fontSize: 12 }} type="text" value={f.dlFolder} onChange={e => set('dlFolder', e.target.value)} placeholder="C:\Users\You\Videos" />
+            </Field>
+          </motion.div>
+        )}
 
-        {/* Settings Form */}
-  <div className="bg-base-100 border border-base-content/20 shadow-xl rounded-[var(--radius-box)] p-4 sm:p-8 space-y-8">
-          {/* API Keys Section */}
-          <div>
-            <h2 className="text-xl font-semibold text-base-content mb-6 flex items-center gap-2">
-              <span className="text-2xl">🔑</span>
-              API Keys
-            </h2>
-            <div className="space-y-5">
+        {section === 'cloud' && (
+          <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-5">
+            <motion.div variants={fadeUp} className="flex items-start justify-between gap-3 flex-wrap">
               <div>
-                <label className="block text-sm font-medium text-base-content mb-2 flex items-center gap-2">
-                  <span className="text-lg">⚡</span>
-                  Pixvid API Key (Required)
-                </label>
-                <Input
-                  type="password"
-                  value={localPixvid}
-                  onChange={(e) => setLocalPixvid(e.target.value)}
-                  placeholder="Enter your Pixvid API key"
-                  className="shadow-lg"
-                />
+                <h2 className="text-[17px] font-semibold tracking-tight" style={{ color: 'hsl(var(--bc))' }}>Cloud & Database</h2>
+                <p className="text-[13px] mt-1" style={{ color: 'hsl(var(--bc)/0.35)' }}>Sync settings across devices</p>
               </div>
+              <AnimatePresence><StatusPill status={cloudStatus} /></AnimatePresence>
+            </motion.div>
+            <div className="s-divider" />
+            <Field label="Firebase Config" icon={Shield} hint="Paste JSON from Firebase Console → Project Settings → General → Your apps">
+              <textarea className="s-ta" rows={6} value={f.firebase} onChange={e => set('firebase', e.target.value)} placeholder={'{ "apiKey": "...", "projectId": "...", ... }'} style={{ fontFamily: "'Outfit', monospace", fontSize: 12 }} />
+            </Field>
+            <Field label="Neon Database URL" icon={Database} hint="If set, ImgVault uses Neon DB. Otherwise falls back to Firebase.">
+              <input className="s-inp" type="password" value={f.neon} onChange={e => set('neon', e.target.value)} placeholder="postgresql://user:pass@ep-xxx.neon.tech/db" style={{ fontFamily: "'Outfit', monospace", fontSize: 12 }} />
+            </Field>
+            <div className="s-divider" />
+            <motion.div variants={fadeUp} className="flex items-center justify-between gap-4 p-4 rounded-xl" style={{ background: 'hsl(var(--bc)/0.02)', border: '1px solid hsl(var(--bc)/0.05)' }}>
               <div>
-                <label className="block text-sm font-medium text-base-content mb-2 flex items-center gap-2">
-                  <span className="text-lg">🖼️</span>
-                  ImgBB API Key (Optional)
-                </label>
-                <Input
-                  type="password"
-                  value={localImgbb}
-                  onChange={(e) => setLocalImgbb(e.target.value)}
-                  placeholder="Enter your ImgBB API key"
-                  className="shadow-lg"
-                />
+                <p className="text-[13px] font-medium" style={{ color: 'hsl(var(--bc)/0.65)' }}>Full Firestore Backup</p>
+                <p className="text-[11px] mt-0.5" style={{ color: 'hsl(var(--bc)/0.3)' }}>Export all collections to a local JSON file</p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-base-content mb-2 flex items-center gap-2">
-                  <span className="text-lg">🎬</span>
-                  Filemoon API Key (For Videos)
-                </label>
-                <Input
-                  type="password"
-                  value={localFilemoon}
-                  onChange={(e) => setLocalFilemoon(e.target.value)}
-                  placeholder="Enter your Filemoon API key"
-                  className="shadow-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-base-content mb-2 flex items-center gap-2">
-                  <span className="text-lg">📦</span>
-                  UDrop API Key 1 (For Videos)
-                </label>
-                <Input
-                  type="password"
-                  value={localUdropKey1}
-                  onChange={(e) => setLocalUdropKey1(e.target.value)}
-                  placeholder="Enter your UDrop API Key 1 (64 characters)"
-                  className="shadow-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-base-content mb-2 flex items-center gap-2">
-                  <span className="text-lg">🔑</span>
-                  UDrop API Key 2 (For Videos)
-                </label>
-                <Input
-                  type="password"
-                  value={localUdropKey2}
-                  onChange={(e) => setLocalUdropKey2(e.target.value)}
-                  placeholder="Enter your UDrop API Key 2 (64 characters)"
-                  className="shadow-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-base-content mb-2 flex items-center gap-2">
-                  <span className="text-lg">📂</span>
-                  Video Download Folder (yt-dlp)
-                </label>
-                <Input
-                  type="text"
-                  value={localDownloadFolder}
-                  onChange={(e) => setLocalDownloadFolder(e.target.value)}
-                  placeholder="Leave blank to use C:\\Users\\<YourName>\\Videos automatically"
-                  className="font-mono text-sm shadow-lg"
-                />
-                <p className="mt-2 text-xs text-base-content/60 flex items-start gap-2">
-                  <span className="text-base">💡</span>
-                  <span>Folder where videos will be downloaded using the native host. Leave blank to use your Windows Videos folder automatically. If you set one manually, use double backslashes on Windows, for example `C:\\Users\\YourName\\Videos`.</span>
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Firebase Configuration */}
-          <div>
-            <h2 className="text-xl font-semibold text-base-content mb-6 flex items-center gap-2">
-              <span className="text-2xl">☁️</span>
-              Firebase Configuration
-            </h2>
-            
-            {/* Firebase Status */}
-            {firebaseStatus && (
-              <div className="mb-5 p-4 rounded-[var(--radius-box)] bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/30 shadow-lg">
-                <p className="text-sm text-base-content/80 font-medium">{firebaseStatus}</p>
-              </div>
-            )}
-            
-            <div>
-              <label className="block text-sm font-medium text-base-content mb-2 flex items-center gap-2">
-                <span className="text-lg">📝</span>
-                Firebase Config (Paste from Firebase Console)
-              </label>
-              <Textarea
-                value={localFirebase}
-                onChange={(e) => setLocalFirebase(e.target.value)}
-                placeholder={`{
-  "apiKey": "your-api-key",
-  "authDomain": "your-project.firebaseapp.com",
-  "projectId": "your-project-id",
-  "storageBucket": "your-project.appspot.com",
-  "messagingSenderId": "123456789",
-  "appId": "your-app-id"
-}`}
-                rows={8}
-                className="font-mono text-sm shadow-lg"
-              />
-              <p className="mt-3 text-xs text-base-content/60 flex items-start gap-2">
-                <span className="text-base">💡</span>
-                <span>Get your Firebase config from the Firebase Console → Project Settings → General → Your apps</span>
-              </p>
-            </div>
-
-            <div className="mt-5">
-              <label className="block text-sm font-medium text-base-content mb-2 flex items-center gap-2">
-                <span className="text-lg">🟢</span>
-                Neon Database URL (Optional)
-              </label>
-              <Input
-                type="password"
-                value={localNeonDatabaseUrl}
-                onChange={(e) => setLocalNeonDatabaseUrl(e.target.value)}
-                placeholder="postgresql://user:password@ep-xxxx.aws.neon.tech/dbname?sslmode=require"
-                className="font-mono text-sm shadow-lg"
-              />
-              <p className="mt-3 text-xs text-base-content/60 flex items-start gap-2">
-                <span className="text-base">💡</span>
-                <span>If this is filled, ImgVault will use Neon DB. If empty, it will use Firebase when Firebase config is set.</span>
-              </p>
-            </div>
-
-            <div className="mt-5 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/60 p-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-base-content">Full Firestore Backup</p>
-                  <p className="text-xs text-base-content/65 mt-1">
-                    Exports all collections and nested subcollections into one local JSON file.
-                  </p>
-                </div>
-                <Button
-                  onClick={handleExportFirestoreBackup}
-                  disabled={exportingBackup}
-                  className="min-h-0 rounded-[var(--radius-box)] px-4 py-2.5 flex items-center gap-2"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>{exportingBackup ? 'Exporting...' : 'Export Full Backup'}</span>
-                </Button>
-              </div>
-              {backupStatus && (
-                <p className="text-xs text-base-content/75 mt-3">{backupStatus}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Gallery Preferences */}
-          <div>
-            <h2 className="text-xl font-semibold text-base-content mb-6 flex items-center gap-2">
-              <span className="text-2xl">🎨</span>
-              Gallery Preferences
-            </h2>
-            <div>
-              <label className="block text-sm font-medium text-base-content mb-2 flex items-center gap-2">
-                <span className="text-lg">🌟</span>
-                Default Image Source
-              </label>
-              <select
-                value={localGallerySource}
-                onChange={(e) => setLocalGallerySource(e.target.value)}
-                className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-100/70 border border-base-content/25 
-                         text-base-content cursor-pointer
-                         focus:outline-none focus:border-primary focus:ring-2 
-                         focus:ring-primary/20 transition-all shadow-lg"
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium transition-all duration-150"
+                style={{
+                  background: 'hsl(var(--bc)/0.04)',
+                  border: '1px solid hsl(var(--bc)/0.07)',
+                  color: 'hsl(var(--bc)/0.55)',
+                  opacity: exporting ? 0.5 : 1,
+                }}
               >
-                <option value="imgbb">ImgBB (Original Quality)</option>
-                <option value="pixvid">Pixvid (Compressed Quality)</option>
+                {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                <span>{exporting ? 'Exporting...' : 'Export'}</span>
+              </button>
+            </motion.div>
+            {exportStatus && <motion.p variants={fadeUp} className="text-[11px] font-medium" style={{ color: 'hsl(var(--bc)/0.35)' }}>{exportStatus}</motion.p>}
+          </motion.div>
+        )}
+
+        {section === 'prefs' && (
+          <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-5">
+            <motion.div variants={fadeUp}>
+              <h2 className="text-[17px] font-semibold tracking-tight" style={{ color: 'hsl(var(--bc))' }}>Preferences</h2>
+              <p className="text-[13px] mt-1" style={{ color: 'hsl(var(--bc)/0.35)' }}>Default sources for gallery display</p>
+            </motion.div>
+            <div className="s-divider" />
+            <Field label="Default Image Source" icon={Image}>
+              <select className="s-sel" value={f.gallerySrc} onChange={e => set('gallerySrc', e.target.value)}>
+                <option value="imgbb">ImgBB — Original Quality</option>
+                <option value="pixvid">Pixvid — Compressed Quality</option>
               </select>
-              <p className="mt-3 text-xs text-base-content/60 flex items-start gap-2">
-                <span className="text-base">💡</span>
-                <span>Choose which service to display images from in the gallery</span>
-              </p>
-            </div>
-            <div className="mt-5">
-              <label className="block text-sm font-medium text-base-content mb-2 flex items-center gap-2">
-                <span className="text-lg">🎬</span>
-                Default Video Source
-              </label>
-              <select
-                value={localVideoSource}
-                onChange={(e) => setLocalVideoSource(e.target.value)}
-                className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-100/70 border border-base-content/25 
-                         text-base-content cursor-pointer
-                         focus:outline-none focus:border-primary focus:ring-2 
-                         focus:ring-primary/20 transition-all shadow-lg"
-              >
+            </Field>
+            <Field label="Default Video Source" icon={Film}>
+              <select className="s-sel" value={f.videoSrc} onChange={e => set('videoSrc', e.target.value)}>
                 <option value="filemoon">Filemoon</option>
                 <option value="udrop">UDrop</option>
               </select>
-              <p className="mt-3 text-xs text-base-content/60 flex items-start gap-2">
-                <span className="text-base">💡</span>
-                <span>Choose which service to display videos from in the gallery and modal</span>
-              </p>
-            </div>
-          </div>
+            </Field>
+          </motion.div>
+        )}
 
-          {/* Save Button */}
-          <div className="pt-4">
-            <Button
-              onClick={handleSave}
-              variant="primary"
-              className="w-full min-h-0 rounded-[var(--radius-box)] px-6 py-4 text-lg !text-base-content shadow-2xl shadow-primary/10 hover:shadow-primary/25 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-3"
+        {section === 'links' && (
+          <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-4">
+            <motion.div variants={fadeUp}>
+              <h2 className="text-[17px] font-semibold tracking-tight" style={{ color: 'hsl(var(--bc))' }}>Resources</h2>
+              <p className="text-[13px] mt-1" style={{ color: 'hsl(var(--bc)/0.35)' }}>Where to get API keys and credentials</p>
+            </motion.div>
+            <div className="s-divider" />
+            <motion.div variants={fadeUp} className="space-y-0.5">
+              <ResourceLink icon={Zap} label="Get Pixvid API Key" href="https://pixvid.org" />
+              <ResourceLink icon={Image} label="Get ImgBB API Key" href="https://api.imgbb.com" />
+              <ResourceLink icon={Film} label="Get Filemoon API Key" href="https://byse.sx/settings" />
+              <ResourceLink icon={HardDrive} label="Get UDrop API Keys" href="https://www.udrop.com/account/edit" />
+              <ResourceLink icon={Cloud} label="Firebase Console" href="https://console.firebase.google.com" />
+            </motion.div>
+          </motion.div>
+        )}
+      </motion.div>
+    </AnimatePresence>
+  );
+
+  return (
+    <div className="min-h-screen s-page" style={{ background: 'hsl(var(--b2))', color: 'hsl(var(--bc))' }}>
+      <style>{CSS}</style>
+
+      {/* ── Background ── */}
+      <div className="s-backdrop">
+        <div className="s-grid" />
+        <div className="s-orb s-orb-a" />
+        <div className="s-orb s-orb-b" />
+        <div className="s-orb s-orb-c" />
+      </div>
+
+      {/* ── Navbar ── */}
+      <GalleryNavbar
+        navigate={navigate} images={[]} reload={() => {}} toggleSelectionMode={() => {}}
+        selectionMode={false} collectionsLoading={false} collections={[]} trashLoading={false}
+        trashedImages={[]} openUploadModal={() => {}} searchQuery="" setSearchQuery={() => {}}
+        selectedImages={new Set()} selectAll={() => {}} filteredImages={[]} deselectAll={() => {}}
+        setShowBulkDeleteConfirm={() => {}} isDeleting={false} onHeightChange={setNavH} isSettingsPage={true}
+      />
+      <div style={{ height: navH ? `${navH + 8}px` : '90px' }} />
+
+      {/* ── Page ── */}
+      <div className="relative z-10 max-w-4xl mx-auto w-full px-4 sm:px-6 lg:px-8 pb-20">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0, transition: { duration: 0.5, ease } }}
+          className="pt-2 pb-7"
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className="flex items-center justify-center w-9 h-9 rounded-xl"
+              style={{
+                background: 'linear-gradient(135deg, hsl(var(--p)/0.15), hsl(var(--s)/0.12))',
+                border: '1px solid hsl(var(--p)/0.1)',
+              }}
             >
-              {saved ? (
-                <>
-                  <Check className="w-6 h-6" />
-                  <span>Saved Successfully!</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-6 h-6" />
-                  <span>Save Settings</span>
-                </>
-              )}
-            </Button>
+              <Settings2 className="w-[18px] h-[18px]" style={{ color: 'hsl(var(--p))' }} />
+            </div>
+            <h1
+              className="text-[18px] font-bold tracking-tight"
+              style={{
+                background: 'linear-gradient(135deg, hsl(var(--p)), hsl(var(--s)))',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}
+            >
+              Settings
+            </h1>
           </div>
-        </div>
+        </motion.div>
 
-        {/* Help Section */}
-  <div className="bg-base-100 border border-base-content/20 shadow-xl rounded-[var(--radius-box)] p-4 sm:p-6 mt-6">
-  <h2 className="text-lg font-semibold text-base-content mb-4 flex items-center gap-2">
-            <span className="text-xl">❓</span>
-            Need Help?
-          </h2>
-          <div className="space-y-3 text-sm text-base-content/70">
-            <div className="flex items-start gap-3 p-3 rounded-[var(--radius-box)] bg-base-100/60 hover:bg-base-100/80 transition-colors">
-              <span className="text-lg flex-shrink-0">⚡</span>
-              <div>
-                <strong className="text-base-content">Pixvid API Key:</strong> Get it from{' '}
-                <a
-                  href="https://pixvid.org"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:text-primary/80 underline font-medium"
-                >
-                  pixvid.org
-                </a>
-              </div>
+        {/* Body */}
+        <div className="flex gap-8">
+          <Sidebar active={section} onChange={setSection} />
+
+          <motion.div
+            className="flex-1 min-w-0"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0, transition: { duration: 0.4, delay: 0.1, ease } }}
+          >
+            <MobileTabs active={section} onChange={setSection} />
+
+            <div className="s-glass p-6 sm:p-8 s-scroll">
+              {sectionContent}
+
+              {section !== 'links' && (
+                <div className="mt-8 pt-5" style={{ borderTop: '1px solid hsl(var(--bc)/0.05)' }}>
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className={`s-save ${saved ? 's-save-ok' : ''}`}
+                  >
+                    <AnimatePresence mode="wait">
+                      {saving ? (
+                        <motion.span key="saving" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5">
+                          <Loader2 className="w-4 h-4 animate-spin" /> Saving...
+                        </motion.span>
+                      ) : saved ? (
+                        <motion.span key="saved" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5">
+                          <Check className="w-4 h-4" /> Saved
+                        </motion.span>
+                      ) : (
+                        <motion.span key="save" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5">
+                          <Save className="w-4 h-4" /> Save Changes
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  </button>
+                </div>
+              )}
             </div>
-            <div className="flex items-start gap-3 p-3 rounded-[var(--radius-box)] bg-base-100/60 hover:bg-base-100/80 transition-colors">
-              <span className="text-lg flex-shrink-0">🖼️</span>
-              <div>
-                <strong className="text-base-content">ImgBB API Key:</strong> Get it from{' '}
-                <a
-                  href="https://api.imgbb.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:text-primary/80 underline font-medium"
-                >
-                  api.imgbb.com
-                </a>
-              </div>
-            </div>
-            <div className="flex items-start gap-3 p-3 rounded-[var(--radius-box)] bg-base-100/60 hover:bg-base-100/80 transition-colors">
-              <span className="text-lg flex-shrink-0">🎬</span>
-              <div>
-                <strong className="text-base-content">Filemoon API Key:</strong> Get it from{' '}
-                <a
-                  href="https://byse.sx/settings"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:text-primary/80 underline font-medium"
-                >
-                  byse.sx/settings
-                </a>
-              </div>
-            </div>
-            <div className="flex items-start gap-3 p-3 rounded-[var(--radius-box)] bg-base-100/60 hover:bg-base-100/80 transition-colors">
-              <Package className="w-5 h-5 flex-shrink-0 text-base-content/70" />
-              <div>
-                <strong className="text-base-content">UDrop API Keys:</strong> Get them from{' '}
-                <a
-                  href="https://www.udrop.com/account/edit"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:text-primary/80 underline font-medium"
-                >
-                  udrop.com/account/edit
-                </a>
-              </div>
-            </div>
-            <div className="flex items-start gap-3 p-3 rounded-[var(--radius-box)] bg-base-100/60 hover:bg-base-100/80 transition-colors">
-              <span className="text-lg flex-shrink-0">☁️</span>
-              <div>
-                <strong className="text-base-content">Firebase:</strong> Create a project at{' '}
-                <a
-                  href="https://console.firebase.google.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:text-primary/80 underline font-medium"
-                >
-                  Firebase Console
-                </a>
-              </div>
-            </div>
-          </div>
+          </motion.div>
         </div>
       </div>
     </div>
   );
 }
-

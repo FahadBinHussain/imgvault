@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -26,6 +27,15 @@
     }
   }
 
+  @keyframes shimmer-slide {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
   .shimmer {
     animation: shimmer 2s infinite linear;
     background: linear-gradient(
@@ -35,24 +45,6 @@
       hsl(var(--bc) / 0) 100%
     );
     background-size: 1000px 100%;
-  }
-}
-
-@layer components {
-  .glass-card {
-    @apply backdrop-blur-xl border;
-    background-color: hsl(var(--b1) / 0.7);
-    border-color: hsl(var(--bc) / 0.15);
-  }
-
-  .glass-button {
-    @apply backdrop-blur-sm border transition-all;
-    background-color: hsl(var(--b1) / 0.8);
-    border-color: hsl(var(--bc) / 0.2);
-  }
-
-  .glass-button:hover {
-    background-color: hsl(var(--b1) / 1);
   }
 
   .gradient-text {
