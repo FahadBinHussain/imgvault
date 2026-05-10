@@ -456,7 +456,7 @@ export default function SettingsPage() {
             </motion.div>
             <div className="s-divider" />
             <motion.div variants={fadeUp} className="space-y-0.5">
-              <ResourceLink icon={Zap} label="Get Pixvid API Key" href="https://pixvid.org" />
+              <ResourceLink icon={Zap} label="Get Pixvid API Key" href="https://pixvid.org/settings/api" />
               <ResourceLink icon={Image} label="Get ImgBB API Key" href="https://api.imgbb.com" />
               <ResourceLink icon={Film} label="Get Filemoon API Key" href="https://byse.sx/settings" />
               <ResourceLink icon={HardDrive} label="Get UDrop API Keys" href="https://www.udrop.com/account/edit" />

@@ -64,6 +64,81 @@ export class DuplicateDetector {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
+  isSvgSource(blob, sourceUrl = '') {
+    const blobType = String(blob?.type || '').toLowerCase();
+    const url = String(sourceUrl || '').toLowerCase();
+    return (
+      blobType.includes('image/svg+xml') ||
+      blobType.includes('svg') ||
+      /^data:image\/svg\+xml/i.test(String(sourceUrl || '')) ||
+      /\.svg(?:[?#]|$)/i.test(url)
+    );
+  }
+
+  parseSvgLength(value) {
+    if (!value) {
+      return 0;
+    }
+
+    const match = String(value).trim().match(/^([0-9]+(?:\.[0-9]+)?)/);
+    return match ? Number(match[1]) : 0;
+  }
+
+  extractSvgDimensions(svgText = '') {
+    const tagMatch = svgText.match(/<svg\b[^>]*>/i);
+    const svgTag = tagMatch?.[0] || '';
+    const widthMatch = svgTag.match(/\bwidth=["']([^"']+)["']/i);
+    const heightMatch = svgTag.match(/\bheight=["']([^"']+)["']/i);
+    const viewBoxMatch = svgTag.match(/\bviewBox=["']([^"']+)["']/i);
+
+    let width = this.parseSvgLength(widthMatch?.[1]);
+    let height = this.parseSvgLength(heightMatch?.[1]);
+
+    if ((!width || !height) && viewBoxMatch?.[1]) {
+      const values = viewBoxMatch[1]
+        .trim()
+        .split(/[\s,]+/)
+        .map(Number)
+        .filter(Number.isFinite);
+
+      if (values.length >= 4) {
+        width = width || Math.abs(values[2]);
+        height = height || Math.abs(values[3]);
+      }
+    }
+
+    return {
+      width: Math.round(width || 0),
+      height: Math.round(height || 0)
+    };
+  }
+
+  async extractSvgMetadata(blob, sourceUrl, pageUrl) {
+    const [sha256, svgText] = await Promise.all([
+      this.generateSHA256(blob),
+      blob.text().catch(() => '')
+    ]);
+    const dimensions = this.extractSvgDimensions(svgText);
+
+    return {
+      sha256,
+      pHash: '',
+      aHash: '',
+      dHash: '',
+      width: dimensions.width,
+      height: dimensions.height,
+      fileSize: blob.size,
+      sourceUrl,
+      pageUrl,
+      exifMetadata: {
+        FileType: 'SVG',
+        MIMEType: 'image/svg+xml',
+        SVGWidth: dimensions.width,
+        SVGHeight: dimensions.height
+      }
+    };
+  }
+
   /**
    * Generate perceptual hash (pHash) - DCT-based
    * @param {Blob} blob - Image blob
@@ -214,6 +289,11 @@ export class DuplicateDetector {
    */
   async extractMetadata(blob, sourceUrl, pageUrl) {
     console.log('🔍 Extracting metadata with EXIF support...');
+
+    if (this.isSvgSource(blob, sourceUrl)) {
+      console.log('🧭 SVG detected, using vector metadata extraction.');
+      return this.extractSvgMetadata(blob, sourceUrl, pageUrl);
+    }
     
     // Extract EXIF metadata using exifr with ALL possible options enabled
     let exifMetadata = null;

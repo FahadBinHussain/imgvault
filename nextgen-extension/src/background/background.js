@@ -1549,11 +1549,7 @@ class ImgVaultServiceWorker {
       await chrome.storage.local.set({ uploadStatusLogs: [] });
       // Get API keys from storage
       const settings = await chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey']);
-      
-      if (!settings.pixvidApiKey) {
-        throw new Error('Pixvid API key not configured. Please set it in the extension settings.');
-      }
-      
+      const hasPixvid = !!settings.pixvidApiKey;
       const hasImgbb = !!settings.imgbbApiKey;
 
       await this.updateStatusWithLog('📥 Fetching image...');
@@ -1575,6 +1571,21 @@ class ImgVaultServiceWorker {
       const exifFileType = metadata.exifMetadata?.MIMEType || metadata.exifMetadata?.FileType;
       let fileType = data.fileMimeType || imageBlob.type;
       let fileTypeSource = '';
+      const isSvgImage =
+        metadata.exifMetadata?.FileType === 'SVG' ||
+        /image\/svg\+xml|svg/i.test(String(fileType || imageBlob.type || ''));
+
+      if (isSvgImage) {
+        await this.updateStatusWithLog(
+          '⚠️ SVG upload blocked to preserve the original file.',
+          'warning'
+        );
+        throw new Error('SVG uploads need raw-file storage. Pixvid does not list SVG as supported, and ImgBB rasterizes SVG to JPG, which breaks animation.');
+      }
+
+      if (!hasPixvid) {
+        throw new Error('Pixvid API key not configured. Please set it in the extension settings.');
+      }
       
       if (!data.fileMimeType && !exifFileType) {
         // No File object, no EXIF - use blob type (web image)
@@ -1654,11 +1665,15 @@ class ImgVaultServiceWorker {
       // Upload to both APIs in parallel
       await this.updateStatusWithLog(hasImgbb ? '☁️ Uploading to Pixvid and ImgBB...' : '☁️ Uploading to Pixvid...');
       
-      const uploadPromises = [
-        this.pixvidUploader.upload(imageBlob, settings.pixvidApiKey, data.imageUrl, uploadController.signal)
+      const uploadPromises = [];
+
+      if (hasPixvid) {
+        uploadPromises.push(
+          this.pixvidUploader.upload(imageBlob, settings.pixvidApiKey, data.imageUrl, uploadController.signal)
           .then(result => ({ type: 'pixvid', ...result }))
           .catch(error => ({ type: 'pixvid', error: error.message }))
-      ];
+        );
+      }
       
       if (hasImgbb) {
         uploadPromises.push(
@@ -1674,13 +1689,18 @@ class ImgVaultServiceWorker {
       const pixvidResult = uploadResults.find(r => r.type === 'pixvid');
       const imgbbResult = uploadResults.find(r => r.type === 'imgbb');
       
-      if (pixvidResult.error) {
+      if (pixvidResult?.error) {
         throw new Error(`Pixvid upload failed: ${pixvidResult.error}`);
       }
       
       if (imgbbResult && imgbbResult.error) {
+        if (!pixvidResult?.url) {
+          throw new Error(`ImgBB upload failed: ${imgbbResult.error}`);
+        }
         console.warn('ImgBB upload failed:', imgbbResult.error);
         await this.updateStatusWithLog('⚠️ Pixvid upload successful, ImgBB failed. Saving...', 'warning');
+      } else if (isSvgImage && imgbbResult) {
+        await this.updateStatusWithLog('✅ SVG uploaded to ImgBB! Saving...', 'success');
       } else if (imgbbResult) {
         await this.updateStatusWithLog('✅ Both uploads successful! Saving...', 'success');
       }
@@ -1701,8 +1721,8 @@ class ImgVaultServiceWorker {
       
       // Save metadata to Firebase
       const imageMetadata = {
-        pixvidUrl: pixvidResult.url,
-        pixvidDeleteUrl: pixvidResult.deleteUrl,
+        pixvidUrl: pixvidResult?.url || null,
+        pixvidDeleteUrl: pixvidResult?.deleteUrl || null,
         imgbbUrl: imgbbResult && !imgbbResult.error ? imgbbResult.url : null,
         imgbbDeleteUrl: imgbbResult && !imgbbResult.error ? imgbbResult.deleteUrl : null,
         imgbbThumbUrl: imgbbResult && !imgbbResult.error ? imgbbResult.thumbUrl : null,
@@ -1738,7 +1758,7 @@ class ImgVaultServiceWorker {
 
       return {
         id: savedId,
-        pixvidUrl: pixvidResult.url,
+        pixvidUrl: pixvidResult?.url || null,
         imgbbUrl: imgbbResult && !imgbbResult.error ? imgbbResult.url : null,
         ...imageMetadata
       };
