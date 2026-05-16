@@ -1550,18 +1550,137 @@ export default function GalleryPage() {
     setEditValues({});
   };
 
+  const getLocalVideoFileForRetry = async (item) => {
+    const expectedFileName = item?.fileName || '';
+    if (!expectedFileName) {
+      await appendClientUploadLog('Local retry skipped: saved item has no filename.', 'warning');
+      return null;
+    }
+
+    const dirHandle = await getDirectoryHandle();
+    if (!dirHandle) {
+      await appendClientUploadLog('Local retry skipped: no saved download folder handle.', 'warning');
+      return null;
+    }
+
+    try {
+      const currentPermission = typeof dirHandle.queryPermission === 'function'
+        ? await dirHandle.queryPermission({ mode: 'read' })
+        : 'granted';
+
+      if (currentPermission !== 'granted' && typeof dirHandle.requestPermission === 'function') {
+        const requestedPermission = await dirHandle.requestPermission({ mode: 'read' });
+        if (requestedPermission !== 'granted') {
+          await appendClientUploadLog('Local retry skipped: download folder permission was not granted.', 'warning');
+          return null;
+        }
+      }
+
+      const file = await getFileFromDirectoryHandle(dirHandle, expectedFileName, expectedFileName);
+      await appendClientUploadLog(`Local retry source found: ${file.name} (${formatBytes(file.size)}).`, 'success');
+      return file;
+    } catch (error) {
+      const errorName = error?.name || '';
+      if (errorName === 'NotAllowedError' || errorName === 'SecurityError') {
+        await clearDirectoryHandle();
+      }
+      await appendClientUploadLog(`Local retry source unavailable: ${error.message || String(error)}`, 'warning');
+      return null;
+    }
+  };
+
+  const retryVideoHostFromLocalFile = async (host, item, file) => {
+    const hostLabel = host === 'filemoon' ? 'Filemoon' : 'UDrop';
+    const settings = await sendMessage('getVideoHostSettings');
+
+    await chrome.storage.local.set({
+      uploadActive: true,
+      uploadStatus: `Retrying ${hostLabel} from local video file...`,
+    });
+    await appendClientUploadLog(`Retrying ${hostLabel} from local file: ${file.name}`);
+
+    try {
+      let updates = {};
+
+      if (host === 'filemoon') {
+        if (!settings?.filemoonApiKey) {
+          throw new Error('Filemoon API key is not configured.');
+        }
+        const uploader = new FilemoonUploader();
+        const result = await uploader.uploadWithProgress(
+          file,
+          settings.filemoonApiKey,
+          item?.fileName || file.name || 'video.mp4',
+          async ({ loaded, total, percent }) => {
+            const totalLabel = total ? formatBytes(total) : formatBytes(file.size || 0);
+            const loadedLabel = formatBytes(loaded);
+            const message = percent !== null
+              ? `Filemoon retry progress: ${percent}% (${loadedLabel} / ${totalLabel})`
+              : `Filemoon retry progress: ${loadedLabel} sent`;
+            await chrome.storage.local.set({ uploadStatus: message });
+            await appendClientUploadLog(message);
+          }
+        );
+        updates = {
+          filemoonWatchUrl: result.watchUrl || result.url || '',
+          filemoonDirectUrl: result.directUrl || '',
+        };
+      } else {
+        if (!settings?.udropKey1 || !settings?.udropKey2) {
+          throw new Error('UDrop API keys are not configured.');
+        }
+        const uploader = new UDropUploader();
+        const result = await uploader.uploadWithProgress(
+          file,
+          settings.udropKey1,
+          settings.udropKey2,
+          item?.fileName || file.name || 'video.mp4',
+          async ({ loaded, total, percent }) => {
+            const totalLabel = total ? formatBytes(total) : formatBytes(file.size || 0);
+            const loadedLabel = formatBytes(loaded);
+            const message = percent !== null
+              ? `UDrop retry progress: ${percent}% (${loadedLabel} / ${totalLabel})`
+              : `UDrop retry progress: ${loadedLabel} sent`;
+            await chrome.storage.local.set({ uploadStatus: message });
+            await appendClientUploadLog(message);
+          }
+        );
+        updates = {
+          udropWatchUrl: result.watchUrl || result.displayUrl || '',
+          udropDirectUrl: result.directUrl || result.url || '',
+        };
+      }
+
+      await sendMessage('updateImage', {
+        id: item.id,
+        ...updates,
+      });
+      await appendClientUploadLog(`${hostLabel} retry succeeded from local file.`, 'success');
+      return {
+        id: item.id,
+        ...updates,
+      };
+    } finally {
+      await chrome.storage.local.set({ uploadActive: false });
+    }
+  };
+
   const retryVideoHostUpload = async (host) => {
     if (!selectedImage?.id || retryingVideoHost) return;
 
     const hostLabel = host === 'filemoon' ? 'Filemoon' : 'UDrop';
+    const retryItem = modalImage || selectedImage;
     setRetryingVideoHost(host);
     showToast(`Retrying ${hostLabel} upload...`, 'info', 3000);
 
     try {
-      const updates = await sendMessage('retryVideoHostUpload', {
-        imageId: selectedImage.id,
-        host,
-      });
+      const localFile = await getLocalVideoFileForRetry(retryItem);
+      const updates = localFile
+        ? await retryVideoHostFromLocalFile(host, retryItem, localFile)
+        : await sendMessage('retryVideoHostUpload', {
+          imageId: selectedImage.id,
+          host,
+        });
 
       const applyUpdates = (item) =>
         item && item.id === selectedImage.id

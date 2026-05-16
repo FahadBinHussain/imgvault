@@ -2033,7 +2033,7 @@ class ImgVaultServiceWorker {
       uploadActive: true,
       uploadStatus: `Retrying ${hostLabel} upload...`,
     });
-    await this.appendUploadLog(`Retrying ${hostLabel} from existing hosted video URL...`);
+    await this.appendUploadLog(`Retrying ${hostLabel} from hosted fallback URL...`);
 
     try {
       const videoBlob = await this.fetchImage(sourceUrl, undefined, item.sourcePageUrl || sourceUrl);
