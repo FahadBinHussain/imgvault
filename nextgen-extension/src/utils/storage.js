@@ -510,7 +510,11 @@ export class StorageManager {
   }
 
   isVaultedItem(item = {}) {
-    return item.isVaulted === true || String(item.isVaulted || '').toLowerCase() === 'true';
+    return this.isTruthyFlag(item.isVaulted);
+  }
+
+  isTruthyFlag(value) {
+    return value === true || String(value || '').toLowerCase() === 'true';
   }
 
   isSystemItem(item = {}) {
@@ -523,6 +527,15 @@ export class StorageManager {
 
   filterVaultItems(items = []) {
     return items.filter(item => !this.isSystemItem(item) && this.isVaultedItem(item) && !item.deletedAt && !item._isTrash);
+  }
+
+  filterDuplicateCandidates(items = []) {
+    return items.filter(item => (
+      !this.isSystemItem(item) &&
+      !this.isVaultedItem(item) &&
+      !this.isTruthyFlag(item.isVideo) &&
+      !this.isTruthyFlag(item.isLink)
+    ));
   }
 
   async getVaultConfig() {
@@ -673,19 +686,46 @@ export class StorageManager {
     try {
       console.log('🔍 [DUPLICATE CHECK] Fetching ALL image data (including hashes from active AND trash)...');
       const startTime = performance.now();
+      const duplicateMaskFields = [
+        'pixvidUrl',
+        'imgbbUrl',
+        'imgbbThumbUrl',
+        'sourceImageUrl',
+        'sourcePageUrl',
+        'pageTitle',
+        'sha256',
+        'pHash',
+        'aHash',
+        'dHash',
+        'width',
+        'height',
+        'fileType',
+        'isVideo',
+        'isLink',
+        'isVaulted',
+        'vaultMode',
+        'internalAddedTimestamp',
+        'deletedAt'
+      ];
       
       // Fetch active images
-      const activeDocs = await this.fetchAllDocuments('images', { orderBy: 'internalAddedTimestamp desc' });
-      const activeImages = activeDocs.map(doc => this.fromFirestoreDoc(doc));
+      const activeDocs = await this.fetchAllDocuments('images', {
+        orderBy: 'internalAddedTimestamp desc',
+        'mask.fieldPaths': duplicateMaskFields
+      });
+      const activeImages = this.filterDuplicateCandidates(activeDocs.map(doc => this.fromFirestoreDoc(doc)));
 
       console.log(`🔍 [DUPLICATE CHECK] Found ${activeImages.length} active images`);
 
       // Fetch trashed images
       let trashedImages = [];
-      const trashDocs = await this.fetchAllDocuments('trash', { orderBy: 'deletedAt desc' });
-      trashedImages = trashDocs.map(doc => {
+      const trashDocs = await this.fetchAllDocuments('trash', {
+        orderBy: 'deletedAt desc',
+        'mask.fieldPaths': duplicateMaskFields
+      });
+      trashedImages = this.filterDuplicateCandidates(trashDocs.map(doc => {
         const id = doc.name.split('/').pop();
-        const fields = doc.fields;
+        const fields = doc.fields || {};
         
         return {
           id,
@@ -694,15 +734,24 @@ export class StorageManager {
           imgbbThumbUrl: fields.imgbbThumbUrl?.stringValue || '',
           filemoonUrl: fields.filemoonUrl?.stringValue || '',
           sourceImageUrl: fields.sourceImageUrl?.stringValue || '',
+          sourcePageUrl: fields.sourcePageUrl?.stringValue || '',
+          pageTitle: fields.pageTitle?.stringValue || '',
           sha256: fields.sha256?.stringValue || '',
           pHash: fields.pHash?.stringValue || '',
           aHash: fields.aHash?.stringValue || '',
           dHash: fields.dHash?.stringValue || '',
+          width: Number(fields.width?.integerValue ?? fields.width?.doubleValue ?? 0),
+          height: Number(fields.height?.integerValue ?? fields.height?.doubleValue ?? 0),
+          fileType: fields.fileType?.stringValue || '',
+          isVideo: fields.isVideo?.booleanValue || false,
+          isLink: fields.isLink?.booleanValue || false,
+          isVaulted: fields.isVaulted?.booleanValue || false,
+          vaultMode: fields.vaultMode?.stringValue || '',
           internalAddedTimestamp: fields.internalAddedTimestamp?.timestampValue || fields.internalAddedTimestamp?.stringValue || '',
           deletedAt: fields.deletedAt?.timestampValue || fields.deletedAt?.stringValue || '',
           _isTrash: true
         };
-      });
+      }));
 
       console.log(`🔍 [DUPLICATE CHECK] Found ${trashedImages.length} trashed images`);
 
@@ -886,12 +935,13 @@ export class StorageManager {
 
     try {
       const docs = await this.fetchAllDocuments('images', {
-        'mask.fieldPaths': ['isLink', 'linkUrl', 'sourcePageUrl']
+        'mask.fieldPaths': ['isLink', 'linkUrl', 'sourcePageUrl', 'isVaulted', 'vaultMode']
       });
 
       return docs.some((doc) => {
         const fields = doc?.fields || {};
         if (fields?.isLink?.booleanValue !== true) return false;
+        if (fields?.isVaulted?.booleanValue === true || String(fields?.isVaulted?.stringValue || '').toLowerCase() === 'true') return false;
         const linkUrl = fields?.linkUrl?.stringValue || '';
         const sourcePageUrl = fields?.sourcePageUrl?.stringValue || '';
         const canonicalLinkUrl = this.canonicalizeLinkUrl(linkUrl);
@@ -937,6 +987,86 @@ export class StorageManager {
       return parsed.toString();
     } catch (error) {
       return raw;
+    }
+  }
+
+  isComparableHttpUrl(value) {
+    try {
+      const url = new URL(String(value || '').trim());
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch (error) {
+      return false;
+    }
+  }
+
+  findVideoDuplicateInItems(items = [], target = {}) {
+    const targetUrls = [target.sourcePageUrl, target.sourceImageUrl]
+      .filter((url) => this.isComparableHttpUrl(url))
+      .map((url) => this.canonicalizeLinkUrl(url));
+    const targetFileName = String(target.fileName || '').trim();
+    const targetFileSize = Number(target.fileSize || 0);
+
+    for (const item of items) {
+      if (this.isSystemItem(item) || this.isVaultedItem(item)) continue;
+      const isVideo = this.isTruthyFlag(item.isVideo) || String(item.fileType || '').startsWith('video/');
+      if (!isVideo) continue;
+
+      const itemUrls = [item.sourcePageUrl, item.sourceImageUrl]
+        .filter((url) => this.isComparableHttpUrl(url))
+        .map((url) => this.canonicalizeLinkUrl(url));
+      const urlMatch = targetUrls.length > 0 && itemUrls.some((url) => targetUrls.includes(url));
+      const fileMatch =
+        targetFileName &&
+        targetFileSize > 0 &&
+        String(item.fileName || '').trim() === targetFileName &&
+        Number(item.fileSize || 0) === targetFileSize;
+
+      if (urlMatch || fileMatch) {
+        return {
+          ...item,
+          matchType: 'video',
+          matchTypes: ['video'],
+          matchReason: urlMatch ? 'Same video source/page URL' : 'Same video filename and file size',
+        };
+      }
+    }
+
+    return null;
+  }
+
+  async findSavedVideoDuplicate(target = {}) {
+    await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.findSavedVideoDuplicateNeon(target);
+    }
+
+    try {
+      const maskFields = [
+        'isVideo',
+        'fileType',
+        'sourceImageUrl',
+        'sourcePageUrl',
+        'fileName',
+        'fileSize',
+        'pageTitle',
+        'filemoonWatchUrl',
+        'filemoonDirectUrl',
+        'udropWatchUrl',
+        'udropDirectUrl',
+        'isVaulted',
+        'vaultMode',
+        'deletedAt'
+      ];
+      const activeDocs = await this.fetchAllDocuments('images', { 'mask.fieldPaths': maskFields });
+      const trashDocs = await this.fetchAllDocuments('trash', { 'mask.fieldPaths': maskFields });
+      const items = [
+        ...activeDocs.map(doc => this.fromFirestoreDoc(doc)),
+        ...trashDocs.map(doc => ({ ...this.fromFirestoreDoc(doc), _isTrash: true })),
+      ];
+      return this.findVideoDuplicateInItems(items, target);
+    } catch (error) {
+      console.error('Error checking video duplicate:', error);
+      return null;
     }
   }
 
@@ -2056,14 +2186,22 @@ export class StorageManager {
 
   async getAllImagesForDuplicateCheckNeon() {
     const sql = this.ensureNeonReady();
-    const rows = await sql`select * from public.media_items order by internal_added_timestamp desc`;
-    return rows
+    const rows = await sql`
+      select
+        id, is_video, is_link, page_title, source_image_url, source_page_url,
+        sha256, p_hash, a_hash, d_hash, width, height, file_type,
+        pixvid_url, imgbb_url, imgbb_thumb_url, deleted_at,
+        internal_added_timestamp, extra_metadata
+      from public.media_items
+      order by internal_added_timestamp desc
+    `;
+    return this.filterDuplicateCandidates(rows
       .map((r) => {
         const item = this.fromNeonMediaRow(r);
         if (r.deleted_at) item._isTrash = true;
         return item;
       })
-      .filter((item) => !this.isSystemItem(item));
+      .filter((item) => !this.isSystemItem(item)));
   }
 
   async getImageByIdNeon(id) {
@@ -2085,12 +2223,33 @@ export class StorageManager {
     if (!target) return false;
     const canonicalTarget = this.canonicalizeLinkUrl(target);
     const sql = this.ensureNeonReady();
-    const rows = await sql`select link_url, source_page_url, link_url_canonical from public.media_items where is_link = true and deleted_at is null`;
+    const rows = await sql`select link_url, source_page_url, link_url_canonical, extra_metadata from public.media_items where is_link = true and deleted_at is null`;
     return rows.some((row) => {
+      const extra = this.parseJsonSetting(row.extra_metadata, row.extra_metadata || {});
+      if (this.isTruthyFlag(extra?.isVaulted)) return false;
       const a = this.canonicalizeLinkUrl(row.link_url || '');
       const b = this.canonicalizeLinkUrl(row.source_page_url || '');
       return a === canonicalTarget || b === canonicalTarget || row.link_url_canonical === canonicalTarget;
     });
+  }
+
+  async findSavedVideoDuplicateNeon(target = {}) {
+    const sql = this.ensureNeonReady();
+    const rows = await sql`
+      select
+        id, is_video, page_title, source_image_url, source_page_url, file_name,
+        file_size, file_type, filemoon_watch_url, filemoon_direct_url,
+        udrop_watch_url, udrop_direct_url, deleted_at, extra_metadata
+      from public.media_items
+      where is_video = true
+      order by internal_added_timestamp desc
+    `;
+    const items = rows.map((row) => {
+      const item = this.fromNeonMediaRow(row);
+      if (row.deleted_at) item._isTrash = true;
+      return item;
+    });
+    return this.findVideoDuplicateInItems(items, target);
   }
 
   async moveToTrashNeon(id) {

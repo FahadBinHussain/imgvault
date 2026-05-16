@@ -1833,6 +1833,7 @@ class ImgVaultServiceWorker {
       const videoSource = data.fileBlob instanceof Blob ? data.fileBlob : data.imageUrl;
       const videoBlob = await this.fetchImage(videoSource, undefined, data.pageUrl);
       const expectedSize = Number.isFinite(data.fileSize) ? data.fileSize : null;
+      const fileName = this.extractFileName(data);
 
       if (!(videoBlob instanceof Blob) || videoBlob.size <= 0) {
         throw new Error('Video payload is empty. Please reload the file and try again.');
@@ -1845,6 +1846,26 @@ class ImgVaultServiceWorker {
         );
       } else {
         await this.appendUploadLog(`📦 Video payload ready: ${this.formatBytes(videoBlob.size)}.`);
+      }
+
+      if (!data.ignoreDuplicate) {
+        await this.updateStatusWithLog('🔎 Checking for duplicate videos...');
+        const videoDuplicate = await this.storage.findSavedVideoDuplicate({
+          sourcePageUrl: data.pageUrl,
+          sourceImageUrl: data.originalSourceUrl || data.imageUrl,
+          fileName,
+          fileSize: videoBlob.size,
+        });
+
+        if (videoDuplicate) {
+          const error = new Error(`Duplicate video detected: ${videoDuplicate.matchReason || 'same saved video'}`);
+          error.duplicate = videoDuplicate;
+          error.allDuplicates = [videoDuplicate];
+          this.updateStatus('');
+          throw error;
+        }
+      } else {
+        await this.updateStatusWithLog('⚠️ Skipping duplicate video check...', 'warning');
       }
       
       // Build status message based on available services
@@ -1925,9 +1946,6 @@ class ImgVaultServiceWorker {
       }
       
       await this.updateStatusWithLog('💾 Saving to Firebase...');
-      
-      // Extract filename if not provided
-      const fileName = this.extractFileName(data);
       
       // Clean sourceImageUrl
       let cleanSourceImageUrl = data.originalSourceUrl || data.imageUrl;
@@ -2685,62 +2703,42 @@ class ImgVaultServiceWorker {
    */
   buildDuplicateError(duplicateCheck) {
     const totalMatches = duplicateCheck.allMatches?.length || 0;
-    let errorMsg = `Duplicate image detected! (${totalMatches} match${totalMatches !== 1 ? 'es' : ''} found)\n\n`;
+    let errorMsg = `Duplicate image detected! (${totalMatches} unique item${totalMatches !== 1 ? 's' : ''} found)\n\n`;
     let duplicateData = null;
     
     if (totalMatches > 0) {
-      // Group matches by type
-      const contextMatches = duplicateCheck.allMatches.filter(m => m.matchType === 'context');
-      const exactMatches = duplicateCheck.allMatches.filter(m => m.matchType === 'exact');
-      const visualMatches = duplicateCheck.allMatches.filter(m => m.matchType === 'visual');
-      
-      // Show context matches
-      if (contextMatches.length > 0) {
-        errorMsg += `🔗 Context Matches (${contextMatches.length}):\n`;
-        contextMatches.slice(0, 3).forEach((match, i) => {
-          errorMsg += `  ${i + 1}. Same source URL + page URL\n`;
-        });
-        if (contextMatches.length > 3) {
-          errorMsg += `  ... and ${contextMatches.length - 3} more\n`;
+      errorMsg += 'Matches:\n';
+      duplicateCheck.allMatches.slice(0, 5).forEach((match, i) => {
+        const matchTypes = match.matchTypes || [match.matchType || 'unknown'];
+        const labels = [];
+        if (matchTypes.includes('exact')) labels.push('exact file');
+        if (matchTypes.includes('context')) labels.push('same source');
+        if (matchTypes.includes('visual')) {
+          const strength = match.visualStrength || 'likely';
+          labels.push(`${strength} visual`);
         }
-        errorMsg += '\n';
-      }
-      
-      // Show exact matches
-      if (exactMatches.length > 0) {
-        errorMsg += `🔐 Exact Matches (${exactMatches.length}):\n`;
-        exactMatches.slice(0, 3).forEach((match, i) => {
-          errorMsg += `  ${i + 1}. Identical file (SHA-256)\n`;
-        });
-        if (exactMatches.length > 3) {
-          errorMsg += `  ... and ${exactMatches.length - 3} more\n`;
-        }
-        errorMsg += '\n';
-      }
-      
-      // Show visual matches
-      if (visualMatches.length > 0) {
-        errorMsg += `👁️ Visual Matches (${visualMatches.length}):\n`;
-        visualMatches.slice(0, 3).forEach((match, i) => {
+
+        const location = match._isTrash ? 'in trash' : 'in gallery';
+        const title = match.pageTitle ? ` - ${match.pageTitle}` : '';
+        errorMsg += `  ${i + 1}. ${labels.join(', ')} (${location})${title}\n`;
+
+        if (match.matchTypes?.includes('visual')) {
           const similarity = match.similarity || '0';
           const matchCount = match.matchCount || 0;
           const hashResults = match.hashResults || {};
-          
           const matchedHashes = [];
           if (hashResults.pHash?.match) matchedHashes.push('pHash');
           if (hashResults.aHash?.match) matchedHashes.push('aHash');
           if (hashResults.dHash?.match) matchedHashes.push('dHash');
-          
-          const matchedHashesStr = matchedHashes.length > 0 ? matchedHashes.join(', ') : 'unknown';
-          errorMsg += `  ${i + 1}. ${similarity}% similar (${matchCount}/3 hashes: ${matchedHashesStr})\n`;
-        });
-        if (visualMatches.length > 3) {
-          errorMsg += `  ... and ${visualMatches.length - 3} more\n`;
+          errorMsg += `     Visual: ${similarity}% similar (${matchCount}/3 hashes: ${matchedHashes.join(', ') || 'unknown'})\n`;
         }
+      });
+
+      if (duplicateCheck.allMatches.length > 5) {
+        errorMsg += `  ... and ${duplicateCheck.allMatches.length - 5} more\n`;
       }
       
-      // Use the first match for duplicate data (maintain backward compatibility)
-      duplicateData = duplicateCheck.contextMatch || duplicateCheck.exactMatch || duplicateCheck.visualMatch;
+      duplicateData = duplicateCheck.exactMatch || duplicateCheck.contextMatch || duplicateCheck.visualMatch;
     } else {
       // Fallback to old behavior if allMatches is not available
       if (duplicateCheck.contextMatch) {

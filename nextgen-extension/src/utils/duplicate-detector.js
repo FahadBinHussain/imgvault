@@ -5,8 +5,8 @@
  * 
  * Detection Layers:
  * 1. SHA-256 hash (exact duplicates)
- * 2. Three perceptual hashes (visually similar):
- *    - pHash: DCT-based, robust to compression & minor edits (1024-bit, threshold: 100)
+ * 2. Three visual hashes (visually similar):
+ *    - pHash: legacy 32x32 average-threshold hash, robust-ish to compression (1024-bit, threshold: 100)
  *    - aHash: Average-based, fast & simple (64-bit, threshold: 15)
  *    - dHash: Gradient-based, detects resizing & cropping (64-bit, threshold: 20)
  * 3. Source URL + Page URL (context-based)
@@ -44,12 +44,13 @@ import exifr from 'exifr';
  */
 export class DuplicateDetector {
   constructor() {
-    /** @type {number} Hamming distance threshold for pHash (1024-bit) */
+    /** @type {number} Hamming distance threshold for legacy pHash (1024-bit) */
     this.pHashThreshold = 100; // ~10% tolerance
     /** @type {number} Hamming distance threshold for aHash (64-bit) */
     this.aHashThreshold = 15;  // ~23% tolerance
     /** @type {number} Hamming distance threshold for dHash (64-bit) */
     this.dHashThreshold = 20;  // ~31% tolerance (more lenient)
+    this.aspectRatioTolerance = 0.25;
   }
 
   /**
@@ -140,7 +141,8 @@ export class DuplicateDetector {
   }
 
   /**
-   * Generate perceptual hash (pHash) - DCT-based
+   * Generate legacy pHash - 32x32 average-threshold hash.
+   * This keeps the existing database field name, but it is not a true DCT pHash.
    * @param {Blob} blob - Image blob
    * @returns {Promise<string>} 1024-bit binary hash
    */
@@ -260,6 +262,79 @@ export class DuplicateDetector {
     return distance;
   }
 
+  isRealHttpUrl(value) {
+    const raw = String(value || '').trim();
+    if (!raw || raw.startsWith('data:') || raw.startsWith('blob:')) return false;
+
+    try {
+      const url = new URL(raw);
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch (error) {
+      return false;
+    }
+  }
+
+  getMatchKey(item = {}) {
+    return (
+      item.id ||
+      item.firestoreDocumentId ||
+      item.sha256 ||
+      `${item.sourceImageUrl || ''}|${item.sourcePageUrl || ''}|${item.imgbbUrl || ''}|${item.pixvidUrl || ''}`
+    );
+  }
+
+  getPrimaryMatchType(matchTypes = []) {
+    if (matchTypes.includes('exact')) return 'exact';
+    if (matchTypes.includes('context')) return 'context';
+    if (matchTypes.includes('visual')) return 'visual';
+    return matchTypes[0] || 'unknown';
+  }
+
+  getAspectRatio(meta = {}) {
+    const width = Number(meta.width || 0);
+    const height = Number(meta.height || 0);
+    if (!width || !height) return null;
+    return width / height;
+  }
+
+  hasCompatibleAspectRatio(newMeta = {}, existingImg = {}) {
+    const newRatio = this.getAspectRatio(newMeta);
+    const existingRatio = this.getAspectRatio(existingImg);
+    if (!newRatio || !existingRatio) return true;
+    const diff = Math.abs(newRatio - existingRatio) / Math.max(newRatio, existingRatio);
+    return diff <= this.aspectRatioTolerance;
+  }
+
+  classifyVisualMatch(newMeta, existingImg, hashResults) {
+    const matchCount = hashResults.matchCount || 0;
+    const pHashMatched = Boolean(hashResults.details?.pHash?.match);
+    const aspectCompatible = this.hasCompatibleAspectRatio(newMeta, existingImg);
+
+    if (!aspectCompatible && matchCount < 3) {
+      return { blocks: false, strength: 'possible', reason: 'Single/partial visual hash match ignored because aspect ratios differ too much' };
+    }
+
+    if (matchCount >= 3) {
+      return { blocks: true, strength: 'strong', reason: 'Strong visual match (3/3 hashes)' };
+    }
+
+    if (matchCount >= 2) {
+      return {
+        blocks: true,
+        strength: pHashMatched ? 'likely' : 'review',
+        reason: pHashMatched
+          ? 'Likely visual match (pHash + another hash)'
+          : 'Likely visual match (2/3 hashes, review recommended)'
+      };
+    }
+
+    if (matchCount === 1) {
+      return { blocks: false, strength: 'possible', reason: 'Possible visual similarity (1/3 hashes)' };
+    }
+
+    return { blocks: false, strength: 'none', reason: '' };
+  }
+
   /**
    * Get image dimensions from blob
    * @param {Blob} blob - Image blob
@@ -352,8 +427,54 @@ export class DuplicateDetector {
       exactMatch: null,
       visualMatch: null,
       contextMatch: null,
-      allMatches: [],  // New: Store all matches
+      allMatches: [],
+      possibleMatches: [],
       fastFilterMatches: []
+    };
+    const blockingMatchesByKey = new Map();
+    const possibleMatchesByKey = new Map();
+
+    const addMatch = (img, type, reason, extras = {}, blocks = true) => {
+      const key = this.getMatchKey(img);
+      if (!blocks && blockingMatchesByKey.has(key)) {
+        return blockingMatchesByKey.get(key);
+      }
+
+      const targetMap = blocks ? blockingMatchesByKey : possibleMatchesByKey;
+      const targetList = blocks ? results.allMatches : results.possibleMatches;
+      let match = targetMap.get(key);
+
+      if (!match) {
+        match = {
+          ...img,
+          matchTypes: [],
+          matchReasons: [],
+          matchType: type,
+          matchReason: reason
+        };
+        targetMap.set(key, match);
+        targetList.push(match);
+      }
+
+      if (!match.matchTypes.includes(type)) {
+        match.matchTypes.push(type);
+      }
+      if (!match.matchReasons.includes(reason)) {
+        match.matchReasons.push(reason);
+      }
+
+      Object.assign(match, extras);
+      match.matchType = this.getPrimaryMatchType(match.matchTypes);
+      match.matchReason = match.matchReasons.join(' + ');
+
+      if (blocks) {
+        results.isDuplicate = true;
+        if (type === 'context' && !results.contextMatch) results.contextMatch = match;
+        if (type === 'exact' && !results.exactMatch) results.exactMatch = match;
+        if (type === 'visual' && !results.visualMatch) results.visualMatch = match;
+      }
+
+      return match;
     };
 
     const totalImages = existingImages.length;
@@ -366,7 +487,7 @@ export class DuplicateDetector {
       sha256: newMetadata.sha256.substring(0, 16) + '...',
       width: newMetadata.width,
       height: newMetadata.height,
-      size: newMetadata.size
+      fileSize: newMetadata.fileSize
     });
     console.log(`Total existing images: ${totalImages}`);
     console.log('==========================================');
@@ -378,29 +499,36 @@ export class DuplicateDetector {
     
     const normalizedSourceUrl = URLNormalizer.normalize(newMetadata.sourceUrl);
     const normalizedPageUrl = URLNormalizer.normalize(newMetadata.pageUrl);
+    const hasComparableContext =
+      this.isRealHttpUrl(normalizedSourceUrl) &&
+      this.isRealHttpUrl(normalizedPageUrl);
     
-    for (let i = 0; i < existingImages.length; i++) {
-      const img = existingImages[i];
-      
-      // Report progress every 10 images or at key milestones
-      if (i % 10 === 0 || i === existingImages.length - 1) {
-        onProgress?.(`Phase 1: Context check (${i + 1}/${totalImages})...`);
+    if (hasComparableContext) {
+      for (let i = 0; i < existingImages.length; i++) {
+        const img = existingImages[i];
+
+        if (i % 10 === 0 || i === existingImages.length - 1) {
+          onProgress?.(`Phase 1: Context check (${i + 1}/${totalImages})...`);
+        }
+
+        const existingSourceUrl = URLNormalizer.normalize(img.sourceImageUrl);
+        const existingPageUrl = URLNormalizer.normalize(img.sourcePageUrl);
+
+        if (
+          this.isRealHttpUrl(existingSourceUrl) &&
+          this.isRealHttpUrl(existingPageUrl) &&
+          existingSourceUrl === normalizedSourceUrl &&
+          existingPageUrl === normalizedPageUrl
+        ) {
+          console.log('🚨 CONTEXT MATCH FOUND!');
+          addMatch(img, 'context', 'Same source URL + page URL');
+        }
       }
-      
-      const existingSourceUrl = URLNormalizer.normalize(img.sourceImageUrl);
-      const existingPageUrl = URLNormalizer.normalize(img.sourcePageUrl);
-      
-      if (existingSourceUrl === normalizedSourceUrl && 
-          existingPageUrl === normalizedPageUrl) {
-        console.log('🚨 CONTEXT MATCH FOUND!');
-        results.isDuplicate = true;
-        const match = { ...img, matchType: 'context', matchReason: 'Same source URL + page URL' };
-        results.allMatches.push(match);
-        if (!results.contextMatch) results.contextMatch = match;
-      }
+    } else {
+      console.log('Skipping context check because source/page URL is not a comparable HTTP URL.');
     }
     
-    console.log(`Phase 1 Result: ${results.allMatches.length} context match(es) found\n`);
+    console.log(`Phase 1 Result: ${results.allMatches.filter(m => m.matchTypes.includes('context')).length} context match(es) found\n`);
 
     // Phase 2: SHA-256 exact match
     console.log('🔐 PHASE 2: SHA-256 HASH');
@@ -415,16 +543,13 @@ export class DuplicateDetector {
         onProgress?.(`Phase 2: Exact match (${i + 1}/${totalImages})...`);
       }
       
-      if (img.sha256 === newMetadata.sha256) {
+      if (img.sha256 && newMetadata.sha256 && img.sha256 === newMetadata.sha256) {
         console.log('🚨 EXACT MATCH FOUND!');
-        results.isDuplicate = true;
-        const match = { ...img, matchType: 'exact', matchReason: 'Identical file (SHA-256)' };
-        results.allMatches.push(match);
-        if (!results.exactMatch) results.exactMatch = match;
+        addMatch(img, 'exact', 'Identical file (SHA-256)');
       }
     }
     
-    console.log(`Phase 2 Result: ${results.allMatches.filter(m => m.matchType === 'exact').length} exact match(es) found\n`);
+    console.log(`Phase 2 Result: ${results.allMatches.filter(m => m.matchTypes.includes('exact')).length} exact match(es) found\n`);
 
     // Phase 3: Perceptual hash for visual similarity
     console.log('👁️ PHASE 3: PERCEPTUAL HASH');
@@ -446,38 +571,38 @@ export class DuplicateDetector {
       }
       
       const hashResults = this.compareHashes(newMetadata, img);
-      const matchCount = hashResults.matchCount;
-      
-      if (matchCount >= 1) {
+      const decision = this.classifyVisualMatch(newMetadata, img, hashResults);
+
+      if (decision.strength !== 'none') {
+        const matchCount = hashResults.matchCount;
         const avgSimilarity = hashResults.avgSimilarity.toFixed(1);
-        console.log(`🚨 VISUAL MATCH FOUND (${avgSimilarity}% similar)`);
-        
-        results.isDuplicate = true;
-        const match = { 
-          ...img, 
-          matchType: 'visual',
-          matchReason: `Visually similar (${avgSimilarity}% match)`,
+        const blocks = Boolean(decision.blocks);
+
+        console.log(`${blocks ? '🚨' : 'ℹ️'} ${decision.strength.toUpperCase()} VISUAL MATCH (${avgSimilarity}% similar)`);
+
+        addMatch(img, 'visual', decision.reason, {
           hashResults: hashResults.details,
           matchCount,
-          similarity: avgSimilarity
-        };
-        results.allMatches.push(match);
-        if (!results.visualMatch) results.visualMatch = match;
+          similarity: avgSimilarity,
+          visualStrength: decision.strength,
+          aspectRatioCompatible: this.hasCompatibleAspectRatio(newMetadata, img),
+        }, blocks);
       }
     }
 
-    console.log(`Phase 3 Result: ${results.allMatches.filter(m => m.matchType === 'visual').length} visual match(es) found`);
+    console.log(`Phase 3 Result: ${results.allMatches.filter(m => m.matchTypes.includes('visual')).length} blocking visual match(es) found`);
+    console.log(`Phase 3 Possible Matches: ${results.possibleMatches.length}`);
     console.log('==========================================');
-    console.log(`✅ SCAN COMPLETE: ${results.allMatches.length} total match(es) found`);
+    console.log(`✅ SCAN COMPLETE: ${results.allMatches.length} blocking duplicate item(s), ${results.possibleMatches.length} possible visual item(s)`);
     
     if (results.isDuplicate) {
       const summary = {
-        context: results.allMatches.filter(m => m.matchType === 'context').length,
-        exact: results.allMatches.filter(m => m.matchType === 'exact').length,
-        visual: results.allMatches.filter(m => m.matchType === 'visual').length
+        context: results.allMatches.filter(m => m.matchTypes.includes('context')).length,
+        exact: results.allMatches.filter(m => m.matchTypes.includes('exact')).length,
+        visual: results.allMatches.filter(m => m.matchTypes.includes('visual')).length
       };
       console.log('Match breakdown:', summary);
-      onProgress?.(`✗ ${results.allMatches.length} duplicate(s) found (${summary.context} context, ${summary.exact} exact, ${summary.visual} visual)`);
+      onProgress?.(`✗ ${results.allMatches.length} duplicate item(s) found (${summary.context} context, ${summary.exact} exact, ${summary.visual} visual)`);
     } else {
       console.log('✅ NO DUPLICATES DETECTED\n');
       onProgress?.('✓ No duplicates found');
@@ -504,7 +629,7 @@ export class DuplicateDetector {
       const similarity = ((1024 - distance) / 1024 * 100);
       const match = distance <= this.pHashThreshold;
       details.pHash = { distance, match, similarity };
-      similarities.push(similarity);
+      if (Number.isFinite(similarity)) similarities.push(similarity);
       if (match) matchCount++;
     }
 
@@ -514,7 +639,7 @@ export class DuplicateDetector {
       const similarity = ((64 - distance) / 64 * 100);
       const match = distance <= this.aHashThreshold;
       details.aHash = { distance, match, similarity };
-      similarities.push(similarity);
+      if (Number.isFinite(similarity)) similarities.push(similarity);
       if (match) matchCount++;
     }
 
@@ -524,7 +649,7 @@ export class DuplicateDetector {
       const similarity = ((64 - distance) / 64 * 100);
       const match = distance <= this.dHashThreshold;
       details.dHash = { distance, match, similarity };
-      similarities.push(similarity);
+      if (Number.isFinite(similarity)) similarities.push(similarity);
       if (match) matchCount++;
     }
 

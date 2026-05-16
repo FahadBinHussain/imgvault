@@ -635,9 +635,20 @@ export default function PopupPage() {
               <div className="flex items-start gap-3">
                 <div className="flex-shrink-0 text-warning text-2xl">⚠️</div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-warning font-semibold text-base mb-2">Duplicate Image Found!</h4>
+                  {(() => {
+                    const matchTypes = duplicateData.matchTypes || [duplicateData.matchType || 'unknown'];
+                    const labels = [];
+                    if (matchTypes.includes('exact')) labels.push('exact file');
+                    if (matchTypes.includes('context')) labels.push('same source');
+                    if (matchTypes.includes('visual')) labels.push(`${duplicateData.visualStrength || 'likely'} visual`);
+                    return (
+                      <h4 className="text-warning font-semibold text-base mb-2">
+                        Duplicate Image Found{labels.length ? `: ${labels.join(', ')}` : ''}!
+                      </h4>
+                    );
+                  })()}
                   <p className="text-base-content/80 text-sm mb-3">
-                    This image already exists in your vault. Do you want to upload it anyway?
+                    This image already exists in your {duplicateData._isTrash ? 'trash' : 'gallery'}. Do you want to upload it anyway?
                   </p>
                   
                   {/* Show duplicate image */}

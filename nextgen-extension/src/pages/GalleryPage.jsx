@@ -1375,8 +1375,8 @@ export default function GalleryPage() {
       
       const errorMessage = err?.message || String(err) || 'Upload failed';
       
-      // Check if error has duplicate data (only for images)
-      if (err?.duplicate && !uploadImageData.isVideo) {
+      // Check if error has duplicate data
+      if (err?.duplicate) {
         console.log('Duplicate data found:', err.duplicate);
         console.log('All duplicates found:', err.allDuplicates);
         // Set both single duplicate and all duplicates
@@ -3489,16 +3489,20 @@ export default function GalleryPage() {
                           </h4>
                           <p className="text-base-content/80 text-sm mb-4">
                             {duplicateData.all && duplicateData.all.length > 1 
-                              ? `This image matches ${duplicateData.all.length} existing images in your vault.`
-                              : 'This image already exists in your vault.'}
+                              ? `This image matches ${duplicateData.all.length} existing gallery/trash item${duplicateData.all.length !== 1 ? 's' : ''}.`
+                              : 'This image already exists in your gallery or trash.'}
                           </p>
                           
                           {/* Show all duplicate images */}
                           <div className="space-y-3">
                             {(duplicateData.all || [duplicateData.primary || duplicateData]).map((dup, index) => {
                               const matchType = dup.matchType || 'unknown';
+                              const matchTypes = dup.matchTypes || [matchType];
                               const matchReason = dup.matchReason || 'Unknown match';
                               const similarity = dup.similarity || null;
+                              const visualLabel = dup.visualStrength ? `${dup.visualStrength} visual` : 'Visual';
+                              const duplicateVideoUrl = getPreferredVideoWatchUrl(dup);
+                              const duplicateImageUrl = dup.imgbbThumbUrl || dup.imgbbUrl || dup.pixvidUrl || dup.sourceImageUrl || '';
                               
                               return (
                                 <div key={index} className="rounded-[var(--radius-box)] overflow-hidden border border-warning/30 bg-base-200">
@@ -3506,17 +3510,36 @@ export default function GalleryPage() {
                                     {/* Match badge */}
                                     <div className="absolute top-2 left-2 px-2 py-1 rounded-[var(--radius-box)] bg-base-100/90 border border-warning/40">
                                       <span className="text-xs font-medium text-warning">
-                                        {matchType === 'context' && '🔗 Context'}
-                                        {matchType === 'exact' && '🔐 Exact'}
-                                        {matchType === 'visual' && '👁️ Visual'}
-                                        {matchType === 'unknown' && '❓ Unknown'}
+                                        {matchTypes.includes('exact') && '🔐 Exact'}
+                                        {!matchTypes.includes('exact') && matchTypes.includes('context') && '🔗 Same source'}
+                                        {!matchTypes.includes('exact') && !matchTypes.includes('context') && matchTypes.includes('visual') && `👁️ ${visualLabel}`}
+                                        {matchTypes.includes('unknown') && '❓ Unknown'}
                                       </span>
                                     </div>
-                                    <img
-                                      src={dup.imgbbUrl || dup.pixvidUrl}
-                                      alt={`Duplicate ${index + 1}`}
-                                      className="max-w-full max-h-24 object-contain rounded"
-                                    />
+                                    {dup._isTrash && (
+                                      <div className="absolute top-2 right-2 px-2 py-1 rounded-[var(--radius-box)] bg-error/15 border border-error/30 text-error text-xs font-medium">
+                                        In Trash
+                                      </div>
+                                    )}
+                                    {duplicateVideoUrl ? (
+                                      <iframe
+                                        src={duplicateVideoUrl}
+                                        title={`Duplicate video ${index + 1}`}
+                                        className="h-24 w-full max-w-44 rounded"
+                                        frameBorder="0"
+                                        scrolling="no"
+                                      />
+                                    ) : duplicateImageUrl ? (
+                                      <img
+                                        src={duplicateImageUrl}
+                                        alt={`Duplicate ${index + 1}`}
+                                        className="max-w-full max-h-24 object-contain rounded"
+                                      />
+                                    ) : (
+                                      <div className="flex h-24 w-full items-center justify-center rounded bg-base-200 text-xs text-base-content/60">
+                                        No preview available
+                                      </div>
+                                    )}
                                   </div>
                                   <div className="p-3 bg-base-300/50">
                                     <p className="text-base-content text-sm font-medium truncate">
@@ -3532,6 +3555,11 @@ export default function GalleryPage() {
                                         {matchReason}
                                         {similarity && ` - ${similarity}% similar`}
                                       </p>
+                                      {matchTypes.length > 1 && (
+                                        <p className="mt-1 text-xs text-base-content/60">
+                                          Matched by: {matchTypes.join(', ')}
+                                        </p>
+                                      )}
                                       <button
                                         onClick={() => openDuplicateMatchInNewTab(dup)}
                                         className="mt-2 px-2.5 py-1 rounded-[var(--radius-box)] bg-info/15 hover:bg-info/25 border border-info/30 text-info text-xs font-medium transition-colors"
