@@ -225,6 +225,65 @@ export function useImages() {
 }
 
 /**
+ * Hook for managing hidden vault items
+ * @returns {Object} Vault state and actions
+ */
+export function useVault() {
+  const [vaultImages, setVaultImages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const sendMessage = useChromeMessage();
+
+  const loadVaultImages = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const images = await sendMessage('getVaultImages');
+      setVaultImages(images || []);
+    } catch (err) {
+      console.error('Error loading vault images:', err);
+      setError(err);
+      setVaultImages([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [sendMessage]);
+
+  const moveToVault = useCallback(async (id) => {
+    try {
+      await sendMessage('moveToVault', { id });
+    } catch (err) {
+      setError(err);
+      throw err;
+    }
+  }, [sendMessage]);
+
+  const restoreFromVault = useCallback(async (id) => {
+    try {
+      await sendMessage('restoreFromVault', { id });
+      setVaultImages(prev => prev.filter(img => img.id !== id));
+    } catch (err) {
+      setError(err);
+      throw err;
+    }
+  }, [sendMessage]);
+
+  useEffect(() => {
+    loadVaultImages();
+  }, [loadVaultImages]);
+
+  return {
+    vaultImages,
+    loading,
+    error,
+    reload: loadVaultImages,
+    moveToVault,
+    restoreFromVault,
+  };
+}
+
+/**
  * Hook for managing trashed images
  * @returns {Object} Trashed images state and functions
  */

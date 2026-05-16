@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Upload, Search, Trash2, Settings, FolderOpen, Image, Cable, FileText, Menu } from 'lucide-react';
+import { RefreshCw, Upload, Search, Trash2, Settings, FolderOpen, Image, Cable, FileText, LockKeyhole } from 'lucide-react';
 import ThemeToggleButton from './ThemeToggleButton';
 
 const CSS = `
@@ -76,7 +76,9 @@ export default function GalleryNavbar({
   isSettingsPage = false,
   isHostPage = false,
   isLogsPage = false,
+  isVaultPage = false,
   onEmptyTrash,
+  onMoveSelectedToVault,
 }) {
   const navRef = useRef(null);
   const visibleCount = Number.isFinite(displayCount)
@@ -101,12 +103,14 @@ export default function GalleryNavbar({
     : isTrashPage ? 'Trash'
     : isHostPage ? 'Native Host'
     : isLogsPage ? 'Logs'
+    : isVaultPage ? 'Secret Vault'
     : 'ImgVault';
   const pageSubtitle = collectionId && currentCollection
     ? 'Collection'
     : isSettingsPage ? 'Configuration'
     : isHostPage ? 'Native host controls'
     : isLogsPage ? 'Upload & host history'
+    : isVaultPage ? `${visibleCount} hidden item${visibleCount !== 1 ? 's' : ''}`
     : isTrashPage ? `${visibleCount} item${visibleCount !== 1 ? 's' : ''}`
     : breakdownParts.join(' · ');
 
@@ -120,8 +124,8 @@ export default function GalleryNavbar({
   }, [onHeightChange, selectionMode]);
 
   const showSearch = !isSettingsPage && !isHostPage && !isLogsPage;
-  const showActions = !isSettingsPage && !isHostPage && !isLogsPage;
-  const isSubPage = isTrashPage || isSettingsPage || isHostPage || isLogsPage;
+  const showActions = !isSettingsPage && !isHostPage && !isLogsPage && !isVaultPage;
+  const isSubPage = isTrashPage || isSettingsPage || isHostPage || isLogsPage || isVaultPage;
 
   return (
     <div ref={navRef} className="iv-nav">
@@ -205,6 +209,10 @@ export default function GalleryNavbar({
                 <FileText style={{ width: 14, height: 14 }} />
               </button>
 
+              <button onClick={() => navigate('/vault')} className={`iv-icon-btn ${isVaultPage ? 'iv-icon-btn-on' : ''}`} title="Secret Vault">
+                <LockKeyhole style={{ width: 14, height: 14 }} />
+              </button>
+
               <button onClick={() => navigate('/settings')} className={`iv-icon-btn ${isSettingsPage ? 'iv-icon-btn-on' : ''}`} title="Settings">
                 <Settings style={{ width: 14, height: 14 }} />
               </button>
@@ -271,9 +279,16 @@ export default function GalleryNavbar({
                 )}
               </div>
               {selectedImages.size > 0 && (
-                <button onClick={() => setShowBulkDeleteConfirm(true)} disabled={isDeleting} className="iv-sel-del">
-                  Delete
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {typeof onMoveSelectedToVault === 'function' && (
+                    <button onClick={onMoveSelectedToVault} disabled={isDeleting} className="iv-select-btn iv-select-btn-on">
+                      Vault
+                    </button>
+                  )}
+                  <button onClick={() => setShowBulkDeleteConfirm(true)} disabled={isDeleting} className="iv-sel-del">
+                    Delete
+                  </button>
+                </div>
               )}
             </motion.div>
           )}

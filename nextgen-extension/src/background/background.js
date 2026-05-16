@@ -1013,6 +1013,12 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'getVaultImages':
+        this.storage.getVaultImages()
+          .then(images => sendResponse({ success: true, data: images }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'getImageById':
         this.storage.getImageById(request.data.id)
           .then(image => sendResponse({ success: true, data: image }))
@@ -1027,6 +1033,18 @@ class ImgVaultServiceWorker {
 
       case 'deleteImage':
         this.storage.moveToTrash(request.data?.id || request.id)
+          .then(() => sendResponse({ success: true, data: null }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'moveToVault':
+        this.storage.moveToVault(request.data?.id || request.id)
+          .then(() => sendResponse({ success: true, data: null }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'restoreFromVault':
+        this.storage.restoreFromVault(request.data?.id || request.id)
           .then(() => sendResponse({ success: true, data: null }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;

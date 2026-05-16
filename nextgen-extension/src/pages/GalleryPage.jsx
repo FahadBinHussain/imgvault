@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Trash2, Download, X, FolderOpen,
   FileText, Calendar, Cloud, Link2, Globe, AlignLeft, Tag,
-  File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint
+  File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint, LockKeyhole
 } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
 import { useImages, useImageUpload, useTrash, useChromeStorage, useCollections, useChromeMessage } from '../hooks/useChromeExtension';
@@ -42,6 +42,7 @@ export default function GalleryPage() {
   const [retryingVideoHost, setRetryingVideoHost] = useState(null);
   const [toast, setToast] = useState(null); // Toast notification state
   const [isDeleting, setIsDeleting] = useState(false); // Track deletion progress
+  const [isVaulting, setIsVaulting] = useState(false);
   const [loadedImages, setLoadedImages] = useState(new Set()); // Track loaded images for fade-in
   const [isModalAnimating, setIsModalAnimating] = useState(false); // Track modal animation state
   const [navbarHeight, setNavbarHeight] = useState(0);
@@ -268,6 +269,27 @@ export default function GalleryPage() {
     }
     if (typeof value === 'number') return Number.isFinite(value) && value > 0;
     return Boolean(value);
+  };
+
+  const handleBulkMoveToVault = async () => {
+    if (selectedImages.size === 0 || isVaulting) return;
+
+    setIsVaulting(true);
+    try {
+      showToast(`Moving ${selectedImages.size} item${selectedImages.size !== 1 ? 's' : ''} to Secret Vault...`, 'info', 0);
+      await Promise.all(
+        Array.from(selectedImages).map(id => sendMessage('moveToVault', { id }))
+      );
+      setSelectedImages(new Set());
+      setSelectionMode(false);
+      await Promise.all([reload(), reloadCollections()]);
+      showToast(`Moved ${selectedImages.size} item${selectedImages.size !== 1 ? 's' : ''} to Secret Vault.`, 'success', 3000);
+    } catch (error) {
+      console.error('Bulk vault failed:', error);
+      showToast(`Failed to move items to vault: ${error.message || String(error)}`, 'error', 5000);
+    } finally {
+      setIsVaulting(false);
+    }
   };
 
   const isHttpUrl = (value) =>
@@ -827,6 +849,26 @@ export default function GalleryPage() {
       showToast(`❌ ${error.message || 'Failed to move to trash'}`, 'error', 4000);
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleMoveSelectedToVault = async () => {
+    if (!selectedImage?.id || isVaulting) return;
+
+    setIsVaulting(true);
+    try {
+      showToast('Moving to Secret Vault...', 'info', 0);
+      await sendMessage('moveToVault', { id: selectedImage.id });
+      setSelectedImage(null);
+      setFullImageDetails(null);
+      setActiveTab('noobs');
+      await Promise.all([reload(), reloadCollections()]);
+      showToast('Moved to Secret Vault.', 'success', 3000);
+    } catch (error) {
+      console.error('Move to vault failed:', error);
+      showToast(`Failed to move to vault: ${error.message || String(error)}`, 'error', 5000);
+    } finally {
+      setIsVaulting(false);
     }
   };
 
@@ -2236,8 +2278,9 @@ export default function GalleryPage() {
         displayCount={filteredImages.length}
         deselectAll={deselectAll}
         setShowBulkDeleteConfirm={setShowBulkDeleteConfirm}
-        isDeleting={isDeleting}
+        isDeleting={isDeleting || isVaulting}
         onHeightChange={setNavbarHeight}
+        onMoveSelectedToVault={handleBulkMoveToVault}
       />
 
       <div style={{ height: navbarHeight ? `${navbarHeight + 8}px` : '180px' }} />
@@ -2654,14 +2697,25 @@ export default function GalleryPage() {
                   </span>
                 </button>
                 </div>}
-                <button
-                  onClick={() => setShowDeleteConfirm(true)}
-                  className="g-action g-action-err"
-                  style={{ height: 32, padding: '0 14px' }}
-                >
-                  <Trash2 style={{ width: 13, height: 13 }} />
-                  <span>Delete</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleMoveSelectedToVault}
+                    disabled={isVaulting}
+                    className="g-action g-action-warn"
+                    style={{ height: 32, padding: '0 14px' }}
+                  >
+                    <LockKeyhole style={{ width: 13, height: 13 }} />
+                    <span>{isVaulting ? 'Moving...' : 'Vault'}</span>
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="g-action g-action-err"
+                    style={{ height: 32, padding: '0 14px' }}
+                  >
+                    <Trash2 style={{ width: 13, height: 13 }} />
+                    <span>Delete</span>
+                  </button>
+                </div>
               </div>
 
               {/* For Noobs Tab */}

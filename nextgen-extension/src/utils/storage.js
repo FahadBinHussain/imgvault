@@ -496,6 +496,18 @@ export class StorageManager {
     return result;
   }
 
+  isVaultedItem(item = {}) {
+    return item.isVaulted === true || String(item.isVaulted || '').toLowerCase() === 'true';
+  }
+
+  filterVisibleItems(items = []) {
+    return items.filter(item => !this.isVaultedItem(item));
+  }
+
+  filterVaultItems(items = []) {
+    return items.filter(item => this.isVaultedItem(item) && !item.deletedAt && !item._isTrash);
+  }
+
   /**
    * Save image metadata to Firestore
    * @param {ImageData} imageData - Image metadata
@@ -656,7 +668,10 @@ export class StorageManager {
         'collectionId',
         'fileType',
         'isVideo',
-        'isLink'
+        'isLink',
+        'isVaulted',
+        'vaultMode',
+        'vaultedAt'
       ];
       
       const requestParams = {
@@ -671,7 +686,7 @@ export class StorageManager {
         return [];
       }
 
-      const images = docs.map(doc => this.fromFirestoreDoc(doc));
+      const images = this.filterVisibleItems(docs.map(doc => this.fromFirestoreDoc(doc)));
       
       console.log(`✅ [OPTIMIZE] Loaded ${images.length} images in ${(endTime - startTime).toFixed(2)}ms (lightweight mode)`);
       
@@ -714,6 +729,64 @@ export class StorageManager {
       console.error('Error getting image:', error);
       return null;
     }
+  }
+
+  async getVaultImages() {
+    await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.getVaultImagesNeon();
+    }
+
+    try {
+      const docs = await this.fetchAllDocuments('images', { orderBy: 'internalAddedTimestamp desc' });
+      return this.filterVaultItems(docs.map(doc => this.fromFirestoreDoc(doc)));
+    } catch (error) {
+      console.error('Error getting vault images:', error);
+      return [];
+    }
+  }
+
+  async moveToVault(id) {
+    await this.ensureInitialized();
+    const current = await this.getImageById(id);
+    if (!current) {
+      throw new Error('Item not found');
+    }
+    if (this.isVaultedItem(current)) {
+      return true;
+    }
+
+    await this.updateImage(id, {
+      isVaulted: true,
+      vaultMode: 'hidden',
+      vaultedAt: new Date().toISOString(),
+    });
+
+    if (current.collectionId) {
+      await this.incrementCollectionCount(current.collectionId, -1);
+    }
+
+    return true;
+  }
+
+  async restoreFromVault(id) {
+    await this.ensureInitialized();
+    const current = await this.getImageById(id);
+    if (!current) {
+      throw new Error('Vault item not found');
+    }
+
+    await this.updateImage(id, {
+      isVaulted: false,
+      vaultMode: '',
+      vaultedAt: '',
+    });
+
+    if (current.collectionId) {
+      await this.incrementCollectionCount(current.collectionId, 1);
+    }
+
+    return true;
   }
 
   async hasSavedLinkByUrl(pageUrl) {
@@ -904,13 +977,17 @@ export class StorageManager {
           dHash: fields.dHash?.stringValue || '',
           tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
           description: fields.description?.stringValue || '',
+          isVaulted: fields.isVaulted?.booleanValue || false,
+          vaultMode: fields.vaultMode?.stringValue || '',
+          vaultedAt: fields.vaultedAt?.timestampValue || fields.vaultedAt?.stringValue || '',
           internalAddedTimestamp: fields.internalAddedTimestamp?.timestampValue || fields.internalAddedTimestamp?.stringValue || '',
           deletedAt: fields.deletedAt?.timestampValue || fields.deletedAt?.stringValue || ''
         };
       });
       
-      console.log(`✅ [TRASH] Found ${trashedImages.length} trashed images`);
-      return trashedImages;
+      const visibleTrash = this.filterVisibleItems(trashedImages);
+      console.log(`✅ [TRASH] Found ${visibleTrash.length} trashed images`);
+      return visibleTrash;
     } catch (error) {
       console.error('❌ [TRASH] Error fetching trashed images:', error);
       return [];
@@ -1607,7 +1684,7 @@ export class StorageManager {
       const allImages = docs.map(doc => this.fromFirestoreDoc(doc));
 
       // Filter by collectionId
-      return allImages.filter(img => img.collectionId === collectionId);
+      return this.filterVisibleItems(allImages).filter(img => img.collectionId === collectionId);
     } catch (error) {
       console.error('Error fetching images by collection:', error);
       return [];
@@ -1882,7 +1959,13 @@ export class StorageManager {
   async getAllImagesNeon() {
     const sql = this.ensureNeonReady();
     const rows = await sql`select * from public.media_items where deleted_at is null order by internal_added_timestamp desc`;
-    return rows.map((r) => this.fromNeonMediaRow(r));
+    return this.filterVisibleItems(rows.map((r) => this.fromNeonMediaRow(r)));
+  }
+
+  async getVaultImagesNeon() {
+    const sql = this.ensureNeonReady();
+    const rows = await sql`select * from public.media_items where deleted_at is null order by internal_added_timestamp desc`;
+    return this.filterVaultItems(rows.map((r) => this.fromNeonMediaRow(r)));
   }
 
   async getAllImagesForDuplicateCheckNeon() {
@@ -1936,7 +2019,7 @@ export class StorageManager {
   async getTrashedImagesNeon() {
     const sql = this.ensureNeonReady();
     const rows = await sql`select * from public.media_items where deleted_at is not null order by deleted_at desc`;
-    return rows.map((r) => ({ ...this.fromNeonMediaRow(r), _isTrash: true }));
+    return this.filterVisibleItems(rows.map((r) => ({ ...this.fromNeonMediaRow(r), _isTrash: true })));
   }
 
   async restoreFromTrashNeon(id) {
@@ -2139,7 +2222,7 @@ export class StorageManager {
       where collection_id = ${collectionId} and deleted_at is null
       order by internal_added_timestamp desc
     `;
-    return rows.map((r) => this.fromNeonMediaRow(r));
+    return this.filterVisibleItems(rows.map((r) => this.fromNeonMediaRow(r)));
   }
 
   async incrementCollectionCountNeon(collectionId, delta) {
