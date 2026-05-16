@@ -41,6 +41,14 @@ const hashVaultPasscode = async (passcode, salt) => {
 
 const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim());
 
+const getLocalVaultConfig = () => new Promise((resolve) => {
+  chrome.storage.local.get([VAULT_CONFIG_KEY], (result) => {
+    resolve(result[VAULT_CONFIG_KEY] || null);
+  });
+});
+
+const saveLocalVaultConfig = (config) => chrome.storage.local.set({ [VAULT_CONFIG_KEY]: config });
+
 export default function VaultPage() {
   const navigate = useNavigate();
   const sendMessage = useChromeMessage();
@@ -82,10 +90,36 @@ export default function VaultPage() {
   };
 
   useEffect(() => {
-    chrome.storage.local.get([VAULT_CONFIG_KEY], (result) => {
-      const config = result[VAULT_CONFIG_KEY] || null;
-      setVaultConfig(config);
-      if (config) {
+    let cancelled = false;
+
+    const loadVaultConfig = async () => {
+      setConfigLoading(true);
+      const localConfig = await getLocalVaultConfig();
+      let remoteConfig = null;
+
+      try {
+        remoteConfig = await sendMessage('getVaultConfig');
+      } catch (error) {
+        console.warn('Could not load synced vault config:', error);
+      }
+
+      const config = remoteConfig || localConfig || null;
+
+      if (remoteConfig && localConfig?.passHash !== remoteConfig.passHash) {
+        await saveLocalVaultConfig(remoteConfig);
+      } else if (!remoteConfig && localConfig) {
+        try {
+          await sendMessage('saveVaultConfig', { config: localConfig });
+        } catch (error) {
+          console.warn('Could not migrate local vault config to backend:', error);
+        }
+      }
+
+      if (!cancelled) {
+        setVaultConfig(config);
+      }
+
+      if (config && !cancelled) {
         try {
           const session = JSON.parse(sessionStorage.getItem(VAULT_SESSION_KEY) || '{}');
           setUnlocked(session?.passHash === config.passHash);
@@ -93,9 +127,18 @@ export default function VaultPage() {
           setUnlocked(false);
         }
       }
-      setConfigLoading(false);
-    });
-  }, []);
+
+      if (!cancelled) {
+        setConfigLoading(false);
+      }
+    };
+
+    loadVaultConfig();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sendMessage]);
 
   useEffect(() => {
     loadVaultItems();
@@ -159,7 +202,13 @@ export default function VaultPage() {
       mode: 'hidden',
     };
 
-    await chrome.storage.local.set({ [VAULT_CONFIG_KEY]: config });
+    await saveLocalVaultConfig(config);
+    try {
+      await sendMessage('saveVaultConfig', { config });
+    } catch (error) {
+      console.warn('Could not sync vault config to backend:', error);
+      showToast('Vault created locally, but backend sync failed. Check your database settings.', 'warning', 6000);
+    }
     sessionStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ passHash, unlockedAt: Date.now() }));
     setVaultConfig(config);
     setUnlocked(true);
@@ -221,7 +270,7 @@ export default function VaultPage() {
               {vaultConfig ? 'Unlock Secret Vault' : 'Create Secret Vault'}
             </h1>
             <p className="text-sm text-base-content/60">
-              Hidden items stay out of the normal gallery until unlocked.
+              Hidden items stay out of the normal gallery until unlocked. The vault passcode check syncs through your configured backend.
             </p>
           </div>
         </div>

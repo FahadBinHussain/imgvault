@@ -63,6 +63,19 @@ export class StorageManager {
     this.neonSql = null;
   }
 
+  parseJsonSetting(value, fallback = null) {
+    if (!value) return fallback;
+    if (typeof value === 'object') return value;
+    if (typeof value !== 'string') return fallback;
+
+    try {
+      return JSON.parse(value);
+    } catch (error) {
+      console.warn('Failed to parse JSON setting:', error);
+      return fallback;
+    }
+  }
+
   /**
    * Initialize storage manager with Firebase config
    * @returns {Promise<boolean>} Success status
@@ -500,12 +513,84 @@ export class StorageManager {
     return item.isVaulted === true || String(item.isVaulted || '').toLowerCase() === 'true';
   }
 
+  isSystemItem(item = {}) {
+    return String(item.id || '').startsWith('__imgvault_') || item.systemType === 'secretVaultConfig';
+  }
+
   filterVisibleItems(items = []) {
-    return items.filter(item => !this.isVaultedItem(item));
+    return items.filter(item => !this.isSystemItem(item) && !this.isVaultedItem(item));
   }
 
   filterVaultItems(items = []) {
-    return items.filter(item => this.isVaultedItem(item) && !item.deletedAt && !item._isTrash);
+    return items.filter(item => !this.isSystemItem(item) && this.isVaultedItem(item) && !item.deletedAt && !item._isTrash);
+  }
+
+  async getVaultConfig() {
+    await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.getVaultConfigNeon();
+    }
+
+    try {
+      const url = this.buildUrl('userSettings/config');
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        if (response.status === 404) return null;
+        throw new Error('Failed to fetch vault config');
+      }
+
+      const doc = await response.json();
+      return this.parseJsonSetting(doc.fields?.secretVaultConfig?.stringValue, null);
+    } catch (error) {
+      console.error('Error fetching vault config:', error);
+      return null;
+    }
+  }
+
+  async saveVaultConfig(config) {
+    await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.saveVaultConfigNeon(config);
+    }
+
+    try {
+      const getUrl = this.buildUrl('userSettings/config');
+      const getResponse = await fetch(getUrl);
+      const doc = this.toFirestoreDoc({
+        secretVaultConfig: JSON.stringify(config),
+        updatedAt: new Date(),
+      });
+
+      let response;
+      if (getResponse.ok) {
+        const patchUrl = this.buildUrl('userSettings/config', {
+          'updateMask.fieldPaths': ['secretVaultConfig', 'updatedAt'],
+        });
+        response = await fetch(patchUrl, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(doc),
+        });
+      } else {
+        const createUrl = this.buildUrl('userSettings', { documentId: 'config' });
+        response = await fetch(createUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(doc),
+        });
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to save vault config: ${errorText}`);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error saving vault config:', error);
+      throw error;
+    }
   }
 
   /**
@@ -1493,6 +1578,7 @@ export class StorageManager {
         udropKey2: fields.udropKey2?.stringValue || '',
         defaultGallerySource: fields.defaultGallerySource?.stringValue || 'imgbb',
         defaultVideoSource: fields.defaultVideoSource?.stringValue || 'filemoon',
+        secretVaultConfig: this.parseJsonSetting(fields.secretVaultConfig?.stringValue, null),
         updatedAt: fields.updatedAt?.timestampValue || ''
       };
     } catch (error) {
@@ -1971,11 +2057,13 @@ export class StorageManager {
   async getAllImagesForDuplicateCheckNeon() {
     const sql = this.ensureNeonReady();
     const rows = await sql`select * from public.media_items order by internal_added_timestamp desc`;
-    return rows.map((r) => {
-      const item = this.fromNeonMediaRow(r);
-      if (r.deleted_at) item._isTrash = true;
-      return item;
-    });
+    return rows
+      .map((r) => {
+        const item = this.fromNeonMediaRow(r);
+        if (r.deleted_at) item._isTrash = true;
+        return item;
+      })
+      .filter((item) => !this.isSystemItem(item));
   }
 
   async getImageByIdNeon(id) {
@@ -2101,6 +2189,34 @@ export class StorageManager {
     if (!rows.length) throw new Error('Image not found');
     const existing = this.fromNeonMediaRow(rows[0]);
     const payload = this.toNeonMediaPayload({ ...existing, ...updates });
+    await this.upsertMediaRowNeon(id, payload);
+    return true;
+  }
+
+  async getVaultConfigNeon() {
+    const sql = this.ensureNeonReady();
+    const rows = await sql`
+      select extra_metadata
+      from public.media_items
+      where id = '__imgvault_vault_config__'
+      limit 1
+    `;
+    const extra = this.parseJsonSetting(rows[0]?.extra_metadata, rows[0]?.extra_metadata || null);
+    return this.parseJsonSetting(extra?.secretVaultConfig, extra?.secretVaultConfig || null);
+  }
+
+  async saveVaultConfigNeon(config) {
+    const id = '__imgvault_vault_config__';
+    const payload = this.toNeonMediaPayload({
+      id,
+      systemType: 'secretVaultConfig',
+      secretVaultConfig: config,
+      pageTitle: 'ImgVault Secret Vault Config',
+      description: 'Internal ImgVault vault configuration',
+      internalAddedTimestamp: new Date().toISOString(),
+      tags: [],
+      collectionId: null,
+    });
     await this.upsertMediaRowNeon(id, payload);
     return true;
   }
