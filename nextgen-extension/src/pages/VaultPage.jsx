@@ -157,6 +157,22 @@ export default function VaultPage() {
     ));
   }, [searchQuery, vaultItems]);
 
+  const vaultBreakdownText = useMemo(() => {
+    const breakdown = filteredItems.reduce((acc, item) => {
+      if (item?.isLink) acc.links += 1;
+      else if (item?.isVideo || String(item?.fileType || '').startsWith('video/')) acc.videos += 1;
+      else acc.images += 1;
+      return acc;
+    }, { images: 0, videos: 0, links: 0 });
+
+    return [
+      `${filteredItems.length} hidden item${filteredItems.length !== 1 ? 's' : ''}`,
+      `${breakdown.images} image${breakdown.images !== 1 ? 's' : ''}`,
+      `${breakdown.videos} video${breakdown.videos !== 1 ? 's' : ''}`,
+      `${breakdown.links} link${breakdown.links !== 1 ? 's' : ''}`,
+    ].join(' · ');
+  }, [filteredItems]);
+
   const getPreviewUrl = (item) => (
     item?.linkPreviewImageUrl ||
     item?.imgbbThumbUrl ||
@@ -385,7 +401,7 @@ export default function VaultPage() {
                 Secret Vault
               </div>
               <p className="mt-1 text-sm text-base-content/60">
-                {filteredItems.length} hidden item{filteredItems.length !== 1 ? 's' : ''}. Restore items when you want them back in Gallery.
+                {vaultBreakdownText}. Restore items when you want them back in Gallery.
               </p>
             </div>
             <Button variant="ghost" onClick={lockVault}>

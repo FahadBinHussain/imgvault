@@ -87,12 +87,18 @@ export default function GalleryNavbar({
   const itemsForBreakdown = Array.isArray(filteredImages) ? filteredImages : (Array.isArray(images) ? images : []);
   const breakdown = itemsForBreakdown.reduce((acc, item) => {
     if (item?.isLink) acc.links += 1;
-    else if (item?.isVideo) acc.videos += 1;
+    else if (item?.isVideo || String(item?.fileType || '').startsWith('video/')) acc.videos += 1;
     else acc.images += 1;
     return acc;
   }, { images: 0, videos: 0, links: 0 });
   const breakdownParts = [
     `${visibleCount} item${visibleCount !== 1 ? 's' : ''}`,
+    `${breakdown.images} image${breakdown.images !== 1 ? 's' : ''}`,
+    `${breakdown.videos} video${breakdown.videos !== 1 ? 's' : ''}`,
+    `${breakdown.links} link${breakdown.links !== 1 ? 's' : ''}`,
+  ];
+  const vaultBreakdownParts = [
+    `${visibleCount} hidden item${visibleCount !== 1 ? 's' : ''}`,
     `${breakdown.images} image${breakdown.images !== 1 ? 's' : ''}`,
     `${breakdown.videos} video${breakdown.videos !== 1 ? 's' : ''}`,
     `${breakdown.links} link${breakdown.links !== 1 ? 's' : ''}`,
@@ -110,7 +116,7 @@ export default function GalleryNavbar({
     : isSettingsPage ? 'Configuration'
     : isHostPage ? 'Native host controls'
     : isLogsPage ? 'Upload & host history'
-    : isVaultPage ? `${visibleCount} hidden item${visibleCount !== 1 ? 's' : ''}`
+    : isVaultPage ? vaultBreakdownParts.join(' · ')
     : isTrashPage ? `${visibleCount} item${visibleCount !== 1 ? 's' : ''}`
     : breakdownParts.join(' · ');
 
