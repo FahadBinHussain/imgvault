@@ -39,6 +39,7 @@ export default function GalleryPage() {
   const [loadingNerdsTab, setLoadingNerdsTab] = useState(false);
   const [editingField, setEditingField] = useState(null); // Track which field is being edited
   const [editValues, setEditValues] = useState({}); // Store temporary edit values
+  const [retryingVideoHost, setRetryingVideoHost] = useState(null);
   const [toast, setToast] = useState(null); // Toast notification state
   const [isDeleting, setIsDeleting] = useState(false); // Track deletion progress
   const [loadedImages, setLoadedImages] = useState(new Set()); // Track loaded images for fade-in
@@ -294,6 +295,21 @@ export default function GalleryPage() {
     fullImageDetails?.id === selectedImage?.id
       ? { ...selectedImage, ...fullImageDetails }
       : selectedImage;
+  const hasFilemoonVideoUrl = Boolean(
+    isHttpUrl(modalImage?.filemoonWatchUrl) ||
+    isHttpUrl(modalImage?.filemoonDirectUrl)
+  );
+  const hasUdropVideoUrl = Boolean(
+    isHttpUrl(modalImage?.udropWatchUrl) ||
+    isHttpUrl(modalImage?.udropDirectUrl)
+  );
+  const hasRetryableVideoSource = Boolean(
+    hasFilemoonVideoUrl ||
+    hasUdropVideoUrl ||
+    isHttpUrl(modalImage?.sourceImageUrl)
+  );
+  const canRetryFilemoonHost = Boolean(isSelectedVideo && !hasFilemoonVideoUrl && hasRetryableVideoSource);
+  const canRetryUdropHost = Boolean(isSelectedVideo && !hasUdropVideoUrl && hasRetryableVideoSource);
   const baseImageFieldKeys = [
     'pixvidUrl',
     'pixvidDeleteUrl',
@@ -610,6 +626,7 @@ export default function GalleryPage() {
       let udropResult = null;
       let filemoonResult = null;
       let hostSucceeded = false;
+      const uploadErrors = [];
 
       if (settings?.udropKey1 && settings?.udropKey2) {
         const udropUploader = new UDropUploader();
@@ -634,8 +651,13 @@ export default function GalleryPage() {
             uploadController.signal
           );
         } catch (error) {
-          await appendClientUploadLog(`UDrop XHR upload failed: ${error.message || String(error)}`, 'error');
+          const message = error.message || String(error);
+          await appendClientUploadLog(`UDrop XHR upload failed: ${message}`, 'error');
           await appendClientUploadLog('Normal UDrop upload fallback is currently disabled for testing.', 'warning');
+          if (uploadController.signal.aborted) {
+            throw error;
+          }
+          uploadErrors.push(`UDrop: ${message}`);
           // Fallback retained intentionally for later re-enable:
           // udropResult = await udropUploader.upload(
           //   uploadData.fileBlob,
@@ -643,26 +665,27 @@ export default function GalleryPage() {
           //   settings.udropKey2,
           //   uploadData.fileName || 'video.mp4'
           // );
-          throw error;
         }
 
-        await appendClientUploadLog(`UDrop API status: ${udropResult.apiStatus || 'unknown'}`);
-        if (udropResult.apiResponse) {
-          await appendClientUploadLog(`UDrop API message: ${udropResult.apiResponse}`);
+        if (udropResult) {
+          await appendClientUploadLog(`UDrop API status: ${udropResult.apiStatus || 'unknown'}`);
+          if (udropResult.apiResponse) {
+            await appendClientUploadLog(`UDrop API message: ${udropResult.apiResponse}`);
+          }
+          await appendClientUploadLog(`UDrop authorized, account: ${udropResult.accountId || 'unknown'}`);
+          await appendClientUploadLog('[UDROP] File uploaded successfully', 'success');
+          await appendClientUploadLog(`[UDROP] URL: ${udropResult.displayUrl || udropResult.url || ''}`);
+          if (udropResult.shortUrl) {
+            await appendClientUploadLog(`[UDROP] Short URL: ${udropResult.shortUrl}`);
+          }
+          if (udropResult.fileId) {
+            await appendClientUploadLog(`[UDROP] File ID: ${udropResult.fileId}`);
+          }
+          if (udropResult.url) {
+            await appendClientUploadLog(`[UDROP] Download URL: ${udropResult.url}`);
+          }
+          hostSucceeded = true;
         }
-        await appendClientUploadLog(`UDrop authorized, account: ${udropResult.accountId || 'unknown'}`);
-        await appendClientUploadLog('[UDROP] File uploaded successfully', 'success');
-        await appendClientUploadLog(`[UDROP] URL: ${udropResult.displayUrl || udropResult.url || ''}`);
-        if (udropResult.shortUrl) {
-          await appendClientUploadLog(`[UDROP] Short URL: ${udropResult.shortUrl}`);
-        }
-        if (udropResult.fileId) {
-          await appendClientUploadLog(`[UDROP] File ID: ${udropResult.fileId}`);
-        }
-        if (udropResult.url) {
-          await appendClientUploadLog(`[UDROP] Download URL: ${udropResult.url}`);
-        }
-        hostSucceeded = true;
       }
 
       if (settings?.filemoonApiKey) {
@@ -687,33 +710,46 @@ export default function GalleryPage() {
             uploadController.signal
           );
         } catch (error) {
-          await appendClientUploadLog(`Filemoon XHR upload failed: ${error.message || String(error)}`, 'error');
+          const message = error.message || String(error);
+          await appendClientUploadLog(`Filemoon XHR upload failed: ${message}`, 'error');
           await appendClientUploadLog('Normal Filemoon upload fallback is currently disabled for testing.', 'warning');
+          if (uploadController.signal.aborted) {
+            throw error;
+          }
+          uploadErrors.push(`Filemoon: ${message}`);
           // Fallback retained intentionally for later re-enable:
           // filemoonResult = await filemoonUploader.upload(
           //   uploadData.fileBlob,
           //   settings.filemoonApiKey,
           //   uploadData.fileName || 'video.mp4'
           // );
-          throw error;
         }
 
-        await appendClientUploadLog(`Filemoon API status: ${filemoonResult.apiStatus || 'unknown'}`);
-        if (filemoonResult.apiMessage) {
-          await appendClientUploadLog(`Filemoon API message: ${filemoonResult.apiMessage}`);
+        if (filemoonResult) {
+          await appendClientUploadLog(`Filemoon API status: ${filemoonResult.apiStatus || 'unknown'}`);
+          if (filemoonResult.apiMessage) {
+            await appendClientUploadLog(`Filemoon API message: ${filemoonResult.apiMessage}`);
+          }
+          if (filemoonResult.filecode) {
+            await appendClientUploadLog(`Filemoon filecode: ${filemoonResult.filecode}`);
+          }
+          if (filemoonResult.url) {
+            await appendClientUploadLog(`Filemoon embed URL: ${filemoonResult.url}`);
+          }
+          await appendClientUploadLog('[FILEMOON] File uploaded successfully', 'success');
+          hostSucceeded = true;
         }
-        if (filemoonResult.filecode) {
-          await appendClientUploadLog(`Filemoon filecode: ${filemoonResult.filecode}`);
-        }
-        if (filemoonResult.url) {
-          await appendClientUploadLog(`Filemoon embed URL: ${filemoonResult.url}`);
-        }
-        await appendClientUploadLog('[FILEMOON] File uploaded successfully', 'success');
-        hostSucceeded = true;
       }
 
       if (!hostSucceeded) {
-        throw new Error('No video host is configured for direct upload.');
+        throw new Error(uploadErrors.length > 0
+          ? `Video upload failed on all configured hosts. ${uploadErrors.join(' | ')}`
+          : 'No video host is configured for direct upload.'
+        );
+      }
+
+      if (uploadErrors.length > 0) {
+        await appendClientUploadLog(`Partial upload success. Saved host URLs and left failed host ready for retry. ${uploadErrors.join(' | ')}`, 'warning');
       }
 
       await chrome.storage.local.set({ uploadStatus: 'Saving video metadata...' });
@@ -721,8 +757,12 @@ export default function GalleryPage() {
         ...uploadData,
         udropResult,
         filemoonResult,
+        videoUploadErrors: uploadErrors,
       });
       await appendClientUploadLog(`[SAVE VIDEO] Saved successfully with ID: ${saved.id}`, 'success');
+      if (uploadErrors.length > 0) {
+        saved.videoUploadErrors = uploadErrors;
+      }
       return saved;
     } catch (error) {
       await appendClientUploadLog(`Direct video upload failed: ${error.message || String(error)}`, 'error');
@@ -1269,10 +1309,11 @@ export default function GalleryPage() {
         throw new Error('Upload data contains non-serializable values');
       }
 
+      let uploadResult = null;
       if (uploadData.isVideo && uploadData.fileBlob) {
-        await uploadVideoDirectly(uploadData);
+        uploadResult = await uploadVideoDirectly(uploadData);
       } else {
-        await uploadImage(uploadData);
+        uploadResult = await uploadImage(uploadData);
       }
 
       // Close modal first for better UX
@@ -1282,7 +1323,11 @@ export default function GalleryPage() {
       // Then reload both images and collections, and show toast
       await Promise.all([reload(), reloadCollections()]); // Refresh gallery and collections
       const mediaType = uploadData.isVideo ? 'Video' : 'Image';
-      showToast(`✅ ${mediaType} uploaded successfully!`, 'success', 3000);
+      if (uploadData.isVideo && uploadResult?.videoUploadErrors?.length) {
+        showToast(`⚠️ Video saved. Retry failed host from Details when ready.`, 'warning', 5000);
+      } else {
+        showToast(`✅ ${mediaType} uploaded successfully!`, 'success', 3000);
+      }
     } catch (err) {
       console.error('Upload failed:', err);
       
@@ -1503,6 +1548,35 @@ export default function GalleryPage() {
   const cancelEdit = () => {
     setEditingField(null);
     setEditValues({});
+  };
+
+  const retryVideoHostUpload = async (host) => {
+    if (!selectedImage?.id || retryingVideoHost) return;
+
+    const hostLabel = host === 'filemoon' ? 'Filemoon' : 'UDrop';
+    setRetryingVideoHost(host);
+    showToast(`Retrying ${hostLabel} upload...`, 'info', 3000);
+
+    try {
+      const updates = await sendMessage('retryVideoHostUpload', {
+        imageId: selectedImage.id,
+        host,
+      });
+
+      const applyUpdates = (item) =>
+        item && item.id === selectedImage.id
+          ? { ...item, ...updates }
+          : item;
+
+      setSelectedImage(applyUpdates);
+      setFullImageDetails(applyUpdates);
+      await Promise.all([reload(), reloadCollections()]);
+      showToast(`✅ ${hostLabel} retry succeeded!`, 'success', 3000);
+    } catch (error) {
+      showToast(`❌ ${hostLabel} retry failed: ${error.message || String(error)}`, 'error', 5000);
+    } finally {
+      setRetryingVideoHost(null);
+    }
   };
 
     const downloadImage = async (url, source) => {
@@ -2693,6 +2767,39 @@ export default function GalleryPage() {
                   </div>
 
                     <div className="pt-4 border-t border-base-300">
+                      {isSelectedVideo && (canRetryFilemoonHost || canRetryUdropHost) && (
+                        <div className="mb-4 rounded-[var(--radius-box)] border border-warning/20 bg-warning/10 p-3 text-sm text-base-content">
+                          <div className="mb-2 flex items-center gap-2 font-semibold">
+                            <Cloud className="h-4 w-4 text-warning" />
+                            Missing host upload
+                          </div>
+                          <p className="mb-3 text-xs text-base-content/70">
+                            This video is saved already. Retry only the failed host below.
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {canRetryFilemoonHost && (
+                              <Button
+                                className={inlineActionClass}
+                                onClick={() => retryVideoHostUpload('filemoon')}
+                                disabled={Boolean(retryingVideoHost)}
+                              >
+                                <Cloud className="h-3.5 w-3.5" />
+                                {retryingVideoHost === 'filemoon' ? 'Retrying Filemoon...' : 'Retry Filemoon'}
+                              </Button>
+                            )}
+                            {canRetryUdropHost && (
+                              <Button
+                                className={inlineActionClass}
+                                onClick={() => retryVideoHostUpload('udrop')}
+                                disabled={Boolean(retryingVideoHost)}
+                              >
+                                <Cloud className="h-3.5 w-3.5" />
+                                {retryingVideoHost === 'udrop' ? 'Retrying UDrop...' : 'Retry UDrop'}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
                       {isResolvingModalMediaType ? (
                         <div className="text-sm text-base-content/60 italic">
                           Loading media details...

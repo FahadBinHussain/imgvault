@@ -1175,6 +1175,12 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'retryVideoHostUpload':
+        this.retryVideoHostUpload(request.data)
+          .then(result => sendResponse({ success: true, data: result }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       default:
         console.warn('Unknown action:', action);
         return false;
@@ -1983,6 +1989,97 @@ class ImgVaultServiceWorker {
       console.error('Video upload error:', error);
       await this.archiveUploadLogRun('error', error.message || 'Video upload failed.');
       throw error;
+    }
+  }
+
+  async retryVideoHostUpload({ imageId, host } = {}) {
+    const targetHost = String(host || '').trim().toLowerCase();
+    const hostLabel = targetHost === 'filemoon' ? 'Filemoon' : targetHost === 'udrop' ? 'UDrop' : '';
+
+    if (!imageId) {
+      throw new Error('Missing video ID for retry.');
+    }
+    if (!hostLabel) {
+      throw new Error('Choose Filemoon or UDrop to retry.');
+    }
+
+    const item = await this.storage.getImageById(imageId);
+    if (!item) {
+      throw new Error('Saved video was not found.');
+    }
+    if (!item.isVideo && !String(item.fileType || '').startsWith('video/')) {
+      throw new Error('Only saved videos can retry video hosts.');
+    }
+
+    const settings = await this.getMergedVideoHostSettings();
+    if (targetHost === 'filemoon' && !settings.filemoonApiKey) {
+      throw new Error('Filemoon API key is not configured.');
+    }
+    if (targetHost === 'udrop' && (!settings.udropKey1 || !settings.udropKey2)) {
+      throw new Error('UDrop API keys are not configured.');
+    }
+
+    const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim());
+    const sourceCandidates = targetHost === 'filemoon'
+      ? [item.udropDirectUrl, item.udropWatchUrl, item.sourceImageUrl]
+      : [item.filemoonDirectUrl, item.filemoonWatchUrl, item.sourceImageUrl];
+    const sourceUrl = sourceCandidates.find(isHttpUrl);
+
+    if (!sourceUrl) {
+      throw new Error(`No existing hosted video URL is available to retry ${hostLabel}.`);
+    }
+
+    await chrome.storage.local.set({
+      uploadActive: true,
+      uploadStatus: `Retrying ${hostLabel} upload...`,
+    });
+    await this.appendUploadLog(`Retrying ${hostLabel} from existing hosted video URL...`);
+
+    try {
+      const videoBlob = await this.fetchImage(sourceUrl, undefined, item.sourcePageUrl || sourceUrl);
+      const isVideoBlob = (
+        videoBlob instanceof Blob &&
+        videoBlob.size > 0 &&
+        (
+          !videoBlob.type ||
+          videoBlob.type.startsWith('video/') ||
+          videoBlob.type === 'application/octet-stream' ||
+          videoBlob.type === 'binary/octet-stream'
+        )
+      );
+
+      if (!isVideoBlob) {
+        throw new Error(`Retry source did not return a video file${videoBlob?.type ? ` (${videoBlob.type})` : ''}.`);
+      }
+
+      const fileName = item.fileName || this.extractFileName({ imageUrl: sourceUrl }) || 'video.mp4';
+      let updates = {};
+
+      if (targetHost === 'filemoon') {
+        const result = await this.filemoonUploader.upload(videoBlob, settings.filemoonApiKey, fileName);
+        updates = {
+          filemoonWatchUrl: result.watchUrl || result.url || '',
+          filemoonDirectUrl: result.directUrl || '',
+        };
+      } else {
+        const result = await this.udropUploader.upload(videoBlob, settings.udropKey1, settings.udropKey2, fileName);
+        updates = {
+          udropWatchUrl: result.watchUrl || result.displayUrl || '',
+          udropDirectUrl: result.directUrl || result.url || '',
+        };
+      }
+
+      await this.storage.updateImage(imageId, sanitizeForNeon(updates));
+      await this.updateStatusWithLog(`${hostLabel} retry succeeded. Saved the missing host URLs.`, 'success');
+      return {
+        id: imageId,
+        ...updates,
+      };
+    } catch (error) {
+      await this.updateStatusWithLog(`${hostLabel} retry failed: ${error.message || String(error)}`, 'error');
+      throw error;
+    } finally {
+      await chrome.storage.local.set({ uploadActive: false });
     }
   }
 
