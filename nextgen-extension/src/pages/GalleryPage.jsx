@@ -2069,7 +2069,7 @@ export default function GalleryPage() {
     .g-fab:active{transform:scale(.95)}
     .g-fab::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,hsl(0 0% 100%/.12),transparent);transform:translateX(-100%);animation:g-shimmer 3s infinite}
     @keyframes g-shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
-    .g-modal-close{position:absolute;top:16px;right:16px;z-index:50;width:40px;height:40px;border-radius:10px;background:oklch(from var(--color-error) l c h / 0.1);border:1px solid oklch(from var(--color-error) l c h / 0.2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s ease;color:var(--color-error)}
+    .g-modal-close{position:sticky;top:16px;z-index:80;width:40px;height:40px;margin:16px 16px -56px auto;border-radius:10px;background:oklch(from var(--color-error) l c h / 0.1);border:1px solid oklch(from var(--color-error) l c h / 0.2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s ease;color:var(--color-error)}
     .g-modal-close:hover{background:oklch(from var(--color-error) l c h / 0.18);border-color:oklch(from var(--color-error) l c h / 0.35);transform:scale(1.08) rotate(90deg)}
     .g-tab{padding:8px 16px;font-size:13px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;cursor:pointer;transition:all .15s ease;border:none;background:none;border-bottom:2px solid transparent;color:oklch(from var(--color-base-content) l c h / 0.4)}
     .g-tab:hover{color:oklch(from var(--color-base-content) l c h / 0.7)}
