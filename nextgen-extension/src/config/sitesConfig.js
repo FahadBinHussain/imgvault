@@ -4,10 +4,11 @@
 export const sitesConfig = {
   warningSites: [
     { url: 'airbnb.com', displayName: 'Airbnb' },
-    { url: 'backiee.com', displayName: 'Backiee' },
     { url: 'artstation.com', displayName: 'ArtStation' },
+    { url: 'backiee.com', displayName: 'Backiee' },
     { url: 'drive.google.com', displayName: 'Google Drive' },
     { url: 'peakpx.com', displayName: 'PeakPX' },
+    { url: 'raregallery.art', displayName: 'Rare Gallery' },
     { url: 'sohu.com', displayName: 'Sohu' },
     { url: 'unsplash.com', displayName: 'Unsplash' },
     { url: 'wall.alphacoders.com', displayName: 'Alpha Coders' },
