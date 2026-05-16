@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { mediaItems } from '@/db/schema'
 import { and, desc, eq, isNotNull } from 'drizzle-orm'
 import { auth } from '@/app/api/auth/[...nextauth]/route'
+import { isSystemMediaItem, isVaultedMediaItem } from '@/lib/vault-media'
 
 async function getSession() {
   return auth()
@@ -34,7 +35,11 @@ export async function GET() {
       .from(mediaItems)
       .where(and(eq(mediaItems.isLink, false), isNotNull(mediaItems.deletedAt)))
       .orderBy(desc(mediaItems.deletedAt))
-    return Response.json({ items: items.map(toClientTrashItem) })
+    return Response.json({
+      items: items
+        .filter((item) => !isSystemMediaItem(item) && !isVaultedMediaItem(item))
+        .map(toClientTrashItem),
+    })
   } catch (error) {
     return Response.json(
       { error: error?.message || 'Failed to fetch trash' },

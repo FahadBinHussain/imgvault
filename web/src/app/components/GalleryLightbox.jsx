@@ -11,6 +11,7 @@ import {
   Save,
   Share2,
   Info,
+  LockKeyhole,
 } from 'lucide-react'
 
 export default function GalleryLightbox({
@@ -21,6 +22,7 @@ export default function GalleryLightbox({
   onNavigate,
   onSaveEdits,
   onShare,
+  onMoveToVault,
   shareStatus = '',
   redactedFields = [],
   omittedFields = [],
@@ -772,6 +774,18 @@ export default function GalleryLightbox({
                     >
                       <Share2 className="w-3.5 h-3.5" />
                       Share
+                    </button>
+                  )}
+                  {onMoveToVault && !isEditing && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onMoveToVault(image)
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors"
+                    >
+                      <LockKeyhole className="w-3.5 h-3.5" />
+                      Move to Vault
                     </button>
                   )}
                   {onSaveEdits && (

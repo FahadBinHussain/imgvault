@@ -1,7 +1,8 @@
 import { db } from '@/db'
-import { shareLinks } from '@/db/schema'
+import { mediaItems, shareLinks } from '@/db/schema'
 import { and, eq, isNull } from 'drizzle-orm'
 import { auth } from '@/app/api/auth/[...nextauth]/route'
+import { isVaultedMediaItem } from '@/lib/vault-media'
 
 function createToken() {
   return crypto.randomUUID().replace(/-/g, '')
@@ -38,6 +39,14 @@ export async function POST(request) {
 
     if (!imageId || !imageData) {
       return Response.json({ error: 'imageId and imageData are required' }, { status: 400 })
+    }
+
+    const storedItem = await db.query.mediaItems.findFirst({
+      where: eq(mediaItems.id, imageId),
+    })
+
+    if (isVaultedMediaItem(imageData) || isVaultedMediaItem(storedItem)) {
+      return Response.json({ error: 'Vaulted items cannot be shared' }, { status: 403 })
     }
 
     const sanitizedImageData = sanitizeSharedImageData(imageData)

@@ -1,19 +1,11 @@
 import { db } from '@/db'
 import { mediaItems } from '@/db/schema'
-import { desc, isNull } from 'drizzle-orm'
+import { desc, eq, isNull } from 'drizzle-orm'
 import { auth } from '@/app/api/auth/[...nextauth]/route'
+import { isSystemMediaItem, isVaultedMediaItem, toClientMediaItem } from '@/lib/vault-media'
 
 async function getSession() {
   return auth()
-}
-
-function toClientMediaItem(item) {
-  return {
-    ...item,
-    tags: Array.isArray(item.tags) ? item.tags : [],
-    filemoonUrl: item.filemoonWatchUrl || '',
-    udropUrl: item.udropWatchUrl || '',
-  }
 }
 
 export async function GET() {
@@ -34,7 +26,11 @@ export async function GET() {
       .where(isNull(mediaItems.deletedAt))
       .orderBy(desc(mediaItems.internalAddedTimestamp))
 
-    return Response.json({ images: images.map(toClientMediaItem) })
+    return Response.json({
+      images: images
+        .filter((item) => !isSystemMediaItem(item) && !isVaultedMediaItem(item))
+        .map(toClientMediaItem),
+    })
   } catch (error) {
     return Response.json(
       { error: error?.message || 'Failed to fetch images' },

@@ -910,6 +910,33 @@ export default function GalleryPage() {
     }
   }, [])
 
+  const handleMoveToVault = useCallback(async (image) => {
+    if (!image?.id) return
+
+    try {
+      setShareStatus('Moving to Secret Vault...')
+
+      const res = await fetch('/api/vault', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: image.id, action: 'move' }),
+      })
+
+      const data = await readJsonSafely(res)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to move item to vault')
+      }
+
+      setImages((prevImages) => prevImages.filter((img) => img.id !== image.id))
+      handleCloseLightbox()
+    } catch (error) {
+      setShareStatus(error?.message || 'Failed to move item to vault')
+    }
+  }, [handleCloseLightbox])
+
   if (status === 'loading' || loading) {
     return (
   <main className="min-h-screen theme-surface">
@@ -1076,6 +1103,7 @@ export default function GalleryPage() {
           onNavigate={handleNavigate}
           onSaveEdits={handleSaveImageEdits}
           onShare={handleShareImage}
+          onMoveToVault={handleMoveToVault}
           shareStatus={shareStatus}
           preferredProvider={preferredProvider}
           preferredVideoSource={preferredVideoSource}
