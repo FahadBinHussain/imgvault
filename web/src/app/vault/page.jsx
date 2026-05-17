@@ -6,16 +6,18 @@ import { redirect } from 'next/navigation'
 import {
   EyeOff,
   FileText,
+  Grid,
   Image as ImageIcon,
-  Link2,
+  List,
   Loader2,
   LockKeyhole,
-  RotateCcw,
   Search,
+  Tag,
   UnlockKeyhole,
-  Video,
+  X,
 } from 'lucide-react'
 import AppNavbar from '../components/AppNavbar'
+import GalleryLightbox from '../components/GalleryLightbox'
 
 const VAULT_CONFIG_KEY = 'secretVaultConfig'
 const VAULT_SESSION_KEY = 'imgvault-vault-unlocked'
@@ -64,76 +66,240 @@ function saveLocalVaultConfig(config) {
   }
 }
 
-function getKind(item) {
-  if (item?.isLink) return 'link'
-  if (item?.isVideo || String(item?.fileType || '').startsWith('video/')) return 'video'
+function isTruthyFlag(value) {
+  return (
+    value === true ||
+    value === 1 ||
+    value === '1' ||
+    (typeof value === 'string' && value.trim().toLowerCase() === 'true')
+  )
+}
+
+function getPreferredImageUrl(image, preferredProvider = 'imgbb') {
+  if (preferredProvider === 'pixvid') {
+    return image?.pixvidUrl || image?.imgbbUrl || image?.imgbbThumbUrl || image?.sourceImageUrl || ''
+  }
+
+  return image?.imgbbUrl || image?.imgbbThumbUrl || image?.pixvidUrl || image?.sourceImageUrl || ''
+}
+
+function getItemKind(item) {
+  if (isTruthyFlag(item?.isLink) || item?.linkUrl) return 'link'
+  if (
+    isTruthyFlag(item?.isVideo) ||
+    item?.fileType?.startsWith?.('video/') ||
+    item?.duration ||
+    item?.filemoonWatchUrl ||
+    item?.udropWatchUrl ||
+    item?.filemoonDirectUrl ||
+    item?.udropDirectUrl
+  ) return 'video'
   return 'image'
 }
 
-function getPreviewUrl(item) {
+function getPreferredVideoWatchUrl(item, preferredVideoSource = 'filemoon') {
+  if (!item) return ''
+  if (preferredVideoSource === 'udrop') {
+    return item.udropWatchUrl || item.filemoonWatchUrl || item.udropUrl || item.filemoonUrl || ''
+  }
+  return item.filemoonWatchUrl || item.udropWatchUrl || item.filemoonUrl || item.udropUrl || ''
+}
+
+function getPreferredVideoDirectUrl(item, preferredVideoSource = 'filemoon') {
+  if (!item) return ''
+  if (preferredVideoSource === 'udrop') {
+    return item.udropDirectUrl || item.filemoonDirectUrl || ''
+  }
+  return item.filemoonDirectUrl || item.udropDirectUrl || ''
+}
+
+function getLinkPreviewImage(item, preferredProvider = 'imgbb') {
   return (
     item?.linkPreviewImageUrl ||
-    item?.imgbbThumbUrl ||
-    item?.imgbbUrl ||
-    item?.pixvidUrl ||
+    getPreferredImageUrl(item, preferredProvider) ||
     item?.sourceImageUrl ||
     ''
   )
 }
 
-function getVideoUrl(item) {
-  return item?.udropDirectUrl || item?.filemoonDirectUrl || item?.udropWatchUrl || item?.filemoonWatchUrl || ''
+function toProxyMediaUrl(url) {
+  if (!url || typeof url !== 'string') return ''
+  if (!/^https?:\/\//i.test(url)) return url
+  return `/api/media?url=${encodeURIComponent(url)}`
 }
 
-function VaultItemCard({ item, restoringId, onRestore }) {
-  const kind = getKind(item)
-  const previewUrl = getPreviewUrl(item)
-  const videoUrl = getVideoUrl(item)
+function VaultGalleryCard({ item, index, viewMode, onClick, preferredProvider = 'imgbb', preferredVideoSource = 'filemoon' }) {
+  const [isLoaded, setIsLoaded] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
+  const kind = getItemKind(item)
+  const imageUrl = getPreferredImageUrl(item, preferredProvider)
+  const videoWatchUrl = getPreferredVideoWatchUrl(item, preferredVideoSource)
+  const videoDirectUrl = getPreferredVideoDirectUrl(item, preferredVideoSource)
+  const linkPreviewImage = toProxyMediaUrl(getLinkPreviewImage(item, preferredProvider))
 
   return (
-    <article className="group overflow-hidden rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl">
-      <div className="relative flex h-56 items-center justify-center overflow-hidden bg-base-200">
-        {kind === 'video' && videoUrl ? (
-          <video src={videoUrl} muted playsInline preload="metadata" className="h-full w-full object-cover" />
-        ) : previewUrl ? (
-          <img src={previewUrl} alt={item.pageTitle || 'Vault item'} className="h-full w-full object-cover" />
+    <div
+      className={`group relative glass rounded-[var(--radius-box)] overflow-hidden cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-xl hover:shadow-primary-500/10 ${viewMode === 'list' ? 'flex' : ''}`}
+      style={{
+        animationDelay: `${index * 50}ms`,
+        animation: 'fadeInUp 0.6s ease-out forwards',
+        opacity: 0,
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onClick={onClick}
+    >
+      <div
+        className={`${viewMode === 'list' ? 'w-28 h-24 sm:w-40 sm:h-28 flex-shrink-0' : 'h-auto'} bg-base-100 relative overflow-hidden`}
+        style={viewMode !== 'list' && !isLoaded ? { minHeight: '220px' } : undefined}
+      >
+        {kind === 'link' ? (
+          linkPreviewImage ? (
+            <img
+              src={linkPreviewImage}
+              alt={item.pageTitle || 'Saved link'}
+              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+              onLoad={() => setIsLoaded(true)}
+              onError={() => setIsLoaded(true)}
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center">
+              <FileText className="w-12 h-12 text-base-content/55" />
+            </div>
+          )
+        ) : kind === 'video' ? (
+          videoDirectUrl ? (
+            <video
+              src={videoDirectUrl}
+              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+              muted
+              playsInline
+              preload="metadata"
+              onLoadedData={() => setIsLoaded(true)}
+            />
+          ) : videoWatchUrl ? (
+            <iframe
+              src={videoWatchUrl}
+              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+              frameBorder="0"
+              scrolling="no"
+              onLoad={() => setIsLoaded(true)}
+            />
+          ) : imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={item.pageTitle || 'Saved video'}
+              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+              onLoad={() => setIsLoaded(true)}
+              onError={() => setIsLoaded(true)}
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center">
+              <FileText className="w-12 h-12 text-base-content/55" />
+            </div>
+          )
+        ) : imageUrl ? (
+          <>
+            {!isLoaded && (
+              <div className="absolute inset-0 bg-base-200/70">
+                <div
+                  className="absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent"
+                  style={{ backgroundSize: '200% 100%' }}
+                />
+              </div>
+            )}
+            <img
+              src={imageUrl}
+              alt={item.pageTitle || 'Saved image'}
+              className={`block w-full ${viewMode === 'list' ? 'h-full object-contain' : 'h-auto object-contain'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+              onLoad={() => setIsLoaded(true)}
+              onError={() => setIsLoaded(true)}
+            />
+          </>
         ) : (
-          <div className="flex flex-col items-center gap-2 text-base-content/55">
-            {kind === 'link' ? <Link2 className="h-10 w-10" /> : kind === 'video' ? <Video className="h-10 w-10" /> : <ImageIcon className="h-10 w-10" />}
-            <span className="text-xs uppercase tracking-[0.2em]">{kind}</span>
+          <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center">
+            <ImageIcon className="w-12 h-12 text-base-content/55" />
           </div>
         )}
 
-        <div className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full border border-base-content/15 bg-base-100/95 px-2.5 py-1 text-xs font-semibold text-base-content shadow-sm">
-          {kind === 'link' ? <Link2 className="h-3.5 w-3.5" /> : kind === 'video' ? <Video className="h-3.5 w-3.5" /> : <ImageIcon className="h-3.5 w-3.5" />}
-          {kind}
-        </div>
+        {kind === 'video' && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="bg-black/45 rounded-full p-3">
+              <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
+          </div>
+        )}
+
+        <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`} />
+
+        <div
+          className={`absolute inset-0 rounded-[var(--radius-box)] transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}
+          style={{
+            background: 'linear-gradient(135deg, rgba(92, 124, 250, 0.3), transparent, rgba(92, 124, 250, 0.1))',
+            pointerEvents: 'none',
+          }}
+        />
       </div>
 
-      <div className="space-y-3 p-4">
-        <h2 className="line-clamp-2 text-base font-bold text-base-content">
-          {item.pageTitle || item.fileName || 'Untitled vault item'}
-        </h2>
-        <p className="line-clamp-2 text-sm text-base-content/65">
-          {item.description || item.sourcePageUrl || item.linkUrl || 'Hidden from the normal gallery'}
-        </p>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-xs text-base-content/55">
-            {item.vaultedAt ? new Date(item.vaultedAt).toLocaleString() : 'Vaulted item'}
-          </span>
-          <button
-            type="button"
-            onClick={() => onRestore(item)}
-            disabled={restoringId === item.id}
-            className="inline-flex items-center gap-2 rounded-[var(--radius-box)] bg-primary px-3 py-2 text-sm font-semibold text-primary-content transition-colors hover:bg-primary/90 disabled:opacity-60"
-          >
-            {restoringId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-            Restore
-          </button>
+      {viewMode === 'list' && (
+        <div className="p-4 space-y-3 flex-1 flex flex-col justify-center">
+          <h3 className="text-sm font-semibold truncate transition-colors duration-300 group-hover:text-primary-400" title={item.pageTitle || 'Untitled'}>
+            {item.pageTitle || item.fileName || item.linkUrl || 'Untitled'}
+          </h3>
+          <div className="flex items-center gap-2 text-xs text-base-content/65">
+            <EyeOff className="w-3.5 h-3.5" />
+            <span>
+              {item.vaultedAt
+                ? new Date(item.vaultedAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })
+                : 'Vaulted item'}
+            </span>
+          </div>
+          {item.tags?.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {item.tags.slice(0, 3).map((tag) => (
+                <span
+                  key={`${item.id}-${tag}`}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary-500/10 text-primary-300 text-xs font-medium transition-all duration-300 hover:bg-primary-500/20"
+                >
+                  <Tag className="w-3 h-3" />
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
-      </div>
-    </article>
+      )}
+    </div>
   )
+}
+
+function groupVaultItemsByDate(items) {
+  const groups = {}
+
+  items.forEach((item) => {
+    const rawDate = item.vaultedAt || item.internalAddedTimestamp
+    const date = rawDate
+      ? new Date(rawDate).toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        })
+      : 'Unknown Date'
+
+    if (!groups[date]) groups[date] = []
+    groups[date].push(item)
+  })
+
+  return Object.entries(groups).map(([date, itemsForDate]) => ({
+    date,
+    items: itemsForDate,
+  }))
 }
 
 export default function VaultPage() {
@@ -148,7 +314,13 @@ export default function VaultPage() {
   const [loadingItems, setLoadingItems] = useState(false)
   const [message, setMessage] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [viewMode, setViewMode] = useState('grid')
+  const [selectedItem, setSelectedItem] = useState(null)
+  const [selectedIndex, setSelectedIndex] = useState(-1)
   const [restoringId, setRestoringId] = useState('')
+  const [preferredProvider, setPreferredProvider] = useState('imgbb')
+  const [preferredVideoSource, setPreferredVideoSource] = useState('filemoon')
+  const [firebaseProjectId, setFirebaseProjectId] = useState('')
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -174,6 +346,18 @@ export default function VaultPage() {
         if (res.ok) remoteConfig = data.config || null
       } catch {
         remoteConfig = null
+      }
+
+      try {
+        const configRes = await fetch('/api/config', { cache: 'no-store' })
+        const configData = await readJsonSafely(configRes)
+        if (configRes.ok) {
+          setFirebaseProjectId(configData?.config?.projectId || '')
+          setPreferredProvider(configData?.settings?.defaultGallerySource === 'pixvid' ? 'pixvid' : 'imgbb')
+          setPreferredVideoSource(configData?.settings?.defaultVideoSource === 'udrop' ? 'udrop' : 'filemoon')
+        }
+      } catch {
+        // Gallery preferences are nice-to-have here; the vault can still render with defaults.
       }
 
       const config = remoteConfig || localConfig || null
@@ -262,6 +446,59 @@ export default function VaultPage() {
     })
   }, [searchQuery, vaultItems])
 
+  const counts = filteredItems.reduce((acc, item) => {
+    const kind = getItemKind(item)
+    acc.total += 1
+    acc[kind] += 1
+    return acc
+  }, { total: 0, image: 0, video: 0, link: 0 })
+
+  const groupedItems = useMemo(() => groupVaultItemsByDate(filteredItems), [filteredItems])
+
+  const handleItemClick = useCallback((item, index) => {
+    setMessage('')
+    setSelectedItem(item)
+    setSelectedIndex(index)
+  }, [])
+
+  const handleCloseLightbox = useCallback(() => {
+    setMessage('')
+    setSelectedItem(null)
+    setSelectedIndex(-1)
+  }, [])
+
+  const handleNavigate = useCallback((index) => {
+    setMessage('')
+    setSelectedItem(filteredItems[index])
+    setSelectedIndex(index)
+  }, [filteredItems])
+
+  const handleSaveItemEdits = useCallback(async (itemId, updates) => {
+    const res = await fetch('/api/images', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ id: itemId, updates }),
+    })
+
+    const data = await readJsonSafely(res)
+
+    if (!res.ok) {
+      throw new Error(data?.error || 'Failed to save metadata changes')
+    }
+
+    const updatedItem = data?.image || { id: itemId, ...updates }
+
+    setVaultItems((prevItems) =>
+      prevItems.map((item) => (item.id === itemId ? { ...item, ...updatedItem } : item))
+    )
+
+    setSelectedItem((prevSelected) =>
+      prevSelected?.id === itemId ? { ...prevSelected, ...updatedItem } : prevSelected
+    )
+  }, [])
+
   const createVault = async (event) => {
     event.preventDefault()
     setAuthError('')
@@ -348,6 +585,8 @@ export default function VaultPage() {
       if (!res.ok) throw new Error(data?.error || 'Failed to restore vault item')
 
       setVaultItems((prev) => prev.filter((entry) => entry.id !== item.id))
+      setSelectedItem(null)
+      setSelectedIndex(-1)
       setMessage('Restored to Gallery.')
     } catch (error) {
       setMessage(error?.message || 'Failed to restore vault item')
@@ -368,33 +607,79 @@ export default function VaultPage() {
   }
 
   return (
+    <>
     <main className="min-h-screen theme-surface">
       <AppNavbar mode="dashboard" activeRoute="vault" />
       <section className="px-4 pb-10 pt-24 sm:px-6 sm:pt-28">
         <div className="mx-auto max-w-7xl">
-          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.22em] text-primary">
-                <EyeOff className="h-3.5 w-3.5" />
-                Secret Vault
-              </div>
-              <h1 className="text-3xl font-black text-base-content sm:text-4xl">
-                Hidden media, same library
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-10">
+            <div className="animate-fade-in">
+              <h1 className="text-3xl sm:text-4xl font-bold mb-2">
+                <span className="gradient-text">Secret Vault</span>
               </h1>
-              <p className="mt-2 max-w-2xl text-base-content/65">
-                Vaulted items are removed from the normal gallery and only appear here after unlock.
+              <p className="text-base-content/65">
+                {unlocked && counts.total > 0
+                  ? `${counts.total} hidden · ${counts.image} images · ${counts.video} videos · ${counts.link} links`
+                  : 'Hidden media with the same gallery experience'}
               </p>
+              {unlocked && vaultItems.length > 0 && (
+                <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-primary-500/20 bg-primary-500/10 px-3 py-1 text-xs font-medium text-primary-300">
+                  <span className="inline-block h-2 w-2 rounded-full bg-primary-400" />
+                  Viewing from {preferredProvider === 'pixvid' ? 'Pixvid' : 'ImgBB'}
+                </div>
+              )}
             </div>
 
-            {unlocked && (
-              <button
-                type="button"
-                onClick={lockVault}
-                className="inline-flex items-center justify-center gap-2 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 px-4 py-3 text-sm font-semibold text-base-content transition-colors hover:bg-base-200"
-              >
-                <LockKeyhole className="h-4 w-4" />
-                Lock Vault
-              </button>
+            {unlocked && vaultItems.length > 0 && (
+              <div className="w-full md:w-auto flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 animate-fade-in" style={{ animationDelay: '100ms' }}>
+                <div className="relative group">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/55 transition-colors group-focus-within:text-primary-400" />
+                  <input
+                    type="text"
+                    placeholder="Search vault..."
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    className="pl-11 pr-10 py-3 bg-base-200/60 border border-base-content/10 rounded-[var(--radius-box)] text-sm focus:outline-none focus:border-primary-500/50 focus:bg-base-200 w-full sm:w-64 transition-all duration-300 sm:focus:w-80 focus:shadow-lg focus:shadow-primary-500/10"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-base-content/10 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5 text-base-content/65" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1 glass rounded-[var(--radius-box)] p-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('grid')}
+                    className={`p-2.5 rounded-[var(--radius-box)] transition-all duration-300 ${viewMode === 'grid' ? 'bg-primary-500/20 text-primary-400 shadow-lg shadow-primary-500/20' : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'}`}
+                    title="Grid view"
+                  >
+                    <Grid className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('list')}
+                    className={`p-2.5 rounded-[var(--radius-box)] transition-all duration-300 ${viewMode === 'list' ? 'bg-primary-500/20 text-primary-400 shadow-lg shadow-primary-500/20' : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'}`}
+                    title="List view"
+                  >
+                    <List className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={lockVault}
+                  className="inline-flex items-center justify-center gap-2 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 px-4 py-3 text-sm font-semibold text-base-content transition-colors hover:bg-base-200"
+                >
+                  <LockKeyhole className="h-4 w-4" />
+                  Lock Vault
+                </button>
+              </div>
             )}
           </div>
 
@@ -455,31 +740,6 @@ export default function VaultPage() {
             </div>
           ) : (
             <>
-              <div className="mb-6 flex flex-col gap-3 rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-box)] bg-primary/10 text-primary">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-base-content">
-                      {vaultItems.length} hidden item{vaultItems.length === 1 ? '' : 's'}
-                    </p>
-                    <p className="text-sm text-base-content/60">Restore any item to send it back to Gallery.</p>
-                  </div>
-                </div>
-
-                <div className="relative w-full sm:w-80">
-                  <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-base-content/45" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="Search vault..."
-                    className="w-full rounded-[var(--radius-box)] border border-base-content/10 bg-base-200 py-3 pl-11 pr-4 text-sm text-base-content outline-none transition-colors focus:border-primary"
-                  />
-                </div>
-              </div>
-
               {message && (
                 <div className="mb-6 rounded-[var(--radius-box)] border border-primary/30 bg-primary/10 p-4 text-sm text-primary">
                   {message}
@@ -491,22 +751,65 @@ export default function VaultPage() {
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : filteredItems.length === 0 ? (
-                <div className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 p-12 text-center shadow-sm">
+                <div className="glass rounded-[var(--radius-box)] p-12 text-center animate-fade-in">
                   <EyeOff className="mx-auto mb-4 h-12 w-12 text-base-content/45" />
                   <h2 className="text-xl font-bold text-base-content">No vault items found</h2>
                   <p className="mt-2 text-base-content/60">
                     Move an item from the gallery detail modal to hide it here.
                   </p>
                 </div>
+              ) : viewMode === 'grid' ? (
+                <div className="space-y-8">
+                  {groupedItems.map((group) => (
+                    <div key={group.date}>
+                      <div className="flex items-center gap-4 mb-4">
+                        <span className="text-lg font-semibold text-primary-400">{group.date}</span>
+                        <div className="flex-1 h-px bg-gradient-to-r from-primary-500/30 to-transparent" />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 items-start">
+                        {group.items.map((item) => {
+                          const globalIndex = filteredItems.findIndex((entry) => entry.id === item.id)
+                          return (
+                            <VaultGalleryCard
+                              key={item.id}
+                              item={item}
+                              index={globalIndex}
+                              viewMode={viewMode}
+                              preferredProvider={preferredProvider}
+                              preferredVideoSource={preferredVideoSource}
+                              onClick={() => handleItemClick(item, globalIndex)}
+                            />
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ) : (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {filteredItems.map((item) => (
-                    <VaultItemCard
-                      key={item.id}
-                      item={item}
-                      restoringId={restoringId}
-                      onRestore={restoreItem}
-                    />
+                <div className="space-y-8">
+                  {groupedItems.map((group) => (
+                    <div key={group.date}>
+                      <div className="flex items-center gap-4 mb-4">
+                        <span className="text-lg font-semibold text-primary-400">{group.date}</span>
+                        <div className="flex-1 h-px bg-gradient-to-r from-primary-500/30 to-transparent" />
+                      </div>
+                      <div className="grid grid-cols-1 gap-4">
+                        {group.items.map((item) => {
+                          const globalIndex = filteredItems.findIndex((entry) => entry.id === item.id)
+                          return (
+                            <VaultGalleryCard
+                              key={item.id}
+                              item={item}
+                              index={globalIndex}
+                              viewMode={viewMode}
+                              preferredProvider={preferredProvider}
+                              preferredVideoSource={preferredVideoSource}
+                              onClick={() => handleItemClick(item, globalIndex)}
+                            />
+                          )
+                        })}
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
@@ -515,5 +818,45 @@ export default function VaultPage() {
         </div>
       </section>
     </main>
+
+    {selectedItem && (
+      <GalleryLightbox
+        image={selectedItem}
+        images={filteredItems}
+        currentIndex={selectedIndex}
+        onClose={handleCloseLightbox}
+        onNavigate={handleNavigate}
+        onSaveEdits={handleSaveItemEdits}
+        onRestoreFromVault={restoreItem}
+        isRestoringFromVault={restoringId === selectedItem.id}
+        shareStatus={message}
+        preferredProvider={preferredProvider}
+        preferredVideoSource={preferredVideoSource}
+        firebaseProjectId={firebaseProjectId}
+      />
+    )}
+
+    <style jsx global>{`
+      @keyframes fadeInUp {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes fade-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+
+      .animate-fade-in {
+        animation: fade-in 0.5s ease-out forwards;
+      }
+    `}</style>
+    </>
   )
 }

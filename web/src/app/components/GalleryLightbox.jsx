@@ -12,6 +12,7 @@ import {
   Share2,
   Info,
   LockKeyhole,
+  RotateCcw,
 } from 'lucide-react'
 
 export default function GalleryLightbox({
@@ -23,6 +24,8 @@ export default function GalleryLightbox({
   onSaveEdits,
   onShare,
   onMoveToVault,
+  onRestoreFromVault,
+  isRestoringFromVault = false,
   shareStatus = '',
   redactedFields = [],
   omittedFields = [],
@@ -786,6 +789,19 @@ export default function GalleryLightbox({
                     >
                       <LockKeyhole className="w-3.5 h-3.5" />
                       Move to Vault
+                    </button>
+                  )}
+                  {onRestoreFromVault && !isEditing && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onRestoreFromVault(image)
+                      }}
+                      disabled={isRestoringFromVault}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors"
+                    >
+                      {isRestoringFromVault ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                      {isRestoringFromVault ? 'Restoring...' : 'Restore'}
                     </button>
                   )}
                   {onSaveEdits && (
