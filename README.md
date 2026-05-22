@@ -271,3 +271,9 @@ Contributions are always welcome:
 - Code contributions
 
 If ImgVault helps you, consider starring the repo and sharing it with others.
+
+## Contributors
+
+<a href="https://github.com/FahadBinHussain/imgvault/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=FahadBinHussain/imgvault" alt="Contributors" />
+</a>
