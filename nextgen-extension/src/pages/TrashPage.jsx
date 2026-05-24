@@ -16,6 +16,13 @@ import { useTrash } from '../hooks/useChromeExtension';
 import TimelineScrollbar from '../components/TimelineScrollbar';
 import PremiumBackground from '../components/PremiumBackground';
 import GalleryNavbar from '../components/GalleryNavbar';
+import { getPreferredVideoProviderLink } from '../utils/videoProviderLinks';
+import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
+import {
+  getBaseFieldKeys,
+  getMediaItemKind,
+  getTechnicalFieldKeys,
+} from '@shared/mediaFieldRegistry.js';
 
 export default function TrashPage() {
   const navigate = useNavigate();
@@ -175,11 +182,10 @@ export default function TrashPage() {
     setIsProcessing(true);
     
     try {
-      showToast(`🔥 Permanently deleting ${selectedImages.size} item${selectedImages.size > 1 ? 's' : ''}...`, 'info', 0);
+      showToast(`🔥 Permanently deleting ${selectedImages.size} item${selectedImages.size > 1 ? 's' : ''} from trash and hosts where possible...`, 'info', 0);
       
       const deletePromises = Array.from(selectedImages).map(id => permanentlyDelete(id));
       await Promise.all(deletePromises);
-      setTimeout(() => showImgbbProviderNotice(), 300);
       
       showToast(`✅ ${selectedImages.size} item${selectedImages.size > 1 ? 's' : ''} permanently deleted!`, 'success', 3000);
       setSelectedImages(new Set());
@@ -197,14 +203,6 @@ export default function TrashPage() {
     if (duration > 0) {
       setTimeout(() => setToast(null), duration);
     }
-  };
-
-  const showImgbbProviderNotice = () => {
-    showToast(
-      'ImgBB note: if a delete URL does not work, this is usually an ImgBB-side issue. Item is still removed from trash.',
-      'warning',
-      6500
-    );
   };
 
   const handleRestore = async () => {
@@ -234,9 +232,8 @@ export default function TrashPage() {
     setShowDeleteConfirm(false);
     
     try {
-      showToast('🔥 Permanently deleting from hosts and trash...', 'info', 0);
+      showToast('🔥 Permanently deleting from trash and hosts where possible...', 'info', 0);
       await permanentlyDelete(selectedImage.id);
-      setTimeout(() => showImgbbProviderNotice(), 300);
       
       showToast('✅ Item permanently deleted!', 'success', 3000);
       setSelectedImage(null);
@@ -255,7 +252,6 @@ export default function TrashPage() {
     try {
       showToast('🔥 Emptying trash...', 'info', 0);
       const deletedCount = await emptyTrash();
-      setTimeout(() => showImgbbProviderNotice(), 300);
       
       showToast(`✅ Emptied trash! (${deletedCount} items deleted)`, 'success', 3000);
     } catch (error) {
@@ -316,24 +312,34 @@ export default function TrashPage() {
   };
 
   const getImageUrl = (image, useFullSize = false) => {
-    // For modal/detail view, use full size. For grid thumbnails, use thumb
+    const videoUrl = getPreferredVideoProviderLink(image, 'filemoon', 'watchUrl');
+    // Prefer the full hosted image everywhere; keep thumb as a last fallback.
     if (useFullSize) {
-      return image.filemoonUrl || image.udropUrl || image.imgbbUrl || image.pixvidUrl || image.sourceImageUrl;
+      return videoUrl || getPreferredImageProviderLink(image, 'imgbb', 'url') || image.sourceImageUrl;
     }
-    return image.imgbbThumbUrl || image.imgbbUrl || image.pixvidUrl || image.sourceImageUrl;
-  };
-
-  const isVideoItem = (image) => {
-    return Boolean(
-      image.isVideo ||
-      (typeof image.fileType === 'string' && image.fileType.startsWith('video/')) ||
-      image.filemoonUrl ||
-      image.udropUrl
+    return (
+      getPreferredImageProviderLink(image, 'imgbb', 'url') ||
+      getPreferredImageProviderLink(image, 'imgbb', 'thumbnailUrl') ||
+      image.sourceImageUrl ||
+      image.imgbbThumbUrl
     );
   };
 
   const isLinkItem = (image) => {
-    return Boolean(image.isLink);
+    return getMediaItemKind(image) === 'link';
+  };
+
+  const getOverviewKeys = (item) => (
+    [...new Set([...getBaseFieldKeys(item), 'deletedAt'])]
+      .filter((key) => Object.prototype.hasOwnProperty.call(item || {}, key))
+  );
+
+  const formatDetailValue = (value) => {
+    if (value === null || value === undefined || value === '') return 'N/A';
+    if (Array.isArray(value)) return value.length ? value.join(', ') : '[]';
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
   };
 
   const formatDate = (dateString) => {
@@ -460,10 +466,9 @@ export default function TrashPage() {
             <div className="p-4 bg-warning/15 border border-warning/40 rounded-[var(--radius-box)] backdrop-blur-sm flex items-start gap-3">
               <AlertTriangle className="text-warning mt-1 flex-shrink-0" size={20} />
               <div className="text-sm">
-                <p className="font-medium text-warning">Items in trash are still hosted</p>
+                <p className="font-medium text-warning">Trash keeps saved host URLs</p>
                 <p className="text-base-content/80 mt-1">
-                  Trashed items remain accessible via their URLs. To completely remove them from hosts, 
-                  use "Permanently Delete" or "Empty Trash".
+                  Saved host URLs are kept so restore and retry still work. Permanent delete removes the vault row and attempts host cleanup when a provider delete URL exists.
                 </p>
               </div>
             </div>
@@ -645,14 +650,13 @@ export default function TrashPage() {
                         onLoadedMetadata={() => handleImageLoad(image.id)}
                       />
                     ) : isLinkItem(image) ? (
-                      <div className="w-full aspect-square bg-base-200 flex flex-col items-center justify-center gap-3">
-                        {image.linkPreviewImageUrl || image.imgbbUrl || image.pixvidUrl ? (
+                      <div className="w-full aspect-video bg-base-200 flex flex-col items-center justify-center gap-3">
+                        {image.linkPreviewImageUrl || getImageUrl(image) ? (
                           <img
-                            src={image.linkPreviewImageUrl || image.imgbbUrl || image.pixvidUrl}
+                            src={image.linkPreviewImageUrl || getImageUrl(image)}
                             alt={image.pageTitle || 'Link preview'}
                             onLoad={() => handleImageLoad(image.id)}
-                            className={`w-full h-full object-cover transition-all duration-700 ease-out
-                                     group-hover:scale-110
+                            className={`w-full h-full object-contain transition-all duration-700 ease-out
                                      ${loadedImages.has(image.id) 
                                        ? 'opacity-100' 
                                        : 'opacity-0'}`}
@@ -667,11 +671,10 @@ export default function TrashPage() {
                       </div>
                     ) : (
                       <img
-                        src={image.imgbbUrl || image.pixvidUrl}
+                        src={getImageUrl(image)}
                         alt={image.pageTitle || 'Trashed image'}
                         onLoad={() => handleImageLoad(image.id)}
-                        className={`w-full object-cover transition-all duration-700 ease-out
-                                 group-hover:scale-110
+                        className={`w-full h-auto object-contain transition-all duration-700 ease-out
                                  ${loadedImages.has(image.id) 
                                    ? 'opacity-100' 
                                    : 'opacity-0'}`}
@@ -756,11 +759,11 @@ export default function TrashPage() {
                   />
                 ) : isLinkItem(selectedImage) ? (
                   <div className="w-full max-w-2xl rounded-[var(--radius-box)] shadow-2xl bg-base-100 overflow-hidden relative z-10">
-                    {(selectedImage.linkPreviewImageUrl || selectedImage.imgbbUrl || selectedImage.pixvidUrl) ? (
+                    {(selectedImage.linkPreviewImageUrl || getImageUrl(selectedImage, true)) ? (
                       <img
-                        src={selectedImage.linkPreviewImageUrl || selectedImage.imgbbUrl || selectedImage.pixvidUrl}
+                        src={selectedImage.linkPreviewImageUrl || getImageUrl(selectedImage, true)}
                         alt={selectedImage.pageTitle || 'Link preview'}
-                        className="w-full h-auto max-h-[60vh] object-cover"
+                        className="w-full h-auto max-h-[60vh] object-contain"
                       />
                     ) : (
                       <div className="w-64 h-64 flex flex-col items-center justify-center gap-3 mx-auto">
@@ -832,16 +835,7 @@ export default function TrashPage() {
                           ? 'bg-info/20 text-info' 
                           : 'bg-base-300/70 text-base-content/60'
                       }`}>
-                        {/* Count: Title, Deleted At, Added To Vault, Pixvid/Filemoon/UDrop URLs (conditional), Source URL, Page URL, Description, Tags */}
-                        {(() => {
-                          let count = 6; // Title, Deleted At, Added To Vault, Source URL, Page URL, Description, Tags
-                          // Images show Pixvid URL, videos show Filemoon/UDrop
-                          if (selectedImage?.pixvidUrl && !selectedImage?.filemoonUrl && !selectedImage?.udropUrl) count++; // Pixvid URL (images only)
-                          if (selectedImage?.imgbbUrl) count++; // ImgBB URL
-                          if (selectedImage?.filemoonUrl) count++; // Filemoon URL (videos)
-                          if (selectedImage?.udropUrl) count++; // UDrop URL (videos)
-                          return count;
-                        })()}
+                        {getOverviewKeys(selectedImage).length}
                       </span>
                     </button>
                     <button
@@ -859,28 +853,18 @@ export default function TrashPage() {
                           : 'bg-base-300/70 text-base-content/60'
                       }`}>
                         {fullImageDetails ? (() => {
-                          // Count base technical fields (excluding Document ID)
-                          let count = 7; // File Name, File Type, File Size, SHA-256, pHash, aHash, dHash
-                          
-                          // Add optional visible fields if present
-                          if (fullImageDetails.fileTypeSource) count++;
-                          if (fullImageDetails.creationDate) count++;
-                          if (fullImageDetails.creationDateSource) count++;
-                          if (fullImageDetails.width) count++;
-                          if (fullImageDetails.height) count++;
-                          
-                          // Count EXIF fields (everything that's not in knownFields)
-                          const knownFields = new Set([
-                            'id', 'pixvidUrl', 'imgbbUrl',
-                            'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize', 'tags', 'description',
-                            'internalAddedTimestamp', 'sha256', 'pHash', 'aHash', 'dHash', 'width', 'height', 'fileType',
-                            'originalId', 'deletedAt', 'fileTypeSource', 'creationDate', 'creationDateSource'
+                          const fixedKeys = new Set([
+                            'id',
+                            ...getBaseFieldKeys(fullImageDetails),
+                            ...getTechnicalFieldKeys(),
                           ]);
-                          
-                          const exifFields = Object.keys(fullImageDetails).filter(key => !knownFields.has(key));
-                          count += exifFields.length;
-                          
-                          return count;
+                          const fixedCount = [...fixedKeys]
+                            .filter((key) => key === 'id' || Object.prototype.hasOwnProperty.call(fullImageDetails, key))
+                            .length;
+                          const remainingCount = Object.keys(fullImageDetails)
+                            .filter((key) => !fixedKeys.has(key))
+                            .length;
+                          return fixedCount + remainingCount;
                         })() : '...'}
                       </span>
                     </button>
@@ -889,209 +873,50 @@ export default function TrashPage() {
                   {/* For Noobs Tab */}
                   {activeTab === 'noobs' && (
                     <div className="space-y-4">
-                      {/* Details Grid */}
-                      {(() => {
-                        let noobsFieldCounter = 0;
-                        const fieldNo = () => `${++noobsFieldCounter}.`;
-
-                        return (
                       <div className="space-y-3">
-                        <div>
-                          <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Title</div>
-                          <div className="text-base-content font-medium">
-                            {selectedImage.pageTitle || 'Untitled'}
-                          </div>
-                        </div>
+                        {getOverviewKeys(selectedImage).map((key, index) => {
+                          const rawValue = selectedImage[key];
+                          const value = formatDetailValue(rawValue);
+                          const isUrl = key.toLowerCase().endsWith('url') && typeof rawValue === 'string' && rawValue;
 
-                        <div>
-                          <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Deleted At</div>
-                          <div className="text-base-content">
-                            {selectedImage.deletedAt
-                              ? new Date(selectedImage.deletedAt).toLocaleString('en-US', {
-                                  weekday: 'short',
-                                  year: 'numeric',
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: 'numeric',
-                                  minute: '2-digit'
-                                })
-                              : 'N/A'}
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Added To Vault</div>
-                          <div className="text-base-content">
-                            {selectedImage.internalAddedTimestamp
-                              ? new Date(selectedImage.internalAddedTimestamp).toLocaleString('en-US', {
-                                  weekday: 'short',
-                                  year: 'numeric',
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: 'numeric',
-                                  minute: '2-digit'
-                                })
-                              : fullImageDetails?.internalAddedTimestamp
-                                ? new Date(fullImageDetails.internalAddedTimestamp).toLocaleString('en-US', {
-                                    weekday: 'short',
-                                    year: 'numeric',
-                                    month: 'short',
-                                    day: 'numeric',
-                                    hour: 'numeric',
-                                    minute: '2-digit'
-                                  })
-                                : 'Unknown'}
-                          </div>
-                        </div>
-
-                        {/* Pixvid URL - Only show for images (not videos or links) */}
-                        {selectedImage.pixvidUrl && !selectedImage.filemoonUrl && !selectedImage.udropUrl && !isLinkItem(selectedImage) && (
-                          <div>
-                            <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Pixvid URL</div>
-                            <div className="bg-base-200 rounded p-2">
-                              <a
-                                href={selectedImage.pixvidUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-info hover:opacity-80 break-all text-sm"
-                              >
-                                {selectedImage.pixvidUrl}
-                              </a>
+                          return (
+                            <div key={key}>
+                              <div className="text-xs font-semibold text-base-content/60 mb-1">
+                                {`${index + 1}. ${key}`}
+                              </div>
+                              {key === 'tags' && Array.isArray(rawValue) && rawValue.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                  {rawValue.map(tag => (
+                                    <span
+                                      key={tag}
+                                      className="px-3 py-1 rounded-full bg-primary/15 text-primary text-sm"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : isUrl ? (
+                                <div className="bg-base-200 rounded p-2">
+                                  <a
+                                    href={rawValue}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-info hover:opacity-80 break-all text-sm"
+                                  >
+                                    {rawValue}
+                                  </a>
+                                </div>
+                              ) : (
+                                <div className="bg-base-200 rounded p-2">
+                                  <p className="text-base-content font-mono text-sm break-all">
+                                    {value}
+                                  </p>
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        )}
-
-                        {selectedImage.imgbbUrl && !isLinkItem(selectedImage) && (
-                          <div>
-                            <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} ImgBB URL</div>
-                            <div className="bg-base-200 rounded p-2">
-                              <a
-                                href={selectedImage.imgbbUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-success hover:opacity-80 break-all text-sm"
-                              >
-                                {selectedImage.imgbbUrl}
-                              </a>
-                            </div>
-                          </div>
-                        )}
-
-                        {selectedImage.filemoonUrl && (
-                          <div>
-                            <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Filemoon URL</div>
-                            <div className="bg-base-200 rounded p-2">
-                              <a
-                                href={selectedImage.filemoonUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:opacity-80 break-all text-sm"
-                              >
-                                {selectedImage.filemoonUrl}
-                              </a>
-                            </div>
-                          </div>
-                        )}
-
-                        {selectedImage.udropUrl && (
-                          <div>
-                            <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} UDrop URL</div>
-                            <div className="bg-base-200 rounded p-2">
-                              <a
-                                href={selectedImage.udropUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-secondary hover:opacity-80 break-all text-sm"
-                              >
-                                {selectedImage.udropUrl}
-                              </a>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Link-specific fields */}
-                        {isLinkItem(selectedImage) && selectedImage.linkUrl && (
-                          <div>
-                            <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Link URL</div>
-                            <div className="bg-base-200 rounded p-2">
-                              <a
-                                href={selectedImage.linkUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-info hover:opacity-80 break-all text-sm flex items-center gap-2"
-                              >
-                                <Link2 className="w-4 h-4 flex-shrink-0" />
-                                {selectedImage.linkUrl}
-                              </a>
-                            </div>
-                          </div>
-                        )}
-
-                        {isLinkItem(selectedImage) && selectedImage.faviconUrl && (
-                          <div>
-                            <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Favicon</div>
-                            <div className="bg-base-200 rounded p-2 flex items-center gap-2">
-                              <img src={selectedImage.faviconUrl} alt="" className="w-4 h-4" onError={(e) => e.target.style.display = 'none'} />
-                              <span className="text-base-content text-sm truncate">{selectedImage.faviconUrl}</span>
-                            </div>
-                          </div>
-                        )}
-
-                        <div>
-                          <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Source URL</div>
-                          <div className="bg-base-200 rounded p-2">
-                            <a
-                              href={selectedImage.sourceImageUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-error hover:opacity-80 break-all text-sm"
-                            >
-                              {selectedImage.sourceImageUrl || 'N/A'}
-                            </a>
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Page URL</div>
-                          <div className="bg-base-200 rounded p-2">
-                            <a
-                              href={selectedImage.sourcePageUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-error hover:opacity-80 break-all text-sm"
-                            >
-                              {selectedImage.sourcePageUrl || 'N/A'}
-                            </a>
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Description</div>
-                          <div className="text-base-content/80 text-sm">
-                            {selectedImage.description || 'No description'}
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="text-xs font-semibold text-base-content/60 mb-1">{fieldNo()} Tags</div>
-                          {selectedImage.tags && selectedImage.tags.length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
-                              {selectedImage.tags.map(tag => (
-                                <span
-                                  key={tag}
-                                  className="px-3 py-1 rounded-full bg-primary/15 text-primary text-sm"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-base-content/50 italic text-sm">No tags</div>
-                          )}
-                        </div>
+                          );
+                        })}
                       </div>
-                        );
-                      })()}
 
                       {/* Warning Box */}
                       <div className="mt-4 p-4 bg-warning/10 border border-warning/30 rounded-[var(--radius-box)]">
@@ -1335,22 +1160,21 @@ export default function TrashPage() {
                             </div>
                           </div>
 
-                          {/* All other EXIF fields in the same style */}
+                          {/* All remaining raw fields in the same style */}
                           {fullImageDetails && (() => {
-                            // Define known fields to exclude (only basic user-facing fields)
+                            // Exclude only fields rendered in the fixed technical section above.
                             const knownFields = new Set([
-                              'id', 'pixvidUrl', 'imgbbUrl',
-                              'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize', 'tags', 'description',
-                              'internalAddedTimestamp', 'sha256', 'pHash', 'aHash', 'dHash', 'width', 'height', 'fileType',
-                              'originalId', 'deletedAt', 'fileTypeSource', 'creationDate', 'creationDateSource'
+                              'id',
+                              ...getBaseFieldKeys(fullImageDetails),
+                              ...getTechnicalFieldKeys(),
                             ]);
                             
-                            // Get all EXIF fields (everything that's not in knownFields) and sort alphabetically
-                            const exifFields = Object.entries(fullImageDetails)
+                            // Get all remaining fields (everything that's not in knownFields) and sort alphabetically
+                            const remainingFields = Object.entries(fullImageDetails)
                               .filter(([key]) => !knownFields.has(key))
                               .sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
                             
-                            return exifFields.map(([key, value]) => (
+                            return remainingFields.map(([key, value]) => (
                               <div key={key}>
                                 <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
                                   <FileText className="w-3.5 h-3.5" />
@@ -1358,7 +1182,11 @@ export default function TrashPage() {
                                 </div>
                                 <div className="bg-base-200 rounded p-2">
                                   <p className="text-base-content font-mono text-sm break-all">
-                                    {typeof value === 'object' ? JSON.stringify(value) : String(value || 'N/A')}
+                                    {value === null || value === undefined || value === ''
+                                      ? 'N/A'
+                                      : typeof value === 'object'
+                                        ? JSON.stringify(value)
+                                        : String(value)}
                                   </p>
                                 </div>
                               </div>
@@ -1626,7 +1454,7 @@ export default function TrashPage() {
               This will permanently delete <span className="font-bold text-error">{selectedImages.size} item{selectedImages.size > 1 ? 's' : ''}</span> from:
             </p>
             <ul className="list-disc list-inside text-base-content/80 space-y-1 ml-2">
-              <li>All hosting providers (ImgBB, Pixvid, Filemoon, UDrop)</li>
+              <li>Provider hosts where a saved delete URL exists</li>
               <li>Your trash bin</li>
             </ul>
           </div>
@@ -1697,7 +1525,7 @@ export default function TrashPage() {
               This will permanently delete <span className="font-bold text-error">{trashedImages.length} item{trashedImages.length !== 1 ? 's' : ''}</span> from:
             </p>
             <ul className="list-disc list-inside text-base-content/80 space-y-1 ml-2">
-              <li>All hosting providers (ImgBB, Pixvid, Filemoon, UDrop)</li>
+              <li>Provider hosts where a saved delete URL exists</li>
               <li>Your trash bin</li>
             </ul>
           </div>

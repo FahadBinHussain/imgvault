@@ -13,7 +13,8 @@ export const sitesConfig = {
     { url: 'unsplash.com', displayName: 'Unsplash' },
     { url: 'wall.alphacoders.com', displayName: 'Alpha Coders' },
     { url: 'wallhere.com', displayName: 'WallHere' },
-    { url: 'wallpaper.mob.org', displayName: 'Wallpaper Mob' }
+    { url: 'wallpaper.mob.org', displayName: 'Wallpaper Mob' },
+    { url: 'wallpapersafari.com', displayName: 'WallpaperSafari' }
   ],
   goodQualitySites: [
     { url: '10eastern.com', displayName: '10 Eastern' },

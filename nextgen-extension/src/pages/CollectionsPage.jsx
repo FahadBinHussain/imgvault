@@ -11,6 +11,7 @@ import { Button, Input, Modal, Spinner, Toast } from '../components/UI';
 import { useCollections, useImages, useChromeStorage } from '../hooks/useChromeExtension';
 import PremiumBackground from '../components/PremiumBackground';
 import GalleryNavbar from '../components/GalleryNavbar';
+import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 
 export default function CollectionsPage() {
   const navigate = useNavigate();
@@ -92,10 +93,10 @@ export default function CollectionsPage() {
   const getCollectionImages = (collectionId) => images.filter((img) => img.collectionId === collectionId);
 
   const getImageUrl = (img) => {
-    if (defaultGallerySource === 'pixvid') {
-      return img.pixvidUrl || img.imgbbUrl;
-    }
-    return img.imgbbUrl || img.pixvidUrl;
+    return getPreferredImageProviderLink(img, defaultGallerySource, 'url') ||
+      getPreferredImageProviderLink(img, defaultGallerySource, 'thumbnailUrl') ||
+      img.sourceImageUrl ||
+      '';
   };
 
   if (collectionsLoading || imagesLoading) {
@@ -258,10 +259,10 @@ export default function CollectionsPage() {
                           {collectionImages.slice(0, 6).map((img) => (
                             <div
                               key={img.id}
-                              className="aspect-square rounded-[var(--radius-box)] overflow-hidden bg-base-200 cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all"
+                              className="aspect-[4/3] rounded-[var(--radius-box)] overflow-hidden bg-base-200 cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all"
                               onClick={() => navigate(`/gallery/${collection.id}`)}
                             >
-                              <img src={getImageUrl(img)} alt={img.pageTitle} className="w-full h-full object-cover" />
+                              <img src={getImageUrl(img)} alt={img.pageTitle} className="w-full h-full object-contain" />
                             </div>
                           ))}
                         </div>
@@ -296,11 +297,12 @@ export default function CollectionsPage() {
               placeholder="What's this collection about?"
             />
             <div className="flex gap-3 pt-4">
-              <Button onClick={handleCreateCollection} variant="primary" className="flex-1">
-                <Plus className="w-4 h-4 mr-2" />
-                Create
+              <Button onClick={handleCreateCollection} variant="primary" className="flex-1 items-center justify-center gap-2">
+                <Plus className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-center">Create</span>
+                <span className="w-4 shrink-0" aria-hidden="true" />
               </Button>
-              <Button onClick={() => setShowCreateModal(false)} variant="outline" className="flex-1">
+              <Button onClick={() => setShowCreateModal(false)} variant="outline" className="flex-1 justify-center text-center">
                 Cancel
               </Button>
             </div>
@@ -318,11 +320,12 @@ export default function CollectionsPage() {
               Images in this collection will not be deleted, only the collection itself.
             </p>
             <div className="flex gap-3 pt-4">
-              <Button onClick={handleDeleteCollection} variant="danger" className="flex-1">
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
+              <Button onClick={handleDeleteCollection} variant="danger" className="flex-1 items-center justify-center gap-2">
+                <Trash2 className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-center">Delete</span>
+                <span className="w-4 shrink-0" aria-hidden="true" />
               </Button>
-              <Button onClick={() => setShowDeleteConfirm(false)} variant="outline" className="flex-1">
+              <Button onClick={() => setShowDeleteConfirm(false)} variant="outline" className="flex-1 justify-center text-center">
                 Cancel
               </Button>
             </div>

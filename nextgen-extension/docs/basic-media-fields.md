@@ -1,6 +1,12 @@
 # Basic Media Fields
 
-This document lists the stable base fields currently written to Firestore for ImgVault media records.
+This document lists the stable base fields currently written to ImgVault media records.
+
+The canonical field source is [mediaFieldRegistry.js](C:\Users\Admin\Downloads\imgvault\shared\mediaFieldRegistry.js). UI screens, upload previews, and storage conversion should read from that registry instead of keeping their own hand-written field lists.
+
+The canonical read compatibility layer is [mediaItemNormalizer.js](C:\Users\Admin\Downloads\imgvault\shared\mediaItemNormalizer.js). It exists so old flat provider fields, newer `imageHosts` / `videoHosts`, and legacy `extraMetadata` fallback fields can resolve into one stable read shape before UI/storage code touches the item.
+
+The canonical batch migration runbook is [media-format-v2.md](C:\Users\Admin\Downloads\imgvault\docs\migrations\media-format-v2.md). It migrates old rows in small dry-run/apply batches while preserving the original `extra_metadata` snapshot and any conflicts.
 
 It intentionally excludes variable metadata fields that may differ by file or extraction path, such as:
 
@@ -61,11 +67,37 @@ Video records currently save these base fields:
 20. `udropWatchUrl`
 21. `udropDirectUrl`
 
+## Link Fields
+
+Link records currently save these base fields:
+
+1. `linkUrl`
+2. `pageTitle`
+3. `description`
+4. `tags`
+5. `collectionId`
+6. `internalAddedTimestamp`
+7. `faviconUrl`
+8. `linkPreviewImageUrl`
+9. `lastVisitedAt`
+10. `isLink`
+
+## Registry Groups
+
+- `image` contains the stable image-facing fields, including normalized `imageHosts`.
+- `video` contains the stable video-facing fields, including normalized `videoHosts`.
+- `link` contains the stable saved-link fields.
+- `technical` contains hash/EXIF-style technical fields.
+- `system` contains record lifecycle and internal fields such as `id`, `kind`, `createdAt`, `updatedAt`, `deletedAt`, `isVaulted`, `vaultMode`, and `vaultedAt`.
+- `ai` reserves the generated metadata namespace at `extraMetadata.ai`.
+
 ## Notes
 
 - Image records currently include host-management fields such as delete URLs because the extension still saves and manages hosted image copies directly.
 - Video records currently use normalized watch/direct URL fields for Filemoon and UDrop.
 - `isVideo` is explicitly saved for videos and is part of the lightweight gallery snapshot used for correct modal routing.
+- AI metadata is reserved under `extraMetadata.ai` for image records only. It is intentionally separate from user fields like `description` and `tags`, and from original/file fields like EXIF, hashes, dimensions, source URLs, and page title.
+- New image records may include an empty `extraMetadata.ai` container with `status: "not_generated"`. No AI analysis is generated until an explicit AI analysis flow is added later.
 
 ## Modal Mapping
 
@@ -82,8 +114,9 @@ The `For Noobs` tab shows stable user-facing fields, plus one extra visible fiel
 
 That means the current counted rows in `For Noobs` are:
 
-- Images: 20 counted rows
-- Videos: 21 counted rows
+- Images: 21 counted rows
+- Videos: 22 counted rows
+- Links: 10 counted rows
 
 `collectionId` and `internalAddedTimestamp` are included in both the count badge and the numbered base-field list.
 
@@ -103,6 +136,8 @@ The `For Nerds` tab currently shows:
 After those fixed technical fields, the tab shows any remaining variable metadata fields from the full Firestore document that are not part of the stable base schema.
 
 In the upload modal, `For Nerds` is dynamic and only appears when extra metadata fields are detected. If none are detected, the UI shows that no extra metadata fields were found.
+
+AI metadata is not mixed into the normal Noobs/Nerds field lists. When exposed in the UI later, it should get its own AI-specific section or tab so generated interpretation stays visibly separate from original/user metadata.
 
 ## Upload Modal Note
 

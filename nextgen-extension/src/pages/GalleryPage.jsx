@@ -18,6 +18,41 @@ import TimelineScrollbar from '../components/TimelineScrollbar';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig';
 import { FilemoonUploader, UDropUploader } from '../utils/uploaders';
+import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
+import {
+  getConfiguredVideoUploadServices,
+  getMissingVideoUploadServices,
+  getPreferredVideoProviderLink,
+  getVideoProviderLabel,
+  getVideoUploadService,
+  hasAnyVideoProviderLink,
+  hasVideoProviderLink,
+  mergeVideoProviderResult,
+} from '../utils/videoProviderLinks';
+import {
+  getBaseFieldKeys,
+  getDisplayFieldKeys,
+  getMediaItemKind,
+  getTechnicalMetadataEntries,
+} from '@shared/mediaFieldRegistry.js';
+
+const createVideoUploader = (service) => {
+  if (service?.uploaderKey === 'filemoonUploader') return new FilemoonUploader();
+  if (service?.uploaderKey === 'udropUploader') return new UDropUploader();
+  return null;
+};
+
+const buildVideoProviderUpdates = (item, providerKey, result) => {
+  const service = getVideoUploadService(providerKey);
+  const merged = mergeVideoProviderResult(item || {}, providerKey, result);
+
+  return {
+    videoHosts: merged.videoHosts,
+    ...(service?.watchUrlField ? { [service.watchUrlField]: merged[service.watchUrlField] || '' } : {}),
+    ...(service?.directUrlField ? { [service.directUrlField]: merged[service.directUrlField] || '' } : {}),
+    ...(service?.aliasWatchUrlField ? { [service.aliasWatchUrlField]: merged[service.aliasWatchUrlField] || '' } : {}),
+  };
+};
 
 export default function GalleryPage() {
   const navigate = useNavigate();
@@ -295,102 +330,20 @@ export default function GalleryPage() {
   const isHttpUrl = (value) =>
     typeof value === 'string' && /^https?:\/\//i.test(value.trim());
 
-  const hasVideoHostUrl = (
-    isHttpUrl(selectedItemForType?.filemoonWatchUrl) ||
-    isHttpUrl(selectedItemForType?.udropWatchUrl) ||
-    isHttpUrl(selectedItemForType?.filemoonDirectUrl) ||
-    isHttpUrl(selectedItemForType?.udropDirectUrl)
-  );
-
-  const hasExplicitVideoType = (
-    isTruthyFlag(selectedItemForType?.isVideo) ||
-    selectedItemForType?.fileType?.startsWith?.('video/')
-  );
-
-  const isSelectedVideo = Boolean(
-    hasExplicitVideoType ||
-    hasVideoHostUrl
-  );
-  const isSelectedLink = isTruthyFlag(selectedItemForType?.isLink);
-
   const modalImage =
     fullImageDetails?.id === selectedImage?.id
       ? { ...selectedImage, ...fullImageDetails }
       : selectedImage;
-  const hasFilemoonVideoUrl = Boolean(
-    isHttpUrl(modalImage?.filemoonWatchUrl) ||
-    isHttpUrl(modalImage?.filemoonDirectUrl)
-  );
-  const hasUdropVideoUrl = Boolean(
-    isHttpUrl(modalImage?.udropWatchUrl) ||
-    isHttpUrl(modalImage?.udropDirectUrl)
-  );
+  const selectedKind = getMediaItemKind(modalImage || selectedItemForType);
+  const isSelectedVideo = selectedKind === 'video';
+  const isSelectedLink = selectedKind === 'link';
+  const missingVideoServices = getMissingVideoUploadServices(modalImage);
   const hasRetryableVideoSource = Boolean(
-    hasFilemoonVideoUrl ||
-    hasUdropVideoUrl ||
+    hasAnyVideoProviderLink(modalImage) ||
     isHttpUrl(modalImage?.sourceImageUrl)
   );
-  const canRetryFilemoonHost = Boolean(isSelectedVideo && !hasFilemoonVideoUrl && hasRetryableVideoSource);
-  const canRetryUdropHost = Boolean(isSelectedVideo && !hasUdropVideoUrl && hasRetryableVideoSource);
-  const baseImageFieldKeys = [
-    'pixvidUrl',
-    'pixvidDeleteUrl',
-    'imgbbUrl',
-    'imgbbDeleteUrl',
-    'imgbbThumbUrl',
-    'sourceImageUrl',
-    'sourcePageUrl',
-    'pageTitle',
-    'fileName',
-    'fileSize',
-    'width',
-    'height',
-    'fileType',
-    'fileTypeSource',
-    'creationDate',
-    'creationDateSource',
-    'internalAddedTimestamp',
-    'tags',
-    'description',
-    'collectionId'
-  ];
-  const baseVideoFieldKeys = [
-    'sourceImageUrl',
-    'sourcePageUrl',
-    'pageTitle',
-    'fileName',
-    'fileSize',
-    'fileType',
-    'fileTypeSource',
-    'creationDate',
-    'creationDateSource',
-    'internalAddedTimestamp',
-    'duration',
-    'width',
-    'height',
-    'tags',
-    'description',
-    'collectionId',
-    'isVideo',
-    'filemoonWatchUrl',
-    'filemoonDirectUrl',
-    'udropWatchUrl',
-    'udropDirectUrl'
-  ];
-  const baseLinkFieldKeys = [
-    'linkUrl',
-    'pageTitle',
-    'description',
-    'tags',
-    'collectionId',
-    'internalAddedTimestamp',
-    'faviconUrl',
-    'linkPreviewImageUrl',
-    'lastVisitedAt',
-    'isLink'
-  ];
-  const activeBaseFieldKeys = isSelectedLink ? baseLinkFieldKeys : (isSelectedVideo ? baseVideoFieldKeys : baseImageFieldKeys);
-  const displayedBaseFieldKeys = activeBaseFieldKeys;
+  const retryableVideoServices = isSelectedVideo && hasRetryableVideoSource ? missingVideoServices : [];
+  const displayedBaseFieldKeys = getDisplayFieldKeys(modalImage || selectedItemForType);
   const countedBaseFieldCount = displayedBaseFieldKeys.length;
   const inlineActionClass = 'shrink-0 inline-flex items-center gap-1.5 rounded-full border border-base-300 bg-base-200/70 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-base-content/72 transition-all duration-200 hover:border-base-content/22 hover:bg-base-200 hover:text-base-content hover:shadow-sm active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40';
   const firebaseProjectId = firebaseConfig?.projectId || '';
@@ -400,10 +353,7 @@ export default function GalleryPage() {
     ? `https://console.firebase.google.com/u/1/project/${encodeURIComponent(firebaseProjectId)}/firestore/databases/-default-/data/~2F${encodeURIComponent(firestoreCollectionName)}~2F${encodeURIComponent(selectedImage.id)}?view=panel-view`
     : '';
   const getPreferredVideoWatchUrl = (item) => {
-    if (!item) return '';
-    return defaultVideoSource === 'udrop'
-      ? (item.udropWatchUrl || item.filemoonWatchUrl || '')
-      : (item.filemoonWatchUrl || item.udropWatchUrl || '');
+    return getPreferredVideoProviderLink(item, defaultVideoSource, 'watchUrl');
   };
 
   const getFileNameFromPath = (filePath = '') => {
@@ -526,16 +476,15 @@ export default function GalleryPage() {
     throw new DOMException('A requested file or directory could not be found at the time an operation was processed.', 'NotFoundError');
   };
   const getPreferredVideoDirectUrl = (item) => {
-    if (!item) return '';
-    return defaultVideoSource === 'udrop'
-      ? (item.udropDirectUrl || item.filemoonDirectUrl || '')
-      : (item.filemoonDirectUrl || item.udropDirectUrl || '');
+    return getPreferredVideoProviderLink(item, defaultVideoSource, 'directUrl');
   };
   const shouldRenderModalVideoPlayer = (item) => (
-    defaultVideoSource === 'udrop' && Boolean(item?.udropDirectUrl)
+    Boolean(getPreferredVideoProviderLink(item, defaultVideoSource, 'directUrl'))
   );
   const getLinkPreviewImage = (item) => (
     item?.linkPreviewImageUrl ||
+    getPreferredImageProviderLink(item, defaultGallerySource, 'url') ||
+    getPreferredImageProviderLink(item, defaultGallerySource, 'thumbnailUrl') ||
     item?.sourceImageUrl ||
     ''
   );
@@ -544,21 +493,11 @@ export default function GalleryPage() {
     if (value === null) return 'null';
     if (value === undefined || value === '') return 'N/A';
     if (typeof value === 'boolean') return value ? 'true' : 'false';
+    if (typeof value === 'object') return JSON.stringify(value);
     return String(value);
   };
-  const nerdsExcludedKeys = new Set([
-    ...baseImageFieldKeys,
-    ...baseVideoFieldKeys,
-    ...baseLinkFieldKeys
-  ]);
   const nerdsEntries = fullImageDetails
-    ? Object.entries(fullImageDetails)
-      .filter(([key, value]) => {
-        if (key === 'id') return false;
-        if (nerdsExcludedKeys.has(key)) return false;
-        return value !== undefined && value !== null && value !== '';
-      })
-      .sort(([a], [b]) => a.localeCompare(b))
+    ? getTechnicalMetadataEntries(fullImageDetails)
     : [];
   const nerdsVisibleFieldCount = fullImageDetails ? nerdsEntries.length : '...';
   const isResolvingModalMediaType = Boolean(
@@ -566,10 +505,7 @@ export default function GalleryPage() {
     fullImageDetails?.id !== selectedImage?.id &&
     !selectedImage?.isVideo &&
     !selectedImage?.fileType &&
-    !selectedImage?.filemoonWatchUrl &&
-    !selectedImage?.udropWatchUrl &&
-    !selectedImage?.filemoonDirectUrl &&
-    !selectedImage?.udropDirectUrl
+    !hasAnyVideoProviderLink(selectedImage)
   );
 
   useEffect(() => {
@@ -630,6 +566,26 @@ export default function GalleryPage() {
     return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`;
   };
 
+  const appendClientVideoProviderResultLog = async (service, result = {}) => {
+    await appendClientUploadLog(`${service.label} upload completed for ${result.filename || 'video file'}`, 'success');
+
+    const detailRows = [
+      ['API status', result.apiStatus],
+      ['API message', result.apiMessage || result.apiResponse],
+      ['File ID', result.fileId || result.filecode],
+      ['Account ID', result.accountId],
+      ['Short URL', result.shortUrl],
+      ['Watch URL', result.watchUrl || result.displayUrl || result.url],
+      ['Direct URL', result.directUrl || result.url],
+    ];
+
+    for (const [label, value] of detailRows) {
+      if (value) {
+        await appendClientUploadLog(`${service.label} ${label}: ${value}`);
+      }
+    }
+  };
+
   const uploadVideoDirectly = async (uploadData) => {
     const uploadController = new AbortController();
     activeVideoUploadControllerRef.current = uploadController;
@@ -645,121 +601,54 @@ export default function GalleryPage() {
     try {
       const settings = await sendMessage('getVideoHostSettings');
       await appendClientUploadLog(`Video payload ready: ${formatBytes(uploadData.fileSize || uploadData.fileBlob?.size || 0)}.`);
-      let udropResult = null;
-      let filemoonResult = null;
+      const configuredServices = getConfiguredVideoUploadServices(settings);
+      const uploadResults = {};
       let hostSucceeded = false;
       const uploadErrors = [];
 
-      if (settings?.udropKey1 && settings?.udropKey2) {
-        const udropUploader = new UDropUploader();
-        await appendClientUploadLog('Starting UDrop XHR upload...');
-        await chrome.storage.local.set({ uploadStatus: 'Uploading video to UDrop...' });
-
-        try {
-          udropResult = await udropUploader.uploadWithProgress(
-            uploadData.fileBlob,
-            settings.udropKey1,
-            settings.udropKey2,
-            uploadData.fileName || 'video.mp4',
-            async ({ loaded, total, percent }) => {
-              const totalLabel = total ? formatBytes(total) : formatBytes(uploadData.fileBlob?.size || 0);
-              const loadedLabel = formatBytes(loaded);
-              const message = percent !== null
-                ? `UDrop upload progress: ${percent}% (${loadedLabel} / ${totalLabel})`
-                : `UDrop upload progress: ${loadedLabel} sent`;
-              await chrome.storage.local.set({ uploadStatus: message });
-              await appendClientUploadLog(message);
-            },
-            uploadController.signal
-          );
-        } catch (error) {
-          const message = error.message || String(error);
-          await appendClientUploadLog(`UDrop XHR upload failed: ${message}`, 'error');
-          await appendClientUploadLog('Normal UDrop upload fallback is currently disabled for testing.', 'warning');
-          if (uploadController.signal.aborted) {
-            throw error;
-          }
-          uploadErrors.push(`UDrop: ${message}`);
-          // Fallback retained intentionally for later re-enable:
-          // udropResult = await udropUploader.upload(
-          //   uploadData.fileBlob,
-          //   settings.udropKey1,
-          //   settings.udropKey2,
-          //   uploadData.fileName || 'video.mp4'
-          // );
-        }
-
-        if (udropResult) {
-          await appendClientUploadLog(`UDrop API status: ${udropResult.apiStatus || 'unknown'}`);
-          if (udropResult.apiResponse) {
-            await appendClientUploadLog(`UDrop API message: ${udropResult.apiResponse}`);
-          }
-          await appendClientUploadLog(`UDrop authorized, account: ${udropResult.accountId || 'unknown'}`);
-          await appendClientUploadLog('[UDROP] File uploaded successfully', 'success');
-          await appendClientUploadLog(`[UDROP] URL: ${udropResult.displayUrl || udropResult.url || ''}`);
-          if (udropResult.shortUrl) {
-            await appendClientUploadLog(`[UDROP] Short URL: ${udropResult.shortUrl}`);
-          }
-          if (udropResult.fileId) {
-            await appendClientUploadLog(`[UDROP] File ID: ${udropResult.fileId}`);
-          }
-          if (udropResult.url) {
-            await appendClientUploadLog(`[UDROP] Download URL: ${udropResult.url}`);
-          }
-          hostSucceeded = true;
-        }
+      if (configuredServices.length === 0) {
+        throw new Error('No video host is configured for direct upload.');
       }
 
-      if (settings?.filemoonApiKey) {
-        const filemoonUploader = new FilemoonUploader();
-        await appendClientUploadLog('Starting Filemoon upload after UDrop finished...');
-        await chrome.storage.local.set({ uploadStatus: 'Uploading video to Filemoon...' });
+      for (const service of configuredServices) {
+        const uploader = createVideoUploader(service);
+        if (!uploader) {
+          uploadErrors.push(`${service.label}: uploader is not available`);
+          await appendClientUploadLog(`${service.label} uploader is not available.`, 'error');
+          continue;
+        }
+
+        await appendClientUploadLog(`Starting ${service.label} XHR upload...`);
+        await chrome.storage.local.set({ uploadStatus: `Uploading video to ${service.label}...` });
 
         try {
-          filemoonResult = await filemoonUploader.uploadWithProgress(
-            uploadData.fileBlob,
-            settings.filemoonApiKey,
-            uploadData.fileName || 'video.mp4',
-            async ({ loaded, total, percent }) => {
+          const result = await service.uploadWithProgress({
+            uploader,
+            blob: uploadData.fileBlob,
+            settings,
+            data: { ...uploadData, fileName: uploadData.fileName || 'video.mp4' },
+            onProgress: async ({ loaded, total, percent }) => {
               const totalLabel = total ? formatBytes(total) : formatBytes(uploadData.fileBlob?.size || 0);
               const loadedLabel = formatBytes(loaded);
               const message = percent !== null
-                ? `Filemoon upload progress: ${percent}% (${loadedLabel} / ${totalLabel})`
-                : `Filemoon upload progress: ${loadedLabel} sent`;
+                ? `${service.label} upload progress: ${percent}% (${loadedLabel} / ${totalLabel})`
+                : `${service.label} upload progress: ${loadedLabel} sent`;
               await chrome.storage.local.set({ uploadStatus: message });
               await appendClientUploadLog(message);
             },
-            uploadController.signal
-          );
+            signal: uploadController.signal,
+          });
+          uploadResults[service.key] = result;
+          await appendClientVideoProviderResultLog(service, result);
+          hostSucceeded = true;
         } catch (error) {
           const message = error.message || String(error);
-          await appendClientUploadLog(`Filemoon XHR upload failed: ${message}`, 'error');
-          await appendClientUploadLog('Normal Filemoon upload fallback is currently disabled for testing.', 'warning');
+          await appendClientUploadLog(`${service.label} XHR upload failed: ${message}`, 'error');
+          await appendClientUploadLog(`Normal ${service.label} upload fallback is currently disabled for testing.`, 'warning');
           if (uploadController.signal.aborted) {
             throw error;
           }
-          uploadErrors.push(`Filemoon: ${message}`);
-          // Fallback retained intentionally for later re-enable:
-          // filemoonResult = await filemoonUploader.upload(
-          //   uploadData.fileBlob,
-          //   settings.filemoonApiKey,
-          //   uploadData.fileName || 'video.mp4'
-          // );
-        }
-
-        if (filemoonResult) {
-          await appendClientUploadLog(`Filemoon API status: ${filemoonResult.apiStatus || 'unknown'}`);
-          if (filemoonResult.apiMessage) {
-            await appendClientUploadLog(`Filemoon API message: ${filemoonResult.apiMessage}`);
-          }
-          if (filemoonResult.filecode) {
-            await appendClientUploadLog(`Filemoon filecode: ${filemoonResult.filecode}`);
-          }
-          if (filemoonResult.url) {
-            await appendClientUploadLog(`Filemoon embed URL: ${filemoonResult.url}`);
-          }
-          await appendClientUploadLog('[FILEMOON] File uploaded successfully', 'success');
-          hostSucceeded = true;
+          uploadErrors.push(`${service.label}: ${message}`);
         }
       }
 
@@ -777,8 +666,9 @@ export default function GalleryPage() {
       await chrome.storage.local.set({ uploadStatus: 'Saving video metadata...' });
       const saved = await sendMessage('saveUploadedVideo', {
         ...uploadData,
-        udropResult,
-        filemoonResult,
+        videoUploadResults: uploadResults,
+        udropResult: uploadResults.udrop,
+        filemoonResult: uploadResults.filemoon,
         videoUploadErrors: uploadErrors,
       });
       await appendClientUploadLog(`[SAVE VIDEO] Saved successfully with ID: ${saved.id}`, 'success');
@@ -841,7 +731,7 @@ export default function GalleryPage() {
       showToast('🗑️ Moving to trash...', 'info', 0);
       await deleteImage(selectedImage.id);
       
-      showToast('✅ Image moved to trash! (Hosts preserved)', 'success', 3000);
+      showToast('✅ Image moved to trash. Host URLs kept for restore/retry.', 'success', 3000);
       setSelectedImage(null);
       setFullImageDetails(null);
     } catch (error) {
@@ -1632,8 +1522,13 @@ export default function GalleryPage() {
   };
 
   const retryVideoHostFromLocalFile = async (host, item, file) => {
-    const hostLabel = host === 'filemoon' ? 'Filemoon' : 'UDrop';
+    const service = getVideoUploadService(host);
+    const hostLabel = service?.label || getVideoProviderLabel(host);
     const settings = await sendMessage('getVideoHostSettings');
+
+    if (!service) {
+      throw new Error('Choose a configured video host to retry.');
+    }
 
     await chrome.storage.local.set({
       uploadActive: true,
@@ -1642,56 +1537,29 @@ export default function GalleryPage() {
     await appendClientUploadLog(`Retrying ${hostLabel} from local file: ${file.name}`);
 
     try {
-      let updates = {};
-
-      if (host === 'filemoon') {
-        if (!settings?.filemoonApiKey) {
-          throw new Error('Filemoon API key is not configured.');
-        }
-        const uploader = new FilemoonUploader();
-        const result = await uploader.uploadWithProgress(
-          file,
-          settings.filemoonApiKey,
-          item?.fileName || file.name || 'video.mp4',
-          async ({ loaded, total, percent }) => {
-            const totalLabel = total ? formatBytes(total) : formatBytes(file.size || 0);
-            const loadedLabel = formatBytes(loaded);
-            const message = percent !== null
-              ? `Filemoon retry progress: ${percent}% (${loadedLabel} / ${totalLabel})`
-              : `Filemoon retry progress: ${loadedLabel} sent`;
-            await chrome.storage.local.set({ uploadStatus: message });
-            await appendClientUploadLog(message);
-          }
-        );
-        updates = {
-          filemoonWatchUrl: result.watchUrl || result.url || '',
-          filemoonDirectUrl: result.directUrl || '',
-        };
-      } else {
-        if (!settings?.udropKey1 || !settings?.udropKey2) {
-          throw new Error('UDrop API keys are not configured.');
-        }
-        const uploader = new UDropUploader();
-        const result = await uploader.uploadWithProgress(
-          file,
-          settings.udropKey1,
-          settings.udropKey2,
-          item?.fileName || file.name || 'video.mp4',
-          async ({ loaded, total, percent }) => {
-            const totalLabel = total ? formatBytes(total) : formatBytes(file.size || 0);
-            const loadedLabel = formatBytes(loaded);
-            const message = percent !== null
-              ? `UDrop retry progress: ${percent}% (${loadedLabel} / ${totalLabel})`
-              : `UDrop retry progress: ${loadedLabel} sent`;
-            await chrome.storage.local.set({ uploadStatus: message });
-            await appendClientUploadLog(message);
-          }
-        );
-        updates = {
-          udropWatchUrl: result.watchUrl || result.displayUrl || '',
-          udropDirectUrl: result.directUrl || result.url || '',
-        };
+      if (!service.isConfigured(settings)) {
+        throw new Error(`${hostLabel} API settings are not configured.`);
       }
+      const uploader = createVideoUploader(service);
+      if (!uploader) {
+        throw new Error(`${hostLabel} uploader is not available.`);
+      }
+      const result = await service.uploadWithProgress({
+        uploader,
+        blob: file,
+        settings,
+        data: { ...item, fileName: item?.fileName || file.name || 'video.mp4' },
+        onProgress: async ({ loaded, total, percent }) => {
+          const totalLabel = total ? formatBytes(total) : formatBytes(file.size || 0);
+          const loadedLabel = formatBytes(loaded);
+          const message = percent !== null
+            ? `${hostLabel} retry progress: ${percent}% (${loadedLabel} / ${totalLabel})`
+            : `${hostLabel} retry progress: ${loadedLabel} sent`;
+          await chrome.storage.local.set({ uploadStatus: message });
+          await appendClientUploadLog(message);
+        },
+      });
+      const updates = buildVideoProviderUpdates(item, host, result);
 
       await sendMessage('updateImage', {
         id: item.id,
@@ -1710,7 +1578,7 @@ export default function GalleryPage() {
   const retryVideoHostUpload = async (host) => {
     if (!selectedImage?.id || retryingVideoHost) return;
 
-    const hostLabel = host === 'filemoon' ? 'Filemoon' : 'UDrop';
+    const hostLabel = getVideoProviderLabel(host);
     const retryItem = modalImage || selectedImage;
     setRetryingVideoHost(host);
     showToast(`Retrying ${hostLabel} upload...`, 'info', 3000);
@@ -1786,8 +1654,9 @@ export default function GalleryPage() {
       dup?.originalSourceUrl,
       dup?.sourceImageUrl,
       dup?.pageUrl,
-      dup?.imgbbUrl,
-      dup?.pixvidUrl
+      getPreferredImageProviderLink(dup, defaultGallerySource, 'url'),
+      getPreferredImageProviderLink(dup, defaultGallerySource, 'thumbnailUrl'),
+      dup?.sourceImageUrl
     ].filter(Boolean);
 
     const jumpUrl = candidateUrls.find((url) => {
@@ -2456,7 +2325,7 @@ export default function GalleryPage() {
                         return (
                           <div className="relative w-full aspect-video" style={{ background: 'var(--color-base-200)' }}>
                             {linkPreviewImage ? (
-                              <img src={linkPreviewImage} alt={img.pageTitle || 'Link preview'} className="w-full h-full object-cover" loading="lazy" onLoad={() => handleImageLoad(img.id)} />
+                              <img src={linkPreviewImage} alt={img.pageTitle || 'Link preview'} className="w-full h-full object-contain" loading="lazy" onLoad={() => handleImageLoad(img.id)} />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.3)' }}>
                                 <Link2 style={{ width: 32, height: 32 }} />
@@ -2473,10 +2342,14 @@ export default function GalleryPage() {
                       )
                     ) : (
                       <img
-                        src={img.imgbbUrl || img.pixvidUrl}
+                        src={
+                          getPreferredImageProviderLink(img, defaultGallerySource, 'url') ||
+                          getPreferredImageProviderLink(img, defaultGallerySource, 'thumbnailUrl') ||
+                          img.sourceImageUrl
+                        }
                         alt={img.pageTitle}
                         onLoad={() => handleImageLoad(img.id)}
-                        className={`w-full object-cover transition-all duration-500 ease-out group-hover:scale-110 ${loadedImages.has(img.id) ? 'opacity-100' : 'opacity-0'}`}
+                        className={`w-full h-auto object-contain transition-all duration-500 ease-out ${loadedImages.has(img.id) ? 'opacity-100' : 'opacity-0'}`}
                         loading="lazy"
                       />
                     )}
@@ -2632,7 +2505,10 @@ export default function GalleryPage() {
                   </div>
                 ) : (
                   <img
-                    src={modalImage.imgbbUrl || modalImage.pixvidUrl}
+                    src={
+                      getPreferredImageProviderLink(modalImage, defaultGallerySource, 'url') ||
+                      modalImage.sourceImageUrl
+                    }
                     alt={modalImage.pageTitle}
                     className={`max-w-full max-h-full object-contain rounded-[var(--radius-box)] shadow-2xl relative z-10
                              transition-all duration-700 ease-out
@@ -2940,7 +2816,7 @@ export default function GalleryPage() {
                   </div>
 
                     <div className="pt-4 border-t border-base-300">
-                      {isSelectedVideo && (canRetryFilemoonHost || canRetryUdropHost) && (
+                      {isSelectedVideo && retryableVideoServices.length > 0 && (
                         <div className="mb-4 rounded-[var(--radius-box)] border border-warning/20 bg-warning/10 p-3 text-sm text-base-content">
                           <div className="mb-2 flex items-center gap-2 font-semibold">
                             <Cloud className="h-4 w-4 text-warning" />
@@ -2950,26 +2826,17 @@ export default function GalleryPage() {
                             This video is saved already. Retry only the failed host below.
                           </p>
                           <div className="flex flex-wrap gap-2">
-                            {canRetryFilemoonHost && (
+                            {retryableVideoServices.map((service) => (
                               <Button
+                                key={service.key}
                                 className={inlineActionClass}
-                                onClick={() => retryVideoHostUpload('filemoon')}
+                                onClick={() => retryVideoHostUpload(service.key)}
                                 disabled={Boolean(retryingVideoHost)}
                               >
                                 <Cloud className="h-3.5 w-3.5" />
-                                {retryingVideoHost === 'filemoon' ? 'Retrying Filemoon...' : 'Retry Filemoon'}
+                                {retryingVideoHost === service.key ? `Retrying ${service.label}...` : `Retry ${service.label}`}
                               </Button>
-                            )}
-                            {canRetryUdropHost && (
-                              <Button
-                                className={inlineActionClass}
-                                onClick={() => retryVideoHostUpload('udrop')}
-                                disabled={Boolean(retryingVideoHost)}
-                              >
-                                <Cloud className="h-3.5 w-3.5" />
-                                {retryingVideoHost === 'udrop' ? 'Retrying UDrop...' : 'Retry UDrop'}
-                              </Button>
-                            )}
+                            ))}
                           </div>
                         </div>
                       )}
@@ -2977,7 +2844,7 @@ export default function GalleryPage() {
                         <div className="text-sm text-base-content/60 italic">
                           Loading media details...
                         </div>
-                      ) : isSelectedVideo && !modalImage.filemoonDirectUrl && !modalImage.udropDirectUrl ? (
+                      ) : isSelectedVideo && !getPreferredVideoDirectUrl(modalImage) ? (
                         <div className="text-sm text-base-content/60 italic">
                           No direct video download URLs available.
                         </div>
@@ -3045,7 +2912,7 @@ export default function GalleryPage() {
             </h3>
             
             <p className="text-[14px] leading-relaxed" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.5)' }}>
-              This will move the image to trash. The image will remain accessible on hosting providers.
+              This will move the image to trash and keep saved host URLs so restore/retry still works.
               <br />
               <span className="font-medium" style={{ color: 'var(--color-warning)' }}>You can restore it later from the trash.</span>
             </p>
@@ -3088,7 +2955,7 @@ export default function GalleryPage() {
             </h3>
             
             <p className="text-[14px] leading-relaxed" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.5)' }}>
-              This will move {selectedImages.size} image{selectedImages.size > 1 ? 's' : ''} to trash. The images will remain accessible on hosting providers.
+              This will move {selectedImages.size} image{selectedImages.size > 1 ? 's' : ''} to trash and keep saved host URLs so restore/retry still works.
               <br />
               <span className="font-medium" style={{ color: 'var(--color-warning)' }}>You can restore them later from the trash.</span>
             </p>
@@ -3502,7 +3369,12 @@ export default function GalleryPage() {
                               const similarity = dup.similarity || null;
                               const visualLabel = dup.visualStrength ? `${dup.visualStrength} visual` : 'Visual';
                               const duplicateVideoUrl = getPreferredVideoWatchUrl(dup);
-                              const duplicateImageUrl = dup.imgbbThumbUrl || dup.imgbbUrl || dup.pixvidUrl || dup.sourceImageUrl || '';
+                              const duplicateImageUrl =
+                                getPreferredImageProviderLink(dup, defaultGallerySource, 'url') ||
+                                getPreferredImageProviderLink(dup, defaultGallerySource, 'thumbnailUrl') ||
+                                dup.sourceImageUrl ||
+                                dup.imgbbThumbUrl ||
+                                '';
                               
                               return (
                                 <div key={index} className="rounded-[var(--radius-box)] overflow-hidden border border-warning/30 bg-base-200">
@@ -3533,7 +3405,7 @@ export default function GalleryPage() {
                                       <img
                                         src={duplicateImageUrl}
                                         alt={`Duplicate ${index + 1}`}
-                                        className="max-w-full max-h-24 object-contain rounded"
+                                        className="max-w-full max-h-48 object-contain rounded"
                                       />
                                     ) : (
                                       <div className="flex h-24 w-full items-center justify-center rounded bg-base-200 text-xs text-base-content/60">
@@ -3628,7 +3500,7 @@ export default function GalleryPage() {
                               : 'bg-base-200 text-base-content/70 hover:text-base-content'
                           }`}
                         >
-                          {`For Noobs (${uploadImageData?.isVideo ? 21 : 20})`}
+                          {`For Noobs (${getBaseFieldKeys(uploadImageData?.isVideo ? 'video' : 'image').length})`}
                         </button>
                         <button
                           onClick={() => setUploadModalMetaTab('nerds')}
@@ -3638,30 +3510,7 @@ export default function GalleryPage() {
                               : 'bg-base-200 text-base-content/70 hover:text-base-content'
                           }`}
                         >
-                          {`For Nerds (${
-                            Object.entries(uploadMetadata || {})
-                              .filter(([key, value]) => {
-                                const noobKeys = new Set(
-                                  (
-                                    uploadImageData?.isVideo
-                                      ? [
-                                          'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize',
-                                          'fileType', 'fileTypeSource', 'creationDate', 'creationDateSource',
-                                          'internalAddedTimestamp', 'duration', 'width', 'height', 'tags',
-                                          'description', 'collectionId', 'isVideo', 'filemoonWatchUrl',
-                                          'filemoonDirectUrl', 'udropWatchUrl', 'udropDirectUrl'
-                                        ]
-                                      : [
-                                          'pixvidUrl', 'pixvidDeleteUrl', 'imgbbUrl', 'imgbbDeleteUrl', 'imgbbThumbUrl',
-                                          'sourceImageUrl', 'sourcePageUrl', 'pageTitle', 'fileName', 'fileSize',
-                                          'width', 'height', 'fileType', 'fileTypeSource', 'creationDate',
-                                          'creationDateSource', 'internalAddedTimestamp', 'tags', 'description', 'collectionId'
-                                        ]
-                                  )
-                                );
-                                return !noobKeys.has(key) && value !== undefined && value !== null && value !== '';
-                              }).length
-                          })`}
+                          {`For Nerds (${getTechnicalMetadataEntries(uploadMetadata || {}).length})`}
                         </button>
                       </div>
 
@@ -3746,57 +3595,44 @@ export default function GalleryPage() {
                           .map((t) => t.trim())
                           .filter(Boolean);
 
-                        const noobsFields = isVideoUpload
-                          ? [
-                              ['sourceImageUrl', normalizedSourceUrl],
-                              ['sourcePageUrl', String(uploadPageUrl || 'N/A')],
-                              ['pageTitle', String(uploadImageData?.pageTitle || 'N/A')],
-                              ['fileName', String(uploadImageData?.fileName || 'N/A')],
-                              ['fileSize', uploadMetadata?.fileSize || uploadImageData?.file?.size || 'N/A'],
-                              ['fileType', uploadImageData?.fileType || uploadImageData?.file?.type || uploadMetadata?.fileType || 'N/A'],
-                              ['fileTypeSource', uploadMetadata?.fileTypeSource || 'N/A'],
-                              ['creationDate', uploadMetadata?.creationDate || 'N/A'],
-                              ['creationDateSource', uploadMetadata?.creationDateSource || 'N/A'],
-                              ['internalAddedTimestamp', 'Auto-generated on save'],
-                              ['duration', uploadMetadata?.duration ?? 'N/A'],
-                              ['width', uploadMetadata?.width ?? 'N/A'],
-                              ['height', uploadMetadata?.height ?? 'N/A'],
-                              ['tags', normalizedTags.length ? normalizedTags.join(', ') : '[]'],
-                              ['description', uploadDescription || ''],
-                              ['collectionId', selectedCollectionId || null],
-                              ['isVideo', true],
-                              ['filemoonWatchUrl', 'Pending (set after upload)'],
-                              ['filemoonDirectUrl', 'Pending (set after upload)'],
-                              ['udropWatchUrl', 'Pending (set after upload)'],
-                              ['udropDirectUrl', 'Pending (set after upload)'],
-                            ]
-                          : [
-                              ['pixvidUrl', 'Pending (set after upload)'],
-                              ['pixvidDeleteUrl', 'Pending (set after upload)'],
-                              ['imgbbUrl', 'Pending (set after upload)'],
-                              ['imgbbDeleteUrl', 'Pending (set after upload)'],
-                              ['imgbbThumbUrl', 'Pending (set after upload)'],
-                              ['sourceImageUrl', normalizedSourceUrl],
-                              ['sourcePageUrl', String(uploadPageUrl || 'N/A')],
-                              ['pageTitle', String(uploadImageData?.pageTitle || 'N/A')],
-                              ['fileName', String(uploadImageData?.fileName || 'N/A')],
-                              ['fileSize', uploadMetadata?.fileSize || uploadImageData?.file?.size || 'N/A'],
-                              ['width', uploadMetadata?.width ?? 'N/A'],
-                              ['height', uploadMetadata?.height ?? 'N/A'],
-                              ['fileType', uploadImageData?.fileType || uploadImageData?.file?.type || uploadMetadata?.fileType || 'N/A'],
-                              ['fileTypeSource', uploadMetadata?.fileTypeSource || 'N/A'],
-                              ['creationDate', uploadMetadata?.creationDate || 'N/A'],
-                              ['creationDateSource', uploadMetadata?.creationDateSource || 'N/A'],
-                              ['internalAddedTimestamp', 'Auto-generated on save'],
-                              ['tags', normalizedTags.length ? normalizedTags.join(', ') : '[]'],
-                              ['description', uploadDescription || ''],
-                              ['collectionId', selectedCollectionId || null],
-                            ];
-
-                        const noobKeys = new Set(noobsFields.map(([key]) => key));
-                        const nerdEntries = Object.entries(uploadMetadata || {})
-                          .filter(([key, value]) => !noobKeys.has(key) && value !== undefined && value !== null && value !== '')
-                          .sort(([a], [b]) => a.localeCompare(b));
+                        const uploadKind = isVideoUpload ? 'video' : 'image';
+                        const uploadFieldValues = {
+                          pixvidUrl: 'Pending (set after upload)',
+                          pixvidDeleteUrl: 'Pending (set after upload)',
+                          imgbbUrl: 'Pending (set after upload)',
+                          imgbbDeleteUrl: 'Pending (set after upload)',
+                          imgbbThumbUrl: 'Pending (set after upload)',
+                          imageHosts: 'Pending (set after upload)',
+                          sourceImageUrl: normalizedSourceUrl,
+                          sourcePageUrl: String(uploadPageUrl || 'N/A'),
+                          pageTitle: String(uploadImageData?.pageTitle || 'N/A'),
+                          fileName: String(uploadImageData?.fileName || 'N/A'),
+                          fileSize: uploadMetadata?.fileSize || uploadImageData?.file?.size || 'N/A',
+                          width: uploadMetadata?.width ?? 'N/A',
+                          height: uploadMetadata?.height ?? 'N/A',
+                          duration: uploadMetadata?.duration ?? 'N/A',
+                          fileType: uploadImageData?.fileType || uploadImageData?.file?.type || uploadMetadata?.fileType || 'N/A',
+                          fileTypeSource: uploadMetadata?.fileTypeSource || 'N/A',
+                          creationDate: uploadMetadata?.creationDate || 'N/A',
+                          creationDateSource: uploadMetadata?.creationDateSource || 'N/A',
+                          internalAddedTimestamp: 'Auto-generated on save',
+                          tags: normalizedTags.length ? normalizedTags.join(', ') : '[]',
+                          description: uploadDescription || '',
+                          collectionId: selectedCollectionId || null,
+                          isVideo: true,
+                          videoHosts: 'Pending (set after upload)',
+                          filemoonWatchUrl: 'Pending (set after upload)',
+                          filemoonDirectUrl: 'Pending (set after upload)',
+                          udropWatchUrl: 'Pending (set after upload)',
+                          udropDirectUrl: 'Pending (set after upload)',
+                        };
+                        const noobsFields = getBaseFieldKeys(uploadKind).map((key) => [
+                          key,
+                          Object.prototype.hasOwnProperty.call(uploadFieldValues, key)
+                            ? uploadFieldValues[key]
+                            : 'N/A',
+                        ]);
+                        const nerdEntries = getTechnicalMetadataEntries(uploadMetadata || {});
 
                         if (uploadModalMetaTab === 'nerds') {
                           if (nerdEntries.length === 0) {
@@ -4039,34 +3875,41 @@ export default function GalleryPage() {
                       .filter(Boolean);
 
                     if (isVideoUpload) {
-                      const videoFields = [
-                        ['sourceImageUrl', normalizedSourceUrl],
-                        ['sourcePageUrl', String(uploadPageUrl || 'N/A')],
-                        ['pageTitle', String(uploadImageData?.pageTitle || 'N/A')],
-                        ['fileName', String(uploadImageData?.fileName || 'N/A')],
-                        ['fileSize', uploadMetadata?.fileSize || uploadImageData?.file?.size || 'N/A'],
-                        ['fileType', uploadImageData?.fileType || uploadImageData?.file?.type || uploadMetadata?.fileType || 'N/A'],
-                        ['fileTypeSource', uploadMetadata?.fileTypeSource || 'N/A'],
-                        ['creationDate', uploadMetadata?.creationDate || 'N/A'],
-                        ['creationDateSource', uploadMetadata?.creationDateSource || 'N/A'],
-                        ['internalAddedTimestamp', 'Auto-generated on save'],
-                        ['duration', uploadMetadata?.duration ?? 'N/A'],
-                        ['width', uploadMetadata?.width ?? 'N/A'],
-                        ['height', uploadMetadata?.height ?? 'N/A'],
-                        ['tags', normalizedTags.length ? normalizedTags.join(', ') : '[]'],
-                        ['description', uploadDescription || ''],
-                        ['collectionId', selectedCollectionId || null],
-                        ['isVideo', true],
-                        ['filemoonWatchUrl', 'Pending (set after upload)'],
-                        ['filemoonDirectUrl', 'Pending (set after upload)'],
-                        ['udropWatchUrl', 'Pending (set after upload)'],
-                        ['udropDirectUrl', 'Pending (set after upload)'],
-                      ];
+                      const videoFieldValues = {
+                        sourceImageUrl: normalizedSourceUrl,
+                        sourcePageUrl: String(uploadPageUrl || 'N/A'),
+                        pageTitle: String(uploadImageData?.pageTitle || 'N/A'),
+                        fileName: String(uploadImageData?.fileName || 'N/A'),
+                        fileSize: uploadMetadata?.fileSize || uploadImageData?.file?.size || 'N/A',
+                        fileType: uploadImageData?.fileType || uploadImageData?.file?.type || uploadMetadata?.fileType || 'N/A',
+                        fileTypeSource: uploadMetadata?.fileTypeSource || 'N/A',
+                        creationDate: uploadMetadata?.creationDate || 'N/A',
+                        creationDateSource: uploadMetadata?.creationDateSource || 'N/A',
+                        internalAddedTimestamp: 'Auto-generated on save',
+                        duration: uploadMetadata?.duration ?? 'N/A',
+                        width: uploadMetadata?.width ?? 'N/A',
+                        height: uploadMetadata?.height ?? 'N/A',
+                        tags: normalizedTags.length ? normalizedTags.join(', ') : '[]',
+                        description: uploadDescription || '',
+                        collectionId: selectedCollectionId || null,
+                        isVideo: true,
+                        videoHosts: 'Pending (set after upload)',
+                        filemoonWatchUrl: 'Pending (set after upload)',
+                        filemoonDirectUrl: 'Pending (set after upload)',
+                        udropWatchUrl: 'Pending (set after upload)',
+                        udropDirectUrl: 'Pending (set after upload)',
+                      };
+                      const videoFields = getBaseFieldKeys('video').map((key) => [
+                        key,
+                        Object.prototype.hasOwnProperty.call(videoFieldValues, key)
+                          ? videoFieldValues[key]
+                          : 'N/A',
+                      ]);
 
                       return (
                         <div className="space-y-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 p-4">
                           <div className="text-sm font-medium text-base-content/80 mb-1">
-                            Video Fields To Save (21)
+                            {`Video Fields To Save (${videoFields.length})`}
                           </div>
                           {videoFields.map(([key, value], index) => (
                             <div key={key}>

@@ -8,6 +8,7 @@ import {
   FileText,
   Grid,
   Image as ImageIcon,
+  KeyRound,
   List,
   Loader2,
   LockKeyhole,
@@ -18,6 +19,12 @@ import {
 } from 'lucide-react'
 import AppNavbar from '../components/AppNavbar'
 import GalleryLightbox from '../components/GalleryLightbox'
+import { getPreferredImageProviderLink } from '@/lib/image-provider-links'
+import { getPreferredVideoProviderLink } from '@/lib/video-provider-links'
+import {
+  getMediaItemKind,
+  isTruthyFlag,
+} from '@shared/mediaFieldRegistry.js'
 
 const VAULT_CONFIG_KEY = 'secretVaultConfig'
 const VAULT_SESSION_KEY = 'imgvault-vault-unlocked'
@@ -66,57 +73,27 @@ function saveLocalVaultConfig(config) {
   }
 }
 
-function isTruthyFlag(value) {
-  return (
-    value === true ||
-    value === 1 ||
-    value === '1' ||
-    (typeof value === 'string' && value.trim().toLowerCase() === 'true')
-  )
-}
-
 function getPreferredImageUrl(image, preferredProvider = 'imgbb') {
-  if (preferredProvider === 'pixvid') {
-    return image?.pixvidUrl || image?.imgbbUrl || image?.imgbbThumbUrl || image?.sourceImageUrl || ''
-  }
-
-  return image?.imgbbUrl || image?.imgbbThumbUrl || image?.pixvidUrl || image?.sourceImageUrl || ''
+  return getPreferredImageProviderLink(image, preferredProvider, 'url') || image?.sourceImageUrl || image?.imgbbThumbUrl || ''
 }
 
 function getItemKind(item) {
-  if (isTruthyFlag(item?.isLink) || item?.linkUrl) return 'link'
-  if (
-    isTruthyFlag(item?.isVideo) ||
-    item?.fileType?.startsWith?.('video/') ||
-    item?.duration ||
-    item?.filemoonWatchUrl ||
-    item?.udropWatchUrl ||
-    item?.filemoonDirectUrl ||
-    item?.udropDirectUrl
-  ) return 'video'
-  return 'image'
+  return getMediaItemKind(item)
 }
 
 function getPreferredVideoWatchUrl(item, preferredVideoSource = 'filemoon') {
-  if (!item) return ''
-  if (preferredVideoSource === 'udrop') {
-    return item.udropWatchUrl || item.filemoonWatchUrl || item.udropUrl || item.filemoonUrl || ''
-  }
-  return item.filemoonWatchUrl || item.udropWatchUrl || item.filemoonUrl || item.udropUrl || ''
+  return getPreferredVideoProviderLink(item, preferredVideoSource, 'watchUrl')
 }
 
 function getPreferredVideoDirectUrl(item, preferredVideoSource = 'filemoon') {
-  if (!item) return ''
-  if (preferredVideoSource === 'udrop') {
-    return item.udropDirectUrl || item.filemoonDirectUrl || ''
-  }
-  return item.filemoonDirectUrl || item.udropDirectUrl || ''
+  return getPreferredVideoProviderLink(item, preferredVideoSource, 'directUrl')
 }
 
 function getLinkPreviewImage(item, preferredProvider = 'imgbb') {
   return (
     item?.linkPreviewImageUrl ||
     getPreferredImageUrl(item, preferredProvider) ||
+    getPreferredImageProviderLink(item, preferredProvider, 'thumbnailUrl') ||
     item?.sourceImageUrl ||
     ''
   )
@@ -158,7 +135,7 @@ function VaultGalleryCard({ item, index, viewMode, onClick, preferredProvider = 
             <img
               src={linkPreviewImage}
               alt={item.pageTitle || 'Saved link'}
-              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+              className={`block w-full ${viewMode === 'list' ? 'h-full object-contain' : 'h-auto object-contain'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
               onLoad={() => setIsLoaded(true)}
               onError={() => setIsLoaded(true)}
             />
@@ -309,6 +286,12 @@ export default function VaultPage() {
   const [unlocked, setUnlocked] = useState(false)
   const [passcode, setPasscode] = useState('')
   const [confirmPasscode, setConfirmPasscode] = useState('')
+  const [showChangePassword, setShowChangePassword] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmNewPassword, setConfirmNewPassword] = useState('')
+  const [changePasswordError, setChangePasswordError] = useState('')
+  const [changingPassword, setChangingPassword] = useState(false)
   const [authError, setAuthError] = useState('')
   const [vaultItems, setVaultItems] = useState([])
   const [loadingItems, setLoadingItems] = useState(false)
@@ -520,6 +503,7 @@ export default function VaultPage() {
       salt,
       passHash,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       mode: 'hidden',
     }
 
@@ -562,11 +546,81 @@ export default function VaultPage() {
     setPasscode('')
   }
 
+  const closeChangePasswordModal = () => {
+    if (changingPassword) return
+    setShowChangePassword(false)
+    setCurrentPassword('')
+    setNewPassword('')
+    setConfirmNewPassword('')
+    setChangePasswordError('')
+  }
+
+  const changeVaultPassword = async (event) => {
+    event.preventDefault()
+    setChangePasswordError('')
+    setMessage('')
+
+    if (!vaultConfig || changingPassword) return
+
+    const currentHash = await hashVaultPasscode(currentPassword, vaultConfig.salt)
+    if (currentHash !== vaultConfig.passHash) {
+      setChangePasswordError('Current password is wrong.')
+      return
+    }
+
+    if (newPassword.length < 4) {
+      setChangePasswordError('Use at least 4 characters.')
+      return
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setChangePasswordError('New passwords do not match.')
+      return
+    }
+
+    setChangingPassword(true)
+    try {
+      const salt = makeSalt()
+      const passHash = await hashVaultPasscode(newPassword, salt)
+      const updatedAt = new Date().toISOString()
+      const config = {
+        ...vaultConfig,
+        salt,
+        passHash,
+        mode: vaultConfig.mode || 'hidden',
+        updatedAt,
+        passcodeUpdatedAt: updatedAt,
+      }
+
+      const res = await fetch('/api/vault/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config }),
+      })
+      const data = await readJsonSafely(res)
+      if (!res.ok) throw new Error(data?.error || 'Failed to change vault password')
+
+      saveLocalVaultConfig(config)
+      sessionStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ passHash, unlockedAt: Date.now() }))
+      setVaultConfig(config)
+      setShowChangePassword(false)
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmNewPassword('')
+      setMessage('Vault password changed.')
+    } catch (error) {
+      setChangePasswordError(error?.message || 'Failed to change password. Check your database settings and try again.')
+    } finally {
+      setChangingPassword(false)
+    }
+  }
+
   const lockVault = () => {
     sessionStorage.removeItem(VAULT_SESSION_KEY)
     setUnlocked(false)
     setVaultItems([])
     setPasscode('')
+    closeChangePasswordModal()
   }
 
   const restoreItem = async (item) => {
@@ -630,46 +684,59 @@ export default function VaultPage() {
               )}
             </div>
 
-            {unlocked && vaultItems.length > 0 && (
+            {unlocked && (
               <div className="w-full md:w-auto flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 animate-fade-in" style={{ animationDelay: '100ms' }}>
-                <div className="relative group">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/55 transition-colors group-focus-within:text-primary-400" />
-                  <input
-                    type="text"
-                    placeholder="Search vault..."
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    className="pl-11 pr-10 py-3 bg-base-200/60 border border-base-content/10 rounded-[var(--radius-box)] text-sm focus:outline-none focus:border-primary-500/50 focus:bg-base-200 w-full sm:w-64 transition-all duration-300 sm:focus:w-80 focus:shadow-lg focus:shadow-primary-500/10"
-                  />
-                  {searchQuery && (
+                {vaultItems.length > 0 && (
+                  <div className="relative group">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/55 transition-colors group-focus-within:text-primary-400" />
+                    <input
+                      type="text"
+                      placeholder="Search vault..."
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      className="pl-11 pr-10 py-3 bg-base-200/60 border border-base-content/10 rounded-[var(--radius-box)] text-sm focus:outline-none focus:border-primary-500/50 focus:bg-base-200 w-full sm:w-64 transition-all duration-300 sm:focus:w-80 focus:shadow-lg focus:shadow-primary-500/10"
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-base-content/10 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5 text-base-content/65" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {vaultItems.length > 0 && (
+                  <div className="flex items-center gap-1 glass rounded-[var(--radius-box)] p-1.5">
                     <button
                       type="button"
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-base-content/10 transition-colors"
+                      onClick={() => setViewMode('grid')}
+                      className={`p-2.5 rounded-[var(--radius-box)] transition-all duration-300 ${viewMode === 'grid' ? 'bg-primary-500/20 text-primary-400 shadow-lg shadow-primary-500/20' : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'}`}
+                      title="Grid view"
                     >
-                      <X className="w-3.5 h-3.5 text-base-content/65" />
+                      <Grid className="w-4 h-4" />
                     </button>
-                  )}
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('list')}
+                      className={`p-2.5 rounded-[var(--radius-box)] transition-all duration-300 ${viewMode === 'list' ? 'bg-primary-500/20 text-primary-400 shadow-lg shadow-primary-500/20' : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'}`}
+                      title="List view"
+                    >
+                      <List className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
 
-                <div className="flex items-center gap-1 glass rounded-[var(--radius-box)] p-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('grid')}
-                    className={`p-2.5 rounded-[var(--radius-box)] transition-all duration-300 ${viewMode === 'grid' ? 'bg-primary-500/20 text-primary-400 shadow-lg shadow-primary-500/20' : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'}`}
-                    title="Grid view"
-                  >
-                    <Grid className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('list')}
-                    className={`p-2.5 rounded-[var(--radius-box)] transition-all duration-300 ${viewMode === 'list' ? 'bg-primary-500/20 text-primary-400 shadow-lg shadow-primary-500/20' : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'}`}
-                    title="List view"
-                  >
-                    <List className="w-4 h-4" />
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowChangePassword(true)}
+                  className="inline-flex items-center justify-center gap-2 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 px-4 py-3 text-sm font-semibold text-base-content transition-colors hover:bg-base-200"
+                >
+                  <KeyRound className="h-4 w-4" />
+                  Change Password
+                </button>
 
                 <button
                   type="button"
@@ -834,6 +901,89 @@ export default function VaultPage() {
         preferredVideoSource={preferredVideoSource}
         firebaseProjectId={firebaseProjectId}
       />
+    )}
+
+    {showChangePassword && (
+      <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+        <button
+          type="button"
+          className="absolute inset-0 bg-black/45"
+          onClick={closeChangePasswordModal}
+          aria-label="Close change password modal"
+        />
+        <form
+          onSubmit={changeVaultPassword}
+          className="relative z-10 w-full max-w-md rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 p-6 shadow-2xl"
+        >
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-base-content">Change Vault Password</h2>
+              <p className="mt-1 text-sm text-base-content/60">
+                This updates the same vault unlock password used by the extension and web app.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={closeChangePasswordModal}
+              disabled={changingPassword}
+              className="rounded-[var(--radius-box)] p-2 text-base-content/60 transition-colors hover:bg-base-content/10 hover:text-base-content disabled:opacity-50"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+              placeholder="Current password"
+              className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-200 px-4 py-3 text-base-content outline-none transition-colors focus:border-primary"
+              autoFocus
+            />
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              placeholder="New password"
+              className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-200 px-4 py-3 text-base-content outline-none transition-colors focus:border-primary"
+            />
+            <input
+              type="password"
+              value={confirmNewPassword}
+              onChange={(event) => setConfirmNewPassword(event.target.value)}
+              placeholder="Confirm new password"
+              className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-200 px-4 py-3 text-base-content outline-none transition-colors focus:border-primary"
+            />
+
+            {changePasswordError && (
+              <div className="rounded-[var(--radius-box)] border border-error/30 bg-error/10 p-3 text-sm text-error">
+                {changePasswordError}
+              </div>
+            )}
+
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={closeChangePasswordModal}
+                disabled={changingPassword}
+                className="rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 px-4 py-3 text-sm font-semibold text-base-content transition-colors hover:bg-base-200 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={changingPassword}
+                className="inline-flex items-center justify-center gap-2 rounded-[var(--radius-box)] bg-primary px-4 py-3 text-sm font-bold text-primary-content transition-colors hover:bg-primary/90 disabled:opacity-60"
+              >
+                {changingPassword ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                {changingPassword ? 'Saving...' : 'Change Password'}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
     )}
 
     <style jsx global>{`

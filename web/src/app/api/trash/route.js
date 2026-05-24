@@ -3,17 +3,23 @@ import { mediaItems } from '@/db/schema'
 import { and, desc, eq, isNotNull } from 'drizzle-orm'
 import { auth } from '@/app/api/auth/[...nextauth]/route'
 import { isSystemMediaItem, isVaultedMediaItem } from '@/lib/vault-media'
+import { getImageProviderLinks } from '@/lib/image-provider-links'
+import { getVideoProviderLinks } from '@/lib/video-provider-links'
 
 async function getSession() {
   return auth()
 }
 
 function toClientTrashItem(item) {
+  const imageHosts = getImageProviderLinks(item)
+  const videoHosts = getVideoProviderLinks(item)
   return {
     ...item,
+    imageHosts,
+    videoHosts,
     tags: Array.isArray(item.tags) ? item.tags : [],
-    filemoonUrl: item.filemoonWatchUrl || '',
-    udropUrl: item.udropWatchUrl || '',
+    filemoonUrl: videoHosts.filemoon?.watchUrl || item.filemoonWatchUrl || '',
+    udropUrl: videoHosts.udrop?.watchUrl || item.udropWatchUrl || '',
     originalId: item.id,
   }
 }

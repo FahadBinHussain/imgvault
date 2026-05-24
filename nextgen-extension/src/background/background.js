@@ -9,11 +9,32 @@ import { DuplicateDetector } from '../utils/duplicate-detector.js';
 import { URLNormalizer } from '../utils/url-normalizer.js';
 import { PixvidUploader, ImgbbUploader, FilemoonUploader, UDropUploader } from '../utils/uploaders.js';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig.js';
+import {
+  getConfiguredImageUploadServices,
+  getMissingRequiredImageUploadServices,
+} from '../config/providerCatalog.js';
+import {
+  mergeImageProviderResult,
+} from '../utils/imageProviderLinks.js';
+import {
+  getConfiguredVideoUploadServices,
+  getVideoProviderLabel,
+  getVideoRetrySourceCandidates,
+  getVideoUploadService,
+  mergeVideoProviderResult,
+} from '../utils/videoProviderLinks.js';
 
 const NATIVE_DOWNLOAD_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 const TAB_NOT_FOCUSED_NOTIFICATION_ID = 'imgvault-native-tab-not-focused';
 const TAB_FOCUSED_NOTIFICATION_ID = 'imgvault-native-tab-focused';
 const ACTIVE_NATIVE_DOWNLOAD_KEY = 'activeNativeDownload';
+
+function joinNames(items = []) {
+  const names = items.filter(Boolean)
+  if (names.length <= 1) return names[0] || ''
+  if (names.length === 2) return names.join(' and ')
+  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`
+}
 
 // Helper function to sanitize data for Neon database
 function sanitizeForNeon(data) {
@@ -62,10 +83,10 @@ class ImgVaultServiceWorker {
     this.activeNativeDownloadPorts = new Map();
     this.initialized = false;
     this.defaultActionIcon = {
-      16: 'icons/1.png',
-      32: 'icons/1.png',
-      48: 'icons/1.png',
-      128: 'icons/1.png',
+      16: 'icons/1-16.png',
+      32: 'icons/1-32.png',
+      48: 'icons/1-48.png',
+      128: 'icons/1-128.png',
     };
     this.supportedVideoActionIcon = {
       16: 'icons/2-16.png',
@@ -1428,6 +1449,26 @@ class ImgVaultServiceWorker {
     return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`;
   }
 
+  async appendVideoProviderResultLog(service, result = {}) {
+    await this.appendUploadLog(`${service.label}: upload completed for ${result.filename || 'video file'}`, 'success');
+
+    const detailRows = [
+      ['API status', result.apiStatus],
+      ['API message', result.apiMessage || result.apiResponse],
+      ['File ID', result.fileId || result.filecode],
+      ['Account ID', result.accountId],
+      ['Short URL', result.shortUrl],
+      ['Watch URL', result.watchUrl || result.displayUrl || result.url],
+      ['Direct URL', result.directUrl || result.url],
+    ];
+
+    for (const [label, value] of detailRows) {
+      if (value) {
+        await this.appendUploadLog(`${service.label} ${label}: ${value}`);
+      }
+    }
+  }
+
   async getMergedVideoHostSettings() {
     const syncSettings = await chrome.storage.sync.get(['filemoonApiKey', 'udropKey1', 'udropKey2']);
     const merged = { ...syncSettings };
@@ -1585,8 +1626,8 @@ class ImgVaultServiceWorker {
       await chrome.storage.local.set({ uploadStatusLogs: [] });
       // Get API keys from storage
       const settings = await chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey']);
-      const hasPixvid = !!settings.pixvidApiKey;
-      const hasImgbb = !!settings.imgbbApiKey;
+      const configuredImageServices = getConfiguredImageUploadServices(settings);
+      const missingRequiredImageServices = getMissingRequiredImageUploadServices(settings);
 
       await this.updateStatusWithLog('📥 Fetching image...');
       
@@ -1619,8 +1660,11 @@ class ImgVaultServiceWorker {
         throw new Error('SVG uploads need raw-file storage. Pixvid does not list SVG as supported, and ImgBB rasterizes SVG to JPG, which breaks animation.');
       }
 
-      if (!hasPixvid) {
-        throw new Error('Pixvid API key not configured. Please set it in the extension settings.');
+      if (missingRequiredImageServices.length > 0) {
+        const missingNames = joinNames(missingRequiredImageServices.map((service) => service.label));
+        throw new Error(
+          `${missingNames} API key${missingRequiredImageServices.length > 1 ? 's are' : ' is'} not configured. Please set ${missingRequiredImageServices.length > 1 ? 'them' : 'it'} in the extension settings.`
+        );
       }
       
       if (!data.fileMimeType && !exifFileType) {
@@ -1698,47 +1742,61 @@ class ImgVaultServiceWorker {
         await this.updateStatusWithLog('⚠️ Skipping duplicate check...', 'warning');
       }
       
-      // Upload to both APIs in parallel
-      await this.updateStatusWithLog(hasImgbb ? '☁️ Uploading to Pixvid and ImgBB...' : '☁️ Uploading to Pixvid...');
-      
-      const uploadPromises = [];
+      if (configuredImageServices.length === 0) {
+        throw new Error('No image hosting service configured. Please set at least one image host in the extension settings.');
+      }
 
-      if (hasPixvid) {
-        uploadPromises.push(
-          this.pixvidUploader.upload(imageBlob, settings.pixvidApiKey, data.imageUrl, uploadController.signal)
-          .then(result => ({ type: 'pixvid', ...result }))
-          .catch(error => ({ type: 'pixvid', error: error.message }))
+      await this.updateStatusWithLog(`☁️ Uploading to ${joinNames(configuredImageServices.map((service) => service.label))}...`);
+
+      const uploadResults = await Promise.all(
+        configuredImageServices.map((service) => {
+          const uploader = this[service.uploaderKey];
+
+          if (!uploader) {
+            return Promise.resolve({
+              type: service.key,
+              error: `${service.label} uploader is unavailable`,
+            });
+          }
+
+          return service
+            .upload({
+              uploader,
+              blob: imageBlob,
+              settings,
+              data,
+              signal: uploadController.signal,
+            })
+            .then((result) => ({ type: service.key, ...result }))
+            .catch((error) => ({ type: service.key, error: error.message || String(error) }));
+        })
+      );
+
+      const uploadResultsByType = new Map(uploadResults.map((result) => [result.type, result]));
+      const pixvidResult = uploadResultsByType.get('pixvid');
+      const imgbbResult = uploadResultsByType.get('imgbb');
+
+      const successfulImageResults = uploadResults.filter((result) => result && !result.error && result.url);
+      const failedImageResults = uploadResults.filter((result) => result?.error);
+
+      if (successfulImageResults.length === 0) {
+        throw new Error(
+          failedImageResults.length > 0
+            ? `Image upload failed on all configured hosts. ${failedImageResults.map((result) => `${result.type}: ${result.error}`).join(' | ')}`
+            : 'Image upload failed on all configured hosts.'
         );
       }
-      
-      if (hasImgbb) {
-        uploadPromises.push(
-          this.imgbbUploader.upload(imageBlob, settings.imgbbApiKey, uploadController.signal)
-            .then(result => ({ type: 'imgbb', ...result }))
-            .catch(error => ({ type: 'imgbb', error: error.message }))
+
+      if (failedImageResults.length > 0) {
+        console.warn('Some image uploads failed:', failedImageResults);
+        await this.updateStatusWithLog(
+          `⚠️ Partial upload success. ${failedImageResults.map((result) => `${result.type}: ${result.error}`).join(' | ')} Saving...`,
+          'warning'
         );
-      }
-      
-      const uploadResults = await Promise.all(uploadPromises);
-      
-      // Process results
-      const pixvidResult = uploadResults.find(r => r.type === 'pixvid');
-      const imgbbResult = uploadResults.find(r => r.type === 'imgbb');
-      
-      if (pixvidResult?.error) {
-        throw new Error(`Pixvid upload failed: ${pixvidResult.error}`);
-      }
-      
-      if (imgbbResult && imgbbResult.error) {
-        if (!pixvidResult?.url) {
-          throw new Error(`ImgBB upload failed: ${imgbbResult.error}`);
-        }
-        console.warn('ImgBB upload failed:', imgbbResult.error);
-        await this.updateStatusWithLog('⚠️ Pixvid upload successful, ImgBB failed. Saving...', 'warning');
-      } else if (isSvgImage && imgbbResult) {
-        await this.updateStatusWithLog('✅ SVG uploaded to ImgBB! Saving...', 'success');
-      } else if (imgbbResult) {
-        await this.updateStatusWithLog('✅ Both uploads successful! Saving...', 'success');
+      } else if (successfulImageResults.length > 1) {
+        await this.updateStatusWithLog('✅ All image uploads successful! Saving...', 'success');
+      } else {
+        await this.updateStatusWithLog('✅ Image upload successful! Saving...', 'success');
       }
       
       await this.updateStatusWithLog('💾 Saving to Firebase...');
@@ -1755,13 +1813,8 @@ class ImgVaultServiceWorker {
         cleanSourceImageUrl = '';
       }
       
-      // Save metadata to Firebase
-      const imageMetadata = {
-        pixvidUrl: pixvidResult?.url || null,
-        pixvidDeleteUrl: pixvidResult?.deleteUrl || null,
-        imgbbUrl: imgbbResult && !imgbbResult.error ? imgbbResult.url : null,
-        imgbbDeleteUrl: imgbbResult && !imgbbResult.error ? imgbbResult.deleteUrl : null,
-        imgbbThumbUrl: imgbbResult && !imgbbResult.error ? imgbbResult.thumbUrl : null,
+      // Save metadata to Firebase/Neon with generic imageHosts plus legacy URL fields for compatibility.
+      let imageMetadata = {
         sourceImageUrl: cleanSourceImageUrl,
         sourcePageUrl: data.pageUrl,
         pageTitle: data.pageTitle,
@@ -1782,6 +1835,11 @@ class ImgVaultServiceWorker {
         exifMetadata: metadata.exifMetadata || null,
         collectionId: data.collectionId || null
       };
+
+      for (const result of uploadResults) {
+        if (!result || result.error) continue;
+        imageMetadata = mergeImageProviderResult(imageMetadata, result.type, result);
+      }
       
       // Sanitize data for Neon database compatibility
       const sanitizedMetadata = sanitizeForNeon(imageMetadata);
@@ -1820,11 +1878,10 @@ class ImgVaultServiceWorker {
       // Get API keys from storage
       const settings = await this.getMergedVideoHostSettings();
       
-      const hasFilemoon = !!settings.filemoonApiKey;
-      const hasUDrop = settings.udropKey1 && settings.udropKey2;
-      
-      if (!hasFilemoon && !hasUDrop) {
-        throw new Error('No video hosting service configured. Please set Filemoon API key or UDrop API keys in settings.');
+      const configuredServices = getConfiguredVideoUploadServices(settings);
+
+      if (configuredServices.length === 0) {
+        throw new Error('No video hosting service configured. Please set at least one video host in settings.');
       }
 
       await this.updateStatusWithLog('📥 Fetching video...');
@@ -1868,73 +1925,42 @@ class ImgVaultServiceWorker {
         await this.updateStatusWithLog('⚠️ Skipping duplicate video check...', 'warning');
       }
       
-      // Build status message based on available services
-      const services = [];
-      if (hasFilemoon) services.push('Filemoon');
-      if (hasUDrop) services.push('UDrop');
-      
-      const statusMsg = services.length > 1 
-        ? `☁️ Uploading to ${services.join(' and ')}...`
-        : `☁️ Uploading to ${services[0]}...`;
+      const serviceLabels = configuredServices.map((service) => service.label);
+      const statusMsg = serviceLabels.length > 1
+        ? `☁️ Uploading to ${joinNames(serviceLabels)}...`
+        : `☁️ Uploading to ${serviceLabels[0]}...`;
       
       await this.updateStatusWithLog(statusMsg);
       
-      // Upload to available services sequentially: UDrop first, then Filemoon.
-      let udropResult = null;
-      let filemoonResult = null;
+      const uploadResults = {};
       const uploadErrors = [];
 
-      if (hasUDrop) {
-        await this.appendUploadLog('UDrop: authorizing and starting upload...');
+      for (const service of configuredServices) {
+        const uploader = this[service.uploaderKey];
+        if (!uploader) {
+          uploadErrors.push(`${service.label}: uploader is not available`);
+          await this.appendUploadLog(`${service.label} uploader is not available.`, 'error');
+          continue;
+        }
+
+        await this.appendUploadLog(`${service.label}: starting upload...`);
         try {
-          udropResult = await this.udropUploader.upload(
-            videoBlob,
-            settings.udropKey1,
-            settings.udropKey2,
-            data.fileName || 'video.mp4'
-          );
-          await this.appendUploadLog(`UDrop: upload completed for ${udropResult.filename || data.fileName || 'video file'}`, 'success');
-          await this.appendUploadLog(`UDrop API status: ${udropResult.apiStatus || 'unknown'}`);
-          if (udropResult.apiResponse) {
-            await this.appendUploadLog(`UDrop API message: ${udropResult.apiResponse}`);
-          }
-          if (udropResult.fileId) {
-            await this.appendUploadLog(`UDrop file_id: ${udropResult.fileId}`);
-          }
-          if (udropResult.accountId) {
-            await this.appendUploadLog(`UDrop account_id: ${udropResult.accountId}`);
-          }
-          if (udropResult.shortUrl) {
-            await this.appendUploadLog(`UDrop short URL: ${udropResult.shortUrl}`);
-          }
-          if (udropResult.url) {
-            await this.appendUploadLog(`UDrop download URL: ${udropResult.url}`);
-          }
+          const result = await service.upload({
+            uploader,
+            blob: videoBlob,
+            settings,
+            data: { ...data, fileName },
+          });
+          uploadResults[service.key] = result;
+          await this.appendVideoProviderResultLog(service, result);
         } catch (err) {
-          console.error('UDrop upload failed:', err);
-          uploadErrors.push(`udrop: ${err.message || String(err)}`);
-          await this.appendUploadLog(`UDrop failed: ${err.message || String(err)}`, 'error');
+          console.error(`${service.label} upload failed:`, err);
+          uploadErrors.push(`${service.label}: ${err.message || String(err)}`);
+          await this.appendUploadLog(`${service.label} failed: ${err.message || String(err)}`, 'error');
         }
       }
 
-      if (hasFilemoon) {
-        await this.appendUploadLog('Starting Filemoon upload after UDrop finished...');
-        await this.appendUploadLog('Filemoon: requesting upload server...');
-        try {
-          filemoonResult = await this.filemoonUploader.upload(
-            videoBlob,
-            settings.filemoonApiKey,
-            data.fileName || 'video.mp4'
-          );
-          await this.appendUploadLog(`Filemoon: upload completed for ${filemoonResult.filename || data.fileName || 'video file'}`, 'success');
-        } catch (err) {
-          console.error('Filemoon upload failed:', err);
-          uploadErrors.push(`filemoon: ${err.message || String(err)}`);
-          await this.appendUploadLog(`Filemoon failed: ${err.message || String(err)}`, 'error');
-        }
-      }
-
-      if (!filemoonResult && !udropResult) {
+      if (Object.keys(uploadResults).length === 0) {
         await this.appendUploadLog('❌ No video host completed successfully.', 'error');
         throw new Error(uploadErrors.length > 0
           ? `Video upload failed on all configured hosts. ${uploadErrors.join(' | ')}`
@@ -1967,8 +1993,8 @@ class ImgVaultServiceWorker {
         creationDateSource = 'Current timestamp (no metadata available)';
       }
       
-      // Save metadata to Firebase with both URLs
-      const videoMetadata = {
+      // Save metadata with generic provider links plus legacy URL fields for compatibility.
+      let videoMetadata = {
         sourceImageUrl: cleanSourceImageUrl,
         sourcePageUrl: data.pageUrl,
         pageTitle: data.pageTitle,
@@ -1986,31 +2012,9 @@ class ImgVaultServiceWorker {
         collectionId: data.collectionId || null,
         isVideo: true
       };
-      
-      // Add Filemoon URLs if uploaded successfully
-      if (filemoonResult) {
-        videoMetadata.filemoonWatchUrl = filemoonResult.watchUrl || filemoonResult.url || '';
-        videoMetadata.filemoonDirectUrl = filemoonResult.directUrl || '';
-      }
-      
-      if (udropResult) {
-        videoMetadata.udropWatchUrl = udropResult.watchUrl || udropResult.displayUrl || '';
-        videoMetadata.udropDirectUrl = udropResult.directUrl || udropResult.url || '';
-      }
-      
-      if (udropResult) {
-        await this.appendUploadLog(`🔐 UDrop authorized, account: ${udropResult.accountId || 'unknown'}`);
-        await this.appendUploadLog(`📦 [UDROP] File uploaded successfully`, 'success');
-        await this.appendUploadLog(`📦 [UDROP] URL: ${udropResult.displayUrl || udropResult.url || ''}`);
-        if (udropResult.shortUrl) {
-          await this.appendUploadLog(`📦 [UDROP] Short URL: ${udropResult.shortUrl}`);
-        }
-        if (udropResult.fileId) {
-          await this.appendUploadLog(`📦 [UDROP] File ID: ${udropResult.fileId}`);
-        }
-        if (udropResult.url) {
-          await this.appendUploadLog(`📦 [UDROP] Download URL: ${udropResult.url}`);
-        }
+
+      for (const [providerKey, result] of Object.entries(uploadResults)) {
+        videoMetadata = mergeVideoProviderResult(videoMetadata, providerKey, result);
       }
 
       // Sanitize data for Neon database compatibility
@@ -2042,13 +2046,14 @@ class ImgVaultServiceWorker {
 
   async retryVideoHostUpload({ imageId, host } = {}) {
     const targetHost = String(host || '').trim().toLowerCase();
-    const hostLabel = targetHost === 'filemoon' ? 'Filemoon' : targetHost === 'udrop' ? 'UDrop' : '';
+    const service = getVideoUploadService(targetHost);
+    const hostLabel = service?.label || '';
 
     if (!imageId) {
       throw new Error('Missing video ID for retry.');
     }
-    if (!hostLabel) {
-      throw new Error('Choose Filemoon or UDrop to retry.');
+    if (!service) {
+      throw new Error('Choose a configured video host to retry.');
     }
 
     const item = await this.storage.getImageById(imageId);
@@ -2060,17 +2065,12 @@ class ImgVaultServiceWorker {
     }
 
     const settings = await this.getMergedVideoHostSettings();
-    if (targetHost === 'filemoon' && !settings.filemoonApiKey) {
-      throw new Error('Filemoon API key is not configured.');
-    }
-    if (targetHost === 'udrop' && (!settings.udropKey1 || !settings.udropKey2)) {
-      throw new Error('UDrop API keys are not configured.');
+    if (!service.isConfigured(settings)) {
+      throw new Error(`${hostLabel} API settings are not configured.`);
     }
 
     const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim());
-    const sourceCandidates = targetHost === 'filemoon'
-      ? [item.udropDirectUrl, item.udropWatchUrl, item.sourceImageUrl]
-      : [item.filemoonDirectUrl, item.filemoonWatchUrl, item.sourceImageUrl];
+    const sourceCandidates = getVideoRetrySourceCandidates(item, targetHost);
     const sourceUrl = sourceCandidates.find(isHttpUrl);
 
     if (!sourceUrl) {
@@ -2101,21 +2101,23 @@ class ImgVaultServiceWorker {
       }
 
       const fileName = item.fileName || this.extractFileName({ imageUrl: sourceUrl }) || 'video.mp4';
-      let updates = {};
-
-      if (targetHost === 'filemoon') {
-        const result = await this.filemoonUploader.upload(videoBlob, settings.filemoonApiKey, fileName);
-        updates = {
-          filemoonWatchUrl: result.watchUrl || result.url || '',
-          filemoonDirectUrl: result.directUrl || '',
-        };
-      } else {
-        const result = await this.udropUploader.upload(videoBlob, settings.udropKey1, settings.udropKey2, fileName);
-        updates = {
-          udropWatchUrl: result.watchUrl || result.displayUrl || '',
-          udropDirectUrl: result.directUrl || result.url || '',
-        };
+      const uploader = this[service.uploaderKey];
+      if (!uploader) {
+        throw new Error(`${hostLabel} uploader is not available.`);
       }
+      const result = await service.upload({
+        uploader,
+        blob: videoBlob,
+        settings,
+        data: { ...item, fileName },
+      });
+      const mergedUpdates = mergeVideoProviderResult(item, targetHost, result);
+      const updates = {
+        videoHosts: mergedUpdates.videoHosts,
+        ...(service.watchUrlField ? { [service.watchUrlField]: mergedUpdates[service.watchUrlField] || '' } : {}),
+        ...(service.directUrlField ? { [service.directUrlField]: mergedUpdates[service.directUrlField] || '' } : {}),
+        ...(service.aliasWatchUrlField ? { [service.aliasWatchUrlField]: mergedUpdates[service.aliasWatchUrlField] || '' } : {}),
+      };
 
       await this.storage.updateImage(imageId, sanitizeForNeon(updates));
       await this.updateStatusWithLog(`${hostLabel} retry succeeded. Saved the missing host URLs.`, 'success');
@@ -2788,7 +2790,7 @@ class ImgVaultServiceWorker {
       creationDateSource = 'Current timestamp (no metadata available)';
     }
 
-    const videoMetadata = {
+    let videoMetadata = {
       sourceImageUrl: cleanSourceImageUrl,
       sourcePageUrl: data.pageUrl,
       pageTitle: data.pageTitle,
@@ -2805,11 +2807,16 @@ class ImgVaultServiceWorker {
       description: data.description || '',
       collectionId: data.collectionId || null,
       isVideo: true,
-      filemoonWatchUrl: data.filemoonResult?.watchUrl || data.filemoonResult?.url || '',
-      filemoonDirectUrl: data.filemoonResult?.directUrl || '',
-      udropWatchUrl: data.udropResult?.watchUrl || data.udropResult?.displayUrl || '',
-      udropDirectUrl: data.udropResult?.directUrl || data.udropResult?.url || '',
     };
+
+    const uploadResults = data.videoUploadResults || {
+      ...(data.filemoonResult ? { filemoon: data.filemoonResult } : {}),
+      ...(data.udropResult ? { udrop: data.udropResult } : {}),
+    };
+
+    for (const [providerKey, result] of Object.entries(uploadResults)) {
+      videoMetadata = mergeVideoProviderResult(videoMetadata, providerKey, result);
+    }
 
     await this.updateStatusWithLog('Saving video metadata...');
     // Sanitize data for Neon database compatibility

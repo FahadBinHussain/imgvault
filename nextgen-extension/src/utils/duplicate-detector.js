@@ -13,6 +13,7 @@
  */
 
 import { URLNormalizer } from './url-normalizer.js';
+import { getImageProviderLinks } from './imageProviderLinks.js';
 import exifr from 'exifr';
 
 /**
@@ -275,11 +276,23 @@ export class DuplicateDetector {
   }
 
   getMatchKey(item = {}) {
+    const providerLinks = getImageProviderLinks(item);
+    const providerUrlPart = Object.keys(providerLinks)
+      .sort()
+      .map((key) => {
+        const link = providerLinks[key] || {};
+        return [key, link.url, link.displayUrl, link.directUrl, link.thumbnailUrl]
+          .filter(Boolean)
+          .join(',');
+      })
+      .filter(Boolean)
+      .join('|');
+
     return (
       item.id ||
       item.firestoreDocumentId ||
       item.sha256 ||
-      `${item.sourceImageUrl || ''}|${item.sourcePageUrl || ''}|${item.imgbbUrl || ''}|${item.pixvidUrl || ''}`
+      `${item.sourceImageUrl || ''}|${item.sourcePageUrl || ''}|${providerUrlPart}`
     );
   }
 

@@ -1,15 +1,16 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { neon } from '@neondatabase/serverless';
+import { toMediaDbPayload } from '../../shared/mediaDbPayload.js';
 
 const cwd = process.cwd();
 const backupPath = process.argv[2]
   ? path.resolve(cwd, process.argv[2])
   : path.resolve(cwd, 'backup.json');
 
-const neonUrl = (process.env.NEON_DATABASE_URL || '').trim();
+const neonUrl = (process.env.NEON_DATABASE_URL || process.env.DATABASE_URL || '').trim();
 if (!neonUrl) {
-  console.error('Missing NEON_DATABASE_URL env var.');
+  console.error('Missing NEON_DATABASE_URL or DATABASE_URL env var.');
   process.exit(1);
 }
 
@@ -52,26 +53,10 @@ function asText(v, fallback = '') {
   return String(v);
 }
 
-function asNullableText(v) {
-  if (v === undefined || v === null || v === '') return null;
-  return String(v);
-}
-
-function asBool(v, fallback = false) {
-  if (typeof v === 'boolean') return v;
-  if (v === 'true') return true;
-  if (v === 'false') return false;
-  return fallback;
-}
-
 function asInt(v) {
+  if (v === undefined || v === null || v === '') return null;
   const n = Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : null;
-}
-
-function asFloat(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
 }
 
 function asIsoOrNull(v) {
@@ -80,96 +65,11 @@ function asIsoOrNull(v) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-function asTags(v) {
-  if (Array.isArray(v)) return v.map((x) => String(x));
-  return [];
-}
-
-function canonicalizeLinkUrl(input = '') {
-  const raw = String(input || '').trim();
-  if (!raw) return '';
-  try {
-    const u = new URL(raw);
-    const host = u.hostname.toLowerCase().replace(/^www\./, '');
-    const params = new URLSearchParams(u.search);
-    params.delete('utm_source');
-    params.delete('utm_medium');
-    params.delete('utm_campaign');
-    params.delete('utm_term');
-    params.delete('utm_content');
-    params.delete('fbclid');
-    params.delete('gclid');
-    const q = params.toString();
-    return `${u.protocol}//${host}${u.pathname}${q ? `?${q}` : ''}`;
-  } catch {
-    return raw;
-  }
-}
-
-function toKind(data) {
-  const isLink = asBool(data.isLink, false);
-  const isVideo = asBool(data.isVideo, false);
-  if (isLink) return 'link';
-  if (isVideo) return 'video';
-  return 'image';
-}
-
 function toMediaPayload(data = {}, fallbackTimestamp = null, forceDeleted = false) {
-  const kind = toKind(data);
-  const isLink = kind === 'link';
-  const isVideo = kind === 'video';
-  const linkUrl = asText(data.linkUrl);
-
-  const deletedAtFromData = asIsoOrNull(data.deletedAt);
-  const deletedAt = forceDeleted ? (deletedAtFromData || fallbackTimestamp || new Date().toISOString()) : deletedAtFromData;
-  const internalAddedTimestamp =
-    asIsoOrNull(data.internalAddedTimestamp) ||
-    asIsoOrNull(data.creationDate) ||
-    fallbackTimestamp ||
-    new Date().toISOString();
-
-  return {
-    kind,
-    isVideo,
-    isLink,
-    pageTitle: asText(data.pageTitle),
-    description: asText(data.description),
-    tags: asTags(data.tags),
-    collectionId: asNullableText(data.collectionId),
-    internalAddedTimestamp,
-    sourceImageUrl: asText(data.sourceImageUrl),
-    sourcePageUrl: asText(data.sourcePageUrl),
-    fileName: asText(data.fileName),
-    fileSize: asInt(data.fileSize),
-    width: asInt(data.width),
-    height: asInt(data.height),
-    duration: asFloat(data.duration),
-    fileType: asText(data.fileType),
-    fileTypeSource: asText(data.fileTypeSource),
-    creationDate: asIsoOrNull(data.creationDate),
-    creationDateSource: asText(data.creationDateSource),
-    sha256: asText(data.sha256),
-    pHash: asText(data.pHash),
-    aHash: asText(data.aHash),
-    dHash: asText(data.dHash),
-    exifMetadata: data.exifMetadata && typeof data.exifMetadata === 'object' ? data.exifMetadata : null,
-    extraMetadata: data,
-    pixvidUrl: asText(data.pixvidUrl),
-    pixvidDeleteUrl: asText(data.pixvidDeleteUrl),
-    imgbbUrl: asText(data.imgbbUrl),
-    imgbbDeleteUrl: asText(data.imgbbDeleteUrl),
-    imgbbThumbUrl: asText(data.imgbbThumbUrl),
-    filemoonWatchUrl: asText(data.filemoonWatchUrl),
-    filemoonDirectUrl: asText(data.filemoonDirectUrl),
-    udropWatchUrl: asText(data.udropWatchUrl),
-    udropDirectUrl: asText(data.udropDirectUrl),
-    linkUrl,
-    linkUrlCanonical: asText(data.linkUrlCanonical) || canonicalizeLinkUrl(linkUrl || data.sourcePageUrl || ''),
-    linkPreviewImageUrl: asText(data.linkPreviewImageUrl),
-    faviconUrl: asText(data.faviconUrl),
-    lastVisitedAt: asIsoOrNull(data.lastVisitedAt),
-    deletedAt,
-  };
+  return toMediaDbPayload(
+    { ...data, extraMetadata: data },
+    { fallbackTimestamp, forceDeleted }
+  );
 }
 
 async function upsertCollection(id, c = {}) {
@@ -209,11 +109,11 @@ async function upsertMedia(id, p) {
       deleted_at, updated_at
     ) values (
       ${id}, ${p.kind}, ${p.isVideo}, ${p.isLink},
-      ${p.pageTitle}, ${p.description}, ${p.tags}, ${p.collectionId}, ${p.internalAddedTimestamp},
+      ${p.pageTitle}, ${p.description}, ${JSON.stringify(p.tags)}::jsonb, ${p.collectionId}, ${p.internalAddedTimestamp},
       ${p.sourceImageUrl}, ${p.sourcePageUrl},
       ${p.fileName}, ${p.fileSize}, ${p.width}, ${p.height}, ${p.duration}, ${p.fileType}, ${p.fileTypeSource}, ${p.creationDate}, ${p.creationDateSource},
       ${p.sha256}, ${p.pHash}, ${p.aHash}, ${p.dHash},
-      ${p.exifMetadata}, ${p.extraMetadata},
+      ${p.exifMetadata ? JSON.stringify(p.exifMetadata) : null}::jsonb, ${JSON.stringify(p.extraMetadata || {})}::jsonb,
       ${p.pixvidUrl}, ${p.pixvidDeleteUrl}, ${p.imgbbUrl}, ${p.imgbbDeleteUrl}, ${p.imgbbThumbUrl},
       ${p.filemoonWatchUrl}, ${p.filemoonDirectUrl}, ${p.udropWatchUrl}, ${p.udropDirectUrl},
       ${p.linkUrl}, ${p.linkUrlCanonical}, ${p.linkPreviewImageUrl}, ${p.faviconUrl}, ${p.lastVisitedAt},
@@ -342,4 +242,3 @@ main().catch((err) => {
   console.error('Import failed:', err);
   process.exit(1);
 });
-

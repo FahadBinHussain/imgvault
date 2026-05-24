@@ -4,5 +4,8 @@
 /backend/tmp/
 *.pem
 backup.json
+**/migration-backups/
 *.backup.json
 last_input.txt
+
+.vercel

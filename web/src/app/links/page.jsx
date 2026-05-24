@@ -12,6 +12,7 @@ import {
   Calendar,
 } from 'lucide-react'
 import AppNavbar from '../components/AppNavbar'
+import { getPreferredImageProviderLink } from '@/lib/image-provider-links'
 
 async function readJsonSafely(res) {
   const text = await res.text()
@@ -155,7 +156,7 @@ export default function LinksPage() {
               {links.map((link) => {
                 const image = link.imageData || {}
                 const imageUrl =
-                  image.imgbbUrl || image.imgbbThumbUrl || image.pixvidUrl || image.sourceImageUrl || null
+                  getPreferredImageProviderLink(image, 'imgbb', 'url') || image.sourceImageUrl || image.imgbbThumbUrl || null
 
                 return (
                   <div key={link.id} className="glass rounded-[var(--radius-box)] overflow-hidden">

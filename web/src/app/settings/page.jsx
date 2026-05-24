@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { Save, Loader2, Check, AlertCircle, KeyRound, Cloud, ImageIcon, Folder } from 'lucide-react'
 import AppNavbar from '../components/AppNavbar'
+import { IMAGE_SOURCE_OPTIONS, VIDEO_SOURCE_OPTIONS } from '@/lib/providerCatalog'
 
 const defaultSettings = {
   pixvidApiKey: '',
@@ -269,8 +270,11 @@ export default function SettingsPage() {
                   onChange={(e) => updateSetting('defaultGallerySource', e.target.value)}
                   className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                 >
-                  <option value="imgbb">ImgBB (Original Quality)</option>
-                  <option value="pixvid">Pixvid (Compressed Quality)</option>
+                  {IMAGE_SOURCE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -281,8 +285,11 @@ export default function SettingsPage() {
                     onChange={(e) => updateSetting('defaultVideoSource', e.target.value)}
                     className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                   >
-                    <option value="filemoon">Filemoon</option>
-                    <option value="udrop">UDrop</option>
+                    {VIDEO_SOURCE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

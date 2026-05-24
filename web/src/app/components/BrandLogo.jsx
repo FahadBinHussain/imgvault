@@ -1,8 +1,9 @@
 export default function BrandLogo({ size = 40, className = '', href = '/' }) {
+  const iconUrl = '/api/brand/icon?size=48&v=3'
   const logo = (
     <div
       className={`rounded-[var(--radius-box)] bg-contain bg-center bg-no-repeat shadow-lg shadow-primary-500/25 ${className}`.trim()}
-      style={{ width: size, height: size, backgroundImage: "url('/api/brand/icon?size=48')" }}
+      style={{ width: size, height: size, backgroundImage: `url('${iconUrl}')` }}
       aria-hidden="true"
     />
   )

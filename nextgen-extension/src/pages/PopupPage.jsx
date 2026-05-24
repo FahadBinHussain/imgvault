@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { Settings, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { Button, Input, Textarea, Card, IconButton, Spinner } from '../components/UI';
 import { usePendingImage, useImageUpload, useChromeStorage, useCollections } from '../hooks/useChromeExtension';
+import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 
 export default function PopupPage() {
   const navigate = useNavigate();
@@ -655,9 +656,13 @@ export default function PopupPage() {
                   <div className="rounded-[var(--radius-box)] overflow-hidden border border-warning/30 bg-base-200 max-w-full mb-3">
                     <div className="w-full flex items-center justify-center bg-base-300 p-2">
                       <img
-                        src={duplicateData.imgbbUrl || duplicateData.pixvidUrl}
+                        src={
+                          getPreferredImageProviderLink(duplicateData, 'imgbb', 'url') ||
+                          getPreferredImageProviderLink(duplicateData, 'imgbb', 'thumbnailUrl') ||
+                          duplicateData.sourceImageUrl
+                        }
                         alt="Duplicate"
-                        className="max-w-full max-h-32 object-contain rounded"
+                        className="max-w-full max-h-48 object-contain rounded"
                       />
                     </div>
                     <div className="p-2 bg-base-300">

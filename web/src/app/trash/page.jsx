@@ -17,6 +17,11 @@ import {
   ExternalLink,
 } from 'lucide-react'
 import AppNavbar from '../components/AppNavbar'
+import { getPreferredImageProviderLink } from '@/lib/image-provider-links'
+import {
+  getBaseFieldKeys,
+  getTechnicalMetadataEntries,
+} from '@shared/mediaFieldRegistry.js'
 
 function toProxyUrl(url) {
   if (!url || typeof url !== 'string') return null
@@ -41,11 +46,13 @@ function TrashThumbnail({ item }) {
       : null
 
   const rawCandidates = [
-    item.imgbbThumbUrl,
-    item.filemoonThumbUrl,
+    getPreferredImageProviderLink(item, 'imgbb', 'url'),
     item.imgbbUrl,
     item.pixvidUrl,
     item.sourceImageUrl,
+    getPreferredImageProviderLink(item, 'imgbb', 'thumbnailUrl'),
+    item.imgbbThumbUrl,
+    item.filemoonThumbUrl,
   ].filter((url) => typeof url === 'string' && /^https?:\/\//i.test(url))
   const candidates = rawCandidates.flatMap((url) => {
     const proxied = toProxyUrl(url)
@@ -153,22 +160,8 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [currentIndex, items.length, onClose, onNavigate])
 
-  const noobFields = [
-    'pageTitle',
-    'deletedAt',
-    'internalAddedTimestamp',
-    'description',
-    'tags',
-    'sourcePageUrl',
-    'sourceImageUrl',
-    'imgbbUrl',
-    'pixvidUrl',
-    'filemoonUrl',
-    'udropUrl',
-  ]
-
-  const allMetadataFields = Object.keys(item || {}).filter((key) => key !== 'id')
-  const nerdFields = allMetadataFields.filter((field) => !noobFields.includes(field))
+  const noobFields = [...new Set([...getBaseFieldKeys(item), 'deletedAt'])]
+  const nerdFields = getTechnicalMetadataEntries(item).map(([field]) => field)
 
   const isUrlField = (key) => key.toLowerCase().endsWith('url')
   const filemoonUrl =
@@ -180,7 +173,7 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
       ? item.udropUrl
       : null
   const imageUrl =
-    item?.imgbbUrl || item?.imgbbThumbUrl || item?.pixvidUrl || item?.sourceImageUrl || null
+    getPreferredImageProviderLink(item, 'imgbb', 'url') || item?.sourceImageUrl || item?.imgbbThumbUrl || null
 
   const renderMetadataField = (key, index) => {
     const rawValue = item?.[key]

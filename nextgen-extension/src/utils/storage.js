@@ -5,6 +5,15 @@
  */
 
 import { neon } from '@neondatabase/serverless';
+import { ensureAiMetadataContainer } from './aiMetadata.js';
+import { normalizeImageProviderLinksForStorage } from './imageProviderLinks.js';
+import { normalizeVideoProviderLinksForStorage } from './videoProviderLinks.js';
+import { toMediaDbPayload } from '@shared/mediaDbPayload.js';
+import {
+  getMediaItemKind,
+  isSystemMediaItem as isRegistrySystemMediaItem,
+  isTruthyFlag as isRegistryTruthyFlag,
+} from '@shared/mediaFieldRegistry.js';
 
 /**
  * @typedef {Object} FirebaseConfig
@@ -396,6 +405,40 @@ export class StorageManager {
   }
 
   /**
+   * Convert a JavaScript value to Firestore REST Value format.
+   * @private
+   * @param {*} value
+   * @returns {Object|undefined}
+   */
+  toFirestoreValue(value) {
+    if (value === undefined) return undefined;
+    if (value === null) return { nullValue: null };
+    if (typeof value === 'string') return { stringValue: value };
+    if (typeof value === 'number') {
+      return Number.isInteger(value)
+        ? { integerValue: value }
+        : { doubleValue: value };
+    }
+    if (typeof value === 'boolean') return { booleanValue: value };
+    if (value instanceof Date) return { timestampValue: value.toISOString() };
+    if (Array.isArray(value)) {
+      const values = value
+        .map((item) => this.toFirestoreValue(item))
+        .filter(Boolean);
+      return values.length ? { arrayValue: { values } } : { arrayValue: {} };
+    }
+    if (typeof value === 'object') {
+      const fields = {};
+      for (const [nestedKey, nestedValue] of Object.entries(value)) {
+        const firestoreValue = this.toFirestoreValue(nestedValue);
+        if (firestoreValue) fields[nestedKey] = firestoreValue;
+      }
+      return { mapValue: { fields } };
+    }
+    return { stringValue: String(value) };
+  }
+
+  /**
    * Convert JavaScript object to Firestore document format
    * @private
    * @param {Object} data - JavaScript object
@@ -430,6 +473,11 @@ export class StorageManager {
           }
         }
         continue; // Skip the exifMetadata field itself
+      }
+
+      if (key === 'extraMetadata' && value && typeof value === 'object' && !Array.isArray(value)) {
+        fields[key] = this.toFirestoreValue(value);
+        continue;
       }
       
       if (value === null) {
@@ -488,7 +536,9 @@ export class StorageManager {
       } else if (value.timestampValue !== undefined) {
         result[key] = value.timestampValue;
       } else if (value.arrayValue !== undefined) {
-        result[key] = value.arrayValue.values?.map(v => v.stringValue) || [];
+        result[key] = this.firestoreValueToJs(value);
+      } else if (value.mapValue !== undefined) {
+        result[key] = this.firestoreValueToJs(value);
       } else if (value.nullValue !== undefined) {
         result[key] = null; // Handle null values explicitly
       }
@@ -498,6 +548,8 @@ export class StorageManager {
     if (!result.tags) result.tags = [];
     if (!result.description) result.description = '';
     if (!result.pixvidUrl) result.pixvidUrl = '';
+    if (!result.imgbbUrl) result.imgbbUrl = '';
+    if (!result.imgbbThumbUrl) result.imgbbThumbUrl = '';
     if (!result.sourceImageUrl) result.sourceImageUrl = '';
     if (!result.sourcePageUrl) result.sourcePageUrl = '';
     if (!result.faviconUrl) result.faviconUrl = '';
@@ -514,11 +566,11 @@ export class StorageManager {
   }
 
   isTruthyFlag(value) {
-    return value === true || String(value || '').toLowerCase() === 'true';
+    return isRegistryTruthyFlag(value);
   }
 
   isSystemItem(item = {}) {
-    return String(item.id || '').startsWith('__imgvault_') || item.systemType === 'secretVaultConfig';
+    return isRegistrySystemMediaItem(item);
   }
 
   filterVisibleItems(items = []) {
@@ -613,28 +665,30 @@ export class StorageManager {
    */
   async saveImage(imageData) {
     await this.ensureInitialized();
+    const mediaData = this.withReservedAiMetadata(imageData);
+
     if (this.backend === 'neon') {
-      return this.saveImageNeon(imageData);
+      return this.saveImageNeon(mediaData);
     }
 
     try {
       // Log the data size before saving
-      const dataSize = JSON.stringify(imageData).length;
+      const dataSize = JSON.stringify(mediaData).length;
       console.log('📊 [SAVE IMAGE] Image metadata size:', dataSize, 'bytes');
       
       if (dataSize > 10000000) { // 10MB
         console.warn('⚠️ [SAVE IMAGE] Payload approaching Firebase limit!');
-        console.log('📦 [SAVE IMAGE] Data keys:', Object.keys(imageData));
+        console.log('📦 [SAVE IMAGE] Data keys:', Object.keys(mediaData));
         console.log('📏 [SAVE IMAGE] Field sizes:', 
-          Object.entries(imageData).map(([key, val]) => 
+          Object.entries(mediaData).map(([key, val]) =>
             `${key}: ${JSON.stringify(val).length} bytes`
           )
         );
       }
       
       const doc = this.toFirestoreDoc({
-        ...imageData,
-        collectionId: Object.prototype.hasOwnProperty.call(imageData, 'collectionId') ? imageData.collectionId : null,
+        ...mediaData,
+        collectionId: Object.prototype.hasOwnProperty.call(mediaData, 'collectionId') ? mediaData.collectionId : null,
         internalAddedTimestamp: new Date()
       });
 
@@ -657,9 +711,9 @@ export class StorageManager {
       console.log('✅ [SAVE IMAGE] Saved successfully with ID:', docId);
       
       // Update collection imageCount if image has a collectionId
-      if (imageData.collectionId) {
+      if (mediaData.collectionId) {
         try {
-          await this.incrementCollectionCount(imageData.collectionId, 1);
+          await this.incrementCollectionCount(mediaData.collectionId, 1);
         } catch (error) {
           console.warn('⚠️ Failed to update collection count:', error);
           // Don't fail the whole operation if collection count update fails
@@ -690,6 +744,7 @@ export class StorageManager {
         'pixvidUrl',
         'imgbbUrl',
         'imgbbThumbUrl',
+        'imageHosts',
         'sourceImageUrl',
         'sourcePageUrl',
         'pageTitle',
@@ -787,6 +842,7 @@ export class StorageManager {
         'pixvidUrl',
         'imgbbUrl',
         'imgbbThumbUrl',
+        'imageHosts',
         'filemoonWatchUrl',
         'filemoonDirectUrl',
         'udropWatchUrl',
@@ -1137,7 +1193,7 @@ export class StorageManager {
         }
       }
       
-      console.log('✅ [TRASH] Successfully moved to trash with 100% field preservation (hosts preserved)');
+      console.log('✅ [TRASH] Successfully moved to trash with full fields and saved host URLs kept for restore/retry');
     } catch (error) {
       console.error('❌ [TRASH] Error moving to trash:', error);
       throw error;
@@ -1359,9 +1415,13 @@ export class StorageManager {
 
       if (imgbbDeleteUrl) {
         try {
-          await this.deleteFromImgbb(imgbbDeleteUrl);
+          const imgbbDeleted = await this.deleteFromImgbb(imgbbDeleteUrl);
+          if (!imgbbDeleted) {
+            throw new Error('ImgBB delete URL did not confirm deletion');
+          }
         } catch (imgbbPrimaryDeleteError) {
           console.warn('[PERMANENT DELETE] Primary ImgBB delete helper failed:', imgbbPrimaryDeleteError);
+          throw new Error('ImgBB deletion failed; keeping item in trash so the delete URL is not lost.');
         }
       }
       
@@ -1958,7 +2018,61 @@ export class StorageManager {
   async deleteFromImgbb(imgbbDeleteUrl) {
     if (!imgbbDeleteUrl) return false;
 
-    // Official ImgBB deletion uses delete_url returned from upload response.
+    const postDelete = async (endpoint, imageId, imageHash) => {
+      const formData = new FormData();
+      formData.append('pathname', `/${imageId}/${imageHash}`);
+      formData.append('action', 'delete');
+      formData.append('delete', 'image');
+      formData.append('from', 'resource');
+      formData.append('deleting[id]', imageId);
+      formData.append('deleting[hash]', imageHash);
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        body: formData,
+        cache: 'no-store',
+        credentials: 'omit'
+      });
+
+      if (!response.ok) {
+        throw new Error(`ImgBB delete endpoint returned ${response.status}`);
+      }
+
+      const text = await response.text();
+      if (!text) return true;
+
+      try {
+        const payload = JSON.parse(text);
+        if (payload?.error || payload?.status_txt === 'error' || Number(payload?.status_code || payload?.status) >= 400) {
+          throw new Error(payload?.error?.message || payload?.status_txt || 'ImgBB delete endpoint rejected request');
+        }
+      } catch (parseError) {
+        if (parseError instanceof SyntaxError) return true;
+        throw parseError;
+      }
+
+      return true;
+    };
+
+    // ImgBB has no documented REST delete endpoint; the upload response gives a
+    // browser delete_url, whose id/hash can be posted to the site JSON endpoint.
+    try {
+      const deleteUrl = new URL(imgbbDeleteUrl);
+      const pathParts = deleteUrl.pathname.split('/').filter(Boolean);
+      if (pathParts.length >= 2) {
+        const imageId = pathParts[0];
+        const imageHash = pathParts[1];
+        try {
+          return await postDelete('https://ibb.co/json', imageId, imageHash);
+        } catch (ibbError) {
+          console.warn('⚠️ [IMGBB] ibb.co/json fallback failed:', ibbError);
+        }
+        return await postDelete('https://imgbb.com/json', imageId, imageHash);
+      }
+    } catch (parseError) {
+      console.warn('⚠️ [IMGBB] Could not parse delete URL:', parseError);
+    }
+
     try {
       const response = await fetch(imgbbDeleteUrl, {
         method: 'GET',
@@ -1969,27 +2083,9 @@ export class StorageManager {
       if (!response.ok) {
         throw new Error(`ImgBB delete URL returned ${response.status}`);
       }
-      return true;
+      console.warn('⚠️ [IMGBB] Direct delete URL loaded, but deletion was not verified.');
     } catch (directError) {
-      console.warn('⚠️ [IMGBB] Direct delete URL failed, falling back:', directError);
-    }
-
-    // 2) Fallback: legacy JSON endpoints with extracted pathname/hash
-    try {
-      const deleteUrl = new URL(imgbbDeleteUrl);
-      const pathParts = deleteUrl.pathname.split('/').filter(Boolean);
-      if (pathParts.length >= 2) {
-        const imageId = pathParts[0];
-        const imageHash = pathParts[1];
-        try {
-          return await tryPostDelete('https://ibb.co/json', imageId, imageHash);
-        } catch (ibbError) {
-          console.warn('⚠️ [IMGBB] ibb.co/json fallback failed:', ibbError);
-        }
-        return await tryPostDelete('https://imgbb.com/json', imageId, imageHash);
-      }
-    } catch (parseError) {
-      console.warn('⚠️ [IMGBB] Could not parse delete URL:', parseError);
+      console.warn('⚠️ [IMGBB] Direct delete URL failed:', directError);
     }
 
     return false;
@@ -2000,62 +2096,62 @@ export class StorageManager {
     return `img_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   }
 
-  toNeonMediaPayload(imageData = {}, existing = {}) {
-    const merged = { ...existing, ...imageData };
-    const isVideo = Boolean(merged.isVideo);
-    const isLink = Boolean(merged.isLink);
-    const kind = isLink ? 'link' : (isVideo ? 'video' : 'image');
-    const canonicalLink = this.canonicalizeLinkUrl(merged.linkUrl || merged.sourcePageUrl || '');
+  getMediaKind(data = {}) {
+    const kind = getMediaItemKind(data);
+    return kind === 'system' ? 'image' : kind;
+  }
+
+  withReservedAiMetadata(data = {}) {
+    const kind = this.getMediaKind(data);
+
+    if (kind !== 'image' || this.isSystemItem(data)) {
+      return data;
+    }
+
+    const extraMetadata = data.extraMetadata && typeof data.extraMetadata === 'object'
+      ? data.extraMetadata
+      : {};
 
     return {
-      kind,
-      isVideo,
-      isLink,
-      pageTitle: merged.pageTitle || '',
-      description: merged.description || '',
-      tags: Array.isArray(merged.tags) ? merged.tags : [],
-      collectionId: Object.prototype.hasOwnProperty.call(merged, 'collectionId') ? merged.collectionId : null,
-      internalAddedTimestamp: merged.internalAddedTimestamp || new Date().toISOString(),
-      sourceImageUrl: merged.sourceImageUrl || '',
-      sourcePageUrl: merged.sourcePageUrl || '',
-      fileName: merged.fileName || '',
-      fileSize: Number.isFinite(Number(merged.fileSize)) ? Number(merged.fileSize) : null,
-      width: Number.isFinite(Number(merged.width)) ? Number(merged.width) : null,
-      height: Number.isFinite(Number(merged.height)) ? Number(merged.height) : null,
-      duration: Number.isFinite(Number(merged.duration)) ? Number(merged.duration) : null,
-      fileType: merged.fileType || '',
-      fileTypeSource: merged.fileTypeSource || '',
-      creationDate: merged.creationDate || null,
-      creationDateSource: merged.creationDateSource || '',
-      sha256: merged.sha256 || '',
-      pHash: merged.pHash || '',
-      aHash: merged.aHash || '',
-      dHash: merged.dHash || '',
-      pixvidUrl: merged.pixvidUrl || '',
-      pixvidDeleteUrl: merged.pixvidDeleteUrl || '',
-      imgbbUrl: merged.imgbbUrl || '',
-      imgbbDeleteUrl: merged.imgbbDeleteUrl || '',
-      imgbbThumbUrl: merged.imgbbThumbUrl || '',
-      filemoonWatchUrl: merged.filemoonWatchUrl || '',
-      filemoonDirectUrl: merged.filemoonDirectUrl || '',
-      udropWatchUrl: merged.udropWatchUrl || '',
-      udropDirectUrl: merged.udropDirectUrl || '',
-      linkUrl: merged.linkUrl || '',
-      linkUrlCanonical: canonicalLink,
-      linkPreviewImageUrl: merged.linkPreviewImageUrl || '',
-      faviconUrl: merged.faviconUrl || '',
-      lastVisitedAt: merged.lastVisitedAt || null,
-      deletedAt: merged.deletedAt || null,
-      exifMetadata: merged.exifMetadata || null,
-      extraMetadata: merged,
+      ...data,
+      extraMetadata: ensureAiMetadataContainer(extraMetadata, kind),
     };
+  }
+
+  toNeonMediaPayload(imageData = {}, existing = {}) {
+    return toMediaDbPayload(imageData, {
+      existing,
+      ensureExtraMetadata: (extraMetadata, { kind }) => ensureAiMetadataContainer(extraMetadata, kind),
+    });
   }
 
   fromNeonMediaRow(row = {}) {
     const extra = row.extra_metadata && typeof row.extra_metadata === 'object' ? row.extra_metadata : {};
+    const legacyImageFields = {
+      pixvidUrl: row.pixvid_url || extra.pixvidUrl || '',
+      pixvidDeleteUrl: row.pixvid_delete_url || extra.pixvidDeleteUrl || '',
+      imgbbUrl: row.imgbb_url || extra.imgbbUrl || '',
+      imgbbDeleteUrl: row.imgbb_delete_url || extra.imgbbDeleteUrl || '',
+      imgbbThumbUrl: row.imgbb_thumb_url || extra.imgbbThumbUrl || '',
+    };
+    const legacyVideoFields = {
+      filemoonWatchUrl: row.filemoon_watch_url || extra.filemoonWatchUrl || '',
+      filemoonDirectUrl: row.filemoon_direct_url || extra.filemoonDirectUrl || '',
+      filemoonUrl: row.filemoon_watch_url || extra.filemoonUrl || '',
+      udropWatchUrl: row.udrop_watch_url || extra.udropWatchUrl || '',
+      udropDirectUrl: row.udrop_direct_url || extra.udropDirectUrl || '',
+      udropUrl: row.udrop_watch_url || extra.udropUrl || '',
+    };
+    const imageHosts = normalizeImageProviderLinksForStorage({ ...extra, ...legacyImageFields });
+    const videoHosts = normalizeVideoProviderLinksForStorage({ ...extra, ...legacyVideoFields });
+    const flatExtra = { ...extra };
+    delete flatExtra.ai;
     return {
-      ...extra,
+      ...flatExtra,
+      ...(imageHosts ? { imageHosts } : {}),
+      ...(videoHosts ? { videoHosts } : {}),
       id: row.id,
+      kind: row.kind || extra.kind || '',
       isVideo: row.is_video,
       isLink: row.is_link,
       pageTitle: row.page_title || extra.pageTitle || '',
@@ -2078,21 +2174,27 @@ export class StorageManager {
       pHash: row.p_hash || extra.pHash || '',
       aHash: row.a_hash || extra.aHash || '',
       dHash: row.d_hash || extra.dHash || '',
-      pixvidUrl: row.pixvid_url || extra.pixvidUrl || '',
-      pixvidDeleteUrl: row.pixvid_delete_url || extra.pixvidDeleteUrl || '',
-      imgbbUrl: row.imgbb_url || extra.imgbbUrl || '',
-      imgbbDeleteUrl: row.imgbb_delete_url || extra.imgbbDeleteUrl || '',
-      imgbbThumbUrl: row.imgbb_thumb_url || extra.imgbbThumbUrl || '',
-      filemoonWatchUrl: row.filemoon_watch_url || extra.filemoonWatchUrl || '',
-      filemoonDirectUrl: row.filemoon_direct_url || extra.filemoonDirectUrl || '',
-      udropWatchUrl: row.udrop_watch_url || extra.udropWatchUrl || '',
-      udropDirectUrl: row.udrop_direct_url || extra.udropDirectUrl || '',
+      pixvidUrl: legacyImageFields.pixvidUrl,
+      pixvidDeleteUrl: legacyImageFields.pixvidDeleteUrl,
+      imgbbUrl: legacyImageFields.imgbbUrl,
+      imgbbDeleteUrl: legacyImageFields.imgbbDeleteUrl,
+      imgbbThumbUrl: legacyImageFields.imgbbThumbUrl,
+      filemoonWatchUrl: legacyVideoFields.filemoonWatchUrl,
+      filemoonDirectUrl: legacyVideoFields.filemoonDirectUrl,
+      filemoonUrl: legacyVideoFields.filemoonUrl,
+      udropWatchUrl: legacyVideoFields.udropWatchUrl,
+      udropDirectUrl: legacyVideoFields.udropDirectUrl,
+      udropUrl: legacyVideoFields.udropUrl,
       linkUrl: row.link_url || extra.linkUrl || '',
+      linkUrlCanonical: row.link_url_canonical || extra.linkUrlCanonical || '',
       linkPreviewImageUrl: row.link_preview_image_url || extra.linkPreviewImageUrl || '',
       faviconUrl: row.favicon_url || extra.faviconUrl || '',
       lastVisitedAt: row.last_visited_at || extra.lastVisitedAt || null,
       exifMetadata: row.exif_metadata || extra.exifMetadata || null,
       deletedAt: row.deleted_at || null,
+      createdAt: row.created_at || extra.createdAt || null,
+      updatedAt: row.updated_at || extra.updatedAt || null,
+      extraMetadata: extra,
     };
   }
 
@@ -2163,8 +2265,9 @@ export class StorageManager {
   }
 
   async saveImageNeon(imageData) {
-    const id = imageData.id || this.generateDocId();
-    const payload = this.toNeonMediaPayload(imageData);
+    const mediaData = this.withReservedAiMetadata(imageData);
+    const id = mediaData.id || this.generateDocId();
+    const payload = this.toNeonMediaPayload(mediaData);
     await this.upsertMediaRowNeon(id, payload);
     if (payload.collectionId) {
       await this.incrementCollectionCountNeon(payload.collectionId, 1);
@@ -2286,7 +2389,14 @@ export class StorageManager {
     const pixvidDeleteUrl = current.pixvidDeleteUrl;
     const imgbbDeleteUrl = current.imgbbDeleteUrl;
     if (imgbbDeleteUrl) {
-      try { await this.deleteFromImgbb(imgbbDeleteUrl); } catch {}
+      try {
+        const imgbbDeleted = await this.deleteFromImgbb(imgbbDeleteUrl);
+        if (!imgbbDeleted) {
+          throw new Error('ImgBB delete URL did not confirm deletion');
+        }
+      } catch {
+        throw new Error('ImgBB deletion failed; keeping item in trash so the delete URL is not lost.');
+      }
     }
     if (pixvidDeleteUrl) {
       try { await fetch(pixvidDeleteUrl, { method: 'GET' }); } catch {}

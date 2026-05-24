@@ -8,6 +8,10 @@ import {
 } from 'lucide-react';
 import { useChromeStorage } from '../hooks/useChromeExtension';
 import GalleryNavbar from '../components/GalleryNavbar';
+import {
+  IMAGE_SOURCE_OPTIONS,
+  VIDEO_SOURCE_OPTIONS,
+} from '../config/providerCatalog';
 
 const NAV = [
   { id: 'keys', label: 'API Keys', icon: Key },
@@ -360,7 +364,7 @@ export default function SettingsPage() {
               <p className="text-[13px] mt-1" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.35)' }}>Authentication credentials for upload services</p>
             </motion.div>
             <div className="s-divider" />
-            <Field label="Pixvid API Key" icon={Zap} required>
+            <Field label="Pixvid API Key" icon={Zap} hint="Image host for compressed-quality uploads">
               <input className="s-inp" type="password" value={f.pixvid} onChange={e => set('pixvid', e.target.value)} placeholder="Enter your Pixvid API key" />
             </Field>
             <Field label="ImgBB API Key" icon={Image} hint="Optional fallback image host for original quality uploads">
@@ -435,14 +439,20 @@ export default function SettingsPage() {
             <div className="s-divider" />
             <Field label="Default Image Source" icon={Image}>
               <select className="s-sel" value={f.gallerySrc} onChange={e => set('gallerySrc', e.target.value)}>
-                <option value="imgbb">ImgBB — Original Quality</option>
-                <option value="pixvid">Pixvid — Compressed Quality</option>
+                {IMAGE_SOURCE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </Field>
             <Field label="Default Video Source" icon={Film}>
               <select className="s-sel" value={f.videoSrc} onChange={e => set('videoSrc', e.target.value)}>
-                <option value="filemoon">Filemoon</option>
-                <option value="udrop">UDrop</option>
+                {VIDEO_SOURCE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </Field>
           </motion.div>

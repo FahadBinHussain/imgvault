@@ -8,15 +8,15 @@ export const metadata = {
   keywords: 'chrome extension, image saver, image vault, duplicate detection, pixvid, imgbb',
   authors: [{ name: 'ImgVault Team' }],
   icons: {
-    icon: '/api/brand/icon?size=48',
-    shortcut: '/api/brand/icon?size=16',
-    apple: '/api/brand/icon?size=128',
+    icon: '/api/brand/icon?size=48&v=3',
+    shortcut: '/api/brand/icon?size=16&v=3',
+    apple: '/api/brand/icon?size=128&v=3',
   },
   openGraph: {
     title: 'ImgVault',
     description: 'Save images with context and advanced duplicate detection',
     type: 'website',
-    images: ['/api/brand/icon?size=128'],
+    images: ['/api/brand/icon?size=128&v=3'],
   },
 }
 

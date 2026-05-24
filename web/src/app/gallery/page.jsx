@@ -23,6 +23,13 @@ import {
 } from 'lucide-react'
 import AppNavbar from '../components/AppNavbar'
 import GalleryLightbox from '../components/GalleryLightbox'
+import { getPreferredImageProviderLink } from '@/lib/image-provider-links'
+import { getPreferredVideoProviderLink } from '@/lib/video-provider-links'
+import {
+  getBaseFieldKeys,
+  getMediaItemKind,
+  getTechnicalMetadataEntries,
+} from '@shared/mediaFieldRegistry.js'
 
 async function readJsonSafely(res) {
   const text = await res.text()
@@ -36,39 +43,26 @@ async function readJsonSafely(res) {
 }
 
 function getPreferredImageUrl(image, preferredProvider = 'imgbb') {
-  if (preferredProvider === 'pixvid') {
-    return image.pixvidUrl || image.imgbbUrl || image.imgbbThumbUrl || image.sourceImageUrl || null
-  }
-
-  return image.imgbbUrl || image.imgbbThumbUrl || image.pixvidUrl || image.sourceImageUrl || null
+  return getPreferredImageProviderLink(image, preferredProvider, 'url') || image?.sourceImageUrl || image?.imgbbThumbUrl || null
 }
 
 function getItemKind(item) {
-  if (item?.isLink) return 'link'
-  if (item?.isVideo || item?.fileType?.startsWith?.('video/')) return 'video'
-  return 'image'
+  return getMediaItemKind(item)
 }
 
 function getPreferredVideoWatchUrl(item, preferredVideoSource = 'filemoon') {
-  if (!item) return ''
-  if (preferredVideoSource === 'udrop') {
-    return item.udropWatchUrl || item.filemoonWatchUrl || item.udropUrl || item.filemoonUrl || ''
-  }
-  return item.filemoonWatchUrl || item.udropWatchUrl || item.filemoonUrl || item.udropUrl || ''
+  return getPreferredVideoProviderLink(item, preferredVideoSource, 'watchUrl')
 }
 
 function getPreferredVideoDirectUrl(item, preferredVideoSource = 'filemoon') {
-  if (!item) return ''
-  if (preferredVideoSource === 'udrop') {
-    return item.udropDirectUrl || item.filemoonDirectUrl || ''
-  }
-  return item.filemoonDirectUrl || item.udropDirectUrl || ''
+  return getPreferredVideoProviderLink(item, preferredVideoSource, 'directUrl')
 }
 
 function getLinkPreviewImage(item, preferredProvider = 'imgbb') {
   return (
     item?.linkPreviewImageUrl ||
     getPreferredImageUrl(item, preferredProvider) ||
+    getPreferredImageProviderLink(item, preferredProvider, 'thumbnailUrl') ||
     item?.sourceImageUrl ||
     ''
   )
@@ -78,6 +72,24 @@ function toProxyMediaUrl(url) {
   if (!url || typeof url !== 'string') return ''
   if (!/^https?:\/\//i.test(url)) return url
   return `/api/media?url=${encodeURIComponent(url)}`
+}
+
+function isLikelyVideoUrl(url) {
+  return typeof url === 'string' && /\.(mp4|webm|mov|m4v|mkv|avi|ogv)(?:[?#].*)?$/i.test(url.trim())
+}
+
+function firstImageLikeUrl(...urls) {
+  return urls.find((url) => typeof url === 'string' && url.trim() && !isLikelyVideoUrl(url)) || ''
+}
+
+function getVideoPosterUrl(item, preferredProvider = 'imgbb') {
+  return firstImageLikeUrl(
+    item?.videoThumbnailUrl,
+    item?.linkPreviewImageUrl,
+    getPreferredImageProviderLink(item, preferredProvider, 'thumbnailUrl'),
+    item?.imgbbThumbUrl,
+    getPreferredImageProviderLink(item, preferredProvider, 'url')
+  )
 }
 
 // Skeleton Loader Component with Shimmer
@@ -160,72 +172,19 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
     tags: '',
   })
 
-  const allMetadataFields = [
-    'BlueMatrixColumn',
-    'BlueTRC',
-    'ColorSpaceData',
-    'DeviceManufacturer',
-    'DeviceModel',
-    'GreenMatrixColumn',
-    'GreenTRC',
-    'JFIFVersion',
-    'MediaWhitePoint',
-    'PrimaryPlatform',
-    'ProfileCMMType',
-    'ProfileClass',
-    'ProfileConnectionSpace',
-    'ProfileCopyright',
-    'ProfileCreator',
-    'ProfileDateTime',
-    'ProfileDescription',
-    'ProfileFileSignature',
-    'ProfileVersion',
-    'RedMatrixColumn',
-    'RedTRC',
-    'RenderingIntent',
-    'ResolutionUnit',
-    'ThumbnailHeight',
-    'ThumbnailWidth',
-    'XResolution',
-    'YResolution',
-    'aHash',
-    'creationDate',
-    'creationDateSource',
-    'dHash',
-    'description',
-    'fileName',
-    'fileSize',
-    'fileType',
-    'height',
-    'imgbbDeleteUrl',
-    'imgbbThumbUrl',
-    'imgbbUrl',
-    'internalAddedTimestamp',
-    'pHash',
-    'pageTitle',
-    'pixvidDeleteUrl',
-    'pixvidUrl',
-    'sha256',
-    'sourceImageUrl',
-    'sourcePageUrl',
-    'tags',
-    'width',
-  ]
+  const noobFields = getBaseFieldKeys(image)
+  const nerdFields = getTechnicalMetadataEntries(image).map(([field]) => field)
 
-  const noobFields = [
+  const editableNoobFields = new Set([
     'pageTitle',
     'creationDate',
-    'pixvidUrl',
-    'imgbbUrl',
     'sourceImageUrl',
     'sourcePageUrl',
     'description',
     'tags',
-  ]
-
-  const nerdFields = allMetadataFields.filter((field) => !noobFields.includes(field))
-
-  const editableNoobFields = new Set(noobFields)
+    'pixvidUrl',
+    'imgbbUrl',
+  ])
 
   const toEditValues = useCallback((img) => ({
     pageTitle: img?.pageTitle ?? '',
@@ -312,7 +271,10 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
     setEditValues(toEditValues(image))
   }
 
-  const imageUrl = image.imgbbUrl || image.imgbbThumbUrl || image.pixvidUrl || image.sourceImageUrl
+  const imageUrl =
+    getPreferredImageProviderLink(image, 'imgbb', 'url') ||
+    image.sourceImageUrl ||
+    image.imgbbThumbUrl
 
   // Format file size
   const formatFileSize = (bytes) => {
@@ -564,17 +526,21 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
 function ImageCard({ image, index, viewMode, onClick, className = '', preferredProvider = 'imgbb', preferredVideoSource = 'filemoon' }) {
   const [isLoaded, setIsLoaded] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
+  const [videoPreviewFailed, setVideoPreviewFailed] = useState(false)
   const kind = getItemKind(image)
   const imageUrl = getPreferredImageUrl(image, preferredProvider)
+  const videoPosterUrl = toProxyMediaUrl(getVideoPosterUrl(image, preferredProvider))
   const videoWatchUrl = getPreferredVideoWatchUrl(image, preferredVideoSource)
   const videoDirectUrl = getPreferredVideoDirectUrl(image, preferredVideoSource)
   const linkPreviewImage = toProxyMediaUrl(getLinkPreviewImage(image, preferredProvider))
+  const mediaLoading = index < 8 ? 'eager' : 'lazy'
+  const mediaAnimationDelay = Math.min(index, 12) * 25
 
   return (
     <div 
       className={`group relative glass rounded-[var(--radius-box)] overflow-hidden cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-xl hover:shadow-primary-500/10 ${viewMode === 'list' ? 'flex' : ''} ${className}`}
       style={{ 
-        animationDelay: `${index * 50}ms`,
+        animationDelay: `${mediaAnimationDelay}ms`,
         animation: 'fadeInUp 0.6s ease-out forwards',
         opacity: 0
       }}
@@ -592,7 +558,10 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
             <img
               src={linkPreviewImage}
               alt={image.pageTitle || 'Saved link'}
-              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+              loading={mediaLoading}
+              decoding="async"
+              referrerPolicy="no-referrer"
+              className={`block w-full ${viewMode === 'list' ? 'h-full object-contain' : 'h-auto object-contain'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
               onLoad={() => setIsLoaded(true)}
               onError={() => setIsLoaded(true)}
             />
@@ -602,31 +571,35 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
             </div>
           )
         ) : kind === 'video' ? (
-          videoDirectUrl ? (
+          videoDirectUrl && !videoPreviewFailed ? (
             <video
               src={videoDirectUrl}
-              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+              poster={videoPosterUrl || undefined}
+              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 opacity-100`}
               muted
               playsInline
-              preload="metadata"
+              preload={index < 8 ? 'auto' : 'none'}
               onLoadedData={() => setIsLoaded(true)}
+              onError={() => {
+                setVideoPreviewFailed(true)
+                setIsLoaded(true)
+              }}
             />
-          ) : videoWatchUrl ? (
-            <iframe
-              src={videoWatchUrl}
-              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-              frameBorder="0"
-              scrolling="no"
-              onLoad={() => setIsLoaded(true)}
-            />
-          ) : imageUrl ? (
+          ) : videoPosterUrl ? (
             <img
-              src={imageUrl}
+              src={videoPosterUrl}
               alt={image.pageTitle || 'Saved video'}
+              loading={mediaLoading}
+              decoding="async"
+              referrerPolicy="no-referrer"
               className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
               onLoad={() => setIsLoaded(true)}
               onError={() => setIsLoaded(true)}
             />
+          ) : videoDirectUrl || videoWatchUrl ? (
+            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center">
+              <FileText className="w-12 h-12 text-base-content/55" />
+            </div>
           ) : (
             <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center">
               <FileText className="w-12 h-12 text-base-content/55" />
@@ -645,6 +618,9 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
             <img
               src={imageUrl}
               alt={image.pageTitle || 'Saved image'}
+              loading={mediaLoading}
+              decoding="async"
+              referrerPolicy="no-referrer"
               className={`block w-full ${viewMode === 'list' ? 'h-full object-contain' : 'h-auto object-contain'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
               onLoad={() => setIsLoaded(true)}
               onError={() => setIsLoaded(true)}
@@ -836,12 +812,41 @@ export default function GalleryPage() {
     acc[kind] += 1
     return acc
   }, { total: 0, image: 0, video: 0, link: 0 })
+  const filteredIndexById = new Map(filteredImages.map((item, itemIndex) => [item.id, itemIndex]))
+  const groupedImages = groupImagesByDate(filteredImages)
+
+  const loadImageDetail = useCallback(async (image) => {
+    if (!image?._isSummary) return image
+
+    const res = await fetch(`/api/images?id=${encodeURIComponent(image.id)}`, { cache: 'no-store' })
+    const data = await readJsonSafely(res)
+
+    if (!res.ok) {
+      throw new Error(data?.error || 'Failed to load full media metadata')
+    }
+
+    const detailedImage = data?.image || image
+
+    setImages((prevImages) =>
+      prevImages.map((item) => (item.id === detailedImage.id ? { ...item, ...detailedImage } : item))
+    )
+
+    setSelectedImage((prevSelected) =>
+      prevSelected?.id === detailedImage.id ? { ...prevSelected, ...detailedImage } : prevSelected
+    )
+
+    return detailedImage
+  }, [])
 
   const handleImageClick = useCallback((image, index) => {
     setShareStatus('')
     setSelectedImage(image)
     setSelectedIndex(index)
-  }, [])
+
+    loadImageDetail(image).catch((error) => {
+      setShareStatus(error?.message || 'Failed to load full media metadata')
+    })
+  }, [loadImageDetail])
 
   const handleCloseLightbox = useCallback(() => {
     setShareStatus('')
@@ -850,10 +855,16 @@ export default function GalleryPage() {
   }, [])
 
   const handleNavigate = useCallback((index) => {
+    const nextImage = filteredImages[index]
+
     setShareStatus('')
-    setSelectedImage(filteredImages[index])
+    setSelectedImage(nextImage)
     setSelectedIndex(index)
-  }, [filteredImages])
+
+    loadImageDetail(nextImage).catch((error) => {
+      setShareStatus(error?.message || 'Failed to load full media metadata')
+    })
+  }, [filteredImages, loadImageDetail])
 
   const handleSaveImageEdits = useCallback(async (imageId, updates) => {
     const res = await fetch('/api/images', {
@@ -885,14 +896,16 @@ export default function GalleryPage() {
     try {
       setShareStatus('Creating share link...')
 
+      const detailedImage = await loadImageDetail(image)
+
       const res = await fetch('/api/share', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          imageId: image.id,
-          imageData: image,
+          imageId: detailedImage.id,
+          imageData: detailedImage,
         }),
       })
 
@@ -908,7 +921,7 @@ export default function GalleryPage() {
     } catch (error) {
       setShareStatus(error?.message || 'Failed to create share link')
     }
-  }, [])
+  }, [loadImageDetail])
 
   const handleMoveToVault = useCallback(async (image) => {
     if (!image?.id) return
@@ -1035,7 +1048,7 @@ export default function GalleryPage() {
             ) : viewMode === 'grid' ? (
               /* Google Photos style with date headers */
               <div className="space-y-8">
-                {groupImagesByDate(filteredImages).map((group) => (
+                {groupedImages.map((group) => (
                   <div key={group.date}>
                     <div className="flex items-center gap-4 mb-4">
                       <span className="text-lg font-semibold text-primary-400">{group.date}</span>
@@ -1043,7 +1056,7 @@ export default function GalleryPage() {
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 items-start">
                       {group.images.map((img) => {
-                        const globalIndex = filteredImages.findIndex(i => i.id === img.id)
+                        const globalIndex = filteredIndexById.get(img.id) ?? 0
                         return (
                           <ImageCard 
                             key={img.id}
@@ -1063,7 +1076,7 @@ export default function GalleryPage() {
             ) : (
               /* List Layout */
               <div className="space-y-8">
-                {groupImagesByDate(filteredImages).map((group) => (
+                {groupedImages.map((group) => (
                   <div key={group.date}>
                     <div className="flex items-center gap-4 mb-4">
                       <span className="text-lg font-semibold text-primary-400">{group.date}</span>
@@ -1071,7 +1084,7 @@ export default function GalleryPage() {
                     </div>
                     <div className="grid grid-cols-1 gap-4">
                       {group.images.map((img) => {
-                        const globalIndex = filteredImages.findIndex(i => i.id === img.id)
+                        const globalIndex = filteredIndexById.get(img.id) ?? 0
                         return (
                           <ImageCard 
                             key={img.id}

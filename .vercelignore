@@ -1,0 +1,20 @@
+.git
+.github
+.kilo
+.pnpm-store
+docs
+native-host
+nextgen-extension
+old extension
+**/node_modules
+**/.next
+**/.pnpm-store
+**/dist
+**/migration-backups
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+*.log
+*.backup.json

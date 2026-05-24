@@ -14,6 +14,16 @@ import {
   LockKeyhole,
   RotateCcw,
 } from 'lucide-react'
+import {
+  getPreferredVideoProviderLink,
+  hasAnyVideoProviderLink,
+} from '@/lib/video-provider-links'
+import { getPreferredImageProviderLink } from '@/lib/image-provider-links'
+import {
+  getDisplayFieldKeys,
+  getMediaItemKind,
+  getTechnicalMetadataEntries,
+} from '@shared/mediaFieldRegistry.js'
 
 export default function GalleryLightbox({
   image,
@@ -56,110 +66,39 @@ export default function GalleryLightbox({
     description: '',
     tags: '',
   })
-  const getItemKind = (item) => {
-    if (item?.isLink) return 'link'
-    if (item?.isVideo || item?.fileType?.startsWith?.('video/')) return 'video'
-    return 'image'
-  }
   const getPreferredVideoWatchUrl = (item) => (
-    preferredVideoSource === 'udrop'
-      ? item?.udropWatchUrl || item?.filemoonWatchUrl || item?.udropUrl || item?.filemoonUrl || ''
-      : item?.filemoonWatchUrl || item?.udropWatchUrl || item?.filemoonUrl || item?.udropUrl || ''
+    getPreferredVideoProviderLink(item, preferredVideoSource, 'watchUrl')
   )
   const getPreferredVideoDirectUrl = (item) => (
-    preferredVideoSource === 'udrop'
-      ? item?.udropDirectUrl || item?.filemoonDirectUrl || ''
-      : item?.filemoonDirectUrl || item?.udropDirectUrl || ''
+    getPreferredVideoProviderLink(item, preferredVideoSource, 'directUrl')
   )
   const getPreferredImageUrl = (item) => (
-    preferredProvider === 'pixvid'
-      ? item?.pixvidUrl || item?.imgbbUrl || item?.imgbbThumbUrl || item?.sourceImageUrl || ''
-      : item?.imgbbUrl || item?.imgbbThumbUrl || item?.pixvidUrl || item?.sourceImageUrl || ''
+    getPreferredImageProviderLink(item, preferredProvider, 'url') || item?.sourceImageUrl || item?.imgbbThumbUrl || ''
   )
-  const getLinkPreviewImage = (item) => item?.linkPreviewImageUrl || getPreferredImageUrl(item) || ''
+  const getLinkPreviewImage = (item) => (
+    item?.linkPreviewImageUrl ||
+    getPreferredImageUrl(item) ||
+    getPreferredImageProviderLink(item, preferredProvider, 'thumbnailUrl') ||
+    ''
+  )
   const toProxyMediaUrl = (url) => {
     if (!url || typeof url !== 'string') return ''
     if (!/^https?:\/\//i.test(url)) return url
     return `/api/media?url=${encodeURIComponent(url)}`
   }
 
-  const baseImageFieldKeys = [
-    'pixvidUrl',
-    'pixvidDeleteUrl',
-    'imgbbUrl',
-    'imgbbDeleteUrl',
-    'imgbbThumbUrl',
-    'sourceImageUrl',
-    'sourcePageUrl',
-    'pageTitle',
-    'fileName',
-    'fileSize',
-    'width',
-    'height',
-    'fileType',
-    'fileTypeSource',
-    'creationDate',
-    'creationDateSource',
-    'internalAddedTimestamp',
-    'tags',
-    'description',
-    'collectionId',
-  ]
-
-  const baseVideoFieldKeys = [
-    'sourceImageUrl',
-    'sourcePageUrl',
-    'pageTitle',
-    'fileName',
-    'fileSize',
-    'fileType',
-    'fileTypeSource',
-    'creationDate',
-    'creationDateSource',
-    'internalAddedTimestamp',
-    'duration',
-    'width',
-    'height',
-    'tags',
-    'description',
-    'collectionId',
-    'isVideo',
-    'filemoonWatchUrl',
-    'filemoonDirectUrl',
-    'udropWatchUrl',
-    'udropDirectUrl',
-  ]
-  const baseLinkFieldKeys = [
-    'linkUrl',
-    'pageTitle',
-    'description',
-    'tags',
-    'collectionId',
-    'internalAddedTimestamp',
-    'faviconUrl',
-    'linkPreviewImageUrl',
-    'lastVisitedAt',
-    'isLink',
-  ]
-
-  const isSelectedLink = Boolean(image?.isLink || image?.linkUrl)
+  const currentKind = getMediaItemKind(image)
+  const isSelectedLink = currentKind === 'link'
   const isSelectedVideo = Boolean(
-    !isSelectedLink && (
-    image?.isVideo ||
-    image?.fileType?.startsWith?.('video/') ||
-    image?.duration ||
-    image?.filemoonWatchUrl ||
-    image?.udropWatchUrl ||
-    image?.filemoonDirectUrl ||
-    image?.udropDirectUrl
+    currentKind === 'video' ||
+    (
+      !isSelectedLink &&
+      hasAnyVideoProviderLink(image)
     )
   )
 
   const omittedFieldSet = new Set(omittedFields)
-  const noobFields = isSelectedLink
-    ? baseLinkFieldKeys
-    : (isSelectedVideo ? baseVideoFieldKeys : baseImageFieldKeys)
-  const displayedNoobFields = noobFields.filter((field) => !omittedFieldSet.has(field))
+  const displayedNoobFields = getDisplayFieldKeys(image, { omittedFields })
   const editableNoobFields = new Set([
     'pageTitle',
     'creationDate',
@@ -170,27 +109,8 @@ export default function GalleryLightbox({
     'pixvidUrl',
     'imgbbUrl',
   ])
-  const nerdsExcludedKeys = new Set([
-    ...baseImageFieldKeys,
-    ...baseVideoFieldKeys,
-    ...baseLinkFieldKeys,
-    'kind',
-    'createdAt',
-    'updatedAt',
-    'deletedAt',
-    'linkUrlCanonical',
-    'extraMetadata',
-  ])
-  const nerdFields = Object.keys(image || {})
-    .filter((field) => field !== 'id')
-    .filter((field) => !nerdsExcludedKeys.has(field))
-    .filter((field) => !omittedFieldSet.has(field))
-    .filter((field) => {
-      const value = image?.[field]
-      if (value === false) return false
-      return value !== undefined && value !== null && value !== ''
-    })
-    .sort((a, b) => a.localeCompare(b))
+  const nerdFields = getTechnicalMetadataEntries(image, { omittedFields })
+    .map(([field]) => field)
   const nerdVisibleFields = [...nerdFields].concat(
     redactedFields.filter((field) => !nerdFields.includes(field) && !omittedFieldSet.has(field))
   )
@@ -252,7 +172,6 @@ export default function GalleryLightbox({
     setEditValues(toEditValues(image))
   }
 
-  const currentKind = getItemKind(image)
   const imageUrl = getPreferredImageUrl(image)
   const currentVideoWatchUrl = getPreferredVideoWatchUrl(image)
   const currentVideoDirectUrl = getPreferredVideoDirectUrl(image)

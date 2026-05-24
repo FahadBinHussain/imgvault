@@ -1,14 +1,141 @@
 import { db } from '@/db'
 import { mediaItems } from '@/db/schema'
-import { desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { auth } from '@/app/api/auth/[...nextauth]/route'
-import { isSystemMediaItem, isVaultedMediaItem, toClientMediaItem } from '@/lib/vault-media'
+import {
+  VAULT_CONFIG_SYSTEM_TYPE,
+  isSystemMediaItem,
+  isVaultedMediaItem,
+  toClientMediaItem,
+  toClientMediaListItem,
+} from '@/lib/vault-media'
+import { normalizeImageHosts } from '@shared/mediaItemNormalizer.js'
 
 async function getSession() {
   return auth()
 }
 
-export async function GET() {
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function compactObject(value) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entryValue]) => entryValue !== undefined && entryValue !== null && entryValue !== '')
+  )
+}
+
+function syncImageHostUrl(imageHosts, providerKey, nextUrl) {
+  const nextHosts = { ...imageHosts }
+  const current = isPlainObject(nextHosts[providerKey]) ? { ...nextHosts[providerKey] } : {}
+
+  if (typeof nextUrl === 'string' && nextUrl.trim()) {
+    const url = nextUrl.trim()
+    nextHosts[providerKey] = {
+      ...current,
+      url,
+      displayUrl: current.displayUrl || url,
+      directUrl: current.directUrl || url,
+    }
+    return nextHosts
+  }
+
+  delete current.url
+  delete current.displayUrl
+  delete current.directUrl
+
+  const compacted = compactObject(current)
+  if (Object.keys(compacted).length > 0) {
+    nextHosts[providerKey] = compacted
+  } else {
+    delete nextHosts[providerKey]
+  }
+
+  return nextHosts
+}
+
+function buildExtraMetadataForImageEdits(current, sanitizedUpdates) {
+  const touchesImageHosts = (
+    Object.prototype.hasOwnProperty.call(sanitizedUpdates, 'pixvidUrl') ||
+    Object.prototype.hasOwnProperty.call(sanitizedUpdates, 'imgbbUrl')
+  )
+
+  if (!touchesImageHosts) return null
+
+  const extraMetadata = isPlainObject(current.extraMetadata) ? { ...current.extraMetadata } : {}
+  let imageHosts = normalizeImageHosts({
+    ...current,
+    ...sanitizedUpdates,
+    extraMetadata,
+  }, extraMetadata)
+
+  if (Object.prototype.hasOwnProperty.call(sanitizedUpdates, 'pixvidUrl')) {
+    imageHosts = syncImageHostUrl(imageHosts, 'pixvid', sanitizedUpdates.pixvidUrl)
+  }
+  if (Object.prototype.hasOwnProperty.call(sanitizedUpdates, 'imgbbUrl')) {
+    imageHosts = syncImageHostUrl(imageHosts, 'imgbb', sanitizedUpdates.imgbbUrl)
+  }
+
+  if (Object.keys(imageHosts).length > 0) {
+    extraMetadata.imageHosts = imageHosts
+  } else {
+    delete extraMetadata.imageHosts
+  }
+
+  return extraMetadata
+}
+
+const visibleGalleryWhere = and(
+  isNull(mediaItems.deletedAt),
+  sql`left(${mediaItems.id}, 11) <> ${'__imgvault_'}`,
+  sql`coalesce(${mediaItems.extraMetadata}->>'systemType', '') <> ${VAULT_CONFIG_SYSTEM_TYPE}`,
+  sql`coalesce(lower(${mediaItems.extraMetadata}->>'isVaulted'), 'false') not in ('true', '1', 'yes')`
+)
+
+const galleryListSelect = {
+  id: mediaItems.id,
+  kind: mediaItems.kind,
+  isVideo: mediaItems.isVideo,
+  isLink: mediaItems.isLink,
+  pageTitle: mediaItems.pageTitle,
+  description: mediaItems.description,
+  tags: mediaItems.tags,
+  collectionId: mediaItems.collectionId,
+  internalAddedTimestamp: mediaItems.internalAddedTimestamp,
+  sourceImageUrl: mediaItems.sourceImageUrl,
+  sourcePageUrl: mediaItems.sourcePageUrl,
+  fileName: mediaItems.fileName,
+  fileSize: mediaItems.fileSize,
+  width: mediaItems.width,
+  height: mediaItems.height,
+  duration: mediaItems.duration,
+  fileType: mediaItems.fileType,
+  creationDate: mediaItems.creationDate,
+  pixvidUrl: mediaItems.pixvidUrl,
+  imgbbUrl: mediaItems.imgbbUrl,
+  imgbbThumbUrl: mediaItems.imgbbThumbUrl,
+  filemoonWatchUrl: mediaItems.filemoonWatchUrl,
+  filemoonDirectUrl: mediaItems.filemoonDirectUrl,
+  udropWatchUrl: mediaItems.udropWatchUrl,
+  udropDirectUrl: mediaItems.udropDirectUrl,
+  linkUrl: mediaItems.linkUrl,
+  linkUrlCanonical: mediaItems.linkUrlCanonical,
+  linkPreviewImageUrl: mediaItems.linkPreviewImageUrl,
+  faviconUrl: mediaItems.faviconUrl,
+  lastVisitedAt: mediaItems.lastVisitedAt,
+  deletedAt: mediaItems.deletedAt,
+  videoThumbnailUrl: sql`coalesce(
+    ${mediaItems.extraMetadata}->'videoHosts'->'filemoon'->>'thumbnailUrl',
+    ${mediaItems.extraMetadata}->'videoHosts'->'udrop'->>'thumbnailUrl',
+    ${mediaItems.extraMetadata}->'_migrations'->'mediaFormatV2'->'originalRow'->>'imgbb_thumb_url',
+    ${mediaItems.extraMetadata}->'_migrations'->'mediaFormatV2'->'originalRow'->>'link_preview_image_url',
+    ${mediaItems.extraMetadata}->'_migrations'->'mediaFormatV2'->'originalRow'->'extra_metadata'->>'imgbbThumbUrl',
+    ${mediaItems.extraMetadata}->'_migrations'->'mediaFormatV2'->'originalRow'->'extra_metadata'->>'linkPreviewImageUrl',
+    ''
+  )`,
+}
+
+export async function GET(request) {
   const session = await getSession()
 
   if (!session?.user?.id) {
@@ -20,16 +147,30 @@ export async function GET() {
   }
 
   try {
+    const detailId = new URL(request.url).searchParams.get('id')?.trim()
+
+    if (detailId) {
+      const [image] = await db
+        .select()
+        .from(mediaItems)
+        .where(and(eq(mediaItems.id, detailId), isNull(mediaItems.deletedAt)))
+        .limit(1)
+
+      if (!image || isSystemMediaItem(image) || isVaultedMediaItem(image)) {
+        return Response.json({ error: 'Image not found' }, { status: 404 })
+      }
+
+      return Response.json({ image: toClientMediaItem(image) })
+    }
+
     const images = await db
-      .select()
+      .select(galleryListSelect)
       .from(mediaItems)
-      .where(isNull(mediaItems.deletedAt))
+      .where(visibleGalleryWhere)
       .orderBy(desc(mediaItems.internalAddedTimestamp))
 
     return Response.json({
-      images: images
-        .filter((item) => !isSystemMediaItem(item) && !isVaultedMediaItem(item))
-        .map(toClientMediaItem),
+      images: images.map(toClientMediaListItem),
     })
   } catch (error) {
     return Response.json(
@@ -110,18 +251,24 @@ export async function PATCH(request) {
   }
 
   try {
+    const [currentItem] = await db.select().from(mediaItems).where(eq(mediaItems.id, imageId)).limit(1)
+    if (!currentItem) {
+      return Response.json({ error: 'Image not found' }, { status: 404 })
+    }
+
+    const updateSet = {
+      ...sanitizedUpdates,
+      updatedAt: new Date(),
+    }
+    const extraMetadata = buildExtraMetadataForImageEdits(currentItem, sanitizedUpdates)
+    if (extraMetadata) updateSet.extraMetadata = extraMetadata
+
     await db
       .update(mediaItems)
-      .set({
-        ...sanitizedUpdates,
-        updatedAt: new Date(),
-      })
+      .set(updateSet)
       .where(eq(mediaItems.id, imageId))
 
     const [updatedItem] = await db.select().from(mediaItems).where(eq(mediaItems.id, imageId)).limit(1)
-    if (!updatedItem) {
-      return Response.json({ error: 'Image not found' }, { status: 404 })
-    }
 
     return Response.json({ image: toClientMediaItem(updatedItem) })
   } catch (error) {

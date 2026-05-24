@@ -4,6 +4,19 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { auth } from '@/app/api/auth/[...nextauth]/route'
 import { isVaultedMediaItem } from '@/lib/vault-media'
 
+function stripImageHostDeleteUrls(imageHosts) {
+  if (!imageHosts || typeof imageHosts !== 'object') return imageHosts
+
+  return Object.fromEntries(
+    Object.entries(imageHosts).map(([key, value]) => {
+      if (!value || typeof value !== 'object') return [key, value]
+      const safeValue = { ...value }
+      delete safeValue.deleteUrl
+      return [key, safeValue]
+    })
+  )
+}
+
 function createToken() {
   return crypto.randomUUID().replace(/-/g, '')
 }
@@ -12,6 +25,19 @@ function sanitizeSharedImageData(imageData) {
   const cloned = { ...imageData }
   delete cloned.imgbbDeleteUrl
   delete cloned.pixvidDeleteUrl
+  delete cloned.ai
+  cloned.imageHosts = stripImageHostDeleteUrls(cloned.imageHosts)
+  if (cloned.extraMetadata?.imageHosts && typeof cloned.extraMetadata.imageHosts === 'object') {
+    cloned.extraMetadata = {
+      ...cloned.extraMetadata,
+      imageHosts: stripImageHostDeleteUrls(cloned.extraMetadata.imageHosts),
+    }
+  }
+  if (cloned.extraMetadata?.ai) {
+    const safeExtraMetadata = { ...cloned.extraMetadata }
+    delete safeExtraMetadata.ai
+    cloned.extraMetadata = safeExtraMetadata
+  }
   return cloned
 }
 

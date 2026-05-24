@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   EyeOff,
+  KeyRound,
   LockKeyhole,
   UnlockKeyhole,
   RotateCcw,
@@ -19,6 +20,16 @@ import { Button, Spinner, Toast, Modal } from '../components/UI';
 import GalleryNavbar from '../components/GalleryNavbar';
 import PremiumBackground from '../components/PremiumBackground';
 import { useChromeMessage, useTrash, useCollections } from '../hooks/useChromeExtension';
+import {
+  getPreferredVideoProviderLink,
+} from '../utils/videoProviderLinks';
+import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
+import {
+  getBaseFieldKeys,
+  getMediaItemKind,
+  getTechnicalMetadataEntries,
+  isTruthyFlag,
+} from '@shared/mediaFieldRegistry.js';
 
 const VAULT_CONFIG_KEY = 'secretVaultConfig';
 const VAULT_SESSION_KEY = 'imgvault-vault-unlocked';
@@ -40,12 +51,6 @@ const hashVaultPasscode = async (passcode, salt) => {
 
 const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim());
 
-const isTruthyFlag = (value) =>
-  value === true ||
-  value === 1 ||
-  value === '1' ||
-  (typeof value === 'string' && value.trim().toLowerCase() === 'true');
-
 const getLocalVaultConfig = () => new Promise((resolve) => {
   chrome.storage.local.get([VAULT_CONFIG_KEY], (result) => {
     resolve(result[VAULT_CONFIG_KEY] || null);
@@ -65,6 +70,12 @@ export default function VaultPage() {
   const [unlocked, setUnlocked] = useState(false);
   const [passcode, setPasscode] = useState('');
   const [confirmPasscode, setConfirmPasscode] = useState('');
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [changePasswordError, setChangePasswordError] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
   const [authError, setAuthError] = useState('');
   const [vaultItems, setVaultItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -165,37 +176,26 @@ export default function VaultPage() {
     ));
   }, [searchQuery, vaultItems]);
 
-  const isLinkItem = (item) => isTruthyFlag(item?.isLink);
+  const isLinkItem = (item) => getMediaItemKind(item) === 'link';
 
-  const isVideoItem = (item) => (
-    isTruthyFlag(item?.isVideo) ||
-    String(item?.fileType || '').startsWith('video/') ||
-    isHttpUrl(item?.filemoonWatchUrl) ||
-    isHttpUrl(item?.udropWatchUrl) ||
-    isHttpUrl(item?.filemoonDirectUrl) ||
-    isHttpUrl(item?.udropDirectUrl)
-  );
+  const isVideoItem = (item) => getMediaItemKind(item) === 'video';
 
   const getPreviewUrl = (item) => (
     item?.linkPreviewImageUrl ||
-    item?.imgbbThumbUrl ||
-    item?.imgbbUrl ||
-    item?.pixvidUrl ||
+    getPreferredImageProviderLink(item, 'imgbb', 'url') ||
+    getPreferredImageProviderLink(item, 'imgbb', 'thumbnailUrl') ||
     item?.sourceImageUrl ||
+    item?.imgbbThumbUrl ||
     ''
   );
 
   const getVideoDirectUrl = (item) => (
-    item?.udropDirectUrl ||
-    item?.filemoonDirectUrl ||
-    ''
+    getPreferredVideoProviderLink(item, 'udrop', 'directUrl')
   );
 
   const getVideoWatchUrl = (item) => (
-    item?.filemoonWatchUrl ||
-    item?.udropWatchUrl ||
-    getVideoDirectUrl(item) ||
-    ''
+    getPreferredVideoProviderLink(item, 'filemoon', 'watchUrl') ||
+    getVideoDirectUrl(item)
   );
 
   const getLinkPreviewImage = (item) => (
@@ -208,14 +208,24 @@ export default function VaultPage() {
   );
 
   const getKind = (item) => {
-    if (isLinkItem(item)) return 'Link';
-    if (isVideoItem(item)) return 'Video';
+    const kind = getMediaItemKind(item);
+    if (kind === 'link') return 'Link';
+    if (kind === 'video') return 'Video';
     return 'Image';
   };
 
   const closeItemModal = () => {
     setSelectedItem(null);
     setActiveTab('noobs');
+  };
+
+  const closeChangePasswordModal = () => {
+    if (changingPassword) return;
+    setShowChangePassword(false);
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmNewPassword('');
+    setChangePasswordError('');
   };
 
   const openItemModal = (item) => {
@@ -269,40 +279,14 @@ export default function VaultPage() {
 
   const overviewKeys = useMemo(() => {
     if (!selectedItem) return [];
-    const linkKeys = ['linkUrl', 'pageTitle', 'description', 'tags', 'collectionId', 'internalAddedTimestamp', 'faviconUrl', 'lastVisitedAt', 'isLink', 'linkPreviewImageUrl', 'vaultedAt'];
-    const mediaKeys = [
-      'sourceImageUrl',
-      'sourcePageUrl',
-      'pageTitle',
-      'fileName',
-      'fileSize',
-      'fileType',
-      'description',
-      'tags',
-      'collectionId',
-      'creationDate',
-      'internalAddedTimestamp',
-      'isVideo',
-      'filemoonWatchUrl',
-      'filemoonDirectUrl',
-      'udropWatchUrl',
-      'udropDirectUrl',
-      'vaultedAt',
-    ];
-    const keys = isLinkItem(selectedItem) ? linkKeys : mediaKeys;
+    const keys = [...new Set([...getBaseFieldKeys(selectedItem), 'vaultedAt'])];
     return keys.filter((key) => Object.prototype.hasOwnProperty.call(selectedItem, key));
   }, [selectedItem]);
 
   const technicalEntries = useMemo(() => {
     if (!selectedItem) return [];
-    const baseKeys = new Set(['id', ...overviewKeys]);
-    return Object.entries(selectedItem).filter(([key, value]) => (
-      !baseKeys.has(key) &&
-      value !== undefined &&
-      value !== null &&
-      value !== ''
-    ));
-  }, [overviewKeys, selectedItem]);
+    return getTechnicalMetadataEntries(selectedItem);
+  }, [selectedItem]);
 
   const createVault = async (event) => {
     event.preventDefault();
@@ -323,6 +307,7 @@ export default function VaultPage() {
       salt,
       passHash,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       mode: 'hidden',
     };
 
@@ -356,11 +341,64 @@ export default function VaultPage() {
     setPasscode('');
   };
 
+  const changeVaultPassword = async (event) => {
+    event.preventDefault();
+    setChangePasswordError('');
+
+    if (!vaultConfig || changingPassword) return;
+
+    const currentHash = await hashVaultPasscode(currentPassword, vaultConfig.salt);
+    if (currentHash !== vaultConfig.passHash) {
+      setChangePasswordError('Current password is wrong.');
+      return;
+    }
+
+    if (newPassword.length < 4) {
+      setChangePasswordError('Use at least 4 characters.');
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setChangePasswordError('New passwords do not match.');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const salt = makeSalt();
+      const passHash = await hashVaultPasscode(newPassword, salt);
+      const updatedAt = new Date().toISOString();
+      const config = {
+        ...vaultConfig,
+        salt,
+        passHash,
+        mode: vaultConfig.mode || 'hidden',
+        updatedAt,
+        passcodeUpdatedAt: updatedAt,
+      };
+
+      await sendMessage('saveVaultConfig', { config });
+      await saveLocalVaultConfig(config);
+      sessionStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ passHash, unlockedAt: Date.now() }));
+      setVaultConfig(config);
+      setShowChangePassword(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      showToast('Vault password changed.', 'success', 3000);
+    } catch (error) {
+      setChangePasswordError(error.message || 'Failed to change password. Check your database settings and try again.');
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   const lockVault = () => {
     sessionStorage.removeItem(VAULT_SESSION_KEY);
     setUnlocked(false);
     setSelectedItem(null);
     setVaultItems([]);
+    closeChangePasswordModal();
   };
 
   const restoreItem = async (item) => {
@@ -569,7 +607,7 @@ export default function VaultPage() {
                           {kind === 'Link' ? (
                             <div className="relative w-full aspect-video" style={{ background: 'var(--color-base-200)' }}>
                               {linkPreviewImage ? (
-                                <img src={linkPreviewImage} alt={item.pageTitle || 'Link preview'} className="w-full h-full object-cover" loading="lazy" onLoad={() => handleMediaLoad(item.id)} />
+                                <img src={linkPreviewImage} alt={item.pageTitle || 'Link preview'} className="w-full h-full object-contain" loading="lazy" onLoad={() => handleMediaLoad(item.id)} />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.3)' }}>
                                   <Link2 style={{ width: 32, height: 32 }} />
@@ -587,7 +625,7 @@ export default function VaultPage() {
                               src={imageUrl}
                               alt={item.pageTitle || item.fileName || 'Vault item'}
                               onLoad={() => handleMediaLoad(item.id)}
-                              className={`w-full object-cover transition-all duration-500 ease-out group-hover:scale-110 ${loadedImages.has(item.id) ? 'opacity-100' : 'opacity-0'}`}
+                              className={`w-full h-auto object-contain transition-all duration-500 ease-out ${loadedImages.has(item.id) ? 'opacity-100' : 'opacity-0'}`}
                               loading="lazy"
                             />
                           ) : (
@@ -645,15 +683,26 @@ export default function VaultPage() {
             ))
           )}
 
-          <button
-            type="button"
-            onClick={lockVault}
-            className="g-action g-action-warn fixed bottom-6 right-6 z-50"
-            style={{ height: 40, padding: '0 16px', boxShadow: '0 10px 30px oklch(from var(--color-base-content) l c h / 0.12)' }}
-          >
-            <LockKeyhole className="h-4 w-4" />
-            Lock Vault
-          </button>
+          <div className="fixed bottom-6 right-6 z-50 flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setShowChangePassword(true)}
+              className="g-action"
+              style={{ height: 40, padding: '0 16px', boxShadow: '0 10px 30px oklch(from var(--color-base-content) l c h / 0.12)' }}
+            >
+              <KeyRound className="h-4 w-4" />
+              Change Password
+            </button>
+            <button
+              type="button"
+              onClick={lockVault}
+              className="g-action g-action-warn"
+              style={{ height: 40, padding: '0 16px', boxShadow: '0 10px 30px oklch(from var(--color-base-content) l c h / 0.12)' }}
+            >
+              <LockKeyhole className="h-4 w-4" />
+              Lock Vault
+            </button>
+          </div>
         </main>
       )}
 
@@ -828,6 +877,63 @@ export default function VaultPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={showChangePassword}
+        onClose={closeChangePasswordModal}
+        title="Change Vault Password"
+      >
+        <form onSubmit={changeVaultPassword} className="space-y-4">
+          <p className="text-sm text-base-content/60">
+            This updates the vault unlock password for both the extension and the web app.
+          </p>
+          <input
+            type="password"
+            value={currentPassword}
+            onChange={(event) => setCurrentPassword(event.target.value)}
+            placeholder="Current password"
+            className="w-full rounded-[var(--radius-box)] border border-base-300 bg-base-200 px-4 py-3 text-base-content outline-none focus:border-primary"
+            autoFocus
+          />
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+            placeholder="New password"
+            className="w-full rounded-[var(--radius-box)] border border-base-300 bg-base-200 px-4 py-3 text-base-content outline-none focus:border-primary"
+          />
+          <input
+            type="password"
+            value={confirmNewPassword}
+            onChange={(event) => setConfirmNewPassword(event.target.value)}
+            placeholder="Confirm new password"
+            className="w-full rounded-[var(--radius-box)] border border-base-300 bg-base-200 px-4 py-3 text-base-content outline-none focus:border-primary"
+          />
+          {changePasswordError && (
+            <p className="rounded-[var(--radius-box)] border border-error/20 bg-error/10 px-3 py-2 text-sm text-error">
+              {changePasswordError}
+            </p>
+          )}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={closeChangePasswordModal} disabled={changingPassword}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={changingPassword}>
+              {changingPassword ? (
+                <>
+                  <Spinner size="sm" className="mr-2" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <KeyRound className="mr-2 h-4 w-4" />
+                  Change Password
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
       </Modal>
 
       {toast && (
