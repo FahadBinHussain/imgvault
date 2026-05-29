@@ -60,6 +60,35 @@ The core idea is simple: media is not useful without context. ImgVault stores th
 - Video hosts: Filemoon, UDrop
 - Release assets published through GitHub Actions
 
+## Comparison
+
+`✅` means the tool is built around that capability. `partial` means it has a related feature, but
+not the same workflow or depth. `-` means it is not the point of that tool.
+
+| Capability | ImgVault | [Eagle](https://eagle.cool/) | [Raindrop.io](https://raindrop.io/) | [Immich](https://immich.app/) | [Hydrus Network](https://hydrusnetwork.github.io/hydrus/) | [Google Photos](https://photos.google.com/) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Browser capture from web pages | ✅ | ✅ | ✅ | - | partial | partial |
+| Source URL, page title, and context-first metadata | ✅ | partial | ✅ | partial | partial | partial |
+| Image/video/link records in one vault | ✅ | partial | ✅ | ✅ | ✅ | ✅ |
+| Rich technical fields for debugging/auditing | ✅ | partial | partial | partial | ✅ | partial |
+| Hash/context duplicate detection | ✅ | partial | partial | ✅ | ✅ | ✅ |
+| Collections/tags/search | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Native host or desktop companion | ✅ | ✅ | - | - | ✅ | partial |
+| Authenticated web gallery and share links | ✅ | - | ✅ | ✅ | - | ✅ |
+| Mobile camera backup | - | - | - | ✅ | - | ✅ |
+| AI face/object/semantic search | - | ✅ | partial | ✅ | partial | ✅ |
+| Open-source, self-modifiable stack | ✅ | - | - | ✅ | ✅ | - |
+
+The closest product overlap is Eagle for design/reference collection and Raindrop.io for
+bookmark-style capture. Immich and Google Photos are much stronger for mobile photo backup,
+faces, albums, and polished gallery behavior. Hydrus is stronger for serious local tagging,
+duplicate workflows, and large personal media libraries.
+
+ImgVault's current niche is the bridge: browser capture, source-aware metadata, local/native
+handoff, hosted gallery/share flows, and configurable upload providers in one repo. The
+obvious backlog is mobile backup, stronger AI search, better bulk tagging, and a more mature
+desktop library experience.
+
 ## Screenshots
 
 <p align="center">
