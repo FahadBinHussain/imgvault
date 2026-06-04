@@ -25,6 +25,22 @@ function compactObject(value) {
   )
 }
 
+function parseNullableTimestamp(value, fieldName) {
+  if (value === null) return null
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? undefined : value
+  if (typeof value !== 'string') return undefined
+
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  const parsed = new Date(trimmed)
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`${fieldName} must be a valid date/time`)
+  }
+
+  return parsed
+}
+
 function syncImageHostUrl(imageHosts, providerKey, nextUrl) {
   const nextHosts = { ...imageHosts }
   const current = isPlainObject(nextHosts[providerKey]) ? { ...nextHosts[providerKey] } : {}
@@ -229,6 +245,15 @@ export async function PATCH(request) {
       sanitizedUpdates.tags = value
         .map((item) => String(item).trim())
         .filter(Boolean)
+      continue
+    }
+
+    if (key === 'creationDate') {
+      const parsedTimestamp = parseNullableTimestamp(value, key)
+      if (parsedTimestamp === undefined) {
+        return Response.json({ error: `${key} must be a valid date/time string or null` }, { status: 400 })
+      }
+      sanitizedUpdates[key] = parsedTimestamp
       continue
     }
 

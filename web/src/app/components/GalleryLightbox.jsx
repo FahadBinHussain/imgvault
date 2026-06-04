@@ -130,7 +130,7 @@ export default function GalleryLightbox({
   }), [])
 
   const toNullableString = (value) => {
-    const trimmed = value.trim()
+    const trimmed = String(value ?? '').trim()
     return trimmed ? trimmed : null
   }
 

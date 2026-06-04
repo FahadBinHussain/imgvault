@@ -229,7 +229,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
   }
 
   const toNullableString = (value) => {
-    const trimmed = value.trim()
+    const trimmed = String(value ?? '').trim()
     return trimmed ? trimmed : null
   }
 
