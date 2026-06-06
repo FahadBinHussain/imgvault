@@ -625,14 +625,14 @@ export default function GalleryLightbox({
       </div>
 
       <div
-          className={`fixed lg:static left-0 right-0 bottom-0 w-full lg:w-[400px] h-[75dvh] lg:h-auto max-h-[75dvh] lg:max-h-none bg-base-100 border-t lg:border-t-0 lg:border-l border-base-content/15 overflow-y-auto flex flex-col rounded-none lg:rounded-none transition-transform duration-300 ${mobileSheetClass} lg:translate-y-0`}
+          className={`fixed lg:static left-0 right-0 bottom-0 w-full lg:w-[400px] h-[75dvh] lg:h-auto max-h-[75dvh] lg:max-h-none bg-base-100 border-t lg:border-t-0 lg:border-l border-base-content/15 overflow-hidden flex flex-col rounded-none lg:rounded-none transition-transform duration-300 ${mobileSheetClass} lg:translate-y-0`}
           style={{
             backgroundColor: 'var(--color-base-100)',
             opacity: 1,
           }}
       >
         <div
-          className="p-6 flex-1 bg-base-100"
+          className="p-6 flex-1 overflow-y-auto bg-base-100"
           style={{
             backgroundColor: 'var(--color-base-100)',
             opacity: 1,
@@ -684,83 +684,6 @@ export default function GalleryLightbox({
 
           {activeTab === 'noobs' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-end gap-2">
-                <div className="flex items-center gap-2">
-                  {onShare && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onShare(image)
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors"
-                    >
-                      <Share2 className="w-3.5 h-3.5" />
-                      Share
-                    </button>
-                  )}
-                  {onMoveToVault && !isEditing && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onMoveToVault(image)
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors"
-                    >
-                      <LockKeyhole className="w-3.5 h-3.5" />
-                      Move to Vault
-                    </button>
-                  )}
-                  {onRestoreFromVault && !isEditing && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onRestoreFromVault(image)
-                      }}
-                      disabled={isRestoringFromVault}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors"
-                    >
-                      {isRestoringFromVault ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-                      {isRestoringFromVault ? 'Restoring...' : 'Restore'}
-                    </button>
-                  )}
-                  {onSaveEdits && (
-                    isEditing ? (
-                      <>
-                        <button
-                          onClick={handleCancelEdit}
-                          disabled={isSaving}
-                          className="px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-base-content/5 hover:bg-base-content/10 text-base-content/80 transition-colors disabled:opacity-50"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={handleSave}
-                          disabled={isSaving}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition-colors disabled:opacity-50"
-                        >
-                          {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                          Save
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setIsEditing(true); setSaveError('') }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition-colors"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                        Edit
-                      </button>
-                    )
-                  )}
-                </div>
-              </div>
-
-              {shareStatus && (
-                <div className="rounded-[var(--radius-box)] border border-primary-500/30 bg-primary-500/10 text-primary-200 text-xs p-2">
-                  {shareStatus}
-                </div>
-              )}
-
               {saveError && (
                 <div className="rounded-[var(--radius-box)] border border-error/30 bg-error/10 text-error text-xs p-2">
                   {saveError}
@@ -797,6 +720,92 @@ export default function GalleryLightbox({
             </div>
           )}
         </div>
+
+        {activeTab === 'noobs' && (onShare || onMoveToVault || onRestoreFromVault || onSaveEdits || shareStatus) && (
+          <div className="shrink-0 border-t border-base-content/15 bg-base-100/95 p-4 backdrop-blur">
+            {shareStatus && (
+              <div className="mb-3 rounded-[var(--radius-box)] border border-primary-500/30 bg-primary-500/10 text-primary-200 text-xs p-2">
+                {shareStatus}
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {onShare && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onShare(image)
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[var(--radius-box)] text-sm bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  Share
+                </button>
+              )}
+              {onMoveToVault && !isEditing && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onMoveToVault(image)
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[var(--radius-box)] text-sm bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors"
+                >
+                  <LockKeyhole className="w-3.5 h-3.5" />
+                  Move to Vault
+                </button>
+              )}
+              {onRestoreFromVault && !isEditing && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onRestoreFromVault(image)
+                  }}
+                  disabled={isRestoringFromVault}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[var(--radius-box)] text-sm bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors disabled:opacity-50"
+                >
+                  {isRestoringFromVault ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                  {isRestoringFromVault ? 'Restoring...' : 'Restore'}
+                </button>
+              )}
+              {onSaveEdits && (
+                <div className="ml-auto flex items-center gap-2">
+                  {isEditing ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        disabled={isSaving}
+                        className="px-3 py-2 rounded-[var(--radius-box)] text-sm bg-base-content/5 hover:bg-base-content/10 text-base-content/80 transition-colors disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[var(--radius-box)] text-sm bg-primary text-primary-content hover:bg-primary/90 transition-colors disabled:opacity-50"
+                      >
+                        {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                        Save
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setIsEditing(true); setSaveError('') }}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[var(--radius-box)] text-sm bg-primary text-primary-content hover:bg-primary/90 transition-colors"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      Edit
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
