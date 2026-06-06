@@ -134,7 +134,15 @@ export default function GalleryPage() {
   const { collectionId } = useParams();
   const { images, loading, reload, deleteImage } = useImages();
   const { trashedImages, loading: trashLoading } = useTrash();
-  const { uploadImage, cancelUpload, uploading, progress, error: uploadError, logs: uploadLogs } = useImageUpload();
+  const {
+    uploadImage,
+    cancelUpload,
+    uploading,
+    progress,
+    error: uploadError,
+    logs: uploadLogs,
+    history: uploadHistory = [],
+  } = useImageUpload();
   const { collections, loading: collectionsLoading, createCollection, reload: reloadCollections } = useCollections();
   const sendMessage = useChromeMessage();
   const [defaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
@@ -229,6 +237,25 @@ export default function GalleryPage() {
     if (labels.length === 2) return labels.join(' and ');
     return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]}`;
   }, [configuredUploadServices, selectedUploadHostKeys]);
+
+  const uploadIsActive = uploading || batchUploadState.active;
+  const latestUploadRun = Array.isArray(uploadHistory) && uploadHistory.length > 0 ? uploadHistory[0] : null;
+  const uploadLogPreviewEntries = uploadLogs.length > 0
+    ? uploadLogs
+    : (Array.isArray(latestUploadRun?.logs) ? latestUploadRun.logs : []);
+  const hasUploadLogPreview = uploadIsActive || uploadLogPreviewEntries.length > 0 || Boolean(progress);
+  const uploadLogTitle = uploadIsActive ? 'Live Upload Log' : 'Latest Upload Log';
+  const uploadLogDescription = uploadIsActive
+    ? 'Current uploader output. Full history stays in the Logs page.'
+    : 'Last uploader output from the most recent saved run. Full history stays in the Logs page.';
+  const uploadProgressHeading = uploadIsActive
+    ? (uploadImageData?.isVideo
+        ? `Uploading video to ${selectedUploadHostLabel}...`
+        : `Uploading image to ${selectedUploadHostLabel}...`)
+    : (latestUploadRun?.summary || progress || 'Previous upload output');
+  const uploadWaitingMessage = uploadIsActive
+    ? 'Waiting for uploader logs...'
+    : 'No uploader logs were saved for the last run.';
   
   // IndexedDB helpers for storing directory handle
   const saveDirectoryHandle = async (handle) => {
@@ -3859,32 +3886,32 @@ export default function GalleryPage() {
                     )}
                     
                     {/* Upload Progress */}
-                    {(uploading || batchUploadState.active) && (
+                    {hasUploadLogPreview && (
                       <div className="p-4 rounded-[var(--radius-box)] bg-primary-500/10 border border-primary-500/30 space-y-3">
                         <div className="flex items-center gap-3">
-                          <span className="text-2xl animate-pulse">{uploadImageData?.isVideo ? '🎬' : '🖼️'}</span>
+                          <span className={`text-2xl ${uploadIsActive ? 'animate-pulse' : ''}`}>
+                            {uploadImageData?.isVideo ? '🎬' : '🖼️'}
+                          </span>
                           <div className="flex-1">
                             <div className="text-sm text-primary-200 mb-2">
-                              <span>
-                                {uploadImageData?.isVideo 
-                                  ? `Uploading video to ${selectedUploadHostLabel}...`
-                                  : `Uploading image to ${selectedUploadHostLabel}...`}
-                              </span>
+                              <span>{uploadProgressHeading}</span>
                             </div>
-                            <div className="w-full h-2 bg-base-300 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-gradient-to-r from-primary-500 to-secondary-500 
-                                         animate-pulse"
-                              />
-                            </div>
+                            {uploadIsActive && (
+                              <div className="w-full h-2 bg-base-300 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-primary-500 to-secondary-500 
+                                           animate-pulse"
+                                />
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-100/70 p-3">
                           <div className="mb-3 flex items-center justify-between gap-3">
                             <div>
-                              <h4 className="text-sm font-semibold text-base-content">Live Upload Log</h4>
+                              <h4 className="text-sm font-semibold text-base-content">{uploadLogTitle}</h4>
                               <p className="text-xs text-base-content/60">
-                                Current uploader output. Full history stays in the Logs page.
+                                {uploadLogDescription}
                               </p>
                             </div>
                             <button
@@ -3897,12 +3924,12 @@ export default function GalleryPage() {
                           </div>
 
                           <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
-                            {uploadLogs.length === 0 ? (
+                            {uploadLogPreviewEntries.length === 0 ? (
                               <div className="rounded-[var(--radius-box)] border border-dashed border-base-300 px-4 py-6 text-center text-sm text-base-content/60">
-                                Waiting for uploader logs...
+                                {uploadWaitingMessage}
                               </div>
                             ) : (
-                              uploadLogs.map((entry, index) => renderUploadLog(entry, index))
+                              uploadLogPreviewEntries.map((entry, index) => renderUploadLog(entry, index))
                             )}
                           </div>
                         </div>
