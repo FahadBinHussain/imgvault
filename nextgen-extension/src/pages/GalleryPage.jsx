@@ -54,6 +54,76 @@ const buildVideoProviderUpdates = (item, providerKey, result) => {
   };
 };
 
+const SORT_OPTIONS = [
+  { value: 'newest', label: 'Newest added' },
+  { value: 'oldest', label: 'Oldest added' },
+  { value: 'title-asc', label: 'Title A-Z' },
+  { value: 'title-desc', label: 'Title Z-A' },
+  { value: 'size-desc', label: 'Largest file' },
+  { value: 'size-asc', label: 'Smallest file' },
+  { value: 'kind', label: 'Media type' },
+];
+
+const MEDIA_KIND_ORDER = {
+  image: 0,
+  video: 1,
+  link: 2,
+};
+
+const isDateSort = (sortMode) => sortMode === 'newest' || sortMode === 'oldest';
+
+const getSortLabel = (sortMode) =>
+  SORT_OPTIONS.find((option) => option.value === sortMode)?.label || SORT_OPTIONS[0].label;
+
+const getSortableDateValue = (item) => {
+  const value = item?.internalAddedTimestamp || item?.createdAt || item?.updatedAt || item?.creationDate || '';
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+};
+
+const getSortableTitle = (item) => String(
+  item?.pageTitle ||
+  item?.fileName ||
+  item?.linkUrl ||
+  item?.sourcePageUrl ||
+  'Untitled'
+).trim().toLocaleLowerCase();
+
+const getSortableFileSize = (item) => {
+  const size = Number(item?.fileSize || item?.size || 0);
+  return Number.isFinite(size) ? size : 0;
+};
+
+const compareTitle = (a, b) => getSortableTitle(a).localeCompare(getSortableTitle(b), undefined, {
+  numeric: true,
+  sensitivity: 'base',
+});
+
+const sortMediaItems = (items, sortMode) => items
+  .map((item, index) => ({ item, index }))
+  .sort((a, b) => {
+    let result = 0;
+
+    if (sortMode === 'oldest') {
+      result = getSortableDateValue(a.item) - getSortableDateValue(b.item);
+    } else if (sortMode === 'title-asc') {
+      result = compareTitle(a.item, b.item);
+    } else if (sortMode === 'title-desc') {
+      result = compareTitle(b.item, a.item);
+    } else if (sortMode === 'size-desc') {
+      result = getSortableFileSize(b.item) - getSortableFileSize(a.item);
+    } else if (sortMode === 'size-asc') {
+      result = getSortableFileSize(a.item) - getSortableFileSize(b.item);
+    } else if (sortMode === 'kind') {
+      result = (MEDIA_KIND_ORDER[getMediaItemKind(a.item)] ?? 99) - (MEDIA_KIND_ORDER[getMediaItemKind(b.item)] ?? 99);
+    } else {
+      result = getSortableDateValue(b.item) - getSortableDateValue(a.item);
+    }
+
+    return result || a.index - b.index;
+  })
+  .map(({ item }) => item);
+
 export default function GalleryPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -67,6 +137,7 @@ export default function GalleryPage() {
   const [defaultVideoSource] = useChromeStorage('defaultVideoSource', 'filemoon', 'sync');
   const [firebaseConfig] = useChromeStorage('firebaseConfig', null, 'sync');
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortMode, setSortMode] = useState('newest');
   const [selectedImage, setSelectedImage] = useState(null);
   const [fullImageDetails, setFullImageDetails] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -265,7 +336,7 @@ export default function GalleryPage() {
     }
   };
 
-  const filteredImages = useMemo(() => {
+  const searchedImages = useMemo(() => {
     return images.filter(img => {
       // Filter by collection if collectionId is provided
       if (collectionId && img.collectionId !== collectionId) {
@@ -283,6 +354,10 @@ export default function GalleryPage() {
       );
     });
   }, [images, collectionId, searchQuery]);
+
+  const filteredImages = useMemo(() => {
+    return sortMediaItems(searchedImages, sortMode);
+  }, [searchedImages, sortMode]);
 
   const selectedItemForType =
     fullImageDetails?.id === selectedImage?.id ? fullImageDetails : selectedImage;
@@ -1673,7 +1748,13 @@ export default function GalleryPage() {
     showToast('✅ Opened duplicate match in a new tab', 'success', 2000);
   };
 
-  const groupImagesByDate = (images) => {
+  const groupImagesByDate = (images, sortMode = 'newest') => {
+    if (!isDateSort(sortMode)) {
+      return {
+        [getSortLabel(sortMode)]: images,
+      };
+    }
+
     const groups = {};
     images.forEach(img => {
       const date = new Date(img.internalAddedTimestamp);
@@ -1696,10 +1777,15 @@ export default function GalleryPage() {
     return groups;
   };
 
-  const groupedImages = useMemo(() => groupImagesByDate(filteredImages), [filteredImages]);
+  const groupedImages = useMemo(() => groupImagesByDate(filteredImages, sortMode), [filteredImages, sortMode]);
 
   // Build timeline data for scrollbar (grouped by month/year)
   useEffect(() => {
+    if (!isDateSort(sortMode)) {
+      setTimelineData([]);
+      return;
+    }
+
     const dateKeys = Object.keys(groupedImages);
     const monthGroups = {};
     
@@ -1732,7 +1818,7 @@ export default function GalleryPage() {
       }));
     
     setTimelineData(timeline);
-  }, [groupedImages]);
+  }, [groupedImages, sortMode]);
 
   // Check for pending image from right-click context menu
   useEffect(() => {
@@ -2141,6 +2227,9 @@ export default function GalleryPage() {
         openUploadModal={openUploadModal}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
+        sortMode={sortMode}
+        setSortMode={setSortMode}
+        sortOptions={SORT_OPTIONS}
         selectedImages={selectedImages}
         selectAll={selectAll}
         filteredImages={filteredImages}

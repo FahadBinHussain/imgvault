@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Upload, Search, Trash2, Settings, FolderOpen, Image, Cable, FileText, LockKeyhole } from 'lucide-react';
+import { RefreshCw, Upload, Search, Trash2, Settings, FolderOpen, Image, Cable, FileText, LockKeyhole, ArrowUpDown } from 'lucide-react';
 import ThemeToggleButton from './ThemeToggleButton';
 
 const CSS = `
@@ -16,6 +16,15 @@ const CSS = `
 .iv-nav-search input:focus{border-color:var(--color-primary);box-shadow:0 0 0 2px oklch(from var(--color-primary) l c h / 0.1)}
 .iv-nav-search input::placeholder{opacity:.35}
 .iv-nav-search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);opacity:.35;pointer-events:none}
+.iv-nav-controls{display:flex;align-items:center;justify-content:center;gap:8px;flex:1;min-width:0}
+.iv-nav-sort{position:relative;flex:0 0 154px}
+.iv-nav-sort select{width:100%;height:32px;padding:0 28px 0 32px;font-size:12px;font-weight:500;font-family:'Outfit',system-ui,sans-serif;color:var(--color-base-content);background:var(--color-base-100);border:1px solid var(--color-base-300);border-radius:9px;outline:none;appearance:none;cursor:pointer;transition:all .2s ease}
+.iv-nav-sort select:focus{border-color:var(--color-primary);box-shadow:0 0 0 2px oklch(from var(--color-primary) l c h / 0.1)}
+.iv-nav-sort-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);opacity:.35;pointer-events:none}
+.iv-nav-sort::after{content:'';position:absolute;right:11px;top:50%;width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-70%) rotate(45deg);opacity:.35;pointer-events:none}
+.iv-mobile-controls{display:flex;align-items:center;gap:8px;margin-top:8px}
+.iv-mobile-controls .iv-nav-search{max-width:none}
+.iv-mobile-controls .iv-nav-sort{flex-basis:142px;flex-shrink:0}
 
 .iv-select-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:9px;font-size:12px;font-weight:500;font-family:'Outfit',system-ui,sans-serif;cursor:pointer;transition:all .15s ease;border:1px solid transparent;background:transparent;color:var(--color-base-content);opacity:.6}
 .iv-select-btn:hover{opacity:1;background:var(--color-base-200)}
@@ -64,6 +73,9 @@ export default function GalleryNavbar({
   openUploadModal,
   searchQuery,
   setSearchQuery,
+  sortMode,
+  setSortMode,
+  sortOptions = [],
   selectedImages,
   selectAll,
   filteredImages,
@@ -130,6 +142,7 @@ export default function GalleryNavbar({
   }, [onHeightChange, selectionMode]);
 
   const showSearch = !isSettingsPage && !isHostPage && !isLogsPage;
+  const showSort = showSearch && Array.isArray(sortOptions) && sortOptions.length > 0 && typeof setSortMode === 'function';
   const showActions = !isSettingsPage && !isHostPage && !isLogsPage && !isVaultPage;
   const isSubPage = isTrashPage || isSettingsPage || isHostPage || isLogsPage || isVaultPage;
 
@@ -165,16 +178,34 @@ export default function GalleryNavbar({
               )}
             </div>
 
-            {/* Center: Search */}
+            {/* Center: Search + Sort */}
             {showSearch && (
-              <div className="iv-nav-search hidden md:block">
-                <Search className="iv-nav-search-icon" style={{ width: 14, height: 14 }} />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={isTrashPage ? 'Search trash...' : 'Search images...'}
-                />
+              <div className="iv-nav-controls hidden md:flex">
+                <div className="iv-nav-search">
+                  <Search className="iv-nav-search-icon" style={{ width: 14, height: 14 }} />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={isTrashPage ? 'Search trash...' : 'Search images...'}
+                  />
+                </div>
+                {showSort && (
+                  <div className="iv-nav-sort">
+                    <ArrowUpDown className="iv-nav-sort-icon" style={{ width: 14, height: 14 }} />
+                    <select
+                      value={sortMode}
+                      onChange={(e) => setSortMode(e.target.value)}
+                      aria-label="Sort gallery"
+                    >
+                      {sortOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
 
@@ -256,7 +287,7 @@ export default function GalleryNavbar({
 
           {/* Mobile search */}
           {showSearch && (
-            <div className="mt-2 md:hidden">
+            <div className="iv-mobile-controls md:hidden">
               <div className="iv-nav-search" style={{ maxWidth: '100%' }}>
                 <Search className="iv-nav-search-icon" style={{ width: 14, height: 14 }} />
                 <input
@@ -266,6 +297,22 @@ export default function GalleryNavbar({
                   placeholder={isTrashPage ? 'Search trash...' : 'Search images...'}
                 />
               </div>
+              {showSort && (
+                <div className="iv-nav-sort">
+                  <ArrowUpDown className="iv-nav-sort-icon" style={{ width: 14, height: 14 }} />
+                  <select
+                    value={sortMode}
+                    onChange={(e) => setSortMode(e.target.value)}
+                    aria-label="Sort gallery"
+                  >
+                    {sortOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           )}
 
