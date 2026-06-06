@@ -94,6 +94,24 @@ export function getConfiguredImageUploadServices(settings) {
   return IMAGE_UPLOAD_SERVICES.filter((service) => service.isConfigured(settings))
 }
 
+export function filterUploadServicesByKeys(services = [], selectedKeys) {
+  if (!Array.isArray(selectedKeys)) {
+    return services
+  }
+
+  const selected = new Set(
+    selectedKeys
+      .map((key) => String(key || '').trim().toLowerCase())
+      .filter(Boolean)
+  )
+
+  if (selected.size === 0) {
+    return []
+  }
+
+  return services.filter((service) => selected.has(service.key))
+}
+
 export function getMissingRequiredImageUploadServices(settings) {
   return IMAGE_UPLOAD_SERVICES.filter((service) => service.required && !service.isConfigured(settings))
 }

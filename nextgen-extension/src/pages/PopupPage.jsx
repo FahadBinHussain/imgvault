@@ -3,17 +3,18 @@
  * @version 2.0.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Settings, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { Button, Input, Textarea, Card, IconButton, Spinner } from '../components/UI';
-import { usePendingImage, useImageUpload, useChromeStorage, useCollections } from '../hooks/useChromeExtension';
+import UploadHostSelector, { reconcileSelectedHostKeys } from '../components/UploadHostSelector';
+import { usePendingImage, useImageUpload, useCollections } from '../hooks/useChromeExtension';
+import { IMAGE_UPLOAD_SERVICES } from '../config/providerCatalog';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 
 export default function PopupPage() {
   const navigate = useNavigate();
   const [pendingImage, clearPending] = usePendingImage();
-  const [settings] = useChromeStorage('pixvidApiKey', null, 'sync');
   const { uploadImage, uploading, progress, error: uploadError } = useImageUpload();
   const { collections, createCollection } = useCollections();
 
@@ -30,6 +31,41 @@ export default function PopupPage() {
   const [showCreateCollection, setShowCreateCollection] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
   const [toast, setToast] = useState(null);
+  const [uploadHostSettings, setUploadHostSettings] = useState({});
+  const [selectedUploadHostKeys, setSelectedUploadHostKeys] = useState([]);
+
+  useEffect(() => {
+    const loadUploadHostSettings = () => {
+      chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey'], (result) => {
+        setUploadHostSettings(result || {});
+      });
+    };
+
+    const handleStorageChange = (changes, areaName) => {
+      if (areaName !== 'sync') return;
+
+      const hostKeys = ['pixvidApiKey', 'imgbbApiKey'];
+      if (hostKeys.some((key) => changes[key])) {
+        loadUploadHostSettings();
+      }
+    };
+
+    loadUploadHostSettings();
+    chrome.storage.onChanged.addListener(handleStorageChange);
+
+    return () => {
+      chrome.storage.onChanged.removeListener(handleStorageChange);
+    };
+  }, []);
+
+  const configuredImageUploadServices = useMemo(
+    () => IMAGE_UPLOAD_SERVICES.filter((service) => service.isConfigured(uploadHostSettings)),
+    [uploadHostSettings]
+  );
+
+  useEffect(() => {
+    setSelectedUploadHostKeys((current) => reconcileSelectedHostKeys(current, configuredImageUploadServices));
+  }, [configuredImageUploadServices]);
 
   useEffect(() => {
     if (pendingImage) {
@@ -91,6 +127,12 @@ export default function PopupPage() {
   const handleUpload = async (ignoreDuplicate = false) => {
     if (!imageData) return;
 
+    const selectedHostKeys = reconcileSelectedHostKeys(selectedUploadHostKeys, configuredImageUploadServices);
+    if (selectedHostKeys.length === 0) {
+      showToast('Select at least one upload host first.', 'warning');
+      return;
+    }
+
     // Clear previous duplicate data when starting new upload
     setDuplicateData(null);
 
@@ -109,7 +151,8 @@ export default function PopupPage() {
         ignoreDuplicate: ignoreDuplicate,
         fileMimeType: imageData.file?.type || null,
         fileLastModified: imageData.file?.lastModified || null,
-        collectionId: selectedCollectionId || null
+        collectionId: selectedCollectionId || null,
+        selectedHostKeys
       });
 
       setShowSuccess(true);
@@ -617,6 +660,16 @@ export default function PopupPage() {
             })()}
           </div>
 
+          {imageData && (
+            <UploadHostSelector
+              services={configuredImageUploadServices}
+              selectedKeys={selectedUploadHostKeys}
+              onChange={setSelectedUploadHostKeys}
+              disabled={uploading}
+              emptyMessage="No image hosts are configured. Add Pixvid or ImgBB API keys in Settings."
+            />
+          )}
+
           {/* Upload Progress with glow */}
           {progress && (
             <div className="flex items-center gap-3 p-4 rounded-[var(--radius-box)] bg-primary/10 border border-primary/30 shadow-xl">
@@ -688,7 +741,7 @@ export default function PopupPage() {
                     </button>
                     <button
                       onClick={() => handleUpload(true)}
-                      disabled={uploading}
+                      disabled={uploading || selectedUploadHostKeys.length === 0 || configuredImageUploadServices.length === 0}
                       className="flex-1 px-3 py-2 rounded-[var(--radius-box)] bg-warning hover:bg-warning/90 
                                text-warning-content font-medium 
                                transition-all disabled:opacity-50 disabled:cursor-not-allowed
@@ -713,7 +766,7 @@ export default function PopupPage() {
           {!duplicateData && (
             <button
               onClick={() => handleUpload(false)}
-              disabled={uploading || !settings}
+              disabled={uploading || selectedUploadHostKeys.length === 0 || configuredImageUploadServices.length === 0}
               className="w-full px-6 py-4 rounded-[var(--radius-box)] bg-gradient-to-r from-primary-500 to-secondary-500 
                        hover:from-primary-600 hover:to-secondary-600 font-semibold text-lg
                        shadow-2xl hover:shadow-[0_8px_30px_rgb(99,102,241,0.4)]
@@ -739,7 +792,7 @@ export default function PopupPage() {
             </button>
           )}
 
-          {!settings && (
+          {configuredImageUploadServices.length === 0 && (
             <div className="p-4 rounded-[var(--radius-box)] bg-warning/10 border-2 border-warning/30 text-center">
               <p className="text-sm text-warning font-medium">
                 ⚠️ Please configure API keys in settings first

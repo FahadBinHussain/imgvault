@@ -10,6 +10,7 @@ import { URLNormalizer } from '../utils/url-normalizer.js';
 import { PixvidUploader, ImgbbUploader, FilemoonUploader, UDropUploader } from '../utils/uploaders.js';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig.js';
 import {
+  filterUploadServicesByKeys,
   getConfiguredImageUploadServices,
   getMissingRequiredImageUploadServices,
 } from '../config/providerCatalog.js';
@@ -1774,10 +1775,16 @@ class ImgVaultServiceWorker {
         throw new Error('No image hosting service configured. Please set at least one image host in the extension settings.');
       }
 
-      await this.updateStatusWithLog(`☁️ Uploading to ${joinNames(configuredImageServices.map((service) => service.label))}...`);
+      const selectedImageServices = filterUploadServicesByKeys(configuredImageServices, data.selectedHostKeys);
+
+      if (selectedImageServices.length === 0) {
+        throw new Error('Select at least one configured image host.');
+      }
+
+      await this.updateStatusWithLog(`☁️ Uploading to ${joinNames(selectedImageServices.map((service) => service.label))}...`);
 
       const uploadResults = await Promise.all(
-        configuredImageServices.map((service) => {
+        selectedImageServices.map((service) => {
           const uploader = this[service.uploaderKey];
 
           if (!uploader) {
@@ -1810,8 +1817,8 @@ class ImgVaultServiceWorker {
       if (successfulImageResults.length === 0) {
         throw new Error(
           failedImageResults.length > 0
-            ? `Image upload failed on all configured hosts. ${failedImageResults.map((result) => `${result.type}: ${result.error}`).join(' | ')}`
-            : 'Image upload failed on all configured hosts.'
+            ? `Image upload failed on all selected hosts. ${failedImageResults.map((result) => `${result.type}: ${result.error}`).join(' | ')}`
+            : 'Image upload failed on all selected hosts.'
         );
       }
 
@@ -1912,6 +1919,12 @@ class ImgVaultServiceWorker {
         throw new Error('No video hosting service configured. Please set at least one video host in settings.');
       }
 
+      const selectedServices = filterUploadServicesByKeys(configuredServices, data.selectedHostKeys);
+
+      if (selectedServices.length === 0) {
+        throw new Error('Select at least one configured video host.');
+      }
+
       await this.updateStatusWithLog('📥 Fetching video...');
       
       // Fetch the video once
@@ -1953,7 +1966,7 @@ class ImgVaultServiceWorker {
         await this.updateStatusWithLog('⚠️ Skipping duplicate video check...', 'warning');
       }
       
-      const serviceLabels = configuredServices.map((service) => service.label);
+      const serviceLabels = selectedServices.map((service) => service.label);
       const statusMsg = serviceLabels.length > 1
         ? `☁️ Uploading to ${joinNames(serviceLabels)}...`
         : `☁️ Uploading to ${serviceLabels[0]}...`;
@@ -1963,7 +1976,7 @@ class ImgVaultServiceWorker {
       const uploadResults = {};
       const uploadErrors = [];
 
-      for (const service of configuredServices) {
+      for (const service of selectedServices) {
         const uploader = this[service.uploaderKey];
         if (!uploader) {
           uploadErrors.push(`${service.label}: uploader is not available`);
@@ -1991,8 +2004,8 @@ class ImgVaultServiceWorker {
       if (Object.keys(uploadResults).length === 0) {
         await this.appendUploadLog('❌ No video host completed successfully.', 'error');
         throw new Error(uploadErrors.length > 0
-          ? `Video upload failed on all configured hosts. ${uploadErrors.join(' | ')}`
-          : 'Video upload failed on all configured hosts.');
+          ? `Video upload failed on all selected hosts. ${uploadErrors.join(' | ')}`
+          : 'Video upload failed on all selected hosts.');
       }
 
       if (uploadErrors.length > 0) {

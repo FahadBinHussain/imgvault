@@ -12,11 +12,13 @@ import {
   File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint, LockKeyhole
 } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
+import UploadHostSelector, { reconcileSelectedHostKeys } from '../components/UploadHostSelector';
 import { useImages, useImageUpload, useTrash, useChromeStorage, useCollections, useChromeMessage } from '../hooks/useChromeExtension';
 import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import TimelineScrollbar from '../components/TimelineScrollbar';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig';
+import { IMAGE_UPLOAD_SERVICES, filterUploadServicesByKeys } from '../config/providerCatalog';
 import { FilemoonUploader, UDropUploader } from '../utils/uploaders';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 import {
@@ -178,6 +180,17 @@ export default function GalleryPage() {
   const [newCollectionName, setNewCollectionName] = useState(''); // New collection name
   const [isManualUploadMode, setIsManualUploadMode] = useState(false); // Track if triggered by context menu with no srcUrl
   const [uploadModalMetaTab, setUploadModalMetaTab] = useState('noobs');
+  const [uploadHostSettings, setUploadHostSettings] = useState({});
+  const [selectedUploadHostKeys, setSelectedUploadHostKeys] = useState([]);
+  const [uploadQueue, setUploadQueue] = useState([]);
+  const [batchUploadState, setBatchUploadState] = useState({
+    active: false,
+    index: 0,
+    total: 0,
+    completed: 0,
+    failed: 0,
+    currentFile: '',
+  });
   
   // Selection mode state
   const [selectionMode, setSelectionMode] = useState(false);
@@ -194,6 +207,26 @@ export default function GalleryPage() {
   const [pendingDownloadSourceUrl, setPendingDownloadSourceUrl] = useState('');
   const uploadPreviewUrlRef = useRef(null);
   const activeVideoUploadControllerRef = useRef(null);
+  const batchCancelRequestedRef = useRef(false);
+
+  const configuredUploadServices = useMemo(() => {
+    if (uploadImageData?.isVideo) {
+      return getConfiguredVideoUploadServices(uploadHostSettings);
+    }
+
+    return IMAGE_UPLOAD_SERVICES.filter((service) => service.isConfigured(uploadHostSettings));
+  }, [uploadHostSettings, uploadImageData?.isVideo]);
+
+  const selectedUploadHostLabel = useMemo(() => {
+    const labels = configuredUploadServices
+      .filter((service) => selectedUploadHostKeys.includes(service.key))
+      .map((service) => service.label);
+
+    if (labels.length === 0) return 'selected hosts';
+    if (labels.length === 1) return labels[0];
+    if (labels.length === 2) return labels.join(' and ');
+    return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]}`;
+  }, [configuredUploadServices, selectedUploadHostKeys]);
   
   // IndexedDB helpers for storing directory handle
   const saveDirectoryHandle = async (handle) => {
@@ -699,6 +732,7 @@ export default function GalleryPage() {
       const settings = await sendMessage('getVideoHostSettings');
       await appendClientUploadLog(`Video payload ready: ${formatBytes(uploadData.fileSize || uploadData.fileBlob?.size || 0)}.`);
       const configuredServices = getConfiguredVideoUploadServices(settings);
+      const selectedServices = filterUploadServicesByKeys(configuredServices, uploadData.selectedHostKeys);
       const uploadResults = {};
       let hostSucceeded = false;
       const uploadErrors = [];
@@ -707,7 +741,11 @@ export default function GalleryPage() {
         throw new Error('No video host is configured for direct upload.');
       }
 
-      for (const service of configuredServices) {
+      if (selectedServices.length === 0) {
+        throw new Error('Select at least one configured video host.');
+      }
+
+      for (const service of selectedServices) {
         const uploader = createVideoUploader(service);
         if (!uploader) {
           uploadErrors.push(`${service.label}: uploader is not available`);
@@ -751,8 +789,8 @@ export default function GalleryPage() {
 
       if (!hostSucceeded) {
         throw new Error(uploadErrors.length > 0
-          ? `Video upload failed on all configured hosts. ${uploadErrors.join(' | ')}`
-          : 'No video host is configured for direct upload.'
+          ? `Video upload failed on all selected hosts. ${uploadErrors.join(' | ')}`
+          : 'No selected video host is configured for direct upload.'
         );
       }
 
@@ -947,6 +985,18 @@ export default function GalleryPage() {
     setSelectedCollectionId('');
     setShowCreateCollection(false);
     setNewCollectionName('');
+    setUploadHostSettings({});
+    setSelectedUploadHostKeys([]);
+    setUploadQueue([]);
+    setBatchUploadState({
+      active: false,
+      index: 0,
+      total: 0,
+      completed: 0,
+      failed: 0,
+      currentFile: '',
+    });
+    batchCancelRequestedRef.current = false;
   };
 
   const closeUploadModal = () => {
@@ -956,6 +1006,45 @@ export default function GalleryPage() {
       showToast('Upload will continue in the background. You can reopen the modal to check logs later.', 'info', 3500);
     }
   };
+
+  useEffect(() => {
+    if (!showUploadModal || !uploadImageData) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const loadUploadHostSettings = async () => {
+      try {
+        const imageSettings = await new Promise((resolve) => {
+          chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey'], (result) => resolve(result || {}));
+        });
+
+        const videoSettings = uploadImageData.isVideo
+          ? await sendMessage('getVideoHostSettings').catch(() => ({}))
+          : {};
+
+        if (!cancelled) {
+          setUploadHostSettings({ ...imageSettings, ...videoSettings });
+        }
+      } catch (error) {
+        console.error('Failed to load upload host settings:', error);
+        if (!cancelled) {
+          setUploadHostSettings({});
+        }
+      }
+    };
+
+    loadUploadHostSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showUploadModal, uploadImageData, sendMessage]);
+
+  useEffect(() => {
+    setSelectedUploadHostKeys((current) => reconcileSelectedHostKeys(current, configuredUploadServices));
+  }, [configuredUploadServices]);
 
   useEffect(() => {
     setUploadPreviewSrc(uploadImageData?.srcUrl || '');
@@ -990,6 +1079,8 @@ export default function GalleryPage() {
 
   const terminateUploadJob = async () => {
     try {
+      batchCancelRequestedRef.current = true;
+
       if (uploadImageData?.isVideo && activeVideoUploadControllerRef.current) {
         activeVideoUploadControllerRef.current.abort();
       } else {
@@ -997,6 +1088,7 @@ export default function GalleryPage() {
       }
 
       await chrome.storage.local.set({ uploadActive: false, uploadStatus: '' });
+      setBatchUploadState((current) => ({ ...current, active: false }));
       setShowUploadModal(false);
       showToast('Upload cancelled.', 'warning', 3000);
     } catch (error) {
@@ -1005,21 +1097,91 @@ export default function GalleryPage() {
     }
   };
 
+  const resetBatchUploadState = () => {
+    setBatchUploadState({
+      active: false,
+      index: 0,
+      total: 0,
+      completed: 0,
+      failed: 0,
+      currentFile: '',
+    });
+  };
+
+  const clearUploadMediaSelection = () => {
+    revokeUploadPreviewUrl();
+    setUploadImageData(null);
+    setUploadMetadata(null);
+    setUploadPreviewSrc('');
+    setUploadPreviewResolving(false);
+    setUploadPreviewFallbackTried(false);
+    setDuplicateData(null);
+    setUploadQueue([]);
+    resetBatchUploadState();
+    batchCancelRequestedRef.current = false;
+  };
+
+  const isSupportedUploadFile = (file) => {
+    if (!file) return false;
+    if (file.type?.startsWith('image/') || file.type?.startsWith('video/')) return true;
+    return /\.(png|jpe?g|gif|webp|avif|bmp|svg|mp4|webm|avi|mov|mkv|m4v)$/i.test(file.name || '');
+  };
+
+  const isVideoUploadFile = (file) => (
+    file?.type?.startsWith('video/') || /\.(mp4|webm|avi|mov|mkv|m4v)$/i.test(file?.name || '')
+  );
+
+  const getSupportedUploadFiles = (fileList) =>
+    Array.from(fileList || []).filter(isSupportedUploadFile);
+
+  const loadUploadFiles = async (files, preservePageUrl = null, preservePageTitle = null) => {
+    const supportedFiles = getSupportedUploadFiles(files);
+
+    if (supportedFiles.length === 0) {
+      showToast('Please select image or video files.', 'error', 3000);
+      return null;
+    }
+
+    if (supportedFiles.length > 1) {
+      const firstIsVideo = isVideoUploadFile(supportedFiles[0]);
+      const hasMixedMedia = supportedFiles.some((file) => isVideoUploadFile(file) !== firstIsVideo);
+
+      if (hasMixedMedia) {
+        showToast('Batch upload supports images or videos separately. Select one media type at a time.', 'warning', 4500);
+        return null;
+      }
+    }
+
+    batchCancelRequestedRef.current = false;
+    setUploadQueue(supportedFiles);
+    resetBatchUploadState();
+    setDuplicateData(null);
+
+    const prepared = await processMediaFile(supportedFiles[0], preservePageUrl, preservePageTitle);
+    setIsLocalUpload(true);
+    setShowUploadModal(true);
+
+    if (supportedFiles.length === 1) {
+      const fileType = isVideoUploadFile(supportedFiles[0]) ? 'Video' : 'Image';
+      showToast(`${fileType} loaded successfully.`, 'success', 3000);
+    } else {
+      showToast(`${supportedFiles.length} files loaded. They will upload one by one.`, 'success', 3500);
+    }
+
+    return prepared;
+  };
+
   const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (file) {
+    const files = getSupportedUploadFiles(e.target.files);
+    e.target.value = '';
+
+    if (files.length > 0) {
       // Save current page metadata before replacing
       const savedPageUrl = uploadPageUrl;
       const savedPageTitle = uploadImageData?.pageTitle;
-      
-      await processMediaFile(file, savedPageUrl, savedPageTitle);
-      
-      // Mark this as a local upload
-      setIsLocalUpload(true);
-      
-      // Show success feedback
-      const fileType = file.type.startsWith('video/') ? 'Video' : 'Image';
-      showToast(`✅ ${fileType} loaded successfully!`, 'success', 3000);
+      await loadUploadFiles(files, savedPageUrl, savedPageTitle);
+    } else if (e.target.files?.length) {
+      showToast('Please select image or video files.', 'error', 3000);
     }
   };
 
@@ -1032,7 +1194,7 @@ export default function GalleryPage() {
     const finalPageTitle = preservePageTitle && preservePageTitle !== 'Uploaded manually'
       ? preservePageTitle
       : 'Uploaded manually';
-    const isVideo = file.type.startsWith('video/');
+    const isVideo = isVideoUploadFile(file);
     const previewUrl = isVideo ? URL.createObjectURL(file) : await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result);
@@ -1043,7 +1205,7 @@ export default function GalleryPage() {
     if (isVideo) {
       uploadPreviewUrlRef.current = previewUrl;
     }
-    setUploadImageData({
+    const nextUploadImageData = {
       srcUrl: previewUrl,
       fileName: file.name,
       pageTitle: finalPageTitle,
@@ -1051,8 +1213,12 @@ export default function GalleryPage() {
       file,
       isVideo,
       fileType: file.type
-    });
+    };
+    setUploadImageData(nextUploadImageData);
+    setUploadMetadata(null);
     setUploadPageUrl(finalPageUrl);
+
+    let nextUploadMetadata = null;
 
     try {
       const localVideoMetadata = isVideo ? await extractVideoFileMetadata(file) : null;
@@ -1067,15 +1233,16 @@ export default function GalleryPage() {
       });
 
       if (response.success && response.metadata) {
-        setUploadMetadata({
+        nextUploadMetadata = {
           ...response.metadata,
           duration: localVideoMetadata?.duration ?? response.metadata.duration ?? null,
           width: localVideoMetadata?.width ?? response.metadata.width ?? null,
           height: localVideoMetadata?.height ?? response.metadata.height ?? null,
-        });
+        };
+        setUploadMetadata(nextUploadMetadata);
         console.log('📸 Extracted metadata:', response.metadata);
       } else if (localVideoMetadata) {
-        setUploadMetadata({
+        nextUploadMetadata = {
           fileName: file.name,
           fileSize: file.size,
           fileType: file.type,
@@ -1085,11 +1252,18 @@ export default function GalleryPage() {
           duration: localVideoMetadata.duration,
           width: localVideoMetadata.width,
           height: localVideoMetadata.height,
-        });
+        };
+        setUploadMetadata(nextUploadMetadata);
       }
     } catch (error) {
       console.error('Failed to extract metadata:', error);
     }
+
+    return {
+      uploadImageData: nextUploadImageData,
+      uploadMetadata: nextUploadMetadata,
+      uploadPageUrl: finalPageUrl,
+    };
   };
 
   useEffect(() => {
@@ -1256,13 +1430,12 @@ export default function GalleryPage() {
 
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
-      const file = files[0];
-      // Check if it's an image or video
-      if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
-        await processMediaFile(file);
-        setShowUploadModal(true);
+      const supportedFiles = getSupportedUploadFiles(files);
+
+      if (supportedFiles.length > 0) {
+        await loadUploadFiles(supportedFiles);
       } else {
-        showToast('❌ Please drop an image or video file', 'error', 3000);
+        showToast('Please drop image or video files.', 'error', 3000);
       }
     }
   };
@@ -1287,93 +1460,225 @@ export default function GalleryPage() {
     };
   }, []);
 
+  const buildUploadData = ({
+    mediaData = uploadImageData,
+    metadata = uploadMetadata,
+    pageUrl = uploadPageUrl,
+    ignoreDuplicates = false,
+    selectedHostKeys = [],
+  } = {}) => {
+    const tagsArray = uploadTags
+      .split(',')
+      .map(t => t.trim())
+      .filter(t => t.length > 0);
+    const normalizedPageUrl = String(pageUrl || '');
+    const hasRealSourceUrl = /^https?:\/\//i.test(normalizedPageUrl);
+    const localUploadSource = isLocalUpload || Boolean(mediaData?.file) || normalizedPageUrl === 'Uploaded manually';
+
+    return {
+      imageUrl: String(mediaData?.srcUrl || ''),
+      fileBlob: mediaData?.file || null,
+      originalSourceUrl: hasRealSourceUrl
+        ? normalizedPageUrl
+        : (localUploadSource ? 'Uploaded manually' : normalizedPageUrl),
+      pageUrl: normalizedPageUrl,
+      pageTitle: String(mediaData?.pageTitle || ''),
+      fileName: String(mediaData?.fileName || ''),
+      fileSize: mediaData?.file?.size || metadata?.fileSize || null,
+      description: String(uploadDescription || ''),
+      tags: tagsArray.map(t => String(t)),
+      ignoreDuplicate: Boolean(ignoreDuplicates),
+      fileMimeType: mediaData?.file?.type || null,
+      fileLastModified: mediaData?.file?.lastModified || null,
+      collectionId: selectedCollectionId || null,
+      isVideo: Boolean(mediaData?.isVideo),
+      fileType: mediaData?.fileType || mediaData?.file?.type || null,
+      duration: metadata?.duration ?? null,
+      width: metadata?.width ?? null,
+      height: metadata?.height ?? null,
+      selectedHostKeys,
+    };
+  };
+
+  const assertSerializableUploadData = (uploadData) => {
+    console.log('Uploading with data (keys):', Object.keys(uploadData));
+    console.log('Media URL length:', uploadData.imageUrl.length);
+    console.log('Has file blob:', Boolean(uploadData.fileBlob));
+    console.log('Is Video:', uploadData.isVideo);
+
+    try {
+      JSON.stringify(uploadData);
+      console.log('✓ Data is serializable');
+    } catch (e) {
+      console.error('✗ Data is NOT serializable:', e);
+      throw new Error('Upload data contains non-serializable values');
+    }
+  };
+
+  const uploadPreparedMedia = async (uploadData) => {
+    assertSerializableUploadData(uploadData);
+
+    if (uploadData.isVideo && uploadData.fileBlob) {
+      return uploadVideoDirectly(uploadData);
+    }
+
+    return uploadImage(uploadData);
+  };
+
+  const setDuplicateUploadError = (err) => {
+    console.log('Duplicate data found:', err.duplicate);
+    console.log('All duplicates found:', err.allDuplicates);
+    setDuplicateData({
+      primary: err.duplicate,
+      all: err.allDuplicates || [err.duplicate]
+    });
+  };
+
+  const handleBatchUploadSubmit = async (ignoreDuplicates, selectedHostKeys) => {
+    const files = uploadQueue.filter(isSupportedUploadFile);
+    if (files.length <= 1) return false;
+
+    batchCancelRequestedRef.current = false;
+    setDuplicateData(null);
+    setBatchUploadState({
+      active: true,
+      index: 0,
+      total: files.length,
+      completed: 0,
+      failed: 0,
+      currentFile: '',
+    });
+
+    let completed = 0;
+    let failed = 0;
+    let activeIndex = 0;
+
+    try {
+      for (let index = 0; index < files.length; index += 1) {
+        if (batchCancelRequestedRef.current) {
+          throw new Error('Batch upload cancelled');
+        }
+
+        activeIndex = index;
+        const file = files[index];
+        setBatchUploadState({
+          active: true,
+          index: index + 1,
+          total: files.length,
+          completed,
+          failed,
+          currentFile: file.name || `File ${index + 1}`,
+        });
+
+        const prepared = index === 0 && uploadImageData?.file === file
+          ? { uploadImageData, uploadMetadata, uploadPageUrl }
+          : await processMediaFile(file, 'Uploaded manually', 'Uploaded manually');
+        setIsLocalUpload(true);
+
+        const uploadData = buildUploadData({
+          mediaData: prepared.uploadImageData,
+          metadata: prepared.uploadMetadata,
+          pageUrl: prepared.uploadPageUrl,
+          ignoreDuplicates,
+          selectedHostKeys,
+        });
+
+        const uploadResult = await uploadPreparedMedia(uploadData);
+        completed += 1;
+        setBatchUploadState((current) => ({
+          ...current,
+          completed,
+        }));
+
+        if (uploadData.isVideo && uploadResult?.videoUploadErrors?.length) {
+          await appendClientUploadLog(`Batch video saved with retryable host errors: ${uploadResult.videoUploadErrors.join(' | ')}`, 'warning');
+        }
+      }
+
+      setShowUploadModal(false);
+      setDuplicateData(null);
+      setUploadQueue([]);
+      resetBatchUploadState();
+      await Promise.all([reload(), reloadCollections()]);
+      showToast(`Uploaded ${completed} file${completed !== 1 ? 's' : ''} successfully.`, 'success', 3500);
+      return true;
+    } catch (err) {
+      console.error('Batch upload failed:', err);
+      const remainingFiles = files.slice(activeIndex);
+      failed += 1;
+      setUploadQueue(remainingFiles);
+      setBatchUploadState({
+        active: false,
+        index: activeIndex + 1,
+        total: files.length,
+        completed,
+        failed,
+        currentFile: remainingFiles[0]?.name || '',
+      });
+
+      if (batchCancelRequestedRef.current) {
+        showToast(`Batch stopped after ${completed}/${files.length} file${files.length !== 1 ? 's' : ''}.`, 'warning', 4000);
+        return true;
+      }
+
+      if (err?.duplicate) {
+        setDuplicateUploadError(err);
+        showToast(`Batch paused at ${remainingFiles[0]?.name || `file ${activeIndex + 1}`}. Resolve the duplicate to continue.`, 'warning', 5000);
+      } else {
+        const errorMessage = err?.message || String(err) || 'Upload failed';
+        showToast(`Batch stopped at ${remainingFiles[0]?.name || `file ${activeIndex + 1}`}: ${errorMessage}`, 'error', 6000);
+      }
+
+      await Promise.all([reload(), reloadCollections()]);
+      return true;
+    }
+  };
+
   const handleUploadSubmit = async (ignoreDuplicates = false) => {
     if (!uploadImageData) return;
 
-    // Clear previous duplicate data when starting new upload
+    const selectedHostKeys = reconcileSelectedHostKeys(selectedUploadHostKeys, configuredUploadServices);
+    if (selectedHostKeys.length === 0) {
+      showToast('Select at least one upload host first.', 'warning', 3000);
+      return;
+    }
+
+    if (uploadQueue.length > 1 && uploadImageData?.file) {
+      await handleBatchUploadSubmit(ignoreDuplicates, selectedHostKeys);
+      return;
+    }
+
     setDuplicateData(null);
 
     try {
-      const tagsArray = uploadTags
-        .split(',')
-        .map(t => t.trim())
-        .filter(t => t.length > 0);
+      const uploadData = buildUploadData({
+        ignoreDuplicates,
+        selectedHostKeys,
+      });
 
-      // Create upload data object with only serializable values
-      const hasRealSourceUrl = /^https?:\/\//i.test(String(uploadPageUrl || ''));
-      const uploadData = {
-        imageUrl: String(uploadImageData.srcUrl || ''),
-        fileBlob: uploadImageData.file || null,
-        originalSourceUrl: hasRealSourceUrl
-          ? String(uploadPageUrl || '')
-          : ((isLocalUpload || uploadPageUrl === 'Uploaded manually') ? 'Uploaded manually' : String(uploadPageUrl || '')),
-        pageUrl: String(uploadPageUrl || ''),
-        pageTitle: String(uploadImageData.pageTitle || ''),
-        fileName: String(uploadImageData.fileName || ''),
-        fileSize: uploadImageData.file?.size || uploadMetadata?.fileSize || null,
-        description: String(uploadDescription || ''),
-        tags: tagsArray.map(t => String(t)),
-        ignoreDuplicate: Boolean(ignoreDuplicates),
-        fileMimeType: uploadImageData.file?.type || null,
-        fileLastModified: uploadImageData.file?.lastModified || null,
-        collectionId: selectedCollectionId || null,
-        isVideo: Boolean(uploadImageData.isVideo),
-        fileType: uploadImageData.fileType || uploadImageData.file?.type || null,
-        duration: uploadMetadata?.duration ?? null,
-        width: uploadMetadata?.width ?? null,
-        height: uploadMetadata?.height ?? null,
-      };
+      const uploadResult = await uploadPreparedMedia(uploadData);
 
-      console.log('Uploading with data (keys):', Object.keys(uploadData));
-      console.log('Media URL length:', uploadData.imageUrl.length);
-      console.log('Has file blob:', Boolean(uploadData.fileBlob));
-      console.log('Is Video:', uploadData.isVideo);
-      
-      // Try to JSON.stringify to check if it's serializable
-      try {
-        JSON.stringify(uploadData);
-        console.log('✓ Data is serializable');
-      } catch (e) {
-        console.error('✗ Data is NOT serializable:', e);
-        throw new Error('Upload data contains non-serializable values');
-      }
-
-      let uploadResult = null;
-      if (uploadData.isVideo && uploadData.fileBlob) {
-        uploadResult = await uploadVideoDirectly(uploadData);
-      } else {
-        uploadResult = await uploadImage(uploadData);
-      }
-
-      // Close modal first for better UX
       setShowUploadModal(false);
       setDuplicateData(null);
-      
-      // Then reload both images and collections, and show toast
-      await Promise.all([reload(), reloadCollections()]); // Refresh gallery and collections
+      setUploadQueue([]);
+      resetBatchUploadState();
+
+      await Promise.all([reload(), reloadCollections()]);
       const mediaType = uploadData.isVideo ? 'Video' : 'Image';
       if (uploadData.isVideo && uploadResult?.videoUploadErrors?.length) {
-        showToast(`⚠️ Video saved. Retry failed host from Details when ready.`, 'warning', 5000);
+        showToast(`Video saved. Retry failed host from Details when ready.`, 'warning', 5000);
       } else {
-        showToast(`✅ ${mediaType} uploaded successfully!`, 'success', 3000);
+        showToast(`${mediaType} uploaded successfully.`, 'success', 3000);
       }
     } catch (err) {
       console.error('Upload failed:', err);
-      
+
       const errorMessage = err?.message || String(err) || 'Upload failed';
-      
-      // Check if error has duplicate data
+
       if (err?.duplicate) {
-        console.log('Duplicate data found:', err.duplicate);
-        console.log('All duplicates found:', err.allDuplicates);
-        // Set both single duplicate and all duplicates
-        setDuplicateData({
-          primary: err.duplicate,
-          all: err.allDuplicates || [err.duplicate]
-        });
+        setDuplicateUploadError(err);
       } else {
-        // For non-duplicate errors, show toast
-        showToast(`❌ ${errorMessage}`, 'error', 4000);
+        showToast(`Upload failed: ${errorMessage}`, 'error', 4000);
       }
     }
   };
@@ -3139,24 +3444,32 @@ export default function GalleryPage() {
           className="!bg-base-100 !backdrop-blur-none !border-base-300 shadow-2xl"
           title={
             <div className="flex items-center justify-between w-full">
-              <span>Upload Image</span>
+              <span>
+                {uploadQueue.length > 1 ? `Upload Batch (${uploadQueue.length})` : 'Upload Image'}
+              </span>
               <div className="flex gap-2">
                 <button
-                  onClick={uploading ? terminateUploadJob : closeUploadModal}
+                  onClick={(uploading || batchUploadState.active) ? terminateUploadJob : closeUploadModal}
                   className="px-4 py-2 rounded-[var(--radius-box)] border border-base-300 bg-base-200 hover:bg-base-300
                            text-base-content text-sm font-medium transition-colors"
                 >
-                  {uploading ? 'Terminate Upload' : 'Cancel'}
+                  {(uploading || batchUploadState.active) ? 'Terminate Upload' : 'Cancel'}
                 </button>
                 <button
                   onClick={() => handleUploadSubmit(false)}
-                  disabled={uploading || !uploadImageData}
+                  disabled={uploading || batchUploadState.active || !uploadImageData || configuredUploadServices.length === 0 || selectedUploadHostKeys.length === 0}
                   className="px-4 py-2 rounded-[var(--radius-box)] bg-gradient-to-r from-primary-500 to-secondary-500 
                            hover:from-primary-600 hover:to-secondary-600 text-primary-content text-sm font-medium 
                            transition-all disabled:opacity-50 disabled:cursor-not-allowed
                            shadow-lg hover:shadow-xl"
                 >
-                  {uploading ? 'Uploading...' : 'Upload'}
+                  {batchUploadState.active
+                    ? `Uploading ${batchUploadState.index}/${batchUploadState.total}...`
+                    : uploading
+                      ? 'Uploading...'
+                      : uploadQueue.length > 1
+                        ? `Upload ${uploadQueue.length} files`
+                        : 'Upload'}
                 </button>
               </div>
             </div>
@@ -3199,7 +3512,7 @@ export default function GalleryPage() {
                       <Upload className="w-16 h-16 mx-auto text-base-content/40 group-hover:text-primary 
                                        transition-colors mb-4" />
                       <p className="text-base-content text-lg font-medium mb-2">
-                        Click to select an image or video
+                        Click to select images or videos
                       </p>
                       <p className="text-base-content/70 text-sm">
                         or drag and drop
@@ -3212,6 +3525,7 @@ export default function GalleryPage() {
                     <input
                       type="file"
                       accept="image/*,video/*"
+                      multiple
                       onChange={handleFileUpload}
                       className="hidden"
                     />
@@ -3250,7 +3564,7 @@ export default function GalleryPage() {
                         </>
                       )}
                       <button
-                        onClick={() => setUploadImageData(null)}
+                        onClick={clearUploadMediaSelection}
                         className="absolute top-4 right-4 p-2 rounded-[var(--radius-box)] bg-error/85 hover:bg-error 
                                  transition-colors shadow-lg"
                         title={`Remove ${uploadImageData.isVideo ? 'video' : 'image'}`}
@@ -3258,6 +3572,52 @@ export default function GalleryPage() {
                         <X className="w-5 h-5" />
                       </button>
                     </div>
+
+                    {uploadQueue.length > 1 && (
+                      <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/70 p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-base-content">Batch queue</div>
+                            <div className="text-xs text-base-content/65">
+                              {batchUploadState.active
+                                ? `Uploading ${batchUploadState.index} of ${batchUploadState.total}: ${batchUploadState.currentFile}`
+                                : `${uploadQueue.length} files ready. Uploads run one at a time.`}
+                            </div>
+                          </div>
+                          <div className="rounded-full border border-base-300 bg-base-100 px-3 py-1 text-xs font-semibold text-base-content/75">
+                            {batchUploadState.completed}/{batchUploadState.total || uploadQueue.length}
+                          </div>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-base-300">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-primary-500 to-secondary-500 transition-all"
+                            style={{
+                              width: `${Math.round((batchUploadState.completed / Math.max(batchUploadState.total || uploadQueue.length, 1)) * 100)}%`,
+                            }}
+                          />
+                        </div>
+                        <div className="max-h-28 space-y-1 overflow-y-auto pr-1">
+                          {uploadQueue.slice(0, 8).map((file, index) => (
+                            <div
+                              key={`${file.name}-${file.size}-${file.lastModified}-${index}`}
+                              className="flex items-center justify-between gap-3 rounded-[var(--radius-box)] bg-base-100 px-3 py-2 text-xs"
+                            >
+                              <span className="min-w-0 truncate text-base-content/80">
+                                {index + 1}. {file.name}
+                              </span>
+                              <span className="shrink-0 text-base-content/50">
+                                {formatBytes(file.size || 0)}
+                              </span>
+                            </div>
+                          ))}
+                          {uploadQueue.length > 8 && (
+                            <div className="px-3 py-1 text-xs text-base-content/55">
+                              +{uploadQueue.length - 8} more
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     
                     {/* Site-specific replace tips */}
                     {uploadImageData?.isWallHere && (
@@ -3427,7 +3787,7 @@ export default function GalleryPage() {
                     )}
                     
                     {/* Upload Progress */}
-                    {uploading && (
+                    {(uploading || batchUploadState.active) && (
                       <div className="p-4 rounded-[var(--radius-box)] bg-primary-500/10 border border-primary-500/30 space-y-3">
                         <div className="flex items-center gap-3">
                           <span className="text-2xl animate-pulse">{uploadImageData?.isVideo ? '🎬' : '🖼️'}</span>
@@ -3435,8 +3795,8 @@ export default function GalleryPage() {
                             <div className="text-sm text-primary-200 mb-2">
                               <span>
                                 {uploadImageData?.isVideo 
-                                  ? 'Uploading video to UDrop...' 
-                                  : 'Uploading image to Pixvid and ImgBB...'}
+                                  ? `Uploading video to ${selectedUploadHostLabel}...`
+                                  : `Uploading image to ${selectedUploadHostLabel}...`}
                               </span>
                             </div>
                             <div className="w-full h-2 bg-base-300 rounded-full overflow-hidden">
@@ -3482,6 +3842,18 @@ export default function GalleryPage() {
                 {/* Right Column - Scrollable Form Fields */}
                 <div className="min-h-0 space-y-4 overflow-y-auto pr-2"
                      style={{ scrollbarGutter: 'stable' }}>
+
+                  <UploadHostSelector
+                    services={configuredUploadServices}
+                    selectedKeys={selectedUploadHostKeys}
+                    onChange={setSelectedUploadHostKeys}
+                    disabled={uploading}
+                    emptyMessage={
+                      uploadImageData?.isVideo
+                        ? 'No video hosts are configured. Add Filemoon or UDrop keys in Settings.'
+                        : 'No image hosts are configured. Add Pixvid or ImgBB API keys in Settings.'
+                    }
+                  />
                   
                   {/* Duplicate Detection - Enhanced UI - Moved to top of right column */}
                   {duplicateData && (
@@ -3613,12 +3985,12 @@ export default function GalleryPage() {
                             </button>
                             <button
                               onClick={() => handleUploadSubmit(true)}
-                              disabled={uploading}
+                              disabled={uploading || batchUploadState.active || configuredUploadServices.length === 0 || selectedUploadHostKeys.length === 0}
                               className="flex-1 px-4 py-2.5 rounded-[var(--radius-box)] bg-warning hover:brightness-95 font-medium 
                                        transition-all disabled:opacity-50 disabled:cursor-not-allowed
                                        shadow-lg hover:shadow-xl text-sm"
                             >
-                              {uploading ? 'Uploading...' : 'Upload Anyway'}
+                              {(uploading || batchUploadState.active) ? 'Uploading...' : 'Upload Anyway'}
                             </button>
                           </div>
                         </div>
