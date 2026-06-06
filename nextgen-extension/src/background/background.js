@@ -96,6 +96,44 @@ class ImgVaultServiceWorker {
     };
   }
 
+  getAppUrl(route = '/gallery', { reload = false } = {}) {
+    const normalizedRoute = route.startsWith('/') ? route : `/${route}`;
+    const reloadToken = reload ? `?open=${Date.now()}` : '';
+    return chrome.runtime.getURL(`index.html${reloadToken}#${normalizedRoute}`);
+  }
+
+  async findExistingAppTab() {
+    const appBaseUrl = chrome.runtime.getURL('index.html');
+    const tabs = await chrome.tabs.query({});
+    return tabs.find((candidate) => (
+      typeof candidate?.url === 'string' &&
+      candidate.url.startsWith(appBaseUrl)
+    )) || null;
+  }
+
+  async openOrFocusApp(route = '/gallery', { reload = false } = {}) {
+    const targetUrl = this.getAppUrl(route, { reload });
+    const routeFragment = `#${route.startsWith('/') ? route : `/${route}`}`;
+    const existingTab = await this.findExistingAppTab();
+
+    if (existingTab?.id) {
+      const shouldNavigate = reload || !String(existingTab.url || '').includes(routeFragment);
+      await chrome.tabs.update(existingTab.id, {
+        active: true,
+        ...(shouldNavigate ? { url: targetUrl } : {}),
+      });
+
+      if (existingTab.windowId) {
+        await chrome.windows.update(existingTab.windowId, { focused: true });
+      }
+
+      return existingTab.id;
+    }
+
+    const tab = await chrome.tabs.create({ url: targetUrl, active: true });
+    return tab?.id || null;
+  }
+
   isSupportedVideoPage(url = '') {
     try {
       const parsedUrl = new URL(url);
@@ -500,9 +538,7 @@ class ImgVaultServiceWorker {
       }
 
       console.log('[ImgVault][ContextMenu] Link saved, opening gallery tab');
-      chrome.tabs.create({
-        url: chrome.runtime.getURL('index.html')
-      });
+      await this.openOrFocusApp('/gallery', { reload: true });
       return;
     }
 
@@ -556,9 +592,7 @@ class ImgVaultServiceWorker {
       // console.log('✅ Pending image stored!');
       
       // Open the gallery page instead of popup
-      chrome.tabs.create({
-        url: chrome.runtime.getURL('index.html')
-      });
+      await this.openOrFocusApp('/gallery', { reload: true });
     } else if (info.menuItemId === 'saveWrappedMediaToImgVault') {
       console.log('[ImgVault][ContextMenu] Handling saveWrappedMediaToImgVault');
       let resolvedImageUrl = '';
@@ -737,9 +771,7 @@ class ImgVaultServiceWorker {
       await chrome.storage.local.remove(['lastRightClickImageUrl', 'lastRightClickTimestamp']);
       console.log('[ImgVault][ContextMenu] Cleared right-click media cache, opening gallery');
 
-      chrome.tabs.create({
-        url: chrome.runtime.getURL('index.html')
-      });
+      await this.openOrFocusApp('/gallery', { reload: true });
     } else if (info.menuItemId === 'saveBackgroundToImgVault') {
       console.log('[ImgVault][ContextMenu] Handling saveBackgroundToImgVault');
       // console.log('🎯 Background image context menu clicked!');
@@ -861,9 +893,7 @@ class ImgVaultServiceWorker {
 
         // console.log('✅ Background image stored!');
 
-        chrome.tabs.create({
-          url: chrome.runtime.getURL('index.html')
-        });
+        await this.openOrFocusApp('/gallery', { reload: true });
       } else {
         console.warn('[ImgVault][ContextMenu] No background image found after all fallbacks');
         // console.log('❌ No background image found');
@@ -991,9 +1021,7 @@ class ImgVaultServiceWorker {
         // console.log('💾 Storing YouTube frame image data:', pendingData);
         await chrome.storage.local.set({ pendingImage: pendingData });
 
-        chrome.tabs.create({
-          url: chrome.runtime.getURL('index.html')
-        });
+        await this.openOrFocusApp('/gallery', { reload: true });
       } catch (error) {
         console.error('❌ Failed to capture YouTube frame:', error);
       }
@@ -2887,18 +2915,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // Handle extension icon click
-chrome.action.onClicked.addListener((tab) => {
+chrome.action.onClicked.addListener(async (tab) => {
   const currentUrl = tab?.url || '';
 
   if (serviceWorker.isSupportedVideoPage(currentUrl)) {
-    const hostUrl = chrome.runtime.getURL(`index.html#/host?url=${encodeURIComponent(currentUrl)}`);
-    chrome.tabs.create({ url: hostUrl });
+    await serviceWorker.openOrFocusApp(`/host?url=${encodeURIComponent(currentUrl)}`, { reload: true });
     return;
   }
 
-  chrome.tabs.create({
-    url: chrome.runtime.getURL('index.html')
-  });
+  await serviceWorker.openOrFocusApp('/gallery');
 });
 
 // Export for testing
