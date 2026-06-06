@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Save, Check, Download, Key, Image, Film, HardDrive,
   Cloud, Database, FolderOpen, Settings2, Sparkles,
-  ExternalLink, Loader2, Shield, Zap, CheckCircle2, AlertCircle
+  ExternalLink, Loader2, Shield, Zap, CheckCircle2, AlertCircle,
+  Eye, EyeOff, Clipboard, ClipboardPaste, Trash2
 } from 'lucide-react';
 import { useChromeStorage } from '../hooks/useChromeExtension';
 import GalleryNavbar from '../components/GalleryNavbar';
@@ -46,6 +47,12 @@ const CSS = `
 .s-ta{width:100%;padding:12px 14px;font-size:13px;font-family:'Outfit',system-ui,sans-serif;color:var(--color-base-content);background:oklch(from var(--color-base-100) l c h / 0.35);border:1px solid oklch(from var(--color-base-content) l c h / 0.07);border-radius:10px;outline:none;resize:none;transition:all .2s ease;line-height:1.6}
 .s-ta:focus{border-color:oklch(from var(--color-primary) l c h / 0.4);background:oklch(from var(--color-base-100) l c h / 0.65);box-shadow:0 0 0 3px oklch(from var(--color-primary) l c h / 0.07),0 0 24px oklch(from var(--color-primary) l c h / 0.04)}
 .s-ta::placeholder{color:oklch(from var(--color-base-content) l c h / 0.2)}
+
+.s-secret-preview{min-height:144px;width:100%;padding:12px 14px;font-size:12px;font-family:'Outfit',monospace;color:oklch(from var(--color-base-content) l c h / 0.62);background:oklch(from var(--color-base-100) l c h / 0.28);border:1px solid oklch(from var(--color-base-content) l c h / 0.06);border-radius:10px;line-height:1.6;white-space:pre-wrap;word-break:break-word;user-select:none}
+.s-mini-btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:8px;font-size:11px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;color:oklch(from var(--color-base-content) l c h / 0.62);background:oklch(from var(--color-base-content) l c h / 0.035);border:1px solid oklch(from var(--color-base-content) l c h / 0.065);cursor:pointer;transition:all .15s ease}
+.s-mini-btn:hover{color:var(--color-base-content);background:oklch(from var(--color-base-content) l c h / 0.06)}
+.s-mini-btn-danger{color:var(--color-error);background:oklch(from var(--color-error) l c h / 0.07);border-color:oklch(from var(--color-error) l c h / 0.12)}
+.s-mini-btn-danger:hover{background:oklch(from var(--color-error) l c h / 0.11)}
 
 .s-sel{width:100%;height:40px;padding:0 36px 0 14px;font-size:13px;font-family:'Outfit',system-ui,sans-serif;color:var(--color-base-content);background:oklch(from var(--color-base-100) l c h / 0.35);border:1px solid oklch(from var(--color-base-content) l c h / 0.07);border-radius:10px;outline:none;appearance:none;cursor:pointer;transition:all .2s ease;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
 .s-sel:focus{border-color:oklch(from var(--color-primary) l c h / 0.4);background-color:oklch(from var(--color-base-100) l c h / 0.65);box-shadow:0 0 0 3px oklch(from var(--color-primary) l c h / 0.07),0 0 24px oklch(from var(--color-primary) l c h / 0.04)}
@@ -206,6 +213,30 @@ function ResourceLink({ icon: Icon, label, href }) {
   );
 }
 
+function maskFirebaseValue(value) {
+  if (value === null || value === undefined || value === '') return value;
+  if (Array.isArray(value)) return value.map(maskFirebaseValue);
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, childValue]) => [key, maskFirebaseValue(childValue)])
+    );
+  }
+  return '••••••••';
+}
+
+function getMaskedFirebaseConfigText(value) {
+  const text = String(value || '').trim();
+  if (!text) return 'No Firebase config saved.';
+
+  try {
+    return JSON.stringify(maskFirebaseValue(JSON.parse(text)), null, 2);
+  } catch {
+    return text.replace(/(["']?[\w-]+["']?\s*:\s*["'])([^"']*)(["'])/g, (_match, prefix, rawValue, suffix) =>
+      `${prefix}${rawValue ? '••••••••' : ''}${suffix}`
+    );
+  }
+}
+
 export default function SettingsPage() {
   const navigate = useNavigate();
   const [section, setSection] = useState('keys');
@@ -231,6 +262,7 @@ export default function SettingsPage() {
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState('');
   const [navH, setNavH] = useState(0);
+  const [showFirebaseConfig, setShowFirebaseConfig] = useState(false);
 
   const set = (k, v) => setF(prev => ({ ...prev, [k]: v }));
 
@@ -349,6 +381,26 @@ export default function SettingsPage() {
     finally { setExporting(false); }
   };
 
+  const handlePasteFirebaseConfig = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      set('firebase', text);
+      setShowFirebaseConfig(true);
+      setCloudStatus('Firebase config pasted');
+    } catch {
+      setCloudStatus('⚠️ Clipboard read failed');
+    }
+  };
+
+  const handleCopyFirebaseConfig = async () => {
+    try {
+      await navigator.clipboard.writeText(f.firebase || '');
+      setCloudStatus('Firebase config copied');
+    } catch {
+      setCloudStatus('⚠️ Clipboard copy failed');
+    }
+  };
+
   const sectionContent = (
     <AnimatePresence mode="wait">
       <motion.div
@@ -400,7 +452,29 @@ export default function SettingsPage() {
             </motion.div>
             <div className="s-divider" />
             <Field label="Firebase Config" icon={Shield} hint="Paste JSON from Firebase Console → Project Settings → General → Your apps">
-              <textarea className="s-ta" rows={6} value={f.firebase} onChange={e => set('firebase', e.target.value)} placeholder={'{ "apiKey": "...", "projectId": "...", ... }'} style={{ fontFamily: "'Outfit', monospace", fontSize: 12 }} />
+              <div className="flex flex-wrap gap-2 mb-2">
+                <button type="button" className="s-mini-btn" onClick={() => setShowFirebaseConfig(value => !value)}>
+                  {showFirebaseConfig ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  {showFirebaseConfig ? 'Hide' : 'Reveal'}
+                </button>
+                <button type="button" className="s-mini-btn" onClick={handlePasteFirebaseConfig}>
+                  <ClipboardPaste className="w-3.5 h-3.5" />
+                  Paste
+                </button>
+                <button type="button" className="s-mini-btn" onClick={handleCopyFirebaseConfig} disabled={!f.firebase}>
+                  <Clipboard className="w-3.5 h-3.5" />
+                  Copy
+                </button>
+                <button type="button" className="s-mini-btn s-mini-btn-danger" onClick={() => set('firebase', '')} disabled={!f.firebase}>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Clear
+                </button>
+              </div>
+              {showFirebaseConfig ? (
+                <textarea className="s-ta" rows={6} value={f.firebase} onChange={e => set('firebase', e.target.value)} placeholder={'{ "apiKey": "...", "projectId": "...", ... }'} style={{ fontFamily: "'Outfit', monospace", fontSize: 12 }} />
+              ) : (
+                <pre className="s-secret-preview">{getMaskedFirebaseConfigText(f.firebase)}</pre>
+              )}
             </Field>
             <Field label="Neon Database URL" icon={Database} hint="If set, ImgVault uses Neon DB. Otherwise falls back to Firebase.">
               <input className="s-inp" type="password" value={f.neon} onChange={e => set('neon', e.target.value)} placeholder="postgresql://user:pass@ep-xxx.neon.tech/db" style={{ fontFamily: "'Outfit', monospace", fontSize: 12 }} />
