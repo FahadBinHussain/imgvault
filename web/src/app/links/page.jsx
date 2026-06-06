@@ -6,6 +6,8 @@ import { redirect } from 'next/navigation'
 import {
   Loader2,
   Link2,
+  Images,
+  Play,
   Copy,
   ExternalLink,
   Trash2,
@@ -13,6 +15,7 @@ import {
 } from 'lucide-react'
 import AppNavbar from '../components/AppNavbar'
 import { getPreferredImageProviderLink } from '@/lib/image-provider-links'
+import { getMediaItemKind } from '@shared/mediaFieldRegistry.js'
 
 async function readJsonSafely(res) {
   const text = await res.text()
@@ -35,6 +38,129 @@ function EmptyState() {
       <p className="text-base-content/65 max-w-md mx-auto">
         Create a share link from the gallery modal and it will appear here.
       </p>
+    </div>
+  )
+}
+
+function toProxyMediaUrl(url) {
+  if (!url || typeof url !== 'string') return ''
+  if (!/^https?:\/\//i.test(url)) return url
+  return `/api/media?url=${encodeURIComponent(url)}`
+}
+
+function getPreferredImageUrl(item) {
+  return (
+    getPreferredImageProviderLink(item, 'imgbb', 'url') ||
+    getPreferredImageProviderLink(item, 'pixvid', 'url') ||
+    item?.sourceImageUrl ||
+    item?.imgbbThumbUrl ||
+    ''
+  )
+}
+
+function getPreviewUrl(item) {
+  const kind = getMediaItemKind(item)
+
+  if (kind === 'link') {
+    return toProxyMediaUrl(item?.linkPreviewImageUrl || getPreferredImageUrl(item))
+  }
+
+  if (kind === 'video') {
+    return toProxyMediaUrl(
+      item?.videoThumbnailUrl ||
+      item?.linkPreviewImageUrl ||
+      getPreferredImageProviderLink(item, 'imgbb', 'thumbnailUrl') ||
+      item?.imgbbThumbUrl ||
+      getPreferredImageUrl(item)
+    )
+  }
+
+  return getPreferredImageUrl(item)
+}
+
+function getShareItems(payload) {
+  if (payload?.shareType === 'album' && Array.isArray(payload.items)) return payload.items
+  return payload ? [payload] : []
+}
+
+function getShareTitle(payload) {
+  if (payload?.shareType === 'album') return payload.title || 'Shared album'
+  return payload?.pageTitle || payload?.fileName || payload?.linkUrl || 'Untitled'
+}
+
+function getShareSubtitle(payload, items) {
+  if (payload?.shareType !== 'album') return 'Single item'
+
+  const counts = items.reduce((acc, item) => {
+    const kind = getMediaItemKind(item)
+    if (kind === 'image' || kind === 'video' || kind === 'link') acc[kind] += 1
+    return acc
+  }, { image: 0, video: 0, link: 0 })
+
+  return `${items.length} items · ${counts.image} images · ${counts.video} videos · ${counts.link} links`
+}
+
+function SharePreview({ payload, items }) {
+  const isAlbum = payload?.shareType === 'album'
+  const previews = items.slice(0, 4).map(getPreviewUrl)
+
+  if (isAlbum) {
+    return (
+      <div className="grid h-full w-full grid-cols-2 grid-rows-2 gap-1 bg-base-100 p-1">
+        {previews.length > 0 ? previews.map((preview, index) => (
+          preview ? (
+            <img
+              key={`${preview}-${index}`}
+              src={preview}
+              alt=""
+              className="h-full w-full rounded object-cover"
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div key={`empty-${index}`} className="grid h-full w-full place-items-center rounded bg-base-200">
+              <Images className="h-6 w-6 text-base-content/40" />
+            </div>
+          )
+        )) : (
+          <div className="col-span-2 row-span-2 grid place-items-center">
+            <Images className="h-10 w-10 text-base-content/55" />
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const item = items[0] || {}
+  const preview = getPreviewUrl(item)
+  const kind = getMediaItemKind(item)
+
+  if (preview) {
+    return (
+      <div className="relative h-full w-full">
+        <img
+          src={preview}
+          alt={getShareTitle(payload)}
+          className="h-full w-full object-contain"
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+        />
+        {kind === 'video' && (
+          <span className="absolute inset-0 grid place-items-center bg-black/10 text-white">
+            <span className="grid h-11 w-11 place-items-center rounded-full bg-black/55">
+              <Play className="h-5 w-5 fill-current" />
+            </span>
+          </span>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid h-full w-full place-items-center bg-base-200/70">
+      <Link2 className="w-10 h-10 text-base-content/55" />
     </div>
   )
 }
@@ -154,28 +280,24 @@ export default function LinksPage() {
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {links.map((link) => {
-                const image = link.imageData || {}
-                const imageUrl =
-                  getPreferredImageProviderLink(image, 'imgbb', 'url') || image.sourceImageUrl || image.imgbbThumbUrl || null
+                const payload = link.imageData || {}
+                const items = getShareItems(payload)
+                const title = getShareTitle(payload)
+                const subtitle = getShareSubtitle(payload, items)
 
                 return (
                   <div key={link.id} className="glass rounded-[var(--radius-box)] overflow-hidden">
                     <div className="flex flex-col sm:flex-row">
                       <div className="w-full sm:w-48 h-48 bg-base-100 flex items-center justify-center overflow-hidden">
-                        {imageUrl ? (
-                          <img
-                            src={imageUrl}
-                            alt={image.pageTitle || 'Shared image'}
-                            className="w-full h-full object-contain"
-                          />
-                        ) : (
-                          <Link2 className="w-10 h-10 text-base-content/55" />
-                        )}
+                        <SharePreview payload={payload} items={items} />
                       </div>
 
                       <div className="flex-1 p-5">
                         <p className="text-lg font-semibold break-words leading-snug">
-                          {image.pageTitle || 'Untitled'}
+                          {title}
+                        </p>
+                        <p className="mt-1 text-sm text-base-content/60">
+                          {subtitle}
                         </p>
                         <div className="mt-2 text-xs text-base-content/65 flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5" />

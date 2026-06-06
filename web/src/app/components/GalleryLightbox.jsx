@@ -33,6 +33,7 @@ export default function GalleryLightbox({
   onNavigate,
   onSaveEdits,
   onShare,
+  onShareAlbum,
   onMoveToVault,
   onRestoreFromVault,
   isRestoringFromVault = false,
@@ -718,14 +719,14 @@ export default function GalleryLightbox({
           )}
         </div>
 
-        {activeTab === 'noobs' && (onShare || onMoveToVault || onRestoreFromVault || onSaveEdits || shareStatus) && (
+        {activeTab === 'noobs' && (onShare || onShareAlbum || onMoveToVault || onRestoreFromVault || onSaveEdits || shareStatus) && (
           <div className="shrink-0 border-t border-base-content/15 bg-base-100/95 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur lg:p-4">
             {shareStatus && (
               <div className="mb-3 rounded-[var(--radius-box)] border border-primary-500/30 bg-primary-500/10 text-primary text-xs p-2">
                 {shareStatus}
               </div>
             )}
-            <div className="grid grid-cols-3 gap-2 lg:flex lg:flex-wrap lg:items-center">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:flex lg:flex-wrap lg:items-center">
               {onShare && (
                 <button
                   type="button"
@@ -737,6 +738,20 @@ export default function GalleryLightbox({
                 >
                   <Share2 className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
                   Share
+                </button>
+              )}
+              {onShareAlbum && image?.collectionId && !isEditing && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onShareAlbum(image)
+                  }}
+                  className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 px-2 text-sm font-semibold text-base-content/85 hover:bg-base-content/5 transition-colors lg:min-h-0 lg:border-0 lg:bg-base-content/5 lg:px-3 lg:py-2 lg:hover:bg-base-content/10"
+                >
+                  <Share2 className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
+                  <span className="lg:hidden">Album</span>
+                  <span className="hidden lg:inline">Share Album</span>
                 </button>
               )}
               {onMoveToVault && !isEditing && (

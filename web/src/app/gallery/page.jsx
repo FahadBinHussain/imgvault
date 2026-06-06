@@ -20,7 +20,8 @@ import {
   Sparkles,
   FileText,
   Pencil,
-  Save
+  Save,
+  Share2
 } from 'lucide-react'
 import AppNavbar from '../components/AppNavbar'
 import GalleryLightbox from '../components/GalleryLightbox'
@@ -837,6 +838,7 @@ export default function GalleryPage() {
   const [selectedImage, setSelectedImage] = useState(null)
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [shareStatus, setShareStatus] = useState('')
+  const [galleryShareStatus, setGalleryShareStatus] = useState('')
   const [preferredProvider, setPreferredProvider] = useState('imgbb')
   const [preferredVideoSource, setPreferredVideoSource] = useState('filemoon')
   const [firebaseProjectId, setFirebaseProjectId] = useState('')
@@ -1038,6 +1040,77 @@ export default function GalleryPage() {
     }
   }, [loadImageDetail])
 
+  const copyShareResponse = useCallback(async (data) => {
+    const shareUrl = new URL(data.url, window.location.origin).toString()
+    await navigator.clipboard.writeText(shareUrl)
+    return shareUrl
+  }, [])
+
+  const handleShareCurrentView = useCallback(async () => {
+    try {
+      const filterLabel = MEDIA_FILTER_OPTIONS.find((option) => option.value === mediaFilter)?.label || 'All'
+      setGalleryShareStatus(`Creating ${filterLabel.toLowerCase()} share link...`)
+
+      const res = await fetch('/api/share', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          scope: 'filter',
+          mediaFilter,
+        }),
+      })
+
+      const data = await readJsonSafely(res)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to create share link')
+      }
+
+      await copyShareResponse(data)
+      setGalleryShareStatus(`${filterLabel} share link copied to clipboard.`)
+    } catch (error) {
+      setGalleryShareStatus(error?.message || 'Failed to create share link')
+    }
+  }, [copyShareResponse, mediaFilter])
+
+  const handleShareAlbum = useCallback(async (image) => {
+    const collectionId = typeof image?.collectionId === 'string' ? image.collectionId.trim() : ''
+
+    if (!collectionId) {
+      setShareStatus('This item is not inside an album.')
+      return
+    }
+
+    try {
+      setShareStatus('Creating album share link...')
+
+      const res = await fetch('/api/share', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          scope: 'collection',
+          collectionId,
+          mediaFilter: 'all',
+        }),
+      })
+
+      const data = await readJsonSafely(res)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to create album share link')
+      }
+
+      await copyShareResponse(data)
+      setShareStatus('Album share link copied to clipboard.')
+    } catch (error) {
+      setShareStatus(error?.message || 'Failed to create album share link')
+    }
+  }, [copyShareResponse])
+
   const handleMoveToVault = useCallback(async (image) => {
     if (!image?.id) return
 
@@ -1114,6 +1187,17 @@ export default function GalleryPage() {
             
               {images.length > 0 && (
                 <div className="w-full md:w-auto flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 animate-fade-in" style={{ animationDelay: '100ms' }}>
+                  {/* Share current media tab */}
+                  <button
+                    type="button"
+                    onClick={handleShareCurrentView}
+                    disabled={mediaCounts[mediaFilter] === 0}
+                    className="inline-flex items-center justify-center gap-2 rounded-[var(--radius-box)] border border-primary-500/25 bg-primary-500/10 px-4 py-3 text-sm font-semibold text-primary-200 transition-all duration-300 hover:bg-primary-500/20 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    Share {MEDIA_FILTER_OPTIONS.find((option) => option.value === mediaFilter)?.label || 'All'}
+                  </button>
+
                   {/* Media filter */}
                   <div className="flex w-full sm:w-auto items-center gap-1 rounded-[var(--radius-box)] border border-base-content/10 bg-base-200/60 p-1.5">
                     {MEDIA_FILTER_OPTIONS.map((option) => (
@@ -1190,6 +1274,12 @@ export default function GalleryPage() {
                 </div>
               )}
             </div>
+
+            {galleryShareStatus && (
+              <div className="glass mb-6 rounded-[var(--radius-box)] border border-primary-500/25 p-4 text-sm text-primary-200">
+                {galleryShareStatus}
+              </div>
+            )}
 
             {/* Content */}
             {loadError ? (
@@ -1279,6 +1369,7 @@ export default function GalleryPage() {
           onNavigate={handleNavigate}
           onSaveEdits={handleSaveImageEdits}
           onShare={handleShareImage}
+          onShareAlbum={handleShareAlbum}
           onMoveToVault={handleMoveToVault}
           shareStatus={shareStatus}
           preferredProvider={preferredProvider}

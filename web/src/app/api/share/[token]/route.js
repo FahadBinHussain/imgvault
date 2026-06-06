@@ -28,8 +28,23 @@ export async function GET(_request, { params }) {
       return Response.json({ error: 'Link deleted' }, { status: 410 })
     }
 
+    const payload = shareLink.imageData
+
+    if (payload?.shareType === 'album' && Array.isArray(payload.items)) {
+      return Response.json({
+        share: payload,
+      })
+    }
+
     return Response.json({
-      image: shareLink.imageData,
+      image: payload,
+      share: {
+        shareVersion: 1,
+        shareType: 'item',
+        title: payload?.pageTitle || 'Shared item',
+        itemCount: 1,
+        items: payload ? [payload] : [],
+      },
     })
   } catch (error) {
     return Response.json(
