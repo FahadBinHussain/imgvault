@@ -2277,7 +2277,20 @@ export class StorageManager {
 
   async getAllImagesNeon() {
     const sql = this.ensureNeonReady();
-    const rows = await sql`select * from public.media_items where deleted_at is null order by internal_added_timestamp desc`;
+    const rows = await sql`
+      select
+        id, kind, is_video, is_link, page_title, description, tags, collection_id,
+        internal_added_timestamp, source_image_url, source_page_url, file_name,
+        file_size, width, height, duration, file_type, file_type_source,
+        creation_date, creation_date_source,
+        pixvid_url, pixvid_delete_url, imgbb_url, imgbb_delete_url, imgbb_thumb_url,
+        filemoon_watch_url, filemoon_direct_url, udrop_watch_url, udrop_direct_url,
+        link_url, link_url_canonical, link_preview_image_url, favicon_url, last_visited_at,
+        deleted_at, created_at, updated_at, extra_metadata - 'ai' as extra_metadata
+      from public.media_items
+      where deleted_at is null
+      order by internal_added_timestamp desc
+    `;
     return this.filterVisibleItems(rows.map((r) => this.fromNeonMediaRow(r)));
   }
 
@@ -2368,7 +2381,20 @@ export class StorageManager {
 
   async getTrashedImagesNeon() {
     const sql = this.ensureNeonReady();
-    const rows = await sql`select * from public.media_items where deleted_at is not null order by deleted_at desc`;
+    const rows = await sql`
+      select
+        id, kind, is_video, is_link, page_title, description, tags, collection_id,
+        internal_added_timestamp, source_image_url, source_page_url, file_name,
+        file_size, width, height, duration, file_type, file_type_source,
+        creation_date, creation_date_source,
+        pixvid_url, pixvid_delete_url, imgbb_url, imgbb_delete_url, imgbb_thumb_url,
+        filemoon_watch_url, filemoon_direct_url, udrop_watch_url, udrop_direct_url,
+        link_url, link_url_canonical, link_preview_image_url, favicon_url, last_visited_at,
+        deleted_at, created_at, updated_at, extra_metadata - 'ai' as extra_metadata
+      from public.media_items
+      where deleted_at is not null
+      order by deleted_at desc
+    `;
     return this.filterVisibleItems(rows.map((r) => ({ ...this.fromNeonMediaRow(r), _isTrash: true })));
   }
 

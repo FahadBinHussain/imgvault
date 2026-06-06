@@ -5,6 +5,38 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
+const DEBUG_CHROME_MESSAGES = false;
+const GALLERY_IMAGES_CACHE_KEY = 'imgvaultGalleryImagesCache';
+const GALLERY_IMAGES_CACHE_MAX_AGE = 1000 * 60 * 60 * 24;
+
+const summarizePayload = (payload) => {
+  if (Array.isArray(payload)) return `[${payload.length} items]`;
+  if (payload && typeof payload === 'object') {
+    return Object.fromEntries(Object.entries(payload).map(([key, value]) => [
+      key,
+      Array.isArray(value) ? `[${value.length} items]` : value,
+    ]));
+  }
+  return payload;
+};
+
+const readLocalStorage = (keys) => new Promise((resolve) => {
+  chrome.storage.local.get(keys, (result) => resolve(result || {}));
+});
+
+const writeGalleryImagesCache = (images) => {
+  chrome.storage.local.set({
+    [GALLERY_IMAGES_CACHE_KEY]: {
+      savedAt: Date.now(),
+      images,
+    },
+  }, () => {
+    if (chrome.runtime.lastError && DEBUG_CHROME_MESSAGES) {
+      console.warn('[ImgVault] Gallery cache skipped:', chrome.runtime.lastError.message);
+    }
+  });
+};
+
 /**
  * Hook for Chrome storage (sync or local)
  * @param {string} key - Storage key
@@ -50,12 +82,16 @@ export function useChromeStorage(key, defaultValue = null, area = 'sync') {
  */
 export function useChromeMessage() {
   const sendMessage = useCallback((action, data = {}) => {
-    console.log('[useChromeMessage] Sending message:', action, data);
+    if (DEBUG_CHROME_MESSAGES) {
+      console.log('[useChromeMessage] Sending message:', action, summarizePayload(data));
+    }
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
         { action, data },
         (response) => {
-          console.log('[useChromeMessage] Response received:', response);
+          if (DEBUG_CHROME_MESSAGES) {
+            console.log('[useChromeMessage] Response received:', summarizePayload(response));
+          }
           if (chrome.runtime.lastError) {
             console.error('[useChromeMessage] Runtime error:', chrome.runtime.lastError);
             reject(chrome.runtime.lastError);
@@ -183,19 +219,22 @@ export function useImages() {
   const [error, setError] = useState(null);
   const sendMessage = useChromeMessage();
 
-  const loadImages = useCallback(async () => {
-    setLoading(true);
+  const loadImages = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     setError(null);
 
     try {
       const images = await sendMessage('getImages');
-      console.log('✅ Loaded images from background:', images);
-      console.log('🔍 First image collectionId check:', images[0]?.collectionId, 'Type:', typeof images[0]?.collectionId);
-      setImages(images || []);
+      const nextImages = images || [];
+      if (DEBUG_CHROME_MESSAGES) {
+        console.log('✅ Loaded gallery images from background:', nextImages.length);
+      }
+      setImages(nextImages);
+      writeGalleryImagesCache(nextImages);
     } catch (err) {
       console.error('Error loading images:', err);
       setError(err);
-      setImages([]);
+      if (!silent) setImages([]);
     } finally {
       setLoading(false);
     }
@@ -204,7 +243,11 @@ export function useImages() {
   const deleteImage = useCallback(async (id) => {
     try {
       await sendMessage('deleteImage', { id });
-      setImages(prev => prev.filter(img => img.id !== id));
+      setImages(prev => {
+        const next = prev.filter(img => img.id !== id);
+        writeGalleryImagesCache(next);
+        return next;
+      });
     } catch (err) {
       setError(err);
       throw err;
@@ -212,7 +255,27 @@ export function useImages() {
   }, [sendMessage]);
 
   useEffect(() => {
-    loadImages();
+    let cancelled = false;
+
+    readLocalStorage([GALLERY_IMAGES_CACHE_KEY]).then((result) => {
+      if (cancelled) return;
+
+      const cached = result[GALLERY_IMAGES_CACHE_KEY];
+      const cachedImages = Array.isArray(cached?.images) ? cached.images : null;
+      const cacheFresh = cachedImages && Date.now() - Number(cached.savedAt || 0) < GALLERY_IMAGES_CACHE_MAX_AGE;
+
+      if (cacheFresh) {
+        setImages(cachedImages);
+        setLoading(false);
+        loadImages({ silent: true });
+      } else {
+        loadImages();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [loadImages]);
 
   return {
@@ -299,7 +362,9 @@ export function useTrash() {
 
     try {
       const images = await sendMessage('getTrashedImages');
-      console.log('Loaded trashed images from background:', images);
+      if (DEBUG_CHROME_MESSAGES) {
+        console.log('Loaded trashed images from background:', Array.isArray(images) ? images.length : 0);
+      }
       setTrashedImages(images || []);
     } catch (err) {
       console.error('Error loading trashed images:', err);
@@ -386,7 +451,9 @@ export function useCollections() {
 
     try {
       const collectionsData = await sendMessage('getCollections');
-      console.log('Loaded collections from background:', collectionsData);
+      if (DEBUG_CHROME_MESSAGES) {
+        console.log('Loaded collections from background:', Array.isArray(collectionsData) ? collectionsData.length : 0);
+      }
       setCollections(collectionsData || []);
     } catch (err) {
       console.error('Error loading collections:', err);
