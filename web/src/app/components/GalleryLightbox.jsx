@@ -48,7 +48,6 @@ export default function GalleryLightbox({
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
-  const [isInfoExpanded, setIsInfoExpanded] = useState(false)
   const [dragOffset, setDragOffset] = useState(0)
   const [isDraggingMedia, setIsDraggingMedia] = useState(false)
   const [suppressTrackTransition, setSuppressTrackTransition] = useState(false)
@@ -176,14 +175,12 @@ export default function GalleryLightbox({
   const currentVideoWatchUrl = getPreferredVideoWatchUrl(image)
   const currentVideoDirectUrl = getPreferredVideoDirectUrl(image)
   const currentLinkPreview = toProxyMediaUrl(getLinkPreviewImage(image))
-  const mobileSheetClass = 'translate-y-0'
 
   useEffect(() => {
     setIsEditing(false)
     setIsSaving(false)
     setSaveError('')
     setIsLoading(imageUrl ? !loadedImageUrls[imageUrl] : false)
-    setIsInfoExpanded(false)
     setDragOffset(0)
     setIsDraggingMedia(false)
     setEditValues(toEditValues(image))
@@ -340,12 +337,12 @@ export default function GalleryLightbox({
 
     if (isRedacted) {
       return (
-        <div key={key}>
+        <div key={key} className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 p-3 shadow-sm lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
           <div className="text-xs font-semibold text-base-content/65 mb-1 flex items-center gap-2">
             <FileText className="w-3.5 h-3.5" />
             {`${index + 1}. ${label}`}
           </div>
-          <div className="rounded p-2 bg-base-200">
+          <div className="rounded-[var(--radius-box)] p-3 bg-base-200/70 lg:rounded lg:p-2 lg:bg-base-200">
             <p className="text-base-content text-sm break-all font-mono">{displayValue}</p>
           </div>
         </div>
@@ -353,7 +350,7 @@ export default function GalleryLightbox({
     }
 
     return (
-      <div key={key}>
+      <div key={key} className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 p-3 shadow-sm lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
         <div className="text-xs font-semibold text-base-content/65 mb-1 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <FileText className="w-3.5 h-3.5" />
@@ -416,7 +413,7 @@ export default function GalleryLightbox({
             ))}
           </div>
         ) : isUrlField(key) && typeof rawValue === 'string' && rawValue ? (
-          <div className="rounded p-2 bg-base-200">
+          <div className="rounded-[var(--radius-box)] p-3 bg-base-200/70 lg:rounded lg:p-2 lg:bg-base-200">
             <a
               href={rawValue}
               target="_blank"
@@ -427,7 +424,7 @@ export default function GalleryLightbox({
             </a>
           </div>
         ) : (
-          <div className="rounded p-2 bg-base-200">
+          <div className="rounded-[var(--radius-box)] p-3 bg-base-200/70 lg:rounded lg:p-2 lg:bg-base-200">
             <p className="text-base-content text-sm break-all font-mono">{displayValue}</p>
           </div>
         )}
@@ -459,13 +456,13 @@ export default function GalleryLightbox({
       }}
     >
       <div
-        className="h-[25dvh] min-h-[25dvh] flex-none flex items-center justify-center p-2 sm:p-4 lg:p-8 relative lg:flex-1 lg:h-auto lg:min-h-0"
+        className="h-[44dvh] min-h-[44dvh] flex-none flex items-center justify-center bg-black p-0 sm:p-4 lg:flex-1 lg:h-auto lg:min-h-0 lg:bg-transparent lg:p-8 relative"
         onTouchStart={handleMediaTouchStart}
         onTouchEnd={handleMediaTouchEnd}
       >
         <button
           onClick={onClose}
-        className="absolute top-3 right-3 sm:top-6 sm:right-6 p-2 sm:p-3 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 text-base-content shadow-lg hover:bg-base-200 transition-all duration-300 z-10"
+        className="absolute top-4 right-4 grid h-12 w-12 place-items-center rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 text-base-content shadow-xl hover:bg-base-200 transition-all duration-300 z-10 sm:top-6 sm:right-6 sm:h-auto sm:w-auto sm:p-3"
         style={{
           backgroundColor: 'var(--color-base-100)',
           backdropFilter: 'none',
@@ -480,9 +477,9 @@ export default function GalleryLightbox({
           type="button"
           onClick={(e) => {
             e.stopPropagation()
-            setIsInfoExpanded((prev) => !prev)
+            setActiveTab('noobs')
           }}
-          className="lg:hidden absolute top-3 left-3 p-2.5 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 text-base-content shadow-lg hover:bg-base-100 transition-all duration-300 z-10"
+          className="lg:hidden absolute top-4 left-4 grid h-12 w-12 place-items-center rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 text-base-content shadow-xl hover:bg-base-100 transition-all duration-300 z-10"
           style={{
             backgroundColor: 'var(--color-base-100)',
             backdropFilter: 'none',
@@ -540,7 +537,7 @@ export default function GalleryLightbox({
               <img
                 src={previousImageUrl}
                 alt={previousImage?.pageTitle || 'Previous image'}
-                className="max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl opacity-40 scale-90"
+                className="max-w-full max-h-[40dvh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl opacity-40 scale-90"
                 draggable="false"
                 onLoad={() => markImageLoaded(previousImageUrl)}
               />
@@ -555,7 +552,7 @@ export default function GalleryLightbox({
                   <video
                     src={currentVideoDirectUrl}
                     controls
-                    className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+                    className={`max-w-full max-h-[40dvh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
                     onLoadedData={() => {
                       markImageLoaded(currentVideoDirectUrl)
                       setIsLoading(false)
@@ -573,7 +570,7 @@ export default function GalleryLightbox({
                   <img
                     src={imageUrl}
                     alt={image.pageTitle || 'Video'}
-                    className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+                    className={`max-w-full max-h-[40dvh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
                     onLoad={() => {
                       markImageLoaded(imageUrl)
                       setIsLoading(false)
@@ -585,7 +582,7 @@ export default function GalleryLightbox({
                 <img
                   src={currentLinkPreview || imageUrl}
                   alt={image.pageTitle || 'Link preview'}
-                  className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+                  className={`max-w-full max-h-[40dvh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
                   onLoad={() => {
                     markImageLoaded(currentLinkPreview || imageUrl)
                     setIsLoading(false)
@@ -596,7 +593,7 @@ export default function GalleryLightbox({
                 <img
                   src={imageUrl}
                   alt={image.pageTitle || 'Image'}
-                  className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+                  className={`max-w-full max-h-[40dvh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
                   onLoad={() => {
                     markImageLoaded(imageUrl)
                     setIsLoading(false)
@@ -611,7 +608,7 @@ export default function GalleryLightbox({
               <img
                 src={nextImageUrl}
                 alt={nextImage?.pageTitle || 'Next image'}
-                className="max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl opacity-40 scale-90"
+                className="max-w-full max-h-[40dvh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl opacity-40 scale-90"
                 draggable="false"
                 onLoad={() => markImageLoaded(nextImageUrl)}
               />
@@ -625,40 +622,40 @@ export default function GalleryLightbox({
       </div>
 
       <div
-          className={`fixed lg:static left-0 right-0 bottom-0 w-full lg:w-[400px] h-[75dvh] lg:h-auto max-h-[75dvh] lg:max-h-none bg-base-100 border-t lg:border-t-0 lg:border-l border-base-content/15 overflow-hidden flex flex-col rounded-none lg:rounded-none transition-transform duration-300 ${mobileSheetClass} lg:translate-y-0`}
+          className="fixed lg:static left-0 right-0 bottom-0 w-full lg:w-[400px] h-[56dvh] lg:h-auto max-h-[56dvh] lg:max-h-none bg-base-100 border-t lg:border-t-0 lg:border-l border-base-content/15 overflow-hidden flex flex-col rounded-t-[1.75rem] lg:rounded-none shadow-[0_-18px_40px_rgba(15,23,42,0.16)] lg:shadow-none transition-transform duration-300 translate-y-0"
           style={{
             backgroundColor: 'var(--color-base-100)',
             opacity: 1,
           }}
       >
+        <div className="lg:hidden h-5 flex-none pt-2">
+          <div className="mx-auto h-1.5 w-11 rounded-full bg-base-content/20" />
+        </div>
+
         <div
-          className="p-6 flex-1 overflow-y-auto bg-base-100"
+          className="px-4 pt-3 pb-4 lg:p-6 flex-1 overflow-y-auto bg-base-100"
           style={{
             backgroundColor: 'var(--color-base-100)',
             opacity: 1,
           }}
         >
-          <div className="lg:hidden flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-base-content/80">Image Details</h3>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                setIsInfoExpanded(false)
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-box)] text-sm bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors"
-            >
-              <X className="w-4 h-4" />
-              Close
-            </button>
+          <div className="lg:hidden mb-4">
+            <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.14em] text-base-content/55">Image details</p>
+            <h3 className="text-2xl font-bold leading-tight text-base-content">
+              {image?.pageTitle || 'Saved image'}
+            </h3>
+            <p className="mt-1 flex items-center gap-2 text-sm text-base-content/60">
+              <span className="h-1.5 w-1.5 rounded-full bg-base-content/30" />
+              {noobsVisibleFieldCount} fields in For Noobs
+            </p>
           </div>
 
-          <div className="flex gap-2 mb-6 border-b border-base-content/15 pb-4 rounded-[var(--radius-box)] bg-base-100">
+          <div className="grid grid-cols-2 gap-2 mb-5 rounded-[var(--radius-box)] bg-base-200/70 p-1 lg:flex lg:bg-base-100 lg:border-b lg:border-base-content/15 lg:pb-4 lg:p-0">
             <button
               onClick={(e) => { e.stopPropagation(); setActiveTab('noobs') }}
-              className={`px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] flex items-center gap-2 border ${
+              className={`min-h-14 px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] flex flex-col items-center justify-center gap-0.5 border lg:min-h-0 lg:flex-row lg:justify-start lg:gap-2 ${
                 activeTab === 'noobs'
-                  ? 'bg-primary text-primary-content border-primary shadow-sm ring-2 ring-primary/25'
+                  ? 'bg-base-100 text-base-content border-primary/35 shadow-sm ring-2 ring-primary/30 lg:bg-primary lg:text-primary-content lg:border-primary'
                   : 'bg-base-100 border-base-content/15 text-base-content/65 hover:text-base-content hover:bg-base-content/5'
               }`}
             >
@@ -669,9 +666,9 @@ export default function GalleryLightbox({
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); setActiveTab('nerds') }}
-              className={`px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] flex items-center gap-2 border ${
+              className={`min-h-14 px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] flex flex-col items-center justify-center gap-0.5 border lg:min-h-0 lg:flex-row lg:justify-start lg:gap-2 ${
                 activeTab === 'nerds'
-                  ? 'bg-success text-success-content border-success shadow-sm ring-2 ring-success/25'
+                  ? 'bg-base-100 text-base-content border-success/35 shadow-sm ring-2 ring-success/30 lg:bg-success lg:text-success-content lg:border-success'
                   : 'bg-base-100 border-base-content/15 text-base-content/65 hover:text-base-content hover:bg-base-content/5'
               }`}
             >
@@ -690,12 +687,12 @@ export default function GalleryLightbox({
                 </div>
               )}
 
-              <div>
+              <div className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 p-3 shadow-sm lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
                 <div className="text-xs font-semibold text-base-content/65 mb-1 flex items-center gap-2">
                   <FileText className="w-3.5 h-3.5" />
                   firestoreDocumentId
                 </div>
-                <div className="rounded p-2 bg-base-200">
+                <div className="rounded-[var(--radius-box)] p-3 bg-base-200/70 lg:rounded lg:p-2 lg:bg-base-200">
                   <p className="text-base-content text-sm break-all font-mono">{formatFieldValue('id', image?.id)}</p>
                   {canOpenFirestoreConsole && (
                     <a
@@ -722,13 +719,13 @@ export default function GalleryLightbox({
         </div>
 
         {activeTab === 'noobs' && (onShare || onMoveToVault || onRestoreFromVault || onSaveEdits || shareStatus) && (
-          <div className="shrink-0 border-t border-base-content/15 bg-base-100/95 p-4 backdrop-blur">
+          <div className="shrink-0 border-t border-base-content/15 bg-base-100/95 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur lg:p-4">
             {shareStatus && (
-              <div className="mb-3 rounded-[var(--radius-box)] border border-primary-500/30 bg-primary-500/10 text-primary-200 text-xs p-2">
+              <div className="mb-3 rounded-[var(--radius-box)] border border-primary-500/30 bg-primary-500/10 text-primary text-xs p-2">
                 {shareStatus}
               </div>
             )}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="grid grid-cols-3 gap-2 lg:flex lg:flex-wrap lg:items-center">
               {onShare && (
                 <button
                   type="button"
@@ -736,9 +733,9 @@ export default function GalleryLightbox({
                     e.stopPropagation()
                     onShare(image)
                   }}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[var(--radius-box)] text-sm bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors"
+                  className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 px-2 text-sm font-semibold text-base-content/85 hover:bg-base-content/5 transition-colors lg:min-h-0 lg:border-0 lg:bg-base-content/5 lg:px-3 lg:py-2 lg:hover:bg-base-content/10"
                 >
-                  <Share2 className="w-3.5 h-3.5" />
+                  <Share2 className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
                   Share
                 </button>
               )}
@@ -749,10 +746,11 @@ export default function GalleryLightbox({
                     e.stopPropagation()
                     onMoveToVault(image)
                   }}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[var(--radius-box)] text-sm bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors"
+                  className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 px-2 text-sm font-semibold text-base-content/85 hover:bg-base-content/5 transition-colors lg:min-h-0 lg:border-0 lg:bg-base-content/5 lg:px-3 lg:py-2 lg:hover:bg-base-content/10"
                 >
-                  <LockKeyhole className="w-3.5 h-3.5" />
-                  Move to Vault
+                  <LockKeyhole className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
+                  <span className="lg:hidden">Vault</span>
+                  <span className="hidden lg:inline">Move to Vault</span>
                 </button>
               )}
               {onRestoreFromVault && !isEditing && (
@@ -763,45 +761,42 @@ export default function GalleryLightbox({
                     onRestoreFromVault(image)
                   }}
                   disabled={isRestoringFromVault}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[var(--radius-box)] text-sm bg-base-content/5 text-base-content/85 hover:bg-base-content/10 transition-colors disabled:opacity-50"
+                  className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 px-2 text-sm font-semibold text-base-content/85 hover:bg-base-content/5 transition-colors disabled:opacity-50 lg:min-h-0 lg:border-0 lg:bg-base-content/5 lg:px-3 lg:py-2 lg:hover:bg-base-content/10"
                 >
-                  {isRestoringFromVault ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                  {isRestoringFromVault ? <Loader2 className="w-4 h-4 animate-spin lg:w-3.5 lg:h-3.5" /> : <RotateCcw className="w-4 h-4 lg:w-3.5 lg:h-3.5" />}
                   {isRestoringFromVault ? 'Restoring...' : 'Restore'}
                 </button>
               )}
-              {onSaveEdits && (
-                <div className="ml-auto flex items-center gap-2">
-                  {isEditing ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={handleCancelEdit}
-                        disabled={isSaving}
-                        className="px-3 py-2 rounded-[var(--radius-box)] text-sm bg-base-content/5 hover:bg-base-content/10 text-base-content/80 transition-colors disabled:opacity-50"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[var(--radius-box)] text-sm bg-primary text-primary-content hover:bg-primary/90 transition-colors disabled:opacity-50"
-                      >
-                        {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                        Save
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setIsEditing(true); setSaveError('') }}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[var(--radius-box)] text-sm bg-primary text-primary-content hover:bg-primary/90 transition-colors"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                      Edit
-                    </button>
-                  )}
-                </div>
+              {onSaveEdits && isEditing && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    disabled={isSaving}
+                    className="inline-flex min-h-12 items-center justify-center rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 px-2 text-sm font-semibold text-base-content/80 transition-colors hover:bg-base-content/5 disabled:opacity-50 lg:ml-auto lg:min-h-0 lg:border-0 lg:bg-base-content/5 lg:px-3 lg:py-2 lg:hover:bg-base-content/10"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[var(--radius-box)] bg-primary px-2 text-sm font-semibold text-primary-content transition-colors hover:bg-primary/90 disabled:opacity-50 lg:min-h-0 lg:px-4 lg:py-2"
+                  >
+                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin lg:w-3.5 lg:h-3.5" /> : <Save className="w-4 h-4 lg:w-3.5 lg:h-3.5" />}
+                    Save
+                  </button>
+                </>
+              )}
+              {onSaveEdits && !isEditing && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setIsEditing(true); setSaveError('') }}
+                  className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[var(--radius-box)] bg-base-content px-2 text-sm font-semibold text-base-100 transition-colors hover:bg-base-content/90 lg:ml-auto lg:min-h-0 lg:bg-primary lg:px-4 lg:py-2 lg:text-primary-content lg:hover:bg-primary/90"
+                >
+                  <Pencil className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
+                  Edit
+                </button>
               )}
             </div>
           </div>
