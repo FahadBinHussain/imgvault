@@ -141,7 +141,6 @@ export default function GalleryPage() {
     progress,
     error: uploadError,
     logs: uploadLogs,
-    history: uploadHistory = [],
   } = useImageUpload();
   const { collections, loading: collectionsLoading, createCollection, reload: reloadCollections } = useCollections();
   const sendMessage = useChromeMessage();
@@ -193,6 +192,7 @@ export default function GalleryPage() {
   const [uploadQueue, setUploadQueue] = useState([]);
   const [uploadQueuePreviewUrls, setUploadQueuePreviewUrls] = useState([]);
   const [activeUploadQueueIndex, setActiveUploadQueueIndex] = useState(0);
+  const [uploadAttemptStarted, setUploadAttemptStarted] = useState(false);
   const [batchUploadState, setBatchUploadState] = useState({
     active: false,
     index: 0,
@@ -239,20 +239,20 @@ export default function GalleryPage() {
   }, [configuredUploadServices, selectedUploadHostKeys]);
 
   const uploadIsActive = uploading || batchUploadState.active;
-  const latestUploadRun = Array.isArray(uploadHistory) && uploadHistory.length > 0 ? uploadHistory[0] : null;
-  const uploadLogPreviewEntries = uploadLogs.length > 0
-    ? uploadLogs
-    : (Array.isArray(latestUploadRun?.logs) ? latestUploadRun.logs : []);
-  const hasUploadLogPreview = uploadIsActive || uploadLogPreviewEntries.length > 0 || Boolean(progress);
-  const uploadLogTitle = uploadIsActive ? 'Live Upload Log' : 'Latest Upload Log';
+  const shouldShowUploadLogPreview = uploadIsActive || uploadAttemptStarted;
+  const uploadLogPreviewEntries = shouldShowUploadLogPreview ? uploadLogs : [];
+  const hasUploadLogPreview = shouldShowUploadLogPreview && (
+    uploadIsActive || uploadLogPreviewEntries.length > 0 || Boolean(progress)
+  );
+  const uploadLogTitle = uploadIsActive ? 'Live Upload Log' : 'Upload Log';
   const uploadLogDescription = uploadIsActive
     ? 'Current uploader output. Full history stays in the Logs page.'
-    : 'Last uploader output from the most recent saved run. Full history stays in the Logs page.';
+    : 'Output from this upload attempt. Full history stays in the Logs page.';
   const uploadProgressHeading = uploadIsActive
     ? (uploadImageData?.isVideo
         ? `Uploading video to ${selectedUploadHostLabel}...`
         : `Uploading image to ${selectedUploadHostLabel}...`)
-    : (latestUploadRun?.summary || progress || 'Previous upload output');
+    : (progress || 'Previous upload output');
   const uploadWaitingMessage = uploadIsActive
     ? 'Waiting for uploader logs...'
     : 'No uploader logs were saved for the last run.';
@@ -1017,6 +1017,7 @@ export default function GalleryPage() {
     setUploadHostSettings({});
     setSelectedUploadHostKeys([]);
     setUploadQueue([]);
+    setUploadAttemptStarted(false);
     setBatchUploadState({
       active: false,
       index: 0,
@@ -1160,6 +1161,7 @@ export default function GalleryPage() {
     setUploadPreviewFallbackTried(false);
     setDuplicateData(null);
     setUploadQueue([]);
+    setUploadAttemptStarted(false);
     setActiveUploadQueueIndex(0);
     resetBatchUploadState();
     batchCancelRequestedRef.current = false;
@@ -1198,6 +1200,7 @@ export default function GalleryPage() {
 
     batchCancelRequestedRef.current = false;
     setUploadQueue(supportedFiles);
+    setUploadAttemptStarted(false);
     setActiveUploadQueueIndex(0);
     resetBatchUploadState();
     setDuplicateData(null);
@@ -1223,6 +1226,7 @@ export default function GalleryPage() {
     if (!file) return;
 
     setActiveUploadQueueIndex(index);
+    setUploadAttemptStarted(false);
     setDuplicateData(null);
     await processMediaFile(file, 'Uploaded manually', 'Uploaded manually');
     setIsLocalUpload(true);
@@ -1596,6 +1600,7 @@ export default function GalleryPage() {
     if (files.length <= 1) return false;
 
     batchCancelRequestedRef.current = false;
+    setUploadAttemptStarted(true);
     setDuplicateData(null);
     setBatchUploadState({
       active: true,
@@ -1708,6 +1713,7 @@ export default function GalleryPage() {
       return;
     }
 
+    setUploadAttemptStarted(true);
     setDuplicateData(null);
 
     try {
@@ -2229,6 +2235,7 @@ export default function GalleryPage() {
                 ? (pendingImage.isYouTubeFrame ? 'youtube-frame.png' : 'image.png')
                 : (pendingImage.srcUrl.split('/').pop().split('?')[0] || 'image.jpg'));
             // Normal flow - has srcUrl
+            setUploadAttemptStarted(false);
             setUploadImageData({
               srcUrl: pendingImage.srcUrl,
               fileName: derivedFileName,
