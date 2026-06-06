@@ -119,16 +119,20 @@ class ImgVaultServiceWorker {
 
     if (existingTab?.id) {
       const shouldNavigate = reload || !String(existingTab.url || '').includes(routeFragment);
-      await chrome.tabs.update(existingTab.id, {
-        active: true,
-        ...(shouldNavigate ? { url: targetUrl } : {}),
-      });
+      try {
+        await chrome.tabs.update(existingTab.id, {
+          active: true,
+          ...(shouldNavigate ? { url: targetUrl } : {}),
+        });
 
-      if (existingTab.windowId) {
-        await chrome.windows.update(existingTab.windowId, { focused: true });
+        if (existingTab.windowId) {
+          await chrome.windows.update(existingTab.windowId, { focused: true });
+        }
+
+        return existingTab.id;
+      } catch (error) {
+        console.warn('[ImgVault] Existing app tab could not be focused. Opening a fresh gallery tab.', error);
       }
-
-      return existingTab.id;
     }
 
     const tab = await chrome.tabs.create({ url: targetUrl, active: true });
@@ -2936,7 +2940,7 @@ chrome.action.onClicked.addListener(async (tab) => {
     return;
   }
 
-  await serviceWorker.openOrFocusApp('/gallery');
+  await serviceWorker.openOrFocusApp('/gallery', { reload: true });
 });
 
 // Export for testing
