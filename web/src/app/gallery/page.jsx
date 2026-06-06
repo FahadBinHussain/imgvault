@@ -103,6 +103,13 @@ const SORT_OPTIONS = [
   { value: 'kind', label: 'Media type' },
 ]
 
+const MEDIA_FILTER_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'image', label: 'Images' },
+  { value: 'video', label: 'Videos' },
+  { value: 'link', label: 'Links' },
+]
+
 const MEDIA_KIND_ORDER = {
   image: 0,
   video: 1,
@@ -825,6 +832,7 @@ export default function GalleryPage() {
   const [loadError, setLoadError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [sortMode, setSortMode] = useState('newest')
+  const [mediaFilter, setMediaFilter] = useState('all')
   const [viewMode, setViewMode] = useState('grid')
   const [selectedImage, setSelectedImage] = useState(null)
   const [selectedIndex, setSelectedIndex] = useState(-1)
@@ -882,6 +890,8 @@ export default function GalleryPage() {
       img.pageTitle,
       img.description,
       img.sourcePageUrl,
+      img.sourceImageUrl,
+      img.linkUrl,
       ...(img.tags || []),
     ]
       .filter(Boolean)
@@ -890,9 +900,26 @@ export default function GalleryPage() {
 
     return haystack.includes(q)
   }), [images, searchQuery])
+
+  const mediaCounts = useMemo(() => {
+    return searchedImages.reduce((acc, item) => {
+      const kind = getItemKind(item)
+      acc.all += 1
+      if (kind === 'image' || kind === 'video' || kind === 'link') {
+        acc[kind] += 1
+      }
+      return acc
+    }, { all: 0, image: 0, video: 0, link: 0 })
+  }, [searchedImages])
+
+  const mediaFilteredImages = useMemo(() => {
+    if (mediaFilter === 'all') return searchedImages
+    return searchedImages.filter((item) => getItemKind(item) === mediaFilter)
+  }, [searchedImages, mediaFilter])
+
   const filteredImages = useMemo(
-    () => sortMediaItems(searchedImages, sortMode),
-    [searchedImages, sortMode]
+    () => sortMediaItems(mediaFilteredImages, sortMode),
+    [mediaFilteredImages, sortMode]
   )
   const counts = filteredImages.reduce((acc, item) => {
     const kind = getItemKind(item)
@@ -1087,12 +1114,32 @@ export default function GalleryPage() {
             
               {images.length > 0 && (
                 <div className="w-full md:w-auto flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 animate-fade-in" style={{ animationDelay: '100ms' }}>
+                  {/* Media filter */}
+                  <div className="flex w-full sm:w-auto items-center gap-1 rounded-[var(--radius-box)] border border-base-content/10 bg-base-200/60 p-1.5">
+                    {MEDIA_FILTER_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setMediaFilter(option.value)}
+                        className={`flex-1 sm:flex-none rounded-[calc(var(--radius-box)-4px)] px-3 py-2 text-xs font-semibold transition-all duration-200 ${
+                          mediaFilter === option.value
+                            ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/20'
+                            : 'text-base-content/65 hover:bg-base-content/5 hover:text-base-content'
+                        }`}
+                        aria-pressed={mediaFilter === option.value}
+                      >
+                        <span>{option.label}</span>
+                        <span className="ml-1.5 opacity-75">{mediaCounts[option.value] || 0}</span>
+                      </button>
+                    ))}
+                  </div>
+
                   {/* Search */}
                   <div className="relative group">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/55 transition-colors group-focus-within:text-primary-400" />
                     <input
                       type="text"
-                      placeholder="Search images..."
+                      placeholder="Search gallery..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-11 pr-4 py-3 bg-base-200/60 border border-base-content/10 rounded-[var(--radius-box)] text-sm focus:outline-none focus:border-primary-500/50 focus:bg-base-200 w-full sm:w-64 transition-all duration-300 sm:focus:w-80 focus:shadow-lg focus:shadow-primary-500/10"
@@ -1149,8 +1196,18 @@ export default function GalleryPage() {
               <div className="glass rounded-[var(--radius-box)] p-8 text-error text-center animate-fade-in">
                 <p className="font-medium">{loadError}</p>
               </div>
-            ) : filteredImages.length === 0 ? (
+            ) : images.length === 0 ? (
               <EmptyState hasConfig={hasConfig} />
+            ) : filteredImages.length === 0 ? (
+              <div className="glass rounded-[var(--radius-box)] p-8 text-center animate-fade-in">
+                <FileText className="mx-auto mb-4 h-10 w-10 text-primary-400" />
+                <h3 className="mb-2 text-xl font-bold">
+                  No {mediaFilter === 'all' ? 'items' : `${mediaFilter}s`} found
+                </h3>
+                <p className="text-sm text-base-content/65">
+                  Try another media tab or clear the search.
+                </p>
+              </div>
             ) : viewMode === 'grid' ? (
               /* Google Photos style with date headers */
               <div className="space-y-8">

@@ -22,9 +22,16 @@ const CSS = `
 .iv-nav-sort select:focus{border-color:var(--color-primary);box-shadow:0 0 0 2px oklch(from var(--color-primary) l c h / 0.1)}
 .iv-nav-sort-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);opacity:.35;pointer-events:none}
 .iv-nav-sort::after{content:'';position:absolute;right:11px;top:50%;width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-70%) rotate(45deg);opacity:.35;pointer-events:none}
+.iv-filter-tabs{display:flex;align-items:center;gap:3px;height:32px;padding:3px;border:1px solid var(--color-base-300);background:var(--color-base-100);border-radius:9px}
+.iv-filter-tab{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:24px;padding:0 8px;border:0;border-radius:7px;background:transparent;color:var(--color-base-content);opacity:.55;font-size:11px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;cursor:pointer;transition:all .15s ease;white-space:nowrap}
+.iv-filter-tab:hover{opacity:.85;background:var(--color-base-200)}
+.iv-filter-tab-on{opacity:1!important;color:var(--color-primary-content)!important;background:var(--color-primary)!important;box-shadow:0 2px 10px oklch(from var(--color-primary) l c h / 0.25)}
+.iv-filter-count{font-size:10px;opacity:.72}
 .iv-mobile-controls{display:flex;align-items:center;gap:8px;margin-top:8px}
 .iv-mobile-controls .iv-nav-search{max-width:none}
 .iv-mobile-controls .iv-nav-sort{flex-basis:142px;flex-shrink:0}
+.iv-mobile-filters{margin-top:8px;width:100%;overflow-x:auto}
+.iv-mobile-filters .iv-filter-tabs{width:max-content;min-width:100%}
 
 .iv-select-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:9px;font-size:12px;font-weight:500;font-family:'Outfit',system-ui,sans-serif;cursor:pointer;transition:all .15s ease;border:1px solid transparent;background:transparent;color:var(--color-base-content);opacity:.6}
 .iv-select-btn:hover{opacity:1;background:var(--color-base-200)}
@@ -76,6 +83,9 @@ export default function GalleryNavbar({
   sortMode,
   setSortMode,
   sortOptions = [],
+  mediaFilter = 'all',
+  setMediaFilter,
+  mediaFilterCounts = {},
   selectedImages,
   selectAll,
   filteredImages,
@@ -143,8 +153,32 @@ export default function GalleryNavbar({
 
   const showSearch = !isSettingsPage && !isHostPage && !isLogsPage;
   const showSort = showSearch && Array.isArray(sortOptions) && sortOptions.length > 0 && typeof setSortMode === 'function';
+  const showMediaFilter = showSearch && typeof setMediaFilter === 'function';
   const showActions = !isSettingsPage && !isHostPage && !isLogsPage && !isVaultPage;
   const isSubPage = isTrashPage || isSettingsPage || isHostPage || isLogsPage || isVaultPage;
+  const mediaFilterOptions = [
+    { value: 'all', label: 'All' },
+    { value: 'image', label: 'Images' },
+    { value: 'video', label: 'Videos' },
+    { value: 'link', label: 'Links' },
+  ];
+  const renderMediaFilterTabs = () => showMediaFilter ? (
+    <div className="iv-filter-tabs" role="tablist" aria-label="Filter media type">
+      {mediaFilterOptions.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          className={`iv-filter-tab ${mediaFilter === option.value ? 'iv-filter-tab-on' : ''}`}
+          onClick={() => setMediaFilter(option.value)}
+          role="tab"
+          aria-selected={mediaFilter === option.value}
+        >
+          <span>{option.label}</span>
+          <span className="iv-filter-count">{mediaFilterCounts[option.value] || 0}</span>
+        </button>
+      ))}
+    </div>
+  ) : null;
 
   return (
     <div ref={navRef} className="iv-nav">
@@ -206,6 +240,7 @@ export default function GalleryNavbar({
                     </select>
                   </div>
                 )}
+                {renderMediaFilterTabs()}
               </div>
             )}
 
@@ -313,6 +348,12 @@ export default function GalleryNavbar({
                   </select>
                 </div>
               )}
+            </div>
+          )}
+
+          {showMediaFilter && (
+            <div className="iv-mobile-filters md:hidden">
+              {renderMediaFilterTabs()}
             </div>
           )}
 

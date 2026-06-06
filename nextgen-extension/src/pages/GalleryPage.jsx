@@ -70,6 +70,8 @@ const MEDIA_KIND_ORDER = {
   link: 2,
 };
 
+const MEDIA_FILTER_OPTIONS = ['all', 'image', 'video', 'link'];
+
 const isDateSort = (sortMode) => sortMode === 'newest' || sortMode === 'oldest';
 
 const getSortLabel = (sortMode) =>
@@ -138,6 +140,7 @@ export default function GalleryPage() {
   const [firebaseConfig] = useChromeStorage('firebaseConfig', null, 'sync');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortMode, setSortMode] = useState('newest');
+  const [mediaFilter, setMediaFilter] = useState('all');
   const [selectedImage, setSelectedImage] = useState(null);
   const [fullImageDetails, setFullImageDetails] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -344,20 +347,39 @@ export default function GalleryPage() {
       }
 
       // Filter by search query
-      const query = searchQuery.toLowerCase();
+      const query = searchQuery.trim().toLowerCase();
+      if (!query) return true;
+
       return (
         img.pageTitle?.toLowerCase().includes(query) ||
         img.description?.toLowerCase().includes(query) ||
         img.tags?.some(tag => tag.toLowerCase().includes(query)) ||
         img.sourceImageUrl?.toLowerCase().includes(query) ||
-        img.sourcePageUrl?.toLowerCase().includes(query)
+        img.sourcePageUrl?.toLowerCase().includes(query) ||
+        img.linkUrl?.toLowerCase().includes(query)
       );
     });
   }, [images, collectionId, searchQuery]);
 
+  const mediaFilterCounts = useMemo(() => {
+    return searchedImages.reduce((acc, img) => {
+      const kind = getMediaItemKind(img);
+      acc.all += 1;
+      if (MEDIA_FILTER_OPTIONS.includes(kind)) {
+        acc[kind] += 1;
+      }
+      return acc;
+    }, { all: 0, image: 0, video: 0, link: 0 });
+  }, [searchedImages]);
+
+  const mediaFilteredImages = useMemo(() => {
+    if (mediaFilter === 'all') return searchedImages;
+    return searchedImages.filter((img) => getMediaItemKind(img) === mediaFilter);
+  }, [searchedImages, mediaFilter]);
+
   const filteredImages = useMemo(() => {
-    return sortMediaItems(searchedImages, sortMode);
-  }, [searchedImages, sortMode]);
+    return sortMediaItems(mediaFilteredImages, sortMode);
+  }, [mediaFilteredImages, sortMode]);
 
   const selectedItemForType =
     fullImageDetails?.id === selectedImage?.id ? fullImageDetails : selectedImage;
@@ -2230,6 +2252,9 @@ export default function GalleryPage() {
         sortMode={sortMode}
         setSortMode={setSortMode}
         sortOptions={SORT_OPTIONS}
+        mediaFilter={mediaFilter}
+        setMediaFilter={setMediaFilter}
+        mediaFilterCounts={mediaFilterCounts}
         selectedImages={selectedImages}
         selectAll={selectAll}
         filteredImages={filteredImages}
@@ -2342,8 +2367,32 @@ export default function GalleryPage() {
           </motion.div>
         )}
 
+        {!loading && images.length > 0 && filteredImages.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="relative z-10 rounded-2xl p-10 text-center"
+            style={{
+              background: 'oklch(from var(--color-base-100) l c h / 0.45)',
+              border: '1px solid oklch(from var(--color-base-content) l c h / 0.06)',
+              boxShadow: '0 8px 32px oklch(from var(--color-base-content) l c h / 0.04)',
+            }}
+          >
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl" style={{ background: 'oklch(from var(--color-primary) l c h / 0.12)', color: 'var(--color-primary)' }}>
+              <Link2 style={{ width: 22, height: 22 }} />
+            </div>
+            <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--color-base-content)' }}>
+              No {mediaFilter === 'all' ? 'items' : `${mediaFilter}s`} found
+            </h3>
+            <p className="text-sm" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
+              Try another media tab or clear the search.
+            </p>
+          </motion.div>
+        )}
+
         {/* Gallery Grid */}
-        {!loading && Object.keys(groupedImages).map(date => (
+        {!loading && filteredImages.length > 0 && Object.keys(groupedImages).map(date => (
           <div key={date} className="mb-10 relative z-10" ref={el => dateGroupRefs.current[date] = el}>
             <div className="g-date">
               <span className="g-date-line" />
