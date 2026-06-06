@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { 
@@ -8,6 +8,7 @@ import {
   Search, 
   Grid, 
   List, 
+  ArrowUpDown,
   ExternalLink,
   Calendar,
   Tag,
@@ -90,6 +91,81 @@ function getVideoPosterUrl(item, preferredProvider = 'imgbb') {
     item?.imgbbThumbUrl,
     getPreferredImageProviderLink(item, preferredProvider, 'url')
   )
+}
+
+const SORT_OPTIONS = [
+  { value: 'newest', label: 'Newest added' },
+  { value: 'oldest', label: 'Oldest added' },
+  { value: 'title-asc', label: 'Title A-Z' },
+  { value: 'title-desc', label: 'Title Z-A' },
+  { value: 'size-desc', label: 'Largest file' },
+  { value: 'size-asc', label: 'Smallest file' },
+  { value: 'kind', label: 'Media type' },
+]
+
+const MEDIA_KIND_ORDER = {
+  image: 0,
+  video: 1,
+  link: 2,
+}
+
+function getSortableDateValue(item) {
+  const value = item?.internalAddedTimestamp || item?.createdAt || item?.updatedAt || item?.creationDate || ''
+  const time = value ? new Date(value).getTime() : 0
+  return Number.isFinite(time) ? time : 0
+}
+
+function getSortableTitle(item) {
+  return String(
+    item?.pageTitle ||
+    item?.fileName ||
+    item?.linkUrl ||
+    item?.sourcePageUrl ||
+    'Untitled'
+  ).trim().toLocaleLowerCase()
+}
+
+function getSortableFileSize(item) {
+  const size = Number(item?.fileSize || item?.size || 0)
+  return Number.isFinite(size) ? size : 0
+}
+
+function compareTitle(a, b) {
+  return getSortableTitle(a).localeCompare(getSortableTitle(b), undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  })
+}
+
+function sortMediaItems(items, sortMode) {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      let result = 0
+
+      if (sortMode === 'oldest') {
+        result = getSortableDateValue(a.item) - getSortableDateValue(b.item)
+      } else if (sortMode === 'title-asc') {
+        result = compareTitle(a.item, b.item)
+      } else if (sortMode === 'title-desc') {
+        result = compareTitle(b.item, a.item)
+      } else if (sortMode === 'size-desc') {
+        result = getSortableFileSize(b.item) - getSortableFileSize(a.item)
+      } else if (sortMode === 'size-asc') {
+        result = getSortableFileSize(a.item) - getSortableFileSize(b.item)
+      } else if (sortMode === 'kind') {
+        result = (MEDIA_KIND_ORDER[getItemKind(a.item)] ?? 99) - (MEDIA_KIND_ORDER[getItemKind(b.item)] ?? 99)
+      } else {
+        result = getSortableDateValue(b.item) - getSortableDateValue(a.item)
+      }
+
+      return result || a.index - b.index
+    })
+    .map(({ item }) => item)
+}
+
+function getSortLabel(sortMode) {
+  return SORT_OPTIONS.find((option) => option.value === sortMode)?.label || SORT_OPTIONS[0].label
 }
 
 // Skeleton Loader Component with Shimmer
@@ -692,7 +768,14 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
 }
 
 // Group images by date helper
-function groupImagesByDate(images) {
+function groupImagesByDate(images, sortMode = 'newest') {
+  if (sortMode !== 'newest' && sortMode !== 'oldest') {
+    return [{
+      date: getSortLabel(sortMode),
+      images,
+    }]
+  }
+
   const groups = {}
   
   images.forEach((img) => {
@@ -741,6 +824,7 @@ export default function GalleryPage() {
   const [hasConfig, setHasConfig] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [sortMode, setSortMode] = useState('newest')
   const [viewMode, setViewMode] = useState('grid')
   const [selectedImage, setSelectedImage] = useState(null)
   const [selectedIndex, setSelectedIndex] = useState(-1)
@@ -790,7 +874,7 @@ export default function GalleryPage() {
     }
   }
 
-  const filteredImages = images.filter((img) => {
+  const searchedImages = useMemo(() => images.filter((img) => {
     const q = searchQuery.trim().toLowerCase()
     if (!q) return true
 
@@ -805,7 +889,11 @@ export default function GalleryPage() {
       .toLowerCase()
 
     return haystack.includes(q)
-  })
+  }), [images, searchQuery])
+  const filteredImages = useMemo(
+    () => sortMediaItems(searchedImages, sortMode),
+    [searchedImages, sortMode]
+  )
   const counts = filteredImages.reduce((acc, item) => {
     const kind = getItemKind(item)
     acc.total += 1
@@ -813,7 +901,7 @@ export default function GalleryPage() {
     return acc
   }, { total: 0, image: 0, video: 0, link: 0 })
   const filteredIndexById = new Map(filteredImages.map((item, itemIndex) => [item.id, itemIndex]))
-  const groupedImages = groupImagesByDate(filteredImages)
+  const groupedImages = groupImagesByDate(filteredImages, sortMode)
 
   const loadImageDetail = useCallback(async (image) => {
     if (!image?._isSummary) return image
@@ -1019,6 +1107,24 @@ export default function GalleryPage() {
                     )}
                   </div>
                   
+                  {/* Sort */}
+                  <div className="relative group w-full sm:w-48">
+                    <ArrowUpDown className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/55 transition-colors group-focus-within:text-primary-400 pointer-events-none" />
+                    <label htmlFor="gallery-sort" className="sr-only">Sort gallery</label>
+                    <select
+                      id="gallery-sort"
+                      value={sortMode}
+                      onChange={(e) => setSortMode(e.target.value)}
+                      className="w-full appearance-none pl-11 pr-9 py-3 bg-base-200/60 border border-base-content/10 rounded-[var(--radius-box)] text-sm focus:outline-none focus:border-primary-500/50 focus:bg-base-200 transition-all duration-300 focus:shadow-lg focus:shadow-primary-500/10"
+                    >
+                      {SORT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   {/* View toggle */}
                   <div className="flex items-center gap-1 glass rounded-[var(--radius-box)] p-1.5">
                     <button
