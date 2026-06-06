@@ -127,7 +127,6 @@ export function toMediaDbPayload(source = {}, options = {}) {
     : deletedAtFromSource;
   const internalAddedTimestamp =
     asIsoOrNull(normalized.internalAddedTimestamp) ||
-    asIsoOrNull(normalized.creationDate) ||
     fallbackTimestamp ||
     new Date().toISOString();
   const normalizedExtra = isPlainObject(normalized.extraMetadata)
