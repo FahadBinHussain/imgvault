@@ -15,6 +15,8 @@ import {
   getMissingRequiredImageUploadServices,
 } from '../config/providerCatalog.js';
 import {
+  getImageRetrySourceCandidates,
+  getImageUploadService,
   mergeImageProviderResult,
 } from '../utils/imageProviderLinks.js';
 import {
@@ -1265,6 +1267,12 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'retryImageHostUpload':
+        this.retryImageHostUpload(request.data)
+          .then(result => sendResponse({ success: true, data: result }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       default:
         console.warn('Unknown action:', action);
         return false;
@@ -2086,6 +2094,101 @@ class ImgVaultServiceWorker {
       console.error('Video upload error:', error);
       await this.archiveUploadLogRun('error', error.message || 'Video upload failed.');
       throw error;
+    }
+  }
+
+  async retryImageHostUpload({ imageId, host } = {}) {
+    const targetHost = String(host || '').trim().toLowerCase();
+    const service = getImageUploadService(targetHost);
+    const hostLabel = service?.label || '';
+
+    if (!imageId) {
+      throw new Error('Missing image ID for provider resolve.');
+    }
+    if (!service) {
+      throw new Error('Choose a configured image host to resolve.');
+    }
+
+    const item = await this.storage.getImageById(imageId);
+    if (!item) {
+      throw new Error('Saved image was not found.');
+    }
+    if (item.isLink || item.isVideo || String(item.fileType || '').startsWith('video/')) {
+      throw new Error('Only saved images can resolve image hosts.');
+    }
+
+    const settings = await chrome.storage.sync.get(service.apiKeyFields || []);
+    if (!service.isConfigured(settings)) {
+      throw new Error(`${hostLabel} API settings are not configured.`);
+    }
+
+    const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim());
+    const sourceCandidates = getImageRetrySourceCandidates(item, targetHost);
+    const sourceUrl = sourceCandidates.find(isHttpUrl);
+
+    if (!sourceUrl) {
+      throw new Error(`No existing hosted image URL is available to resolve ${hostLabel}.`);
+    }
+
+    await chrome.storage.local.set({
+      uploadActive: true,
+      uploadStatus: `Resolving ${hostLabel} image host...`,
+    });
+    await this.appendUploadLog(`Resolving ${hostLabel} from hosted fallback URL...`);
+
+    try {
+      const imageBlob = await this.fetchImage(sourceUrl, undefined, item.sourcePageUrl || sourceUrl);
+      const isImageBlob = (
+        imageBlob instanceof Blob &&
+        imageBlob.size > 0 &&
+        (
+          !imageBlob.type ||
+          imageBlob.type.startsWith('image/') ||
+          imageBlob.type === 'application/octet-stream' ||
+          imageBlob.type === 'binary/octet-stream'
+        )
+      );
+
+      if (!isImageBlob) {
+        throw new Error(`Resolve source did not return an image file${imageBlob?.type ? ` (${imageBlob.type})` : ''}.`);
+      }
+
+      const uploader = this[service.uploaderKey];
+      if (!uploader) {
+        throw new Error(`${hostLabel} uploader is not available.`);
+      }
+
+      const result = await service.upload({
+        uploader,
+        blob: imageBlob,
+        settings,
+        data: {
+          ...item,
+          imageUrl: sourceUrl,
+          pageUrl: item.sourcePageUrl || sourceUrl,
+          fileName: item.fileName || this.extractFileName({ imageUrl: sourceUrl }) || 'image',
+        },
+      });
+
+      const mergedUpdates = mergeImageProviderResult(item, targetHost, result);
+      const updates = {
+        imageHosts: mergedUpdates.imageHosts,
+        ...(service.urlField ? { [service.urlField]: mergedUpdates[service.urlField] || '' } : {}),
+        ...(service.deleteUrlField ? { [service.deleteUrlField]: mergedUpdates[service.deleteUrlField] || '' } : {}),
+        ...(service.thumbUrlField ? { [service.thumbUrlField]: mergedUpdates[service.thumbUrlField] || '' } : {}),
+      };
+
+      await this.storage.updateImage(imageId, sanitizeForNeon(updates));
+      await this.updateStatusWithLog(`${hostLabel} resolve succeeded. Saved the missing host URLs.`, 'success');
+      return {
+        id: imageId,
+        ...updates,
+      };
+    } catch (error) {
+      await this.updateStatusWithLog(`${hostLabel} resolve failed: ${error.message || String(error)}`, 'error');
+      throw error;
+    } finally {
+      await chrome.storage.local.set({ uploadActive: false });
     }
   }
 

@@ -83,6 +83,36 @@ export function getPreferredImageProviderLink(item, preferredProvider = DEFAULT_
   return '';
 }
 
+export function hasImageProviderLink(item, providerKey) {
+  const link = getImageProviderLinks(item)[providerKey];
+  return Boolean(link?.url || link?.displayUrl || link?.directUrl);
+}
+
+export function hasAnyImageProviderLink(item) {
+  return Object.values(getImageProviderLinks(item)).some((link) => (
+    link?.url || link?.displayUrl || link?.directUrl
+  ));
+}
+
+export function getMissingImageUploadServices(item) {
+  return IMAGE_UPLOAD_SERVICES.filter((service) => !hasImageProviderLink(item, service.key));
+}
+
+export function getImageRetrySourceCandidates(item, targetProviderKey) {
+  const links = getImageProviderLinks(item);
+  const candidates = [];
+
+  for (const service of IMAGE_UPLOAD_SERVICES) {
+    if (service.key === targetProviderKey) continue;
+    const link = links[service.key];
+    if (!link) continue;
+    candidates.push(link.directUrl, link.url, link.displayUrl);
+  }
+
+  candidates.push(item?.sourceImageUrl);
+  return candidates.filter(hasText);
+}
+
 export function buildImageProviderLinkFromResult(result = {}) {
   return {
     url: pickText(result.url, result.displayUrl, result.directUrl),

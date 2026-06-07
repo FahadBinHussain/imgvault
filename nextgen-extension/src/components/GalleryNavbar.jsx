@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Upload, Search, Trash2, Settings, FolderOpen, Image, Cable, FileText, LockKeyhole, ArrowUpDown } from 'lucide-react';
+import { RefreshCw, Upload, Search, Trash2, Settings, FolderOpen, Image, Cable, FileText, LockKeyhole, ArrowUpDown, UploadCloud } from 'lucide-react';
 import ThemeToggleButton from './ThemeToggleButton';
 
 const CSS = `
@@ -98,6 +98,7 @@ export default function GalleryNavbar({
   isSettingsPage = false,
   isHostPage = false,
   isLogsPage = false,
+  isResolvePage = false,
   isVaultPage = false,
   onEmptyTrash,
   onMoveSelectedToVault,
@@ -131,6 +132,7 @@ export default function GalleryNavbar({
     : isTrashPage ? 'Trash'
     : isHostPage ? 'Native Host'
     : isLogsPage ? 'Logs'
+    : isResolvePage ? 'Resolve'
     : isVaultPage ? 'Secret Vault'
     : 'ImgVault';
   const pageSubtitle = collectionId && currentCollection
@@ -138,6 +140,7 @@ export default function GalleryNavbar({
     : isSettingsPage ? 'Configuration'
     : isHostPage ? 'Native host controls'
     : isLogsPage ? 'Upload & host history'
+    : isResolvePage ? 'Provider gaps'
     : isVaultPage ? vaultBreakdownParts.join(' · ')
     : isTrashPage ? `${visibleCount} item${visibleCount !== 1 ? 's' : ''}`
     : breakdownParts.join(' · ');
@@ -151,11 +154,11 @@ export default function GalleryNavbar({
     return () => obs.disconnect();
   }, [onHeightChange, selectionMode]);
 
-  const showSearch = !isSettingsPage && !isHostPage && !isLogsPage;
+  const showSearch = !isSettingsPage && !isHostPage && !isLogsPage && !isResolvePage;
   const showSort = showSearch && Array.isArray(sortOptions) && sortOptions.length > 0 && typeof setSortMode === 'function';
   const showMediaFilter = showSearch && typeof setMediaFilter === 'function';
-  const showActions = !isSettingsPage && !isHostPage && !isLogsPage && !isVaultPage;
-  const isSubPage = isTrashPage || isSettingsPage || isHostPage || isLogsPage || isVaultPage;
+  const showActions = !isSettingsPage && !isHostPage && !isLogsPage && !isResolvePage && !isVaultPage;
+  const isSubPage = isTrashPage || isSettingsPage || isHostPage || isLogsPage || isResolvePage || isVaultPage;
   const mediaFilterOptions = [
     { value: 'all', label: 'All' },
     { value: 'image', label: 'Images' },
@@ -279,6 +282,10 @@ export default function GalleryNavbar({
 
               <button onClick={() => navigate('/logs')} className={`iv-icon-btn ${isLogsPage ? 'iv-icon-btn-on' : ''}`} title="Logs">
                 <FileText style={{ width: 14, height: 14 }} />
+              </button>
+
+              <button onClick={() => navigate('/resolve')} className={`iv-icon-btn ${isResolvePage ? 'iv-icon-btn-on' : ''}`} title="Resolve Hosts">
+                <UploadCloud style={{ width: 14, height: 14 }} />
               </button>
 
               <button onClick={() => navigate('/vault')} className={`iv-icon-btn ${isVaultPage ? 'iv-icon-btn-on' : ''}`} title="Secret Vault">

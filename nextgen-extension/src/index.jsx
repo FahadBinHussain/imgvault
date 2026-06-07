@@ -14,6 +14,7 @@ import CollectionsPage from './pages/CollectionsPage';
 import HostPage from './pages/HostPage';
 import LogsPage from './pages/LogsPage';
 import VaultPage from './pages/VaultPage';
+import ResolvePage from './pages/ResolvePage';
 import './index.css';
 
 try {
@@ -35,6 +36,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/host" element={<HostPage />} />
         <Route path="/logs" element={<LogsPage />} />
+        <Route path="/resolve" element={<ResolvePage />} />
         <Route path="/vault" element={<VaultPage />} />
         <Route path="/trash" element={<TrashPage />} />
         <Route path="/popup" element={<PopupPage />} />
