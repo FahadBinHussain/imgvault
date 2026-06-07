@@ -62,6 +62,13 @@ export default function ResolvePage() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('ready');
   const [resolving, setResolving] = useState({});
+  const [bulkResolveState, setBulkResolveState] = useState({
+    active: false,
+    completed: 0,
+    failed: 0,
+    total: 0,
+    current: '',
+  });
   const [notice, setNotice] = useState(null);
 
   const loadSettings = () => {
@@ -156,26 +163,39 @@ export default function ResolvePage() {
     });
   }, [filter, query, rows]);
 
-  const resolveProvider = async (row, service) => {
+  const visibleResolveTargets = useMemo(() => (
+    visibleRows.flatMap((row) => (
+      row.readyMissingProviders.map((service) => ({ row, service }))
+    ))
+  ), [visibleRows]);
+
+  const resolveProvider = async (row, service, options = {}) => {
+    const { reloadAfter = true, showNotice = true } = options;
     const key = `${row.item.id}:${service.key}`;
     setResolving((current) => ({ ...current, [key]: true }));
-    setNotice(null);
+    if (showNotice) setNotice(null);
 
     try {
       await sendMessage('retryImageHostUpload', {
         imageId: row.item.id,
         host: service.key,
       });
-      setNotice({
-        type: 'success',
-        message: `${service.label} saved for ${row.title}.`,
-      });
-      await reload({ silent: true });
+      if (showNotice) {
+        setNotice({
+          type: 'success',
+          message: `${service.label} saved for ${row.title}.`,
+        });
+      }
+      if (reloadAfter) await reload({ silent: true });
+      return true;
     } catch (error) {
-      setNotice({
-        type: 'error',
-        message: `${service.label} failed for ${row.title}: ${error.message || String(error)}`,
-      });
+      if (showNotice) {
+        setNotice({
+          type: 'error',
+          message: `${service.label} failed for ${row.title}: ${error.message || String(error)}`,
+        });
+      }
+      return false;
     } finally {
       setResolving((current) => {
         const next = { ...current };
@@ -183,6 +203,64 @@ export default function ResolvePage() {
         return next;
       });
     }
+  };
+
+  const resolveAllVisible = async () => {
+    const targets = visibleResolveTargets;
+    if (targets.length === 0 || bulkResolveState.active) return;
+
+    let completed = 0;
+    let failed = 0;
+
+    setNotice(null);
+    setBulkResolveState({
+      active: true,
+      completed: 0,
+      failed: 0,
+      total: targets.length,
+      current: '',
+    });
+
+    for (const { row, service } of targets) {
+      setBulkResolveState({
+        active: true,
+        completed,
+        failed,
+        total: targets.length,
+        current: `${service.label} for ${row.title}`,
+      });
+
+      const ok = await resolveProvider(row, service, {
+        reloadAfter: false,
+        showNotice: false,
+      });
+
+      if (ok) completed += 1;
+      else failed += 1;
+
+      setBulkResolveState({
+        active: true,
+        completed,
+        failed,
+        total: targets.length,
+        current: `${service.label} for ${row.title}`,
+      });
+    }
+
+    await reload({ silent: true });
+    setBulkResolveState({
+      active: false,
+      completed,
+      failed,
+      total: targets.length,
+      current: '',
+    });
+    setNotice({
+      type: failed > 0 ? 'error' : 'success',
+      message: failed > 0
+        ? `Resolved ${completed}/${targets.length} host gap${targets.length !== 1 ? 's' : ''}. ${failed} failed.`
+        : `Resolved ${completed} host gap${completed !== 1 ? 's' : ''}.`,
+    });
   };
 
   const refreshAll = async () => {
@@ -267,6 +345,17 @@ export default function ResolvePage() {
                 className="h-10 w-full rounded-[var(--radius-box)] border border-base-300 bg-base-100 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/10"
               />
             </div>
+            <Button
+              variant="primary"
+              onClick={resolveAllVisible}
+              className="h-10 gap-2 px-3 text-sm"
+              disabled={loading || settingsLoading || bulkResolveState.active || visibleResolveTargets.length === 0}
+            >
+              {bulkResolveState.active ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+              {bulkResolveState.active
+                ? `${bulkResolveState.completed}/${bulkResolveState.total}`
+                : `Resolve all (${visibleResolveTargets.length})`}
+            </Button>
             <Button variant="outline" onClick={refreshAll} className="h-10 gap-2 px-3 text-sm" disabled={loading || settingsLoading}>
               <RefreshCw className={`h-4 w-4 ${loading || settingsLoading ? 'animate-spin' : ''}`} />
               Refresh
@@ -306,6 +395,22 @@ export default function ResolvePage() {
               : 'border-error/25 bg-error/10 text-error'
           }`}>
             {notice.message}
+          </div>
+        )}
+
+        {bulkResolveState.active && (
+          <div className="rounded-[var(--radius-box)] border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-semibold">
+                Resolving {bulkResolveState.completed}/{bulkResolveState.total}
+              </span>
+              {bulkResolveState.failed > 0 && (
+                <span className="text-error">{bulkResolveState.failed} failed</span>
+              )}
+            </div>
+            {bulkResolveState.current && (
+              <div className="mt-1 truncate text-primary/80">{bulkResolveState.current}</div>
+            )}
           </div>
         )}
 
@@ -398,7 +503,7 @@ export default function ResolvePage() {
                           key={service.key}
                           variant="primary"
                           className="h-9 justify-center gap-2 text-sm"
-                          disabled={isResolving}
+                          disabled={isResolving || bulkResolveState.active}
                           onClick={() => resolveProvider(row, service)}
                         >
                           {isResolving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
