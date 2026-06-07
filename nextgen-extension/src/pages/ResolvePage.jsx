@@ -27,6 +27,8 @@ import {
 const IMAGE_SETTING_KEYS = Array.from(
   new Set(IMAGE_UPLOAD_SERVICES.flatMap((service) => service.apiKeyFields || []))
 );
+const RESOLVE_RUN_HISTORY_KEY = 'imgvaultResolveRunHistory';
+const RESOLVE_RUN_HISTORY_LIMIT = 12;
 
 const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || '').trim());
 
@@ -38,6 +40,12 @@ function formatDate(value) {
   if (!value) return '';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString();
+}
+
+function formatTimestamp(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
 }
 
 function getPreviewUrl(item, preferredSource) {
@@ -69,6 +77,7 @@ export default function ResolvePage() {
     total: 0,
     current: '',
   });
+  const [resolveRuns, setResolveRuns] = useState([]);
   const [notice, setNotice] = useState(null);
 
   const loadSettings = () => {
@@ -87,6 +96,22 @@ export default function ResolvePage() {
       if (IMAGE_SETTING_KEYS.some((key) => changes[key])) {
         loadSettings();
       }
+    };
+
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange);
+  }, []);
+
+  useEffect(() => {
+    chrome.storage.local.get([RESOLVE_RUN_HISTORY_KEY], (result) => {
+      const savedRuns = result?.[RESOLVE_RUN_HISTORY_KEY];
+      setResolveRuns(Array.isArray(savedRuns) ? savedRuns.slice(0, RESOLVE_RUN_HISTORY_LIMIT) : []);
+    });
+
+    const handleStorageChange = (changes, area) => {
+      if (area !== 'local' || !changes[RESOLVE_RUN_HISTORY_KEY]) return;
+      const nextRuns = changes[RESOLVE_RUN_HISTORY_KEY].newValue;
+      setResolveRuns(Array.isArray(nextRuns) ? nextRuns.slice(0, RESOLVE_RUN_HISTORY_LIMIT) : []);
     };
 
     chrome.storage.onChanged.addListener(handleStorageChange);
@@ -169,6 +194,32 @@ export default function ResolvePage() {
     ))
   ), [visibleRows]);
 
+  const latestRunWithFailures = useMemo(
+    () => resolveRuns.find((run) => Array.isArray(run.failures) && run.failures.length > 0) || null,
+    [resolveRuns]
+  );
+
+  const failedRetryTargets = useMemo(() => {
+    if (!latestRunWithFailures) return [];
+
+    const rowsById = new Map(rows.map((row) => [row.item.id, row]));
+    return latestRunWithFailures.failures
+      .map((failure) => {
+        const row = rowsById.get(failure.imageId);
+        if (!row) return null;
+        const service = row.readyMissingProviders.find((candidate) => candidate.key === failure.serviceKey);
+        if (!service) return null;
+        return { row, service };
+      })
+      .filter(Boolean);
+  }, [latestRunWithFailures, rows]);
+
+  const saveResolveRun = (run) => {
+    const nextRuns = [run, ...resolveRuns].slice(0, RESOLVE_RUN_HISTORY_LIMIT);
+    setResolveRuns(nextRuns);
+    chrome.storage.local.set({ [RESOLVE_RUN_HISTORY_KEY]: nextRuns });
+  };
+
   const resolveProvider = async (row, service, options = {}) => {
     const { reloadAfter = true, showNotice = true } = options;
     const key = `${row.item.id}:${service.key}`;
@@ -187,15 +238,16 @@ export default function ResolvePage() {
         });
       }
       if (reloadAfter) await reload({ silent: true });
-      return true;
+      return { ok: true };
     } catch (error) {
+      const errorMessage = error.message || String(error);
       if (showNotice) {
         setNotice({
           type: 'error',
-          message: `${service.label} failed for ${row.title}: ${error.message || String(error)}`,
+          message: `${service.label} failed for ${row.title}: ${errorMessage}`,
         });
       }
-      return false;
+      return { ok: false, error: errorMessage };
     } finally {
       setResolving((current) => {
         const next = { ...current };
@@ -205,12 +257,14 @@ export default function ResolvePage() {
     }
   };
 
-  const resolveAllVisible = async () => {
-    const targets = visibleResolveTargets;
+  const resolveTargetBatch = async (targets, label = 'Resolve all') => {
     if (targets.length === 0 || bulkResolveState.active) return;
 
     let completed = 0;
     let failed = 0;
+    const successes = [];
+    const failures = [];
+    const startedAt = new Date().toISOString();
 
     setNotice(null);
     setBulkResolveState({
@@ -230,13 +284,28 @@ export default function ResolvePage() {
         current: `${service.label} for ${row.title}`,
       });
 
-      const ok = await resolveProvider(row, service, {
+      const result = await resolveProvider(row, service, {
         reloadAfter: false,
         showNotice: false,
       });
 
-      if (ok) completed += 1;
-      else failed += 1;
+      const entry = {
+        imageId: row.item.id,
+        title: row.title,
+        serviceKey: service.key,
+        serviceLabel: service.label,
+      };
+
+      if (result.ok) {
+        completed += 1;
+        successes.push(entry);
+      } else {
+        failed += 1;
+        failures.push({
+          ...entry,
+          error: result.error || 'Unknown error',
+        });
+      }
 
       setBulkResolveState({
         active: true,
@@ -248,6 +317,18 @@ export default function ResolvePage() {
     }
 
     await reload({ silent: true });
+    const run = {
+      id: `resolve_${Date.now()}`,
+      label,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      total: targets.length,
+      completed,
+      failed,
+      successes,
+      failures,
+    };
+    saveResolveRun(run);
     setBulkResolveState({
       active: false,
       completed,
@@ -261,6 +342,19 @@ export default function ResolvePage() {
         ? `Resolved ${completed}/${targets.length} host gap${targets.length !== 1 ? 's' : ''}. ${failed} failed.`
         : `Resolved ${completed} host gap${completed !== 1 ? 's' : ''}.`,
     });
+  };
+
+  const resolveAllVisible = async () => {
+    await resolveTargetBatch(visibleResolveTargets, 'Resolve all');
+  };
+
+  const retryFailed = async () => {
+    await resolveTargetBatch(failedRetryTargets, 'Retry failed');
+  };
+
+  const clearResolveHistory = () => {
+    setResolveRuns([]);
+    chrome.storage.local.set({ [RESOLVE_RUN_HISTORY_KEY]: [] });
   };
 
   const refreshAll = async () => {
@@ -356,6 +450,15 @@ export default function ResolvePage() {
                 ? `${bulkResolveState.completed}/${bulkResolveState.total}`
                 : `Resolve all (${visibleResolveTargets.length})`}
             </Button>
+            <Button
+              variant="outline"
+              onClick={retryFailed}
+              className="h-10 gap-2 px-3 text-sm"
+              disabled={loading || settingsLoading || bulkResolveState.active || failedRetryTargets.length === 0}
+            >
+              <RefreshCw className={`h-4 w-4 ${bulkResolveState.active ? 'animate-spin' : ''}`} />
+              Retry failed ({failedRetryTargets.length})
+            </Button>
             <Button variant="outline" onClick={refreshAll} className="h-10 gap-2 px-3 text-sm" disabled={loading || settingsLoading}>
               <RefreshCw className={`h-4 w-4 ${loading || settingsLoading ? 'animate-spin' : ''}`} />
               Refresh
@@ -412,6 +515,73 @@ export default function ResolvePage() {
               <div className="mt-1 truncate text-primary/80">{bulkResolveState.current}</div>
             )}
           </div>
+        )}
+
+        {resolveRuns.length > 0 && (
+          <section className="rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-4 shadow-sm">
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-base-content">Resolve history</h2>
+                <p className="mt-1 text-sm text-base-content/60">
+                  Failed rows stay here so you can retry only the gaps that did not finish.
+                </p>
+              </div>
+              <Button variant="outline" onClick={clearResolveHistory} className="h-8 px-3 text-xs">
+                Clear
+              </Button>
+            </div>
+
+            <div className="grid gap-3">
+              {resolveRuns.slice(0, 5).map((run) => (
+                <div key={run.id} className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 p-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-base-content">
+                        {run.label || 'Resolve run'}
+                      </div>
+                      <div className="text-xs text-base-content/55">
+                        {formatTimestamp(run.completedAt || run.startedAt)}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                      <span className="rounded-full border border-success/20 bg-success/10 px-2.5 py-1 text-success">
+                        {run.completed || 0}/{run.total || 0} resolved
+                      </span>
+                      {(run.failed || 0) > 0 && (
+                        <span className="rounded-full border border-error/20 bg-error/10 px-2.5 py-1 text-error">
+                          {run.failed} failed
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {Array.isArray(run.failures) && run.failures.length > 0 && (
+                    <details className="mt-3">
+                      <summary className="cursor-pointer text-sm font-medium text-error">
+                        Failed items
+                      </summary>
+                      <div className="mt-2 grid gap-2">
+                        {run.failures.map((failure, index) => (
+                          <div
+                            key={`${failure.imageId}-${failure.serviceKey}-${index}`}
+                            className="rounded-[var(--radius-box)] border border-error/15 bg-error/5 px-3 py-2 text-sm"
+                          >
+                            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                              <span className="font-medium text-base-content">{failure.title || 'Untitled image'}</span>
+                              <span className="text-xs font-semibold text-error">{failure.serviceLabel || failure.serviceKey}</span>
+                            </div>
+                            <div className="mt-1 break-words text-xs text-base-content/60">
+                              {failure.error || 'Unknown error'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
         )}
 
         <section className="grid gap-3">
