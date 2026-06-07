@@ -221,6 +221,7 @@ export default function GalleryPage() {
   const uploadPreviewUrlRef = useRef(null);
   const activeVideoUploadControllerRef = useRef(null);
   const batchCancelRequestedRef = useRef(false);
+  const batchDuplicateBypassFileRef = useRef(null);
 
   const configuredUploadServices = useMemo(() => {
     if (uploadImageData?.isVideo) {
@@ -1030,6 +1031,7 @@ export default function GalleryPage() {
       currentFile: '',
     });
     batchCancelRequestedRef.current = false;
+    batchDuplicateBypassFileRef.current = null;
   };
 
   const closeUploadModal = () => {
@@ -1168,6 +1170,7 @@ export default function GalleryPage() {
     setActiveUploadQueueIndex(0);
     resetBatchUploadState();
     batchCancelRequestedRef.current = false;
+    batchDuplicateBypassFileRef.current = null;
   };
 
   const isSupportedUploadFile = (file) => {
@@ -1202,6 +1205,7 @@ export default function GalleryPage() {
     }
 
     batchCancelRequestedRef.current = false;
+    batchDuplicateBypassFileRef.current = null;
     setUploadQueue(supportedFiles);
     setUploadAttemptStarted(false);
     setActiveUploadQueueIndex(0);
@@ -1231,6 +1235,7 @@ export default function GalleryPage() {
     setActiveUploadQueueIndex(index);
     setUploadAttemptStarted(false);
     setDuplicateData(null);
+    batchDuplicateBypassFileRef.current = null;
     await processMediaFile(file, 'Uploaded manually', 'Uploaded manually');
     setIsLocalUpload(true);
   };
@@ -1598,13 +1603,20 @@ export default function GalleryPage() {
     });
   };
 
-  const handleBatchUploadSubmit = async (ignoreDuplicates, selectedHostKeys) => {
-    const files = uploadQueue.filter(isSupportedUploadFile);
-    if (files.length <= 1) return false;
+  const handleBatchUploadSubmit = async (
+    ignoreDuplicates,
+    selectedHostKeys,
+    filesOverride = null,
+    preparedFirstOverride = null
+  ) => {
+    const files = (filesOverride || uploadQueue).filter(isSupportedUploadFile);
+    if (files.length === 0) return false;
+    const bypassDuplicateForFile = batchDuplicateBypassFileRef.current;
 
     batchCancelRequestedRef.current = false;
     setUploadAttemptStarted(true);
     setDuplicateData(null);
+    setUploadQueue(files);
     setBatchUploadState({
       active: true,
       index: 0,
@@ -1626,6 +1638,9 @@ export default function GalleryPage() {
 
         activeIndex = index;
         const file = files[index];
+        const ignoreDuplicateForCurrentFile = Boolean(
+          ignoreDuplicates || (bypassDuplicateForFile && bypassDuplicateForFile === file)
+        );
         setActiveUploadQueueIndex(index);
         setBatchUploadState({
           active: true,
@@ -1636,20 +1651,27 @@ export default function GalleryPage() {
           currentFile: file.name || `File ${index + 1}`,
         });
 
-        const prepared = index === 0 && uploadImageData?.file === file
-          ? { uploadImageData, uploadMetadata, uploadPageUrl }
-          : await processMediaFile(file, 'Uploaded manually', 'Uploaded manually');
+        const prepared = index === 0 && preparedFirstOverride?.uploadImageData?.file === file
+          ? preparedFirstOverride
+          : (
+            index === 0 && uploadImageData?.file === file
+              ? { uploadImageData, uploadMetadata, uploadPageUrl }
+              : await processMediaFile(file, 'Uploaded manually', 'Uploaded manually')
+          );
         setIsLocalUpload(true);
 
         const uploadData = buildUploadData({
           mediaData: prepared.uploadImageData,
           metadata: prepared.uploadMetadata,
           pageUrl: prepared.uploadPageUrl,
-          ignoreDuplicates,
+          ignoreDuplicates: ignoreDuplicateForCurrentFile,
           selectedHostKeys,
         });
 
         const uploadResult = await uploadPreparedMedia(uploadData);
+        if (bypassDuplicateForFile && bypassDuplicateForFile === file) {
+          batchDuplicateBypassFileRef.current = null;
+        }
         completed += 1;
         setBatchUploadState((current) => ({
           ...current,
@@ -1666,11 +1688,15 @@ export default function GalleryPage() {
       setUploadQueue([]);
       setActiveUploadQueueIndex(0);
       resetBatchUploadState();
+      batchDuplicateBypassFileRef.current = null;
       await Promise.all([reload(), reloadCollections()]);
       showToast(`Uploaded ${completed} file${completed !== 1 ? 's' : ''} successfully.`, 'success', 3500);
       return true;
     } catch (err) {
       console.error('Batch upload failed:', err);
+      if (batchDuplicateBypassFileRef.current === files[activeIndex]) {
+        batchDuplicateBypassFileRef.current = null;
+      }
       const remainingFiles = files.slice(activeIndex);
       failed += 1;
       setUploadQueue(remainingFiles);
@@ -1702,14 +1728,87 @@ export default function GalleryPage() {
     }
   };
 
-  const handleUploadSubmit = async (ignoreDuplicates = false) => {
-    if (!uploadImageData) return;
-
+  const getSelectedUploadHostKeysOrWarn = () => {
     const selectedHostKeys = reconcileSelectedHostKeys(selectedUploadHostKeys, configuredUploadServices);
     if (selectedHostKeys.length === 0) {
       showToast('Select at least one upload host first.', 'warning', 3000);
+      return null;
+    }
+
+    return selectedHostKeys;
+  };
+
+  const getCurrentDuplicateBatchFiles = () => {
+    if (!uploadImageData?.file || !duplicateData) return null;
+
+    const files = uploadQueue.filter(isSupportedUploadFile);
+    const isPausedBatch = batchUploadState.total > 1 || files.length > 1;
+    if (!isPausedBatch || files.length === 0) return null;
+
+    return files;
+  };
+
+  const handleDuplicateCancel = async () => {
+    const files = getCurrentDuplicateBatchFiles();
+
+    if (!files) {
+      setDuplicateData(null);
       return;
     }
+
+    const skippedFile = uploadImageData.file;
+    const skippedIndex = Math.max(files.findIndex((file) => file === skippedFile), 0);
+    const remainingFiles = files.filter((_, index) => index !== skippedIndex);
+
+    batchDuplicateBypassFileRef.current = null;
+    setDuplicateData(null);
+    setUploadAttemptStarted(false);
+
+    if (remainingFiles.length === 0) {
+      setUploadQueue([]);
+      setActiveUploadQueueIndex(0);
+      resetBatchUploadState();
+      setShowUploadModal(false);
+      await Promise.all([reload(), reloadCollections()]);
+      showToast('Skipped duplicate. Batch finished.', 'warning', 3500);
+      return;
+    }
+
+    const selectedHostKeys = getSelectedUploadHostKeysOrWarn();
+    setUploadQueue(remainingFiles);
+    setActiveUploadQueueIndex(0);
+    const prepared = await processMediaFile(remainingFiles[0], 'Uploaded manually', 'Uploaded manually');
+    setIsLocalUpload(true);
+
+    if (!selectedHostKeys) {
+      showToast(`Skipped duplicate. ${remainingFiles.length} file${remainingFiles.length !== 1 ? 's' : ''} still queued.`, 'warning', 4000);
+      return;
+    }
+
+    await handleBatchUploadSubmit(false, selectedHostKeys, remainingFiles, prepared);
+  };
+
+  const handleDuplicateUploadAnyway = async () => {
+    const files = getCurrentDuplicateBatchFiles();
+
+    if (!files) {
+      await handleUploadSubmit(true);
+      return;
+    }
+
+    const selectedHostKeys = getSelectedUploadHostKeysOrWarn();
+    if (!selectedHostKeys) return;
+
+    batchDuplicateBypassFileRef.current = uploadImageData.file;
+    setDuplicateData(null);
+    await handleBatchUploadSubmit(false, selectedHostKeys, files, { uploadImageData, uploadMetadata, uploadPageUrl });
+  };
+
+  const handleUploadSubmit = async (ignoreDuplicates = false) => {
+    if (!uploadImageData) return;
+
+    const selectedHostKeys = getSelectedUploadHostKeysOrWarn();
+    if (!selectedHostKeys) return;
 
     if (uploadQueue.length > 1 && uploadImageData?.file) {
       await handleBatchUploadSubmit(ignoreDuplicates, selectedHostKeys);
@@ -4087,14 +4186,14 @@ export default function GalleryPage() {
                           {/* Action buttons */}
                             <div className="sticky bottom-0 flex gap-3 mt-4 pt-3 bg-base-100/95 backdrop-blur-sm border-t border-warning/20">
                             <button
-                              onClick={() => setDuplicateData(null)}
+                              onClick={handleDuplicateCancel}
                               className="flex-1 px-4 py-2.5 rounded-[var(--radius-box)] bg-base-300 hover:bg-base-content/15 
                                        text-base-content font-medium transition-colors text-sm"
                             >
-                              Cancel
+                              {getCurrentDuplicateBatchFiles() ? 'Skip Duplicate' : 'Cancel'}
                             </button>
                             <button
-                              onClick={() => handleUploadSubmit(true)}
+                              onClick={handleDuplicateUploadAnyway}
                               disabled={uploading || batchUploadState.active || configuredUploadServices.length === 0 || selectedUploadHostKeys.length === 0}
                               className="flex-1 px-4 py-2.5 rounded-[var(--radius-box)] bg-warning hover:brightness-95 font-medium 
                                        transition-all disabled:opacity-50 disabled:cursor-not-allowed
