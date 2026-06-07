@@ -1594,12 +1594,13 @@ export default function GalleryPage() {
     return uploadImage(uploadData);
   };
 
-  const setDuplicateUploadError = (err) => {
+  const setDuplicateUploadError = (err, options = {}) => {
     console.log('Duplicate data found:', err.duplicate);
     console.log('All duplicates found:', err.allDuplicates);
     setDuplicateData({
       primary: err.duplicate,
-      all: err.allDuplicates || [err.duplicate]
+      all: err.allDuplicates || [err.duplicate],
+      fromBatch: Boolean(options.fromBatch),
     });
   };
 
@@ -1716,7 +1717,7 @@ export default function GalleryPage() {
       }
 
       if (err?.duplicate) {
-        setDuplicateUploadError(err);
+        setDuplicateUploadError(err, { fromBatch: true });
         showToast(`Batch paused at ${remainingFiles[0]?.name || `file ${activeIndex + 1}`}. Resolve the duplicate to continue.`, 'warning', 5000);
       } else {
         const errorMessage = err?.message || String(err) || 'Upload failed';
@@ -1742,7 +1743,7 @@ export default function GalleryPage() {
     if (!uploadImageData?.file || !duplicateData) return null;
 
     const files = uploadQueue.filter(isSupportedUploadFile);
-    const isPausedBatch = batchUploadState.total > 1 || files.length > 1;
+    const isPausedBatch = duplicateData.fromBatch || batchUploadState.total > 1 || files.length > 1;
     if (!isPausedBatch || files.length === 0) return null;
 
     return files;
