@@ -2265,7 +2265,11 @@ export class StorageManager {
   }
 
   async saveImageNeon(imageData) {
-    const mediaData = this.withReservedAiMetadata(imageData);
+    const savedAt = new Date().toISOString();
+    const mediaData = this.withReservedAiMetadata({
+      ...imageData,
+      internalAddedTimestamp: savedAt,
+    });
     const id = mediaData.id || this.generateDocId();
     const payload = this.toNeonMediaPayload(mediaData);
     await this.upsertMediaRowNeon(id, payload);
@@ -2289,7 +2293,7 @@ export class StorageManager {
         deleted_at, created_at, updated_at, extra_metadata - 'ai' as extra_metadata
       from public.media_items
       where deleted_at is null
-      order by internal_added_timestamp desc
+      order by created_at desc, internal_added_timestamp desc
     `;
     return this.filterVisibleItems(rows.map((r) => this.fromNeonMediaRow(r)));
   }
@@ -2631,7 +2635,7 @@ export class StorageManager {
     const rows = await sql`
       select * from public.media_items
       where collection_id = ${collectionId} and deleted_at is null
-      order by internal_added_timestamp desc
+      order by created_at desc, internal_added_timestamp desc
     `;
     return this.filterVisibleItems(rows.map((r) => this.fromNeonMediaRow(r)));
   }

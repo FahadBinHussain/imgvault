@@ -98,6 +98,8 @@ export function toClientMediaListItem(item) {
     videoThumbnailUrl: item?.videoThumbnailUrl || '',
     lastVisitedAt: item?.lastVisitedAt || null,
     deletedAt: item?.deletedAt || null,
+    createdAt: item?.createdAt || null,
+    updatedAt: item?.updatedAt || null,
     imageHosts,
     videoHosts,
     isVaulted: isTruthyFlag(extra.isVaulted),

@@ -117,8 +117,12 @@ const MEDIA_KIND_ORDER = {
   link: 2,
 }
 
+function getAddedTimestamp(item) {
+  return item?.createdAt || item?.internalAddedTimestamp || item?.updatedAt || ''
+}
+
 function getSortableDateValue(item) {
-  const value = item?.internalAddedTimestamp || item?.createdAt || item?.updatedAt || item?.creationDate || ''
+  const value = getAddedTimestamp(item)
   const time = value ? new Date(value).getTime() : 0
   return Number.isFinite(time) ? time : 0
 }
@@ -747,8 +751,8 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
           <div className="flex items-center gap-2 text-xs text-base-content/65">
             <Calendar className="w-3.5 h-3.5" />
             <span>
-              {image.internalAddedTimestamp
-                ? new Date(image.internalAddedTimestamp).toLocaleDateString('en-US', {
+              {getAddedTimestamp(image)
+                ? new Date(getAddedTimestamp(image)).toLocaleDateString('en-US', {
                     month: 'short',
                     day: 'numeric',
                     year: 'numeric'
@@ -787,8 +791,9 @@ function groupImagesByDate(images, sortMode = 'newest') {
   const groups = {}
   
   images.forEach((img) => {
-    const date = img.internalAddedTimestamp 
-      ? new Date(img.internalAddedTimestamp).toLocaleDateString('en-GB', {
+    const addedTimestamp = getAddedTimestamp(img)
+    const date = addedTimestamp
+      ? new Date(addedTimestamp).toLocaleDateString('en-GB', {
           day: 'numeric',
           month: 'long',
           year: 'numeric'

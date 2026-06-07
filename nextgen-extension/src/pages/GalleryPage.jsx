@@ -79,8 +79,11 @@ const isDateSort = (sortMode) => sortMode === 'newest' || sortMode === 'oldest';
 const getSortLabel = (sortMode) =>
   SORT_OPTIONS.find((option) => option.value === sortMode)?.label || SORT_OPTIONS[0].label;
 
+const getAddedTimestamp = (item) =>
+  item?.createdAt || item?.internalAddedTimestamp || item?.updatedAt || '';
+
 const getSortableDateValue = (item) => {
-  const value = item?.internalAddedTimestamp || item?.createdAt || item?.updatedAt || item?.creationDate || '';
+  const value = getAddedTimestamp(item);
   const time = value ? new Date(value).getTime() : 0;
   return Number.isFinite(time) ? time : 0;
 };
@@ -2151,7 +2154,7 @@ export default function GalleryPage() {
 
     const groups = {};
     images.forEach(img => {
-      const date = new Date(img.internalAddedTimestamp);
+      const date = new Date(getAddedTimestamp(img));
       const today = new Date();
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
@@ -2187,8 +2190,9 @@ export default function GalleryPage() {
     dateKeys.forEach(dateKey => {
       // Get the first image from this date group to extract the actual date
       const firstImage = groupedImages[dateKey][0];
-      if (firstImage && firstImage.internalAddedTimestamp) {
-        const date = new Date(firstImage.internalAddedTimestamp);
+      const addedTimestamp = firstImage ? getAddedTimestamp(firstImage) : '';
+      if (addedTimestamp) {
+        const date = new Date(addedTimestamp);
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         const monthLabel = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
         

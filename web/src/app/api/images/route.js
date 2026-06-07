@@ -140,6 +140,8 @@ const galleryListSelect = {
   faviconUrl: mediaItems.faviconUrl,
   lastVisitedAt: mediaItems.lastVisitedAt,
   deletedAt: mediaItems.deletedAt,
+  createdAt: mediaItems.createdAt,
+  updatedAt: mediaItems.updatedAt,
   videoThumbnailUrl: sql`coalesce(
     ${mediaItems.extraMetadata}->'videoHosts'->'filemoon'->>'thumbnailUrl',
     ${mediaItems.extraMetadata}->'videoHosts'->'udrop'->>'thumbnailUrl',
@@ -183,7 +185,7 @@ export async function GET(request) {
       .select(galleryListSelect)
       .from(mediaItems)
       .where(visibleGalleryWhere)
-      .orderBy(desc(mediaItems.internalAddedTimestamp))
+      .orderBy(desc(mediaItems.createdAt), desc(mediaItems.internalAddedTimestamp))
 
     return Response.json({
       images: images.map(toClientMediaListItem),
