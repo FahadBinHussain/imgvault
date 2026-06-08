@@ -15,6 +15,8 @@ import {
   isTruthyFlag as isRegistryTruthyFlag,
 } from '@shared/mediaFieldRegistry.js';
 
+const GALLERY_IMAGES_CACHE_KEY = 'imgvaultGalleryImagesCache';
+
 /**
  * @typedef {Object} FirebaseConfig
  * @property {string} apiKey - Firebase API key
@@ -668,7 +670,9 @@ export class StorageManager {
     const mediaData = this.withReservedAiMetadata(imageData);
 
     if (this.backend === 'neon') {
-      return this.saveImageNeon(mediaData);
+      const savedId = await this.saveImageNeon(mediaData);
+      this.clearGalleryImagesCache();
+      return savedId;
     }
 
     try {
@@ -720,6 +724,7 @@ export class StorageManager {
         }
       }
       
+      this.clearGalleryImagesCache();
       return docId;
     } catch (error) {
       console.error('Error saving to Firestore:', error);
@@ -2293,7 +2298,7 @@ export class StorageManager {
         deleted_at, created_at, updated_at, extra_metadata - 'ai' as extra_metadata
       from public.media_items
       where deleted_at is null
-      order by created_at desc, internal_added_timestamp desc
+      order by internal_added_timestamp desc, created_at desc
     `;
     return this.filterVisibleItems(rows.map((r) => this.fromNeonMediaRow(r)));
   }
@@ -2635,9 +2640,15 @@ export class StorageManager {
     const rows = await sql`
       select * from public.media_items
       where collection_id = ${collectionId} and deleted_at is null
-      order by created_at desc, internal_added_timestamp desc
+      order by internal_added_timestamp desc, created_at desc
     `;
     return this.filterVisibleItems(rows.map((r) => this.fromNeonMediaRow(r)));
+  }
+
+  clearGalleryImagesCache() {
+    if (globalThis.chrome?.storage?.local?.remove) {
+      chrome.storage.local.remove(GALLERY_IMAGES_CACHE_KEY);
+    }
   }
 
   async incrementCollectionCountNeon(collectionId, delta) {

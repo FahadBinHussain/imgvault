@@ -80,7 +80,7 @@ const getSortLabel = (sortMode) =>
   SORT_OPTIONS.find((option) => option.value === sortMode)?.label || SORT_OPTIONS[0].label;
 
 const getAddedTimestamp = (item) =>
-  item?.createdAt || item?.internalAddedTimestamp || item?.updatedAt || '';
+  item?.internalAddedTimestamp || item?.createdAt || item?.updatedAt || '';
 
 const getSortableDateValue = (item) => {
   const value = getAddedTimestamp(item);

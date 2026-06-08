@@ -185,7 +185,7 @@ export async function GET(request) {
       .select(galleryListSelect)
       .from(mediaItems)
       .where(visibleGalleryWhere)
-      .orderBy(desc(mediaItems.createdAt), desc(mediaItems.internalAddedTimestamp))
+      .orderBy(desc(mediaItems.internalAddedTimestamp), desc(mediaItems.createdAt))
 
     return Response.json({
       images: images.map(toClientMediaListItem),

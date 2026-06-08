@@ -118,7 +118,7 @@ const MEDIA_KIND_ORDER = {
 }
 
 function getAddedTimestamp(item) {
-  return item?.createdAt || item?.internalAddedTimestamp || item?.updatedAt || ''
+  return item?.internalAddedTimestamp || item?.createdAt || item?.updatedAt || ''
 }
 
 function getSortableDateValue(item) {
