@@ -6,7 +6,7 @@ function App() {
   const [isRegistered, setIsRegistered] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
-  const [extensionId, setExtensionId] = useState('johjkjkidbedgjmogpekmlpfakccnoan');
+  const [extensionId, setExtensionId] = useState('cjialghkacooiecjckibhcifilfiibnn');
   const [activeTab, setActiveTab] = useState('register'); // 'register' or 'logs'
   const [logs, setLogs] = useState([]);
   const [testUrl, setTestUrl] = useState('https://www.youtube.com/watch?v=1O0yazhqaxs');
@@ -243,7 +243,7 @@ function App() {
                 type="text"
                 value={extensionId}
                 onChange={(e) => setExtensionId(e.target.value)}
-                placeholder="johjkjkidbedgjmogpekmlpfakccnoan"
+                placeholder="cjialghkacooiecjckibhcifilfiibnn"
                 style={styles.input}
                 disabled={loading}
               />

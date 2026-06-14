@@ -33,7 +33,7 @@ Running the exe normally will:
 
 - write `manifest.json` next to the exe
 - register `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.imgvault.nativehost`
-- allow the extension ID `johjkjkidbedgjmogpekmlpfakccnoan`
+- allow the extension ID `cjialghkacooiecjckibhcifilfiibnn`
 
 ## Notes
 

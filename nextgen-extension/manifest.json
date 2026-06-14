@@ -4,6 +4,7 @@
   "version": "2.0.0",
   "description": "Next-generation image vault with context preservation and advanced duplicate detection",
   "author": "ImgVault Team",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAntaWQtfOfecwy2gY2Bm/Siisjfgw3QNphLDi7EcObFNbeaE1bNth7b2Q6XES0OqNykC4oB/uxyRf8UNMUm9cVWeUEyA4IhoiJMMYXde4v8PQlXFwOoHrihv+eQeZmzEuc/yevC95oLoOXYIEubwJ1uJxr/tIArIrOh0gHslqtt/gchGsPVkd+V55QRJlBYuQKtDCoA314xRKYMa2S1Sm1DGgtN8bWl2CXh+XzMOXFO7GFs+GPfyaNXxvnPdR915Y69dyuJcqt30HurYN9UXGyBoNoAsOKfi4RXPFhbWwyO5irEJrPj1yEIDI2EHNBUxRhLbj56TrRaYAfYtIqOtv9wIDAQAB",
   
   "permissions": [
     "contextMenus",

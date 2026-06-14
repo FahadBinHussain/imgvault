@@ -14,7 +14,7 @@ use winreg::{HKEY, RegKey};
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{MessageBoxW, MB_ICONERROR, MB_ICONINFORMATION, MB_OK};
 
-const EXTENSION_ID: &str = "johjkjkidbedgjmogpekmlpfakccnoan";
+const EXTENSION_ID: &str = "cjialghkacooiecjckibhcifilfiibnn";
 
 #[cfg(target_os = "windows")]
 fn read_registry_string(root: HKEY, subkey: &str, value_name: &str) -> Option<String> {
