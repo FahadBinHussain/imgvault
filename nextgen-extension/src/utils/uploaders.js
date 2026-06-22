@@ -497,6 +497,7 @@ export class UDropUploader extends BaseUploader {
         if (downloadResponse.ok) {
           const downloadResult = await downloadResponse.json();
           if (downloadResult._status === 'success' && downloadResult.data && downloadResult.data.download_url) {
+            downloadUrl = downloadResult.data.download_url;
             console.log('📦 [UDROP] Download URL generated:', downloadUrl);
           }
         }

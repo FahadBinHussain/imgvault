@@ -1273,6 +1273,18 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'uploadScene':
+        this.handleSceneUpload(request.data)
+          .then(result => sendResponse({ success: true, data: result }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'fetchFile':
+        this.handleFetchFile({ mediaId: request.mediaId, url: request.url })
+          .then(result => sendResponse({ success: true, data: result }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       default:
         console.warn('Unknown action:', action);
         return false;
@@ -2979,6 +2991,145 @@ class ImgVaultServiceWorker {
       id: savedId,
       ...videoMetadata
     };
+  }
+
+  async handleFetchFile({ mediaId, url }) {
+    // Try IndexedDB cache first (for scene files cached during upload).
+    if (mediaId) {
+      try {
+        const { getCachedSceneFiles } = await import('../utils/sceneFileCache.js');
+        const cached = await getCachedSceneFiles(mediaId);
+        if (cached?.spzBytes) {
+          console.log('[Fetcher] Cache hit for', mediaId, 'spz:', cached.spzBytes.byteLength, 'tex:', cached.textureBytes?.byteLength);
+          return {
+            spzBuffer: Array.from(new Uint8Array(cached.spzBytes)),
+            textureBuffer: cached.textureBytes ? Array.from(new Uint8Array(cached.textureBytes)) : null,
+            fromCache: true,
+          };
+        }
+      } catch (e) {
+        console.warn('[Fetcher] Cache read failed:', e.message);
+      }
+    }
+
+    // Fallback: fetch from URL (service worker has no CORS restrictions).
+    if (!url) throw new Error('No URL and no cached data available');
+    let fetchUrl = url;
+
+    if (url.includes('udrop.com/file/')) {
+      try {
+        const pageResp = await fetch(url);
+        const html = await pageResp.text();
+        const match = html.match(/url='([^']+)'/i) || html.match(/url="([^"]+)"/i);
+        if (match && match[1]) fetchUrl = match[1];
+      } catch (e) {
+        console.warn('[Fetcher] UDrop page parse failed:', e.message);
+      }
+    }
+
+    const resp = await fetch(fetchUrl);
+    if (!resp.ok) throw new Error(`Fetch failed: ${resp.status} ${resp.statusText}`);
+    const buffer = await resp.arrayBuffer();
+    console.log('[Fetcher] Fetched', buffer.byteLength, 'bytes from', fetchUrl.substring(0, 80));
+    return { buffer: Array.from(new Uint8Array(buffer)), contentType: resp.headers.get('content-type') || '' };
+  }
+
+  async handleSceneUpload(data) {
+    try {
+      await chrome.storage.local.set({ uploadStatusLogs: [] });
+      
+      const settings = await this.getMergedVideoHostSettings();
+      const udropService = getConfiguredVideoUploadServices(settings).find(s => s.key === 'udrop');
+      
+      if (!udropService) {
+        throw new Error('UDrop is not configured. Please set UDrop API keys in settings.');
+      }
+
+      // Reconstruct Blobs from plain arrays (ArrayBuffers get zeroed in MV3 messaging)
+      const spzBlob = new Blob([new Uint8Array(data.spzArray)], { type: 'application/octet-stream' });
+      const textureBlob = new Blob([new Uint8Array(data.textureArray)], { type: data.textureMimeType || 'image/webp' });
+
+      if (spzBlob.size <= 0) {
+        throw new Error('SPZ file is empty.');
+      }
+      if (textureBlob.size <= 0) {
+        throw new Error('Texture file is empty.');
+      }
+
+      await this.updateStatusWithLog('☁️ Uploading SPZ to UDrop...');
+      const uploader = new UDropUploader();
+      const spzResult = await uploader.upload(
+        spzBlob,
+        settings.udropKey1,
+        settings.udropKey2,
+        data.spzFileName || 'scene.spz'
+      );
+      await this.appendUploadLog(`SPZ uploaded: ${spzResult.url}`);
+
+      await this.updateStatusWithLog('☁️ Uploading texture to UDrop...');
+      const textureResult = await uploader.upload(
+        textureBlob,
+        settings.udropKey1,
+        settings.udropKey2,
+        data.textureFileName || 'texture.webp'
+      );
+      await this.appendUploadLog(`Texture uploaded: ${textureResult.url}`);
+
+      await this.updateStatusWithLog('💾 Saving scene to database...');
+
+      let creationDate = null;
+      let creationDateSource = '';
+      if (data.fileLastModified) {
+        creationDate = new Date(data.fileLastModified).toISOString();
+        creationDateSource = 'OS lastModified';
+      } else {
+        creationDate = new Date().toISOString();
+        creationDateSource = 'Current timestamp';
+      }
+
+      const sceneMetadata = {
+        kind: 'scene',
+        pageTitle: data.pageTitle || '',
+        description: data.description || '',
+        tags: data.tags || [],
+        collectionId: data.collectionId || null,
+        sourcePageUrl: data.pageUrl || '',
+        fileName: data.spzFileName || 'scene.spz',
+        fileSize: data.spzFileSize || spzBlob.size,
+        fileType: 'application/octet-stream',
+        fileTypeSource: 'File object',
+        creationDate,
+        creationDateSource,
+        spzUrl: spzResult.url,
+        spzFileSize: data.spzFileSize || spzBlob.size,
+        textureUrl: textureResult.url,
+        textureFileSize: data.textureFileSize || textureBlob.size,
+      };
+
+      const savedId = await this.storage.saveImage(sceneMetadata);
+
+      // Cache file bytes in IndexedDB so the viewer doesn't depend on UDrop URLs
+      try {
+        const { cacheSceneFiles } = await import('../utils/sceneFileCache.js');
+        await cacheSceneFiles(savedId, {
+          spzBytes: await spzBlob.arrayBuffer(),
+          textureBytes: await textureBlob.arrayBuffer(),
+        });
+        await this.appendUploadLog('Scene files cached in IndexedDB');
+      } catch (e) {
+        console.warn('[Scene] Failed to cache files:', e.message);
+      }
+
+      await this.updateStatusWithLog('✅ 3D Scene saved successfully!', 'success');
+
+      return {
+        id: savedId,
+        ...sceneMetadata,
+      };
+    } catch (error) {
+      await this.updateStatusWithLog(`❌ Scene upload failed: ${error.message}`, 'error');
+      throw error;
+    }
   }
 }
 

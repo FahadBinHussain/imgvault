@@ -210,6 +210,65 @@ export function useImageUpload() {
 }
 
 /**
+ * Hook for uploading 3D scenes
+ * @returns {Object} Scene upload state and function
+ */
+export function useSceneUpload() {
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState('');
+  const [error, setError] = useState(null);
+  const [logs, setLogs] = useState([]);
+  const sendMessage = useChromeMessage();
+
+  useEffect(() => {
+    chrome.storage.local.get(['uploadStatusLogs', 'uploadActive', 'uploadStatus'], (result) => {
+      setLogs(result.uploadStatusLogs || []);
+      setUploading(Boolean(result.uploadActive));
+      setProgress(result.uploadStatus || '');
+    });
+
+    const handleStorageChange = (changes, area) => {
+      if (area !== 'local') return;
+      if (changes.uploadStatus) setProgress(changes.uploadStatus.newValue || '');
+      if (changes.uploadActive) setUploading(Boolean(changes.uploadActive.newValue));
+      if (changes.uploadStatusLogs) setLogs(changes.uploadStatusLogs.newValue || []);
+    };
+
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange);
+  }, []);
+
+  const uploadScene = useCallback(async (sceneData) => {
+    setUploading(true);
+    setError(null);
+    setProgress('Starting scene upload...');
+    setLogs([]);
+    chrome.storage.local.set({ uploadStatusLogs: [], uploadActive: true, uploadStatus: 'Starting scene upload...' });
+
+    try {
+      const result = await sendMessage('uploadScene', sceneData);
+      setProgress('✅ Scene uploaded!');
+      return result;
+    } catch (err) {
+      setError(err);
+      setProgress('');
+      throw err;
+    } finally {
+      setUploading(false);
+      chrome.storage.local.set({ uploadActive: false });
+    }
+  }, [sendMessage]);
+
+  return {
+    uploadScene,
+    uploading,
+    progress,
+    error,
+    logs,
+  };
+}
+
+/**
  * Hook for managing images
  * @returns {Object} Images state and functions
  */

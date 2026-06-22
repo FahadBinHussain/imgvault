@@ -16,6 +16,7 @@ export default defineConfig({
         settings: resolve(__dirname, 'settings.html'),
         trash: resolve(__dirname, 'trash.html'),
         extensionId: resolve(__dirname, 'extension-id.html'),
+        sceneViewer: resolve(__dirname, 'scene-viewer.html'),
         background: resolve(__dirname, 'src/background/background.js'),
         content: resolve(__dirname, 'src/content/content.js'),
       },
@@ -34,7 +35,7 @@ export default defineConfig({
       }
     },
     // Ensure proper module format
-    target: 'es2020',
+    target: 'es2022',
     minify: 'esbuild',
     sourcemap: false
   },

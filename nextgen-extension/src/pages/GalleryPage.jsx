@@ -9,7 +9,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Trash2, Download, X, FolderOpen,
   FileText, Calendar, Cloud, Link2, Globe, AlignLeft, Tag,
-  File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint, LockKeyhole
+  File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint, LockKeyhole,
+  Box
 } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
 import UploadHostSelector, { reconcileSelectedHostKeys } from '../components/UploadHostSelector';
@@ -37,6 +38,8 @@ import {
   getMediaItemKind,
   getTechnicalMetadataEntries,
 } from '@shared/mediaFieldRegistry.js';
+import SceneUploadDialog from '../components/SceneUploadDialog';
+import SceneViewer from '../components/SceneViewer';
 
 const createVideoUploader = (service) => {
   if (service?.uploaderKey === 'filemoonUploader') return new FilemoonUploader();
@@ -70,9 +73,10 @@ const MEDIA_KIND_ORDER = {
   image: 0,
   video: 1,
   link: 2,
+  scene: 3,
 };
 
-const MEDIA_FILTER_OPTIONS = ['all', 'image', 'video', 'link'];
+const MEDIA_FILTER_OPTIONS = ['all', 'image', 'video', 'link', 'scene'];
 
 const isDateSort = (sortMode) => sortMode === 'newest' || sortMode === 'oldest';
 
@@ -204,6 +208,10 @@ export default function GalleryPage() {
     failed: 0,
     currentFile: '',
   });
+
+  // Scene upload state
+  const [showSceneUploadDialog, setShowSceneUploadDialog] = useState(false);
+  const [viewingScene, setViewingScene] = useState(null);
   
   // Selection mode state
   const [selectionMode, setSelectionMode] = useState(false);
@@ -2893,6 +2901,15 @@ export default function GalleryPage() {
                   onClick={(e) => {
                     if (selectionMode) {
                       toggleImageSelection(img.id, e);
+                    } else if (getMediaItemKind(img) === 'scene') {
+                      const spzUrl = img.spzUrl || '';
+                      const sceneTitle = img.pageTitle || '3D Scene';
+                      
+                      const viewerUrl = chrome.runtime.getURL('scene-viewer.html')
+                        + '?url=' + encodeURIComponent(spzUrl)
+                        + '&id=' + encodeURIComponent(img.id || '')
+                        + '&title=' + encodeURIComponent(sceneTitle);
+                      window.open(viewerUrl, '_blank');
                     } else {
                       setIsModalAnimating(true);
                       setSelectedImage(img);
@@ -2934,7 +2951,17 @@ export default function GalleryPage() {
                     )}
                     
                     {/* Media */}
-                    {img.isLink ? (
+                    {getMediaItemKind(img) === 'scene' ? (
+                      <div className="relative w-full aspect-video" style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)' }}>
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-2" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                          <Box style={{ width: 48, height: 48 }} className="text-cyan-400" />
+                          <span className="text-xs font-medium">3D Scene</span>
+                        </div>
+                        <div className="absolute top-2 left-2">
+                          <span className="px-2 py-1 text-[10px] font-bold rounded-md bg-cyan-500/90 text-white">3D</span>
+                        </div>
+                      </div>
+                    ) : img.isLink ? (
                       (() => {
                         const linkPreviewImage = getLinkPreviewImage(img);
                         return (
@@ -3601,11 +3628,57 @@ export default function GalleryPage() {
           </div>
         </Modal>
 
-        {/* Floating Action Button */}
+        {/* Floating Action Buttons */}
         {!loading && images.length > 0 && (
-          <button onClick={openUploadModal} className="g-fab" title="Upload Image" style={{ position: 'fixed', bottom: 32, right: 32, zIndex: 50 }}>
-            <Upload style={{ width: 22, height: 22, position: 'relative', zIndex: 1 }} />
-          </button>
+          <>
+            <button
+              onClick={() => setShowSceneUploadDialog(true)}
+              title="Add 3D Scene"
+              style={{
+                position: 'fixed',
+                bottom: 100,
+                right: 32,
+                zIndex: 50,
+                width: 48,
+                height: 48,
+                borderRadius: '14px',
+                background: 'linear-gradient(135deg, #0891b2, #0e7490)',
+                color: 'white',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 16px rgba(8, 145, 178, 0.3)',
+                transition: 'all .25s ease',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px) scale(1.05)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; }}
+            >
+              <Box style={{ width: 20, height: 20 }} />
+            </button>
+            <button onClick={openUploadModal} className="g-fab" title="Upload Image">
+              <Upload style={{ width: 22, height: 22, position: 'relative', zIndex: 1 }} />
+            </button>
+          </>
+        )}
+
+        {/* Scene Upload Dialog */}
+        <SceneUploadDialog
+          isOpen={showSceneUploadDialog}
+          onClose={() => setShowSceneUploadDialog(false)}
+          onUploaded={() => reload()}
+        />
+
+        {/* Scene Viewer Modal */}
+        {viewingScene && (
+          <SceneViewer
+            spzUrl={viewingScene.spzUrl}
+            textureUrl={viewingScene.textureUrl}
+            title={viewingScene.pageTitle}
+            isOpen={true}
+            onClose={() => setViewingScene(null)}
+          />
         )}
 
         {/* Upload Modal */}

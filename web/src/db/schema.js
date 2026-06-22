@@ -115,6 +115,11 @@ export const mediaItems = pgTable('media_items', {
   faviconUrl: text('favicon_url').notNull().default(''),
   lastVisitedAt: timestamp('last_visited_at', { withTimezone: true }),
 
+  spzUrl: text('spz_url').notNull().default(''),
+  spzFileSize: bigint('spz_file_size', { mode: 'number' }),
+  textureUrl: text('texture_url').notNull().default(''),
+  textureFileSize: bigint('texture_file_size', { mode: 'number' }),
+
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

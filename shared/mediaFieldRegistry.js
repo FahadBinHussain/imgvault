@@ -1,6 +1,7 @@
 export const MEDIA_KIND_IMAGE = 'image';
 export const MEDIA_KIND_VIDEO = 'video';
 export const MEDIA_KIND_LINK = 'link';
+export const MEDIA_KIND_SCENE = 'scene';
 export const MEDIA_KIND_SYSTEM = 'system';
 
 export const VAULT_CONFIG_ITEM_ID = '__imgvault_vault_config__';
@@ -66,6 +67,25 @@ const LINK_BASE_FIELD_KEYS = [
   'linkPreviewImageUrl',
   'lastVisitedAt',
   'isLink',
+];
+
+const SCENE_BASE_FIELD_KEYS = [
+  'spzUrl',
+  'spzFileSize',
+  'textureUrl',
+  'textureFileSize',
+  'sourcePageUrl',
+  'pageTitle',
+  'fileName',
+  'fileSize',
+  'fileType',
+  'fileTypeSource',
+  'creationDate',
+  'creationDateSource',
+  'internalAddedTimestamp',
+  'tags',
+  'description',
+  'collectionId',
 ];
 
 const TECHNICAL_FIELD_KEYS = [
@@ -136,6 +156,10 @@ export const MEDIA_FIELD_REGISTRY = Object.freeze({
     label: 'Link',
     base: Object.freeze([...LINK_BASE_FIELD_KEYS]),
   }),
+  [MEDIA_KIND_SCENE]: Object.freeze({
+    label: '3D Scene',
+    base: Object.freeze([...SCENE_BASE_FIELD_KEYS]),
+  }),
   technical: Object.freeze({
     label: 'Technical',
     base: Object.freeze([...TECHNICAL_FIELD_KEYS]),
@@ -162,6 +186,7 @@ const EXPLICIT_MEDIA_KINDS = new Set([
   MEDIA_KIND_IMAGE,
   MEDIA_KIND_VIDEO,
   MEDIA_KIND_LINK,
+  MEDIA_KIND_SCENE,
   MEDIA_KIND_SYSTEM,
 ]);
 
@@ -202,6 +227,7 @@ export function getMediaItemKind(item = {}) {
 
   if (explicitKind === MEDIA_KIND_LINK || explicitKind === MEDIA_KIND_SYSTEM) return explicitKind;
   if (explicitKind === MEDIA_KIND_IMAGE) return MEDIA_KIND_IMAGE;
+  if (explicitKind === MEDIA_KIND_SCENE) return MEDIA_KIND_SCENE;
   if (explicitKind === MEDIA_KIND_VIDEO) {
     return fileType.startsWith('image/') && !hasVideoLinks
       ? MEDIA_KIND_IMAGE
@@ -209,6 +235,7 @@ export function getMediaItemKind(item = {}) {
   }
 
   if (isTruthyFlag(item?.isLink) || item?.linkUrl) return MEDIA_KIND_LINK;
+  if (item?.spzUrl) return MEDIA_KIND_SCENE;
   if (fileType.startsWith('image/') && !hasVideoLinks) return MEDIA_KIND_IMAGE;
   if (
     isTruthyFlag(item?.isVideo) ||
@@ -236,6 +263,7 @@ export function getAllBaseFieldKeys() {
     ...MEDIA_FIELD_REGISTRY[MEDIA_KIND_IMAGE].base,
     ...MEDIA_FIELD_REGISTRY[MEDIA_KIND_VIDEO].base,
     ...MEDIA_FIELD_REGISTRY[MEDIA_KIND_LINK].base,
+    ...MEDIA_FIELD_REGISTRY[MEDIA_KIND_SCENE].base,
   ];
 }
 

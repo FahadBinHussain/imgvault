@@ -91,13 +91,18 @@ export const mediaItems = pgTable(
     faviconUrl: text('favicon_url').notNull().default(''),
     lastVisitedAt: timestamp('last_visited_at', { withTimezone: true }),
 
+    spzUrl: text('spz_url').notNull().default(''),
+    spzFileSize: bigint('spz_file_size', { mode: 'number' }),
+    textureUrl: text('texture_url').notNull().default(''),
+    textureFileSize: bigint('texture_file_size', { mode: 'number' }),
+
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    kindCheck: check('chk_media_items_kind', sql`${table.kind} in ('image','video','link')`),
+    kindCheck: check('chk_media_items_kind', sql`${table.kind} in ('image','video','link','scene')`),
     addedIdx: index('idx_media_items_added').on(table.internalAddedTimestamp),
     deletedIdx: index('idx_media_items_deleted').on(table.deletedAt),
     collectionIdx: index('idx_media_items_collection').on(table.collectionId),
