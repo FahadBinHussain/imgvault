@@ -68,23 +68,64 @@ try {
   });
 
   setProgress(15, 'Fetching scene data...');
-  const fileResponse = await chrome.runtime.sendMessage({
-    action: 'fetchFile',
-    mediaId: sceneId,
-    url: spzUrl,
-  });
-  if (!fileResponse?.success) throw new Error(`Failed to fetch .spz: ${fileResponse?.error || 'unknown error'}`);
 
-  setProgress(40, 'Processing splat file...');
-  let spzBytes;
-  if (fileResponse.data.spzBuffer) {
-    spzBytes = new Uint8Array(fileResponse.data.spzBuffer).buffer;
-  } else {
-    spzBytes = new Uint8Array(fileResponse.data.buffer).buffer;
+  // Viewer-level IndexedDB cache — avoids slow chrome.runtime.sendMessage round-trip on reload
+  function openViewerCache() {
+    return new Promise((resolve) => {
+      const req = indexedDB.open('imgvault-scene-viewer-cache', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('blobs');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    });
   }
 
-  const configJson = fileResponse.data.configJson || null;
-  console.log('[Viewer] configJson from background:', JSON.stringify(configJson));
+  async function getCachedBlob(id) {
+    const db = await openViewerCache();
+    if (!db) return null;
+    return new Promise((resolve) => {
+      const tx = db.transaction('blobs', 'readonly');
+      const req = tx.objectStore('blobs').get(id);
+      req.onsuccess = () => { db.close(); resolve(req.result || null); };
+      req.onerror = () => { db.close(); resolve(null); };
+    });
+  }
+
+  async function setCachedBlob(id, spzBuffer, configJson) {
+    const db = await openViewerCache();
+    if (!db) return;
+    const tx = db.transaction('blobs', 'readwrite');
+    tx.objectStore('blobs').put({ spzBuffer, configJson, ts: Date.now() }, id);
+    tx.oncomplete = () => db.close();
+  }
+
+  let spzBytes, configJson;
+
+  const cached = await getCachedBlob(sceneId);
+  if (cached) {
+    console.log('[Viewer] Cache hit —', cached.spzBuffer.byteLength, 'bytes');
+    setProgress(25, 'Loaded from cache');
+    spzBytes = cached.spzBuffer;
+    configJson = cached.configJson;
+  } else {
+    const fileResponse = await chrome.runtime.sendMessage({
+      action: 'fetchFile',
+      mediaId: sceneId,
+      url: spzUrl,
+    });
+    if (!fileResponse?.success) throw new Error(`Failed to fetch .spz: ${fileResponse?.error || 'unknown error'}`);
+
+    setProgress(40, 'Processing splat file...');
+    if (fileResponse.data.spzBuffer) {
+      spzBytes = new Uint8Array(fileResponse.data.spzBuffer).buffer;
+    } else {
+      spzBytes = new Uint8Array(fileResponse.data.buffer).buffer;
+    }
+    configJson = fileResponse.data.configJson || null;
+
+    // Cache for instant reload
+    setCachedBlob(sceneId, spzBytes, configJson);
+  }
+  console.log('[Viewer] configJson:', JSON.stringify(configJson));
 
   // Apply config matching worldlabs.ai rendering pipeline
   const splatGroup = new THREE.Group();
