@@ -95,6 +95,7 @@ export const mediaItems = pgTable(
     spzFileSize: bigint('spz_file_size', { mode: 'number' }),
     textureUrl: text('texture_url').notNull().default(''),
     textureFileSize: bigint('texture_file_size', { mode: 'number' }),
+    configJson: text('config_json'),
 
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
 

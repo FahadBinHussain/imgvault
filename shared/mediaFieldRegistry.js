@@ -74,6 +74,7 @@ const SCENE_BASE_FIELD_KEYS = [
   'spzFileSize',
   'textureUrl',
   'textureFileSize',
+  'configJson',
   'sourcePageUrl',
   'pageTitle',
   'fileName',

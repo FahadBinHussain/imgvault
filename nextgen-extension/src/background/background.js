@@ -2994,6 +2994,23 @@ class ImgVaultServiceWorker {
   }
 
   async handleFetchFile({ mediaId, url }) {
+    let configJson = null;
+
+    // Load config from DB if mediaId is available
+    if (mediaId) {
+      try {
+        const sql = this.storage.ensureNeonReady?.();
+        if (sql) {
+          const rows = await sql`SELECT config_json FROM public.media_items WHERE id = ${mediaId} AND config_json IS NOT NULL LIMIT 1`;
+          if (rows?.[0]?.config_json) {
+            configJson = typeof rows[0].config_json === 'string' ? JSON.parse(rows[0].config_json) : rows[0].config_json;
+          }
+        }
+      } catch (e) {
+        console.warn('[Fetcher] Failed to load config_json:', e.message);
+      }
+    }
+
     // Try IndexedDB cache first (for scene files cached during upload).
     if (mediaId) {
       try {
@@ -3004,6 +3021,7 @@ class ImgVaultServiceWorker {
           return {
             spzBuffer: Array.from(new Uint8Array(cached.spzBytes)),
             textureBuffer: cached.textureBytes ? Array.from(new Uint8Array(cached.textureBytes)) : null,
+            configJson,
             fromCache: true,
           };
         }
@@ -3031,7 +3049,7 @@ class ImgVaultServiceWorker {
     if (!resp.ok) throw new Error(`Fetch failed: ${resp.status} ${resp.statusText}`);
     const buffer = await resp.arrayBuffer();
     console.log('[Fetcher] Fetched', buffer.byteLength, 'bytes from', fetchUrl.substring(0, 80));
-    return { buffer: Array.from(new Uint8Array(buffer)), contentType: resp.headers.get('content-type') || '' };
+    return { buffer: Array.from(new Uint8Array(buffer)), configJson, contentType: resp.headers.get('content-type') || '' };
   }
 
   async handleSceneUpload(data) {
@@ -3057,6 +3075,7 @@ class ImgVaultServiceWorker {
       }
 
       await this.updateStatusWithLog('☁️ Uploading SPZ to UDrop...');
+      console.log('📦 [SCENE] UDrop keys present:', Boolean(settings.udropKey1 && settings.udropKey2), 'key1 length:', settings.udropKey1?.length, 'key2 length:', settings.udropKey2?.length);
       const uploader = new UDropUploader();
       const spzResult = await uploader.upload(
         spzBlob,
@@ -3104,6 +3123,7 @@ class ImgVaultServiceWorker {
         spzFileSize: data.spzFileSize || spzBlob.size,
         textureUrl: textureResult.url,
         textureFileSize: data.textureFileSize || textureBlob.size,
+        configJson: data.sceneConfig ? JSON.stringify(data.sceneConfig) : null,
       };
 
       const savedId = await this.storage.saveImage(sceneMetadata);

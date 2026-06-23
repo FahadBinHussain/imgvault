@@ -6,7 +6,7 @@
   <title>ImgVault 3D Scene</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #0f0f1a; overflow: hidden; font-family: system-ui, sans-serif; }
+    body { background: #f9f9fb; overflow: hidden; font-family: system-ui, sans-serif; }
     #viewport { width: 100vw; height: 100vh; }
     #header {
       position: fixed; top: 0; left: 0; right: 0; z-index: 10;
@@ -37,6 +37,10 @@
       animation: spin 0.8s linear infinite; margin-right: 12px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    #loading .load-info { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+    #loading .load-info span { font-size: 13px; opacity: 0.8; }
+    .progress-bar { width: 200px; height: 3px; background: rgba(255,255,255,0.15); border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; width: 0%; background: #22d3ee; border-radius: 2px; transition: width 0.3s ease; }
     #error {
       position: fixed; inset: 0; z-index: 20;
       display: none; align-items: center; justify-content: center;
@@ -74,7 +78,10 @@
 
   <div id="loading">
     <div class="spinner"></div>
-    <span>Loading 3D scene...</span>
+    <div class="load-info">
+      <span id="loadStep">Preparing...</span>
+      <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+    </div>
   </div>
 
   <div id="error">

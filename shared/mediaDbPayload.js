@@ -189,6 +189,7 @@ export function toMediaDbPayload(source = {}, options = {}) {
     spzFileSize: asInt(normalized.spzFileSize),
     textureUrl: asText(normalized.textureUrl),
     textureFileSize: asInt(normalized.textureFileSize),
+    configJson: asText(normalized.configJson),
     linkUrl,
     linkUrlCanonical: asText(normalized.linkUrlCanonical) || canonicalizeLinkUrl(linkUrl || normalized.sourcePageUrl || ''),
     linkPreviewImageUrl: asText(normalized.linkPreviewImageUrl),

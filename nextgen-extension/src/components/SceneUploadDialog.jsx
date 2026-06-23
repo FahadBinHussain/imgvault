@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useCallback } from 'react';
-import { Upload, X, Box, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Upload, X, Box, Image as ImageIcon, FileJson, Loader2 } from 'lucide-react';
 import { Button, Input, Textarea, Modal } from './UI';
 import { useSceneUpload, useCollections } from '../hooks/useChromeExtension';
 
@@ -14,6 +14,7 @@ export default function SceneUploadDialog({ isOpen, onClose, onUploaded }) {
 
   const [spzFile, setSpzFile] = useState(null);
   const [textureFile, setTextureFile] = useState(null);
+  const [configFile, setConfigFile] = useState(null);
   const [pageTitle, setPageTitle] = useState('');
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
@@ -23,6 +24,7 @@ export default function SceneUploadDialog({ isOpen, onClose, onUploaded }) {
 
   const spzInputRef = useRef(null);
   const textureInputRef = useRef(null);
+  const configInputRef = useRef(null);
 
   const handleSpzDrop = useCallback((e) => {
     e.preventDefault();
@@ -43,11 +45,30 @@ export default function SceneUploadDialog({ isOpen, onClose, onUploaded }) {
     }
   }, []);
 
+  const handleConfigDrop = useCallback((e) => {
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0] || e.target?.files?.[0];
+    if (file && file.name.endsWith('.json')) {
+      setConfigFile(file);
+    }
+  }, []);
+
   const handleUpload = async () => {
-    if (!spzFile || !textureFile) return;
+    if (!spzFile || !textureFile || !configFile) return;
 
     try {
       const tagsArray = tags.split(',').map(t => t.trim()).filter(t => t.length > 0);
+
+      // Read optional config JSON
+      let sceneConfig = null;
+      if (configFile) {
+        const configText = await configFile.text();
+        try {
+          sceneConfig = JSON.parse(configText);
+        } catch {
+          console.warn('Invalid config JSON, ignoring');
+        }
+      }
 
       // Convert to plain arrays — chrome.runtime.sendMessage structured clone
       // corrupts/zeroes large ArrayBuffers in MV3 service workers.
@@ -62,6 +83,7 @@ export default function SceneUploadDialog({ isOpen, onClose, onUploaded }) {
         textureFileName: textureFile.name,
         textureFileSize: textureFile.size,
         textureMimeType: textureFile.type,
+        sceneConfig,
         pageTitle: pageTitle || spzFile.name.replace('.spz', ''),
         description,
         tags: tagsArray,
@@ -81,6 +103,7 @@ export default function SceneUploadDialog({ isOpen, onClose, onUploaded }) {
   const resetForm = () => {
     setSpzFile(null);
     setTextureFile(null);
+    setConfigFile(null);
     setPageTitle('');
     setDescription('');
     setTags('');
@@ -94,7 +117,7 @@ export default function SceneUploadDialog({ isOpen, onClose, onUploaded }) {
     }
   };
 
-  const canUpload = spzFile && textureFile && !uploading;
+  const canUpload = spzFile && textureFile && configFile && !uploading;
 
   return (
     <Modal
@@ -182,6 +205,44 @@ export default function SceneUploadDialog({ isOpen, onClose, onUploaded }) {
               <ImageIcon className="w-8 h-8 mx-auto mb-2 text-base-content/50" />
               <p className="text-base-content/70">Drop texture .webp file here or click to browse</p>
               <p className="text-xs text-base-content/50 mt-1">Texture atlas for the 3D scene</p>
+            </>
+          )}
+        </div>
+
+        {/* Config JSON Drop Zone (required) */}
+        <div
+          className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+            configFile
+              ? 'border-amber-500 bg-amber-500/10'
+              : 'border-base-content/30 hover:border-amber-500/50'
+          }`}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleConfigDrop}
+          onClick={() => configInputRef.current?.click()}
+        >
+          <input
+            ref={configInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleConfigDrop}
+          />
+          {configFile ? (
+            <div className="flex items-center justify-center gap-2 text-amber-500">
+              <FileJson className="w-5 h-5" />
+              <span className="font-medium">{configFile.name}</span>
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfigFile(null); }}
+                className="p-1 hover:bg-amber-500/20 rounded"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <FileJson className="w-8 h-8 mx-auto mb-2 text-base-content/50" />
+              <p className="text-base-content/70">Drop scene config .json here or click to browse</p>
+              <p className="text-xs text-base-content/50 mt-1">position, rotation, camera settings</p>
             </>
           )}
         </div>

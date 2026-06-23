@@ -2194,6 +2194,7 @@ export class StorageManager {
       spzFileSize: row.spz_file_size ?? extra.spzFileSize ?? null,
       textureUrl: row.texture_url || extra.textureUrl || '',
       textureFileSize: row.texture_file_size ?? extra.textureFileSize ?? null,
+      configJson: row.config_json || extra.configJson || null,
       linkUrl: row.link_url || extra.linkUrl || '',
       linkUrlCanonical: row.link_url_canonical || extra.linkUrlCanonical || '',
       linkPreviewImageUrl: row.link_preview_image_url || extra.linkPreviewImageUrl || '',
@@ -2218,7 +2219,7 @@ export class StorageManager {
         pixvid_url, pixvid_delete_url, imgbb_url, imgbb_delete_url, imgbb_thumb_url,
         filemoon_watch_url, filemoon_direct_url, udrop_watch_url, udrop_direct_url,
         link_url, link_url_canonical, link_preview_image_url, favicon_url, last_visited_at,
-        spz_url, spz_file_size, texture_url, texture_file_size,
+        spz_url, spz_file_size, texture_url, texture_file_size, config_json,
         deleted_at, exif_metadata, extra_metadata, updated_at
       ) values (
         ${id}, ${p.kind}, ${p.isVideo}, ${p.isLink}, ${p.pageTitle}, ${p.description}, ${JSON.stringify(p.tags)}::jsonb, ${p.collectionId},
@@ -2227,7 +2228,7 @@ export class StorageManager {
         ${p.pixvidUrl}, ${p.pixvidDeleteUrl}, ${p.imgbbUrl}, ${p.imgbbDeleteUrl}, ${p.imgbbThumbUrl},
         ${p.filemoonWatchUrl}, ${p.filemoonDirectUrl}, ${p.udropWatchUrl}, ${p.udropDirectUrl},
         ${p.linkUrl}, ${p.linkUrlCanonical}, ${p.linkPreviewImageUrl}, ${p.faviconUrl}, ${p.lastVisitedAt},
-        ${p.spzUrl}, ${p.spzFileSize}, ${p.textureUrl}, ${p.textureFileSize},
+        ${p.spzUrl}, ${p.spzFileSize}, ${p.textureUrl}, ${p.textureFileSize}, ${p.configJson},
         ${p.deletedAt}, ${p.exifMetadata ? JSON.stringify(p.exifMetadata) : null}::jsonb, ${JSON.stringify(p.extraMetadata || {})}::jsonb, now()
       )
       on conflict (id) do update set
@@ -2272,6 +2273,7 @@ export class StorageManager {
         spz_file_size = excluded.spz_file_size,
         texture_url = excluded.texture_url,
         texture_file_size = excluded.texture_file_size,
+        config_json = excluded.config_json,
         deleted_at = excluded.deleted_at,
         exif_metadata = excluded.exif_metadata,
         extra_metadata = excluded.extra_metadata,
@@ -2305,7 +2307,7 @@ export class StorageManager {
         pixvid_url, pixvid_delete_url, imgbb_url, imgbb_delete_url, imgbb_thumb_url,
         filemoon_watch_url, filemoon_direct_url, udrop_watch_url, udrop_direct_url,
         link_url, link_url_canonical, link_preview_image_url, favicon_url, last_visited_at,
-        spz_url, spz_file_size, texture_url, texture_file_size,
+        spz_url, spz_file_size, texture_url, texture_file_size, config_json,
         deleted_at, created_at, updated_at, extra_metadata - 'ai' as extra_metadata
       from public.media_items
       where deleted_at is null

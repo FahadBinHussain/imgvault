@@ -1,0 +1,115 @@
+{
+  "manifest_version": 3,
+  "name": "ImgVault",
+  "version": "2.0.0",
+  "description": "Next-generation image vault with context preservation and advanced duplicate detection",
+  "author": "ImgVault Team",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAntaWQtfOfecwy2gY2Bm/Siisjfgw3QNphLDi7EcObFNbeaE1bNth7b2Q6XES0OqNykC4oB/uxyRf8UNMUm9cVWeUEyA4IhoiJMMYXde4v8PQlXFwOoHrihv+eQeZmzEuc/yevC95oLoOXYIEubwJ1uJxr/tIArIrOh0gHslqtt/gchGsPVkd+V55QRJlBYuQKtDCoA314xRKYMa2S1Sm1DGgtN8bWl2CXh+XzMOXFO7GFs+GPfyaNXxvnPdR915Y69dyuJcqt30HurYN9UXGyBoNoAsOKfi4RXPFhbWwyO5irEJrPj1yEIDI2EHNBUxRhLbj56TrRaYAfYtIqOtv9wIDAQAB",
+  
+  "permissions": [
+    "contextMenus",
+    "activeTab",
+    "tabs",
+    "storage",
+    "scripting",
+    "nativeMessaging",
+    "cookies",
+    "downloads",
+    "notifications",
+    "declarativeNetRequest"
+  ],
+  
+  "host_permissions": [
+    "https://pixvid.org/*",
+    "<all_urls>"
+  ],
+  
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  
+  "action": {
+    "default_icon": {
+      "16": "icons/1.png",
+      "32": "icons/1.png",
+      "48": "icons/1.png",
+      "128": "icons/1.png"
+    },
+    "default_title": "ImgVault - Open Gallery"
+  },
+  
+  "icons": {
+    "16": "icons/1.png",
+    "32": "icons/1.png",
+    "48": "icons/1.png",
+    "128": "icons/1.png"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    },
+    {
+      "matches": ["*://*.flickr.com/*"],
+      "js": ["content.js"],
+      "css": ["flickr-fix.css"],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": ["*://*.slideshare.net/*"],
+      "js": ["content.js"],
+      "css": ["slideshare-fix.css"],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": ["*://*.rajce.idnes.cz/*"],
+      "js": ["content.js"],
+      "css": ["rajce-fix.css"],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": ["https://open.spotify.com/*"],
+      "js": ["contextmenu-unlock.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": ["https://www.behance.net/*", "https://behance.net/*"],
+      "js": ["contextmenu-unlock.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": ["https://www.instagram.com/*", "https://instagram.com/*"],
+      "js": ["contextmenu-unlock.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": ["https://www.skidrowreloaded.com/*", "https://skidrowreloaded.com/*"],
+      "js": ["contextmenu-unlock.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  
+  "web_accessible_resources": [
+    {
+      "resources": ["lib/*.js", "scene-viewer.html", "scene-viewer.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  
+  "minimum_chrome_version": "93",
+  
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
+}

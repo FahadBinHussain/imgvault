@@ -401,36 +401,46 @@ export class UDropUploader extends BaseUploader {
    * @param {string} key2 - UDrop API Key 2 (64 characters)
    * @returns {Promise<{access_token: string, account_id: string}>}
    */
-  async authorize(key1, key2, signal) {
-    try {
-      const formData = new FormData();
-      formData.append('key1', key1);
-      formData.append('key2', key2);
+  async authorize(key1, key2, signal, retries = 2) {
+    let lastError;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        if (!key1 || !key2) {
+          throw new Error(`UDrop keys missing: key1=${key1 ? 'set' : 'empty'}, key2=${key2 ? 'set' : 'empty'}`);
+        }
+        const formData = new FormData();
+        formData.append('key1', key1);
+        formData.append('key2', key2);
 
-      const response = await fetch(`${this.apiUrl}/authorize`, {
-        method: 'POST',
-        body: formData,
-        signal
-      });
+        const response = await fetch(`${this.apiUrl}/authorize`, {
+          method: 'POST',
+          body: formData,
+          signal
+        });
 
-      if (!response.ok) {
-        await this.handleError(response, 'Failed to authorize with UDrop');
+        if (!response.ok) {
+          await this.handleError(response, 'Failed to authorize with UDrop');
+        }
+
+        const result = await response.json();
+        
+        if (result._status !== 'success' || !result.data || !result.data.access_token) {
+          throw new Error(result.response || 'Authorization failed');
+        }
+
+        return {
+          access_token: result.data.access_token,
+          account_id: result.data.account_id
+        };
+      } catch (error) {
+        lastError = error;
+        console.error(`UDrop authorization attempt ${attempt + 1}/${retries + 1} failed:`, error.message);
+        if (attempt < retries && !signal?.aborted) {
+          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        }
       }
-
-      const result = await response.json();
-      
-      if (result._status !== 'success' || !result.data || !result.data.access_token) {
-        throw new Error(result.response || 'Authorization failed');
-      }
-
-      return {
-        access_token: result.data.access_token,
-        account_id: result.data.account_id
-      };
-    } catch (error) {
-      console.error('UDrop authorization error:', error);
-      throw new Error(`Failed to authorize with UDrop: ${error.message}`);
     }
+    throw new Error(`Failed to authorize with UDrop: ${lastError.message}`);
   }
 
   /**

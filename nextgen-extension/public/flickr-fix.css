@@ -1,0 +1,14 @@
+/* Fix Flickr protective overlays to allow context menu */
+.facade-of-protection-zoom,
+.facade-of-protection {
+  pointer-events: none !important;
+  display: none !important;
+}
+
+.zoom-photo-container img {
+  pointer-events: auto !important;
+}
+
+img {
+  pointer-events: auto !important;
+}
