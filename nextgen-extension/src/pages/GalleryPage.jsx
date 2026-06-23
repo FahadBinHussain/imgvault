@@ -2902,14 +2902,9 @@ export default function GalleryPage() {
                     if (selectionMode) {
                       toggleImageSelection(img.id, e);
                     } else if (getMediaItemKind(img) === 'scene') {
-                      const spzUrl = img.spzUrl || '';
-                      const sceneTitle = img.pageTitle || '3D Scene';
-                      
-                      const viewerUrl = chrome.runtime.getURL('scene-viewer.html')
-                        + '?url=' + encodeURIComponent(spzUrl)
-                        + '&id=' + encodeURIComponent(img.id || '')
-                        + '&title=' + encodeURIComponent(sceneTitle);
-                      window.open(viewerUrl, '_blank');
+                      setIsModalAnimating(true);
+                      setSelectedImage({ ...img, _isScene: true });
+                      setTimeout(() => setIsModalAnimating(false), 300);
                     } else {
                       setIsModalAnimating(true);
                       setSelectedImage(img);
@@ -3114,6 +3109,22 @@ export default function GalleryPage() {
                           </div>
                         </div>
                       </div>
+                    );
+                  })()
+                ) : modalImage?._isScene ? (
+                  (() => {
+                    const viewerUrl = chrome.runtime.getURL('scene-viewer.html')
+                      + '?url=' + encodeURIComponent(modalImage.spzUrl || '')
+                      + '&id=' + encodeURIComponent(modalImage.id || '')
+                      + '&title=' + encodeURIComponent(modalImage.pageTitle || '3D Scene');
+                    return (
+                      <iframe
+                        src={viewerUrl}
+                        className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 border-0
+                                 transition-all duration-700 ease-out
+                                 ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
+                        allow="accelerometer; gyroscope; webgl"
+                      />
                     );
                   })()
                 ) : shouldRenderModalVideoPlayer(modalImage) ? (
