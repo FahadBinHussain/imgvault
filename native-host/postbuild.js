@@ -5,10 +5,13 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const gnuReleaseDir = path.join(__dirname, 'src-tauri', 'target', 'x86_64-pc-windows-gnu', 'release');
 const releaseDir = path.join(__dirname, 'src-tauri', 'target', 'release');
 const filesToCopy = [
   {
-    source: path.join(releaseDir, 'imgvault-native-host.exe'),
+    source: fs.existsSync(path.join(gnuReleaseDir, 'imgvault-native-host.exe'))
+      ? path.join(gnuReleaseDir, 'imgvault-native-host.exe')
+      : path.join(releaseDir, 'imgvault-native-host.exe'),
     dest: path.join(__dirname, 'ImgVault-Native-Host.exe'),
   },
 ];

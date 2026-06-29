@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "cargo:build": "cargo build --release --manifest-path src-tauri/Cargo.toml",
-    "portable:build": "cargo build --release --manifest-path src-tauri/Cargo.toml && node postbuild.js"
+    "portable:build": "cargo build --release --target x86_64-pc-windows-gnu --manifest-path src-tauri/Cargo.toml && node postbuild.js"
   },
   "dependencies": {
     "@tauri-apps/api": "^1.5.3",
