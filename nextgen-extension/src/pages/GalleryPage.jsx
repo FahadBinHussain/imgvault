@@ -27,6 +27,7 @@ import {
   getMissingVideoUploadServices,
   getPreferredVideoProviderLink,
   getVideoProviderLabel,
+  getVideoProviderLinks,
   getVideoUploadService,
   hasAnyVideoProviderLink,
   hasVideoProviderLink,
@@ -648,6 +649,23 @@ export default function GalleryPage() {
   };
   const getPreferredVideoDirectUrl = (item) => {
     return getPreferredVideoProviderLink(item, defaultVideoSource, 'directUrl');
+  };
+  const isLikelyVideoUrl = (url) => typeof url === 'string' && /\.(mp4|webm|mov|m4v|mkv|avi|ogv)(?:[?#].*)?$/i.test(url.trim());
+  const firstImageLikeUrl = (...urls) => urls.find((url) => typeof url === 'string' && url.trim() && !isLikelyVideoUrl(url)) || '';
+  const getVideoPosterUrl = (item) => {
+    const links = getVideoProviderLinks(item);
+    const videoThumb =
+      links?.filemoon?.thumbnailUrl ||
+      links?.udrop?.thumbnailUrl ||
+      '';
+    return firstImageLikeUrl(
+      item?.videoThumbnailUrl,
+      item?.linkPreviewImageUrl,
+      videoThumb,
+      getPreferredImageProviderLink(item, defaultGallerySource, 'thumbnailUrl'),
+      item?.imgbbThumbUrl,
+      getPreferredImageProviderLink(item, defaultGallerySource, 'url')
+    );
   };
   const shouldRenderModalVideoPlayer = (item) => (
     Boolean(getPreferredVideoProviderLink(item, defaultVideoSource, 'directUrl'))
@@ -1279,22 +1297,6 @@ export default function GalleryPage() {
       reader.readAsDataURL(file);
     });
 
-    if (isVideo) {
-      uploadPreviewUrlRef.current = previewUrl;
-    }
-    const nextUploadImageData = {
-      srcUrl: previewUrl,
-      fileName: file.name,
-      pageTitle: finalPageTitle,
-      timestamp: Date.now(),
-      file,
-      isVideo,
-      fileType: file.type
-    };
-    setUploadImageData(nextUploadImageData);
-    setUploadMetadata(null);
-    setUploadPageUrl(finalPageUrl);
-
     let nextUploadMetadata = null;
 
     try {
@@ -1335,6 +1337,21 @@ export default function GalleryPage() {
     } catch (error) {
       console.error('Failed to extract metadata:', error);
     }
+
+    const nextUploadImageData = {
+      srcUrl: previewUrl,
+      fileName: file.name,
+      pageTitle: finalPageTitle,
+      timestamp: Date.now(),
+      file,
+      isVideo,
+      fileType: file.type,
+      ...(nextUploadMetadata?.width != null && nextUploadMetadata?.height != null
+        ? { width: nextUploadMetadata.width, height: nextUploadMetadata.height }
+        : {}),
+    };
+    setUploadImageData(nextUploadImageData);
+    setUploadPageUrl(finalPageUrl);
 
     return {
       uploadImageData: nextUploadImageData,
@@ -2885,7 +2902,7 @@ export default function GalleryPage() {
             </div>
             
             {/* Horizontal row-first grid (left-to-right ordering by time) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 items-start">
               {groupedImages[date].map((img, index) => (
                 <motion.div
                   key={img.id}
@@ -2971,12 +2988,41 @@ export default function GalleryPage() {
                           </div>
                         );
                       })()
-                    ) : getPreferredVideoWatchUrl(img) ? (
-                      shouldRenderModalVideoPlayer(img) ? (
-                        <video src={getPreferredVideoDirectUrl(img)} className="w-full aspect-video object-cover pointer-events-none" muted playsInline preload="metadata" onLoadedData={() => handleImageLoad(img.id)} />
-                      ) : (
-                        <iframe src={getPreferredVideoWatchUrl(img)} className="w-full aspect-video object-cover pointer-events-none" frameBorder="0" scrolling="no" style={{ pointerEvents: 'none' }} onLoad={() => handleImageLoad(img.id)} />
-                      )
+                    ) : getMediaItemKind(img) === 'video' ? (
+                      (() => {
+                        const videoDirectUrl = getPreferredVideoDirectUrl(img);
+                        const videoPosterUrl = getVideoPosterUrl(img);
+                        return videoDirectUrl ? (
+                          <video
+                            src={videoDirectUrl}
+                            poster={videoPosterUrl || undefined}
+                            className="w-full h-auto object-cover"
+                            muted
+                            playsInline
+                            preload="metadata"
+                            onLoadedMetadata={(e) => {
+                              handleImageLoad(img.id);
+                            }}
+                            onCanPlayThrough={() => handleImageLoad(img.id)}
+                            onError={() => handleImageLoad(img.id)}
+                          />
+                        ) : videoPosterUrl ? (
+                          <div className="relative w-full overflow-hidden aspect-video bg-base-200">
+                            <img
+                              src={videoPosterUrl}
+                              alt={img.pageTitle || 'Saved video'}
+                              className={`absolute inset-0 w-full h-full object-cover transition-all duration-700 ${loadedImages.has(img.id) ? 'opacity-100' : 'opacity-0'}`}
+                              loading="lazy"
+                              onLoad={() => handleImageLoad(img.id)}
+                              onError={() => handleImageLoad(img.id)}
+                            />
+                          </div>
+                        ) : (
+                          <div className="relative w-full overflow-hidden aspect-video bg-base-200 flex items-center justify-center">
+                            <FileText style={{ width: 32, height: 32, color: 'oklch(from var(--color-base-content) l c h / 0.3)' }} />
+                          </div>
+                        );
+                      })()
                     ) : (
                       <img
                         src={
@@ -2989,15 +3035,6 @@ export default function GalleryPage() {
                         className={`w-full h-auto object-contain transition-all duration-500 ease-out ${loadedImages.has(img.id) ? 'opacity-100' : 'opacity-0'}`}
                         loading="lazy"
                       />
-                    )}
-                    
-                    {/* Video play overlay */}
-                    {getPreferredVideoWatchUrl(img) && (
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div style={{ background: 'oklch(from var(--color-base-100) l c h / 0.7)', backdropFilter: 'blur(8px)', borderRadius: '50%', padding: 12 }}>
-                          <svg width="36" height="36" viewBox="0 0 24 24" fill="oklch(from var(--color-base-content) l c h / 0.7)"><path d="M8 5v14l11-7z"/></svg>
-                        </div>
-                      </div>
                     )}
                     
                     {/* Gradient overlay on hover */}

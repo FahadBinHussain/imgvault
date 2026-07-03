@@ -9,14 +9,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Undo2, Trash2, AlertTriangle,
   FileText, Calendar, Cloud, Link2, Globe, AlignLeft, Tag,
-  File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint
+  File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint, Video
 } from 'lucide-react';
 import { Button, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
 import { useTrash } from '../hooks/useChromeExtension';
 import TimelineScrollbar from '../components/TimelineScrollbar';
 import PremiumBackground from '../components/PremiumBackground';
 import GalleryNavbar from '../components/GalleryNavbar';
-import { getPreferredVideoProviderLink } from '../utils/videoProviderLinks';
+import { getPreferredVideoProviderLink, getVideoProviderLinks } from '../utils/videoProviderLinks';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 import {
   getBaseFieldKeys,
@@ -325,8 +325,31 @@ export default function TrashPage() {
     );
   };
 
+  const getVideoDirectUrl = (image) => {
+    const links = getVideoProviderLinks(image);
+    return links?.filemoon?.directUrl || links?.udrop?.directUrl || links?.filemoon?.watchUrl || links?.udrop?.watchUrl || '';
+  };
+
   const isLinkItem = (image) => {
     return getMediaItemKind(image) === 'link';
+  };
+
+  const getVideoPosterUrl = (image) => {
+    const isLikelyVideoUrl = (url) => typeof url === 'string' && /\.(mp4|webm|mov|m4v|mkv|avi|ogv)(?:[?#].*)?$/i.test(url.trim());
+    const firstImageLikeUrl = (...urls) => urls.find((url) => typeof url === 'string' && url.trim() && !isLikelyVideoUrl(url)) || '';
+    const links = getVideoProviderLinks(image);
+    const videoThumb =
+      links?.filemoon?.thumbnailUrl ||
+      links?.udrop?.thumbnailUrl ||
+      '';
+    return firstImageLikeUrl(
+      image?.videoThumbnailUrl,
+      image?.linkPreviewImageUrl,
+      videoThumb,
+      getPreferredImageProviderLink(image, 'imgbb', 'thumbnailUrl'),
+      image?.imgbbThumbUrl,
+      getPreferredImageProviderLink(image, 'imgbb', 'url')
+    );
   };
 
   const getOverviewKeys = (item) => (
@@ -633,22 +656,31 @@ export default function TrashPage() {
                     )}
                     
                     {/* Render image or video embed */}
-                    {image.filemoonUrl ? (
-                      <iframe
-                        src={image.filemoonUrl}
-                        className="w-full aspect-video object-cover pointer-events-none"
-                        frameBorder="0"
-                        scrolling="no"
-                        style={{ pointerEvents: 'none' }}
-                        onLoad={() => handleImageLoad(image.id)}
-                      />
-                    ) : image.udropUrl ? (
+                    {getVideoDirectUrl(image) ? (
                       <video
-                        src={image.udropUrl}
-                        className="w-full aspect-video object-cover"
-                        style={{ pointerEvents: 'none' }}
-                        onLoadedMetadata={() => handleImageLoad(image.id)}
+                        src={getVideoDirectUrl(image)}
+                        poster={getVideoPosterUrl(image) || undefined}
+                        className="w-full h-auto object-cover"
+                        muted
+                        playsInline
+                        preload="metadata"
+                        onLoadedMetadata={(e) => {
+                          handleImageLoad(image.id);
+                        }}
+                        onCanPlayThrough={() => handleImageLoad(image.id)}
+                        onError={() => handleImageLoad(image.id)}
                       />
+                    ) : getVideoPosterUrl(image) ? (
+                      <div className="relative w-full overflow-hidden aspect-video bg-base-200">
+                        <img
+                          src={getVideoPosterUrl(image)}
+                          alt={image.title || 'Video preview'}
+                          className="absolute inset-0 w-full h-full object-cover"
+                          loading="lazy"
+                          onLoad={() => handleImageLoad(image.id)}
+                          onError={() => handleImageLoad(image.id)}
+                        />
+                      </div>
                     ) : isLinkItem(image) ? (
                       <div className="w-full aspect-video bg-base-200 flex flex-col items-center justify-center gap-3">
                         {image.linkPreviewImageUrl || getImageUrl(image) ? (
@@ -657,8 +689,8 @@ export default function TrashPage() {
                             alt={image.pageTitle || 'Link preview'}
                             onLoad={() => handleImageLoad(image.id)}
                             className={`w-full h-full object-contain transition-all duration-700 ease-out
-                                     ${loadedImages.has(image.id) 
-                                       ? 'opacity-100' 
+                                     ${loadedImages.has(image.id)
+                                       ? 'opacity-100'
                                        : 'opacity-0'}`}
                             loading="lazy"
                           />
@@ -675,8 +707,8 @@ export default function TrashPage() {
                         alt={image.pageTitle || 'Trashed image'}
                         onLoad={() => handleImageLoad(image.id)}
                         className={`w-full h-auto object-contain transition-all duration-700 ease-out
-                                 ${loadedImages.has(image.id) 
-                                   ? 'opacity-100' 
+                                 ${loadedImages.has(image.id)
+                                   ? 'opacity-100'
                                    : 'opacity-0'}`}
                         loading="lazy"
                       />

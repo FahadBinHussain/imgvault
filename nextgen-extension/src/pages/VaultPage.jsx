@@ -22,6 +22,7 @@ import PremiumBackground from '../components/PremiumBackground';
 import { useChromeMessage, useTrash, useCollections } from '../hooks/useChromeExtension';
 import {
   getPreferredVideoProviderLink,
+  getVideoProviderLinks,
 } from '../utils/videoProviderLinks';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 import {
@@ -206,6 +207,24 @@ export default function VaultPage() {
     item?.faviconUrl ||
     ''
   );
+
+  const getVideoPosterUrl = (item) => {
+    const isLikelyVideoUrl = (url) => typeof url === 'string' && /\.(mp4|webm|mov|m4v|mkv|avi|ogv)(?:[?#].*)?$/i.test(url.trim());
+    const firstImageLikeUrl = (...urls) => urls.find((url) => typeof url === 'string' && url.trim() && !isLikelyVideoUrl(url)) || '';
+    const links = getVideoProviderLinks(item);
+    const videoThumb =
+      links?.filemoon?.thumbnailUrl ||
+      links?.udrop?.thumbnailUrl ||
+      '';
+    return firstImageLikeUrl(
+      item?.videoThumbnailUrl,
+      item?.linkPreviewImageUrl,
+      videoThumb,
+      getPreferredImageProviderLink(item, 'imgbb', 'thumbnailUrl'),
+      item?.imgbbThumbUrl,
+      getPreferredImageProviderLink(item, 'imgbb', 'url')
+    );
+  };
 
   const getKind = (item) => {
     const kind = getMediaItemKind(item);
@@ -570,7 +589,7 @@ export default function VaultPage() {
                   <span className="g-date-text">{date}</span>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 items-start">
                   {groupedItems[date].map((item, index) => {
                     const kind = getKind(item);
                     const linkPreviewImage = getLinkPreviewImage(item);
@@ -614,12 +633,41 @@ export default function VaultPage() {
                                 </div>
                               )}
                             </div>
-                          ) : kind === 'Video' && videoWatchUrl ? (
-                            videoDirectUrl ? (
-                              <video src={videoDirectUrl} className="w-full aspect-video object-cover pointer-events-none" muted playsInline preload="metadata" onLoadedData={() => handleMediaLoad(item.id)} />
-                            ) : (
-                              <iframe src={videoWatchUrl} className="w-full aspect-video object-cover pointer-events-none" frameBorder="0" scrolling="no" style={{ pointerEvents: 'none' }} onLoad={() => handleMediaLoad(item.id)} />
-                            )
+                          ) : kind === 'Video' ? (
+                            (() => {
+                              const poster = getVideoPosterUrl(item);
+                              const videoDirectUrlItem = getVideoDirectUrl(item);
+                              return videoDirectUrlItem ? (
+                                <video
+                                  src={videoDirectUrlItem}
+                                  poster={poster || undefined}
+                                  className="w-full h-auto object-cover"
+                                  muted
+                                  playsInline
+                                  preload="metadata"
+                                  onLoadedMetadata={(e) => {
+                                    handleMediaLoad(item.id);
+                                  }}
+                                  onCanPlayThrough={() => handleMediaLoad(item.id)}
+                                  onError={() => handleMediaLoad(item.id)}
+                                />
+                              ) : poster ? (
+                                <div className="relative w-full overflow-hidden aspect-video bg-base-200">
+                                  <img
+                                    src={poster}
+                                    alt={item.pageTitle || item.fileName || 'Video preview'}
+                                    className="absolute inset-0 w-full h-full object-cover"
+                                    loading="lazy"
+                                    onLoad={() => handleMediaLoad(item.id)}
+                                    onError={() => handleMediaLoad(item.id)}
+                                  />
+                                </div>
+                              ) : (
+                                <div className="relative w-full overflow-hidden aspect-video bg-base-200 flex items-center justify-center">
+                                  <Video style={{ width: 32, height: 32, color: 'oklch(from var(--color-base-content) l c h / 0.3)' }} />
+                                </div>
+                              );
+                            })()
                           ) : imageUrl ? (
                             <img
                               src={imageUrl}
@@ -629,7 +677,7 @@ export default function VaultPage() {
                               loading="lazy"
                             />
                           ) : (
-                            <div className="w-full aspect-video flex items-center justify-center" style={{ background: 'var(--color-base-200)', color: 'oklch(from var(--color-base-content) l c h / 0.3)' }}>
+                            <div className="w-full h-auto flex items-center justify-center" style={{ background: 'var(--color-base-200)', color: 'oklch(from var(--color-base-content) l c h / 0.3)' }}>
                               {kind === 'Video' ? <Video style={{ width: 32, height: 32 }} /> : <ImageIcon style={{ width: 32, height: 32 }} />}
                             </div>
                           )}
