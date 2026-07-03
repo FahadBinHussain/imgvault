@@ -112,7 +112,15 @@ try {
       mediaId: sceneId,
       url: spzUrl,
     });
-    if (!fileResponse?.success) throw new Error(`Failed to fetch .spz: ${fileResponse?.error || 'unknown error'}`);
+    if (!fileResponse?.success) {
+      const err = fileResponse?.error || 'unknown error';
+      const is404 = err.includes('404');
+      const isExpired = is404 || err.includes('expir') || err.includes('deleted');
+      const msg = isExpired
+        ? 'Scene file expired or was removed from storage. Try re-uploading from the original source, or clear the browser cache if it was recently uploaded.'
+        : `Failed to fetch .spz: ${err}`;
+      throw new Error(msg);
+    }
 
     setProgress(40, 'Processing splat file...');
     if (fileResponse.data.spzBuffer) {

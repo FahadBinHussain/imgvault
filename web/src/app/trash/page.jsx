@@ -273,7 +273,7 @@ function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
             <iframe
               src={filemoonUrl}
               title={item.pageTitle || 'Trashed video'}
-              className="w-full max-w-5xl aspect-video rounded-[var(--radius-box)] shadow-2xl"
+              className="w-full max-w-5xl h-auto min-h-[200px] rounded-[var(--radius-box)] shadow-2xl"
               frameBorder="0"
               scrolling="no"
               onLoad={() => setIsLoading(false)}

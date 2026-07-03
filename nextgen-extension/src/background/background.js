@@ -2995,15 +2995,19 @@ class ImgVaultServiceWorker {
 
   async handleFetchFile({ mediaId, url }) {
     let configJson = null;
+    let extraMetadata = null;
 
     // Load config from DB if mediaId is available
     if (mediaId) {
       try {
         const sql = this.storage.ensureNeonReady?.();
         if (sql) {
-          const rows = await sql`SELECT config_json FROM public.media_items WHERE id = ${mediaId} AND config_json IS NOT NULL LIMIT 1`;
+          const rows = await sql`SELECT config_json, extra_metadata FROM public.media_items WHERE id = ${mediaId} AND (config_json IS NOT NULL OR extra_metadata IS NOT NULL) LIMIT 1`;
           if (rows?.[0]?.config_json) {
             configJson = typeof rows[0].config_json === 'string' ? JSON.parse(rows[0].config_json) : rows[0].config_json;
+          }
+          if (rows?.[0]?.extra_metadata) {
+            extraMetadata = typeof rows[0].extra_metadata === 'string' ? JSON.parse(rows[0].extra_metadata) : rows[0].extra_metadata;
           }
         }
       } catch (e) {
@@ -3045,11 +3049,81 @@ class ImgVaultServiceWorker {
       }
     }
 
-    const resp = await fetch(fetchUrl);
-    if (!resp.ok) throw new Error(`Fetch failed: ${resp.status} ${resp.statusText}`);
-    const buffer = await resp.arrayBuffer();
-    console.log('[Fetcher] Fetched', buffer.byteLength, 'bytes from', fetchUrl.substring(0, 80));
-    return { buffer: Array.from(new Uint8Array(buffer)), configJson, contentType: resp.headers.get('content-type') || '' };
+    // Try primary URL first
+    let primaryFailed = false;
+    try {
+      const resp = await fetch(fetchUrl);
+      if (resp.ok) {
+        const buffer = await resp.arrayBuffer();
+        console.log('[Fetcher] Fetched', buffer.byteLength, 'bytes from', fetchUrl.substring(0, 80));
+        return { buffer: Array.from(new Uint8Array(buffer)), configJson, contentType: resp.headers.get('content-type') || '' };
+      }
+      primaryFailed = true;
+      console.warn('[Fetcher] Primary URL returned', resp.status, resp.statusText, fetchUrl.substring(0, 80));
+    } catch (e) {
+      primaryFailed = true;
+      console.warn('[Fetcher] Primary URL network error:', e.message, fetchUrl.substring(0, 80));
+    }
+
+    if (primaryFailed) {
+      // Try fallback URLs from extraMetadata for scene files
+      if (extraMetadata?.sceneSpzWatchUrl) {
+        console.log('[Fetcher] Trying watch URL:', extraMetadata.sceneSpzWatchUrl);
+        try {
+          const watchResp = await fetch(extraMetadata.sceneSpzWatchUrl);
+          if (watchResp.ok) {
+            const buffer = await watchResp.arrayBuffer();
+            console.log('[Fetcher] Fetched from watch URL', buffer.byteLength, 'bytes');
+            return { buffer: Array.from(new Uint8Array(buffer)), configJson, contentType: watchResp.headers.get('content-type') || '' };
+          }
+          console.warn('[Fetcher] Watch URL failed:', watchResp.status, watchResp.statusText);
+        } catch (e) {
+          console.warn('[Fetcher] Watch URL network error:', e.message);
+        }
+      }
+      if (extraMetadata?.sceneSpzShortUrl) {
+        console.log('[Fetcher] Trying short URL:', extraMetadata.sceneSpzShortUrl);
+        try {
+          const shortResp = await fetch(extraMetadata.sceneSpzShortUrl);
+          if (shortResp.ok) {
+            const buffer = await shortResp.arrayBuffer();
+            console.log('[Fetcher] Fetched from short URL', buffer.byteLength, 'bytes');
+            return { buffer: Array.from(new Uint8Array(buffer)), configJson, contentType: shortResp.headers.get('content-type') || '' };
+          }
+          console.warn('[Fetcher] Short URL failed:', shortResp.status, shortResp.statusText);
+        } catch (e) {
+          console.warn('[Fetcher] Short URL network error:', e.message);
+        }
+      }
+      // Try regenerating a fresh direct URL via UDrop API if we have the fileId
+      let fileId = extraMetadata?.sceneSpzFileId;
+      // For old scenes: extract fileId from the udrop.com/file/{code}/... URL pattern
+      if (!fileId && url?.includes('udrop.com/file/')) {
+        const codeMatch = url.match(/udrop\.com\/file\/([^\/]+)/i);
+        if (codeMatch?.[1]) {
+          fileId = codeMatch[1];
+          console.log('[Fetcher] Extracted fileId from udrop URL:', fileId);
+        }
+      }
+      if (fileId) {
+        console.log('[Fetcher] Trying UDrop API regeneration for fileId:', fileId);
+        const freshUrl = await this.regenerateUdropDirectUrl(fileId);
+        if (freshUrl) {
+          try {
+            const freshResp = await fetch(freshUrl);
+            if (freshResp.ok) {
+              const buffer = await freshResp.arrayBuffer();
+              console.log('[Fetcher] Fetched from regenerated URL', buffer.byteLength, 'bytes');
+              return { buffer: Array.from(new Uint8Array(buffer)), configJson, contentType: freshResp.headers.get('content-type') || '' };
+            }
+            console.warn('[Fetcher] Regenerated URL failed:', freshResp.status, freshResp.statusText);
+          } catch (e) {
+            console.warn('[Fetcher] Regenerated URL network error:', e.message);
+          }
+        }
+      }
+      throw new Error(`All fetch attempts failed for ${fetchUrl.substring(0, 80)}`);
+    }
   }
 
   async handleSceneUpload(data) {
@@ -3124,6 +3198,13 @@ class ImgVaultServiceWorker {
         textureUrl: textureResult.url,
         textureFileSize: data.textureFileSize || textureBlob.size,
         configJson: data.sceneConfig ? JSON.stringify(data.sceneConfig) : null,
+        extraMetadata: {
+          sceneSpzFileId: spzResult.fileId || '',
+          sceneSpzWatchUrl: spzResult.watchUrl || '',
+          sceneSpzShortUrl: spzResult.shortUrl || '',
+          sceneTextureFileId: textureResult.fileId || '',
+          sceneTextureWatchUrl: textureResult.watchUrl || '',
+        },
       };
 
       const savedId = await this.storage.saveImage(sceneMetadata);
@@ -3149,6 +3230,36 @@ class ImgVaultServiceWorker {
     } catch (error) {
       await this.updateStatusWithLog(`❌ Scene upload failed: ${error.message}`, 'error');
       throw error;
+    }
+  }
+
+  async regenerateUdropDirectUrl(fileId) {
+    try {
+      const settings = await this.getMergedVideoHostSettings();
+      if (!settings.udropKey1 || !settings.udropKey2) {
+        console.warn('[Fetcher] Cannot regenerate UDrop URL: keys not configured');
+        return null;
+      }
+      const uploader = new UDropUploader();
+      const auth = await uploader.authorize(settings.udropKey1, settings.udropKey2);
+      const formData = new FormData();
+      formData.append('access_token', auth.access_token);
+      formData.append('account_id', auth.account_id);
+      formData.append('file_id', fileId);
+      const resp = await fetch('https://www.udrop.com/api/v2/file/download', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!resp.ok) return null;
+      const result = await resp.json();
+      if (result._status === 'success' && result.data?.download_url) {
+        console.log('[Fetcher] Regenerated UDrop direct URL:', result.data.download_url);
+        return result.data.download_url;
+      }
+      return null;
+    } catch (e) {
+      console.warn('[Fetcher] Failed to regenerate UDrop URL:', e.message);
+      return null;
     }
   }
 }
