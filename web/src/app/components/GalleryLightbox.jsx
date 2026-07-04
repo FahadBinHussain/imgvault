@@ -56,6 +56,7 @@ export default function GalleryLightbox({
   const gestureStartRef = useRef({ x: 0, y: 0 })
   const pendingSwipeNavigationRef = useRef(false)
   const mediaViewportRef = useRef(null)
+  const videoRef = useRef(null)
   const [editValues, setEditValues] = useState({
     pageTitle: '',
     creationDate: '',
@@ -186,6 +187,27 @@ export default function GalleryLightbox({
     setIsDraggingMedia(false)
     setEditValues(toEditValues(image))
   }, [image?.id, imageUrl, loadedImageUrls, toEditValues])
+
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || v.tagName !== 'VIDEO') return
+    v.muted = true
+    v.playsInline = true
+    const onMeta = () => {
+      const el = videoRef.current
+      if (!el) return
+      const p = el.play()
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    }
+    v.addEventListener('loadedmetadata', onMeta)
+    requestAnimationFrame(() => {
+      const el = videoRef.current
+      if (!el) return
+      const p = el.play()
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    })
+    return () => v.removeEventListener('loadedmetadata', onMeta)
+  }, [currentVideoDirectUrl])
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -551,9 +573,15 @@ export default function GalleryLightbox({
               {currentKind === 'video' ? (
                 currentVideoDirectUrl ? (
                   <video
+                    key={currentVideoDirectUrl}
                     src={currentVideoDirectUrl}
                     controls
-                    className={`max-w-full max-h-[40dvh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+                    autoPlay
+                    muted
+                    playsInline
+                    preload="auto"
+                    ref={videoRef}
+                    className="max-w-full max-h-[40dvh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300"
                     onLoadedData={() => {
                       markImageLoaded(currentVideoDirectUrl)
                       setIsLoading(false)
@@ -561,6 +589,7 @@ export default function GalleryLightbox({
                   />
                 ) : currentVideoWatchUrl ? (
                   <iframe
+                    key={currentVideoWatchUrl}
                     src={currentVideoWatchUrl}
                     className={`w-full max-w-[960px] aspect-video rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
                     frameBorder="0"

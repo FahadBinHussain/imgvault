@@ -3171,8 +3171,10 @@ export default function GalleryPage() {
                              transition-all duration-700 ease-out
                              ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
                     controls
-                    preload="metadata"
+                    autoPlay
+                    muted
                     playsInline
+                    preload="auto"
                   />
                 ) : getPreferredVideoWatchUrl(modalImage) ? (
                   <iframe
