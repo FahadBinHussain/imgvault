@@ -1214,7 +1214,7 @@ class ImgVaultServiceWorker {
         return true;
 
       case 'nativeDownload':
-        this.handleNativeDownload(request.url, request.requestId)
+        this.handleNativeDownload(request.url, request.requestId, request.format)
           .then(result => sendResponse({
             success: true,
             filePath: result.filePath,
@@ -1344,6 +1344,9 @@ class ImgVaultServiceWorker {
       }
       if (/cookies/i.test(raw) && /not found|failed|expired|invalid/i.test(raw)) {
         return 'yt-dlp failed. The cookies used for this download were rejected.';
+      }
+      if (/HTTP Error 403|googlevideo.*403/i.test(raw)) {
+        return '[RETRY_WITH_BEST_FORMAT]yt-dlp failed with HTTP 403 on video CDN. This video may have higher format restrictions. Click "Retry with best" to try single-stream format instead.';
       }
       return 'yt-dlp failed. Check the logs below for the full output.';
     }
@@ -2336,7 +2339,7 @@ class ImgVaultServiceWorker {
    * @param {string} url - URL to download
    * @returns {Promise<Object>} Download result with file path
    */
-  async handleNativeDownload(url, requestId = '') {
+  async handleNativeDownload(url, requestId = '', format = null) {
     try {
       // console.log(`📥 [NATIVE] Sending download request for: ${url}`);
 
@@ -2559,6 +2562,7 @@ class ImgVaultServiceWorker {
             output_path: outputPath,
             cookies_data: cookies,
             request_id: activeRequestId,
+            format: format,
           });
           // console.log(`✉️ [NATIVE] Message sent to native host:`, {
           //   action: 'download',

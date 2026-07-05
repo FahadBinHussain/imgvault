@@ -173,6 +173,7 @@ export default function HostPage() {
   const [logs, setLogs] = useState([]);
   const [downloadLogs, setDownloadLogs] = useState([]);
   const [busyAction, setBusyAction] = useState('');
+  const [retryWithBest, setRetryWithBest] = useState(false);
   const activeDownloadRequestIdRef = useRef('');
   const [activeNativeDownload, setActiveNativeDownload] = useState(null);
   const [hostStatus, setHostStatus] = useState({
@@ -483,7 +484,13 @@ export default function HostPage() {
         });
       }
     } catch (error) {
-      addLog(error?.error || error?.message || 'Download failed', 'error');
+      const errorMsg = error?.error || error?.message || 'Download failed';
+      if (errorMsg.includes('[RETRY_WITH_BEST_FORMAT]')) {
+        setRetryWithBest(true);
+        addLog(errorMsg.replace('[RETRY_WITH_BEST_FORMAT]', ''), 'error');
+      } else {
+        addLog(errorMsg, 'error');
+      }
     } finally {
       activeDownloadRequestIdRef.current = '';
       setBusyAction('');
@@ -747,7 +754,42 @@ export default function HostPage() {
                   <div className="text-xs font-semibold text-base-content/75">
                     {hasActiveNativeDownload ? 'Active Download State' : 'Last Download Result'}
                   </div>
-                  {hasActiveNativeDownload && (
+              {retryWithBest && (
+                <Button
+                  onClick={async () => {
+                    setRetryWithBest(false);
+                    setBusyAction('download');
+                    addLog(`Retrying with single-stream "best" format...`);
+                    try {
+                      const requestId = `host-download-retry-${Date.now()}`;
+                      activeDownloadRequestIdRef.current = requestId;
+                      const response = await chrome.runtime.sendMessage({
+                        action: 'nativeDownload',
+                        url: downloadUrl,
+                        requestId,
+                        format: 'best',
+                      });
+                      if (!response?.success) {
+                        throw response || new Error('Download failed');
+                      }
+                      addLog(`Downloaded to: ${response.filePath || 'completed'}`, 'success');
+                    } catch (error) {
+                      addLog(error?.error || error?.message || 'Download failed', 'error');
+                    } finally {
+                      activeDownloadRequestIdRef.current = '';
+                      setBusyAction('');
+                    }
+                  }}
+                  disabled={busyAction === 'download' || isNativeDownloadRunning || !downloadUrl.trim()}
+                  variant="warning"
+                  className="w-full justify-center gap-2 !text-base-content border border-warning/20 shadow-lg shadow-warning/10 hover:shadow-xl hover:shadow-warning/20"
+                >
+                  <RotateCw className="w-4 h-4" />
+                  Retry with "best" format
+                </Button>
+              )}
+
+              {hasActiveNativeDownload && (
                     <div className="text-xs text-base-content/70 break-all">
                       Request: <span className="font-mono">{activeNativeDownload.requestId}</span>
                     </div>

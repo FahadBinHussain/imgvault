@@ -60,6 +60,7 @@ struct NativeMessage {
     output_path: Option<String>,
     cookies_data: Option<Vec<BrowserCookie>>,
     request_id: Option<String>,
+    format: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -629,6 +630,7 @@ fn download_video_with_progress(
     cookies_data: Option<&[BrowserCookie]>,
     request_id: Option<&str>,
     stdout: &mut io::Stdout,
+    format_override: Option<&str>,
 ) -> Result<DownloadOutcome, DownloadOutcome> {
     let output_dir = get_output_directory(output_path)
         .map_err(|message| DownloadOutcome {
@@ -648,6 +650,7 @@ fn download_video_with_progress(
             })?;
     }
 
+    let format = format_override.unwrap_or("bestvideo+bestaudio/best");
     let mut command = Command::new("yt-dlp");
     command
         .arg(url)
@@ -655,7 +658,7 @@ fn download_video_with_progress(
         .arg("-o")
         .arg(output_path)
         .arg("-f")
-        .arg("bestvideo+bestaudio/best")
+        .arg(format)
         .arg("--merge-output-format")
         .arg("mkv")
         .arg("--windows-filenames")
@@ -873,6 +876,7 @@ fn download_video_with_progress(
                 cookies_data,
                 request_id,
                 stdout,
+                None,
             );
         }
 
@@ -954,12 +958,12 @@ fn handle_native_messaging() {
             Ok(native_msg) => {
                 match native_msg.action.as_str() {
                     "download" => {
-                        let NativeMessage { url, output_path, cookies_data, request_id, .. } = native_msg;
+                        let NativeMessage { url, output_path, cookies_data, request_id, format, .. } = native_msg;
                         if let (Some(url), Some(output_path)) = 
                             (url, output_path) 
                         {
                             eprintln!("[NATIVE] Processing download: {} -> {}", url, output_path);
-                            match download_video_with_progress(&url, &output_path, cookies_data.as_deref(), request_id.as_deref(), &mut stdout) {
+                            match download_video_with_progress(&url, &output_path, cookies_data.as_deref(), request_id.as_deref(), &mut stdout, format.as_deref()) {
                                 Ok(file_path) => {
                                     eprintln!("[NATIVE] Download successful: {}", file_path.file_path.as_deref().unwrap_or(""));
                                     NativeResponse {
