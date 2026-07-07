@@ -1333,6 +1333,9 @@ class ImgVaultServiceWorker {
     }
 
     if (/yt-dlp failed/i.test(raw)) {
+      if (/HTTP Error 403|googlevideo.*403/i.test(raw)) {
+        return '[RETRY_WITH_BEST_FORMAT]yt-dlp failed with HTTP 403 on video CDN. This video may have higher format restrictions. Click "Retry with best" to try single-stream format instead.';
+      }
       if (/sign in to confirm your age/i.test(raw)) {
         return 'yt-dlp failed. The video appears to require an age-confirmed session.';
       }
@@ -1344,9 +1347,6 @@ class ImgVaultServiceWorker {
       }
       if (/cookies/i.test(raw) && /not found|failed|expired|invalid/i.test(raw)) {
         return 'yt-dlp failed. The cookies used for this download were rejected.';
-      }
-      if (/HTTP Error 403|googlevideo.*403/i.test(raw)) {
-        return '[RETRY_WITH_BEST_FORMAT]yt-dlp failed with HTTP 403 on video CDN. This video may have higher format restrictions. Click "Retry with best" to try single-stream format instead.';
       }
       return 'yt-dlp failed. Check the logs below for the full output.';
     }
@@ -2494,7 +2494,10 @@ class ImgVaultServiceWorker {
                 'system'
               );
               reject({
-                message: response.message || 'Native host download failed',
+                message: this.summarizeNativeDownloadMessage(
+                  response.message,
+                  'Native host download failed'
+                ),
                 filePath: response.filePath,
                 stdout: response.stdout,
                 stderr: response.stderr

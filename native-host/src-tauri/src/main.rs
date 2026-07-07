@@ -584,8 +584,16 @@ fn test_download(url: String, output_path: String, hide_window: bool) -> Result<
         }))
     } else {
         eprintln!("[yt-dlp] Download failed with exit code: {:?}", output.status.code());
+        let stderr_lower = stderr_text.to_lowercase();
+        let detail = if stderr_lower.contains("http error 403") {
+            "yt-dlp failed: HTTP Error 403 Forbidden".to_string()
+        } else if stderr_lower.contains("ffmpeg") {
+            format!("yt-dlp failed (ffmpeg error): {}", stderr_text.lines().next().unwrap_or("see stderr"))
+        } else {
+            format!("yt-dlp failed: {}", stderr_text.lines().next().unwrap_or(&stderr_text))
+        };
         Err(serde_json::json!({
-            "message": format!("yt-dlp failed with exit code: {:?}", output.status.code()),
+            "message": detail,
             "stdout": stdout_text,
             "stderr": stderr_text
         }).to_string())
