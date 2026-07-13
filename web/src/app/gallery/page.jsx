@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { 
@@ -857,6 +857,33 @@ export default function GalleryPage() {
       checkConfig()
     }
   }, [status])
+
+  const scrollRestored = useRef(false)
+
+  useEffect(() => {
+    let ticking = false
+    const onScroll = () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          sessionStorage.setItem('gallery_scroll_y', String(window.scrollY))
+          ticking = false
+        })
+      }
+      ticking = true
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => {
+    if (loading || scrollRestored.current || images.length === 0) return
+    scrollRestored.current = true
+    const saved = sessionStorage.getItem('gallery_scroll_y')
+    if (saved) {
+      const y = parseInt(saved, 10)
+      requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y)))
+    }
+  }, [loading, images.length])
 
   const checkConfig = async () => {
     try {

@@ -1,20 +1,27 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
+  Box,
   CheckCircle2,
   ExternalLink,
+  Film,
   Image as ImageIcon,
   Loader2,
   RefreshCw,
   Search,
   Settings,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Trash2,
   UploadCloud,
+  Video,
 } from 'lucide-react';
 import PremiumBackground from '../components/PremiumBackground';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { Button } from '../components/UI';
-import { IMAGE_UPLOAD_SERVICES } from '../config/providerCatalog';
+import { IMAGE_UPLOAD_SERVICES, VIDEO_UPLOAD_SERVICES } from '../config/providerCatalog';
 import { useChromeMessage, useChromeStorage, useCollections, useImages, useTrash } from '../hooks/useChromeExtension';
 import {
   getImageProviderLinks,
@@ -23,17 +30,30 @@ import {
   getPreferredImageProviderLink,
   hasImageProviderLink,
 } from '../utils/imageProviderLinks';
+import {
+  authorizeUdrop,
+  checkUdropIntegrity,
+  deleteUdropFile,
+} from '../utils/udropApi';
+import {
+  checkFilemoonIntegrity,
+} from '../utils/filemoonApi';
 
 const IMAGE_SETTING_KEYS = Array.from(
-  new Set(IMAGE_UPLOAD_SERVICES.flatMap((service) => service.apiKeyFields || []))
+  new Set([
+    ...IMAGE_UPLOAD_SERVICES.flatMap((service) => service.apiKeyFields || []),
+    ...VIDEO_UPLOAD_SERVICES.flatMap((service) => service.apiKeyFields || []),
+  ])
 );
 const RESOLVE_RUN_HISTORY_KEY = 'imgvaultResolveRunHistory';
 const RESOLVE_RUN_HISTORY_LIMIT = 12;
 
+const hasText = (value) => typeof value === 'string' && value.trim().length > 0;
+
 const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || '').trim());
 
 function isImageItem(item) {
-  return Boolean(item) && !item.isLink && !item.isVideo && !String(item.fileType || '').startsWith('video/');
+  return Boolean(item) && !item.isLink && !item.isVideo && item.kind !== 'scene' && !item.spzUrl && !String(item.fileType || '').startsWith('video/');
 }
 
 function formatDate(value) {
@@ -79,6 +99,24 @@ export default function ResolvePage() {
   });
   const [resolveRuns, setResolveRuns] = useState([]);
   const [notice, setNotice] = useState(null);
+
+  // ---- UDrop integrity check state ----
+  const [activeTab, setActiveTab] = useState('images'); // 'images' | 'videos'
+  const [videoSubTab, setVideoSubTab] = useState('udrop'); // 'udrop' | 'filemoon'
+  const [udropLoading, setUdropLoading] = useState(false);
+  const [udropError, setUdropError] = useState(null);
+  const [udropIntegrity, setUdropIntegrity] = useState({ found: [], missing: [], noUrl: [], extra: [] });
+  const [udropFilter, setUdropFilter] = useState('all'); // 'all' | 'missing' | 'found' | 'noUrl' | 'extra'
+  const [udropKeysConfigured, setUdropKeysConfigured] = useState(false);
+  const [deletingOrphans, setDeletingOrphans] = useState({});
+
+  // ---- Filemoon integrity check state ----
+  const [filemoonIntegrity, setFilemoonIntegrity] = useState({ found: [], missing: [], noUrl: [], extra: [] });
+  const [filemoonLoading, setFilemoonLoading] = useState(false);
+  const [filemoonError, setFilemoonError] = useState(null);
+  const [filemoonFilter, setFilemoonFilter] = useState('all');
+  const [filemoonKeysConfigured, setFilemoonKeysConfigured] = useState(false);
+  const [fixingFilemoon, setFixingFilemoon] = useState({});
 
   const loadSettings = () => {
     setSettingsLoading(true);
@@ -219,6 +257,106 @@ export default function ResolvePage() {
     setResolveRuns(nextRuns);
     chrome.storage.local.set({ [RESOLVE_RUN_HISTORY_KEY]: nextRuns });
   };
+
+  // ---- UDrop integrity helpers ----
+  const checkUdropKeysConfigured = useCallback(() => {
+    const configured = hasText(settings?.udropKey1) && hasText(settings?.udropKey2);
+    setUdropKeysConfigured(configured);
+    return configured;
+  }, [settings]);
+
+  useEffect(() => {
+    checkUdropKeysConfigured();
+  }, [checkUdropKeysConfigured]);
+
+  const runUdropIntegrityCheck = useCallback(async () => {
+    if (!checkUdropKeysConfigured()) {
+      setUdropError('UDrop keys not configured. Go to Settings.');
+      return;
+    }
+    setUdropLoading(true);
+    setUdropError(null);
+    setNotice(null);
+    try {
+      const auth = await authorizeUdrop(settings.udropKey1, settings.udropKey2);
+
+      // Filter to video and scene items that have UDrop URLs
+      const videoSceneItems = (images || []).filter((item) => {
+        if (!item) return false;
+        if (item.isLink) return false;
+        const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
+        const hasUdrop = Boolean(item.udropWatchUrl || item.udropDirectUrl || item.udropUrl);
+        const isScene = Boolean(item.spzUrl);
+        return isVideo || isScene || hasUdrop;
+      });
+
+      const result = await checkUdropIntegrity(videoSceneItems, auth.access_token, auth.account_id);
+      setUdropIntegrity(result);
+      setNotice({
+        type: result.missing.length > 0 ? 'error' : 'success',
+        message: `UDrop check: ${result.found.length} found, ${result.missing.length} missing, ${result.noUrl.length} no url, ${result.extra.length} extra on udrop.`,
+      });
+    } catch (err) {
+      setUdropError(err.message || String(err));
+    } finally {
+      setUdropLoading(false);
+    }
+  }, [settings, images, checkUdropKeysConfigured]);
+
+  // Auto-run when switching to udrop tab if not loaded yet
+  useEffect(() => {
+    if (activeTab === 'videos' && videoSubTab === 'udrop' && !udropLoading && !udropError && udropIntegrity.found.length === 0 && udropIntegrity.missing.length === 0 && udropIntegrity.noUrl.length === 0 && udropIntegrity.extra.length === 0) {
+      runUdropIntegrityCheck();
+    }
+  }, [activeTab, videoSubTab, udropLoading, udropError, udropIntegrity, runUdropIntegrityCheck]);
+
+  // ---- Filemoon integrity helpers ----
+  const checkFilemoonKeysConfigured = useCallback(() => {
+    const configured = hasText(settings?.filemoonApiKey);
+    setFilemoonKeysConfigured(configured);
+    return configured;
+  }, [settings]);
+
+  useEffect(() => {
+    checkFilemoonKeysConfigured();
+  }, [checkFilemoonKeysConfigured]);
+
+  const runFilemoonIntegrityCheck = useCallback(async () => {
+    if (!checkFilemoonKeysConfigured()) {
+      setFilemoonError('Filemoon API key not configured. Go to Settings.');
+      return;
+    }
+    setFilemoonLoading(true);
+    setFilemoonError(null);
+    setNotice(null);
+    try {
+      const videoItems = (images || []).filter((item) => {
+        if (!item) return false;
+        if (item.isLink) return false;
+        if (item.kind === 'scene' || item.spzUrl) return false;
+        const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
+        const hasFilemoon = Boolean(item.filemoonWatchUrl || item.filemoonDirectUrl || item.filemoonUrl);
+        return isVideo || hasFilemoon;
+      });
+
+      const result = await checkFilemoonIntegrity(videoItems, settings.filemoonApiKey);
+      setFilemoonIntegrity(result);
+      setNotice({
+        type: result.missing.length > 0 ? 'error' : 'success',
+        message: `Filemoon check: ${result.found.length} found, ${result.missing.length} missing, ${result.noUrl.length} no url, ${result.extra.length} extra on filemoon.`,
+      });
+    } catch (err) {
+      setFilemoonError(err.message || String(err));
+    } finally {
+      setFilemoonLoading(false);
+    }
+  }, [settings, images, checkFilemoonKeysConfigured]);
+
+  useEffect(() => {
+    if (activeTab === 'videos' && videoSubTab === 'filemoon' && !filemoonLoading && !filemoonError && filemoonIntegrity.found.length === 0 && filemoonIntegrity.missing.length === 0 && filemoonIntegrity.noUrl.length === 0 && filemoonIntegrity.extra.length === 0) {
+      runFilemoonIntegrityCheck();
+    }
+  }, [activeTab, videoSubTab, filemoonLoading, filemoonError, filemoonIntegrity, runFilemoonIntegrityCheck]);
 
   const resolveProvider = async (row, service, options = {}) => {
     const { reloadAfter = true, showNotice = true } = options;
@@ -470,229 +608,921 @@ export default function ResolvePage() {
           </div>
         </section>
 
-        <section className="flex flex-wrap gap-2">
-          {[
-            { value: 'ready', label: 'Ready', count: counts.ready },
-            { value: 'waiting', label: 'Waiting', count: counts.waiting },
-            { value: 'all', label: 'All gaps', count: counts.all },
-          ].map((option) => (
+        {/* Tab Switcher */}
+        <section className="flex flex-wrap gap-2 border-b border-base-300 pb-5">
+          <button
+            type="button"
+            onClick={() => setActiveTab('images')}
+            className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+              activeTab === 'images'
+                ? 'border-primary bg-primary text-primary-content shadow-sm'
+                : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'
+            }`}
+          >
+            <ImageIcon className="h-4 w-4" />
+            Image hosts
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('videos')}
+            className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+              activeTab === 'videos'
+                ? 'border-primary bg-primary text-primary-content shadow-sm'
+                : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'
+            }`}
+          >
+            <Video className="h-4 w-4" />
+            Video hosts
+          </button>
+        </section>
+
+        {activeTab === 'videos' && (
+          <section className="flex flex-wrap gap-2">
             <button
-              key={option.value}
               type="button"
-              onClick={() => setFilter(option.value)}
-              className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                filter === option.value
+              onClick={() => setVideoSubTab('udrop')}
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                videoSubTab === 'udrop'
                   ? 'border-primary bg-primary text-primary-content shadow-sm'
                   : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'
               }`}
             >
-              {option.label} <span className="opacity-70">{option.count}</span>
+              <Shield className="h-4 w-4" />
+              UDrop integrity
             </button>
-          ))}
-        </section>
-
-        {notice && (
-          <div className={`rounded-[var(--radius-box)] border px-4 py-3 text-sm font-medium ${
-            notice.type === 'success'
-              ? 'border-success/25 bg-success/10 text-success'
-              : 'border-error/25 bg-error/10 text-error'
-          }`}>
-            {notice.message}
-          </div>
-        )}
-
-        {bulkResolveState.active && (
-          <div className="rounded-[var(--radius-box)] border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-semibold">
-                Resolving {bulkResolveState.completed}/{bulkResolveState.total}
-              </span>
-              {bulkResolveState.failed > 0 && (
-                <span className="text-error">{bulkResolveState.failed} failed</span>
-              )}
-            </div>
-            {bulkResolveState.current && (
-              <div className="mt-1 truncate text-primary/80">{bulkResolveState.current}</div>
-            )}
-          </div>
-        )}
-
-        {resolveRuns.length > 0 && (
-          <section className="rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-4 shadow-sm">
-            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="text-base font-semibold text-base-content">Resolve history</h2>
-                <p className="mt-1 text-sm text-base-content/60">
-                  Failed rows stay here so you can retry only the gaps that did not finish.
-                </p>
-              </div>
-              <Button variant="outline" onClick={clearResolveHistory} className="h-8 px-3 text-xs">
-                Clear
-              </Button>
-            </div>
-
-            <div className="grid gap-3">
-              {resolveRuns.slice(0, 5).map((run) => (
-                <div key={run.id} className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 p-3">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <div className="text-sm font-semibold text-base-content">
-                        {run.label || 'Resolve run'}
-                      </div>
-                      <div className="text-xs text-base-content/55">
-                        {formatTimestamp(run.completedAt || run.startedAt)}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2 text-xs font-semibold">
-                      <span className="rounded-full border border-success/20 bg-success/10 px-2.5 py-1 text-success">
-                        {run.completed || 0}/{run.total || 0} resolved
-                      </span>
-                      {(run.failed || 0) > 0 && (
-                        <span className="rounded-full border border-error/20 bg-error/10 px-2.5 py-1 text-error">
-                          {run.failed} failed
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {Array.isArray(run.failures) && run.failures.length > 0 && (
-                    <details className="mt-3">
-                      <summary className="cursor-pointer text-sm font-medium text-error">
-                        Failed items
-                      </summary>
-                      <div className="mt-2 grid gap-2">
-                        {run.failures.map((failure, index) => (
-                          <div
-                            key={`${failure.imageId}-${failure.serviceKey}-${index}`}
-                            className="rounded-[var(--radius-box)] border border-error/15 bg-error/5 px-3 py-2 text-sm"
-                          >
-                            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                              <span className="font-medium text-base-content">{failure.title || 'Untitled image'}</span>
-                              <span className="text-xs font-semibold text-error">{failure.serviceLabel || failure.serviceKey}</span>
-                            </div>
-                            <div className="mt-1 break-words text-xs text-base-content/60">
-                              {failure.error || 'Unknown error'}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                  )}
-                </div>
-              ))}
-            </div>
+            <button
+              type="button"
+              onClick={() => setVideoSubTab('filemoon')}
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                videoSubTab === 'filemoon'
+                  ? 'border-primary bg-primary text-primary-content shadow-sm'
+                  : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'
+              }`}
+            >
+              <Film className="h-4 w-4" />
+              Filemoon integrity
+            </button>
           </section>
         )}
 
-        <section className="grid gap-3">
-          {(loading || settingsLoading) && (
-            <div className="flex min-h-64 items-center justify-center rounded-[var(--radius-box)] border border-base-300 bg-base-100 text-base-content/60">
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              Loading resolve queue...
-            </div>
-          )}
+        {activeTab === 'images' && (
+          <>
+            <section className="flex flex-wrap gap-2">
+              {[
+                { value: 'ready', label: 'Ready', count: counts.ready },
+                { value: 'waiting', label: 'Waiting', count: counts.waiting },
+                { value: 'all', label: 'All gaps', count: counts.all },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setFilter(option.value)}
+                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                    filter === option.value
+                      ? 'border-primary bg-primary text-primary-content shadow-sm'
+                      : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'
+                  }`}
+                >
+                  {option.label} <span className="opacity-70">{option.count}</span>
+                </button>
+              ))}
+            </section>
 
-          {!loading && !settingsLoading && visibleRows.length === 0 && (
-            <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-[var(--radius-box)] border border-base-300 bg-base-100 px-4 text-center">
-              <CheckCircle2 className="h-8 w-8 text-success" />
-              <div>
-                <h2 className="text-lg font-semibold text-base-content">No matching host gaps</h2>
-                <p className="mt-1 text-sm text-base-content/60">
-                  {filter === 'ready' ? 'Everything ready for configured hosts is already covered.' : 'No items match this view.'}
-                </p>
+            {notice && activeTab === 'images' && (
+              <div className={`rounded-[var(--radius-box)] border px-4 py-3 text-sm font-medium ${
+                notice.type === 'success'
+                  ? 'border-success/25 bg-success/10 text-success'
+                  : 'border-error/25 bg-error/10 text-error'
+              }`}>
+                {notice.message}
               </div>
-            </div>
-          )}
+            )}
 
-          {!loading && !settingsLoading && visibleRows.map((row) => {
-            const missingReadyLabels = row.readyMissingProviders.map((service) => service.label).join(', ');
-
-            return (
-              <article
-                key={row.item.id}
-                className="grid gap-4 rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-3 shadow-sm transition hover:border-primary/25 sm:grid-cols-[132px_1fr_auto]"
-              >
-                <div className="flex h-28 items-center justify-center overflow-hidden rounded-[var(--radius-box)] bg-base-200">
-                  {row.previewUrl ? (
-                    <img
-                      src={row.previewUrl}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <ImageIcon className="h-8 w-8 text-base-content/35" />
+            {bulkResolveState.active && (
+              <div className="rounded-[var(--radius-box)] border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-semibold">
+                    Resolving {bulkResolveState.completed}/{bulkResolveState.total}
+                  </span>
+                  {bulkResolveState.failed > 0 && (
+                    <span className="text-error">{bulkResolveState.failed} failed</span>
                   )}
                 </div>
+                {bulkResolveState.current && (
+                  <div className="mt-1 truncate text-primary/80">{bulkResolveState.current}</div>
+                )}
+              </div>
+            )}
 
-                <div className="min-w-0 space-y-3">
+            {resolveRuns.length > 0 && (
+              <section className="rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-4 shadow-sm">
+                <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <h2 className="truncate text-base font-semibold text-base-content">{row.title}</h2>
-                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
-                      {row.item.fileName && <span className="truncate">{row.item.fileName}</span>}
-                      {row.dateLabel && <span>{row.dateLabel}</span>}
-                      {row.item.sourcePageUrl && (
-                        <a
-                          href={row.item.sourcePageUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-primary hover:underline"
-                        >
-                          Source <ExternalLink className="h-3 w-3" />
-                        </a>
+                    <h2 className="text-base font-semibold text-base-content">Resolve history</h2>
+                    <p className="mt-1 text-sm text-base-content/60">
+                      Failed rows stay here so you can retry only the gaps that did not finish.
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={clearResolveHistory} className="h-8 px-3 text-xs">
+                    Clear
+                  </Button>
+                </div>
+
+                <div className="grid gap-3">
+                  {resolveRuns.slice(0, 5).map((run) => (
+                    <div key={run.id} className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 p-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <div className="text-sm font-semibold text-base-content">
+                            {run.label || 'Resolve run'}
+                          </div>
+                          <div className="text-xs text-base-content/55">
+                            {formatTimestamp(run.completedAt || run.startedAt)}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                          <span className="rounded-full border border-success/20 bg-success/10 px-2.5 py-1 text-success">
+                            {run.completed || 0}/{run.total || 0} resolved
+                          </span>
+                          {(run.failed || 0) > 0 && (
+                            <span className="rounded-full border border-error/20 bg-error/10 px-2.5 py-1 text-error">
+                              {run.failed} failed
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {Array.isArray(run.failures) && run.failures.length > 0 && (
+                        <details className="mt-3">
+                          <summary className="cursor-pointer text-sm font-medium text-error">
+                            Failed items
+                          </summary>
+                          <div className="mt-2 grid gap-2">
+                            {run.failures.map((failure, index) => (
+                              <div
+                                key={`${failure.imageId}-${failure.serviceKey}-${index}`}
+                                className="rounded-[var(--radius-box)] border border-error/15 bg-error/5 px-3 py-2 text-sm"
+                              >
+                                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                  <span className="font-medium text-base-content">{failure.title || 'Untitled image'}</span>
+                                  <span className="text-xs font-semibold text-error">{failure.serviceLabel || failure.serviceKey}</span>
+                                </div>
+                                <div className="mt-1 break-words text-xs text-base-content/60">
+                                  {failure.error || 'Unknown error'}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
                       )}
                     </div>
-                  </div>
+                  ))}
+                </div>
+              </section>
+            )}
 
-                  <div className="flex flex-wrap gap-2">
-                    {IMAGE_UPLOAD_SERVICES.map((service) => {
-                      if (row.providerLinks[service.key]) return renderProviderBadge(service, 'present');
-                      if (row.readyMissingProviders.some((missing) => missing.key === service.key)) {
-                        return renderProviderBadge(service, 'ready');
-                      }
-                      return renderProviderBadge(service, 'waiting');
-                    })}
+            <section className="grid gap-3">
+              {(loading || settingsLoading) && (
+                <div className="flex min-h-64 items-center justify-center rounded-[var(--radius-box)] border border-base-300 bg-base-100 text-base-content/60">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Loading resolve queue...
+                </div>
+              )}
+
+              {!loading && !settingsLoading && visibleRows.length === 0 && (
+                <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-[var(--radius-box)] border border-base-300 bg-base-100 px-4 text-center">
+                  <CheckCircle2 className="h-8 w-8 text-success" />
+                  <div>
+                    <h2 className="text-lg font-semibold text-base-content">No matching host gaps</h2>
+                    <p className="mt-1 text-sm text-base-content/60">
+                      {filter === 'ready' ? 'Everything ready for configured hosts is already covered.' : 'No items match this view.'}
+                    </p>
                   </div>
                 </div>
+              )}
 
-                <div className="flex flex-col justify-between gap-3 sm:w-52">
-                  <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 px-3 py-2 text-xs text-base-content/65">
-                    {row.readyMissingProviders.length > 0
-                      ? `Ready for ${missingReadyLabels}`
-                      : row.hasResolvableSource
-                        ? 'Needs provider keys'
-                        : 'Needs a hosted source'}
-                  </div>
+              {!loading && !settingsLoading && visibleRows.map((row) => {
+                const missingReadyLabels = row.readyMissingProviders.map((service) => service.label).join(', ');
 
-                  <div className="flex flex-col gap-2">
-                    {row.readyMissingProviders.map((service) => {
-                      const key = `${row.item.id}:${service.key}`;
-                      const isResolving = Boolean(resolving[key]);
+                return (
+                  <article
+                    key={row.item.id}
+                    className="grid gap-4 rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-3 shadow-sm transition hover:border-primary/25 sm:grid-cols-[132px_1fr_auto]"
+                  >
+                    <div className="flex h-28 items-center justify-center overflow-hidden rounded-[var(--radius-box)] bg-base-200">
+                      {row.previewUrl ? (
+                        <img
+                          src={row.previewUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <ImageIcon className="h-8 w-8 text-base-content/35" />
+                      )}
+                    </div>
 
-                      return (
-                        <Button
-                          key={service.key}
-                          variant="primary"
-                          className="h-9 justify-center gap-2 text-sm"
-                          disabled={isResolving || bulkResolveState.active}
-                          onClick={() => resolveProvider(row, service)}
-                        >
-                          {isResolving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-                          {isResolving ? `Resolving ${service.label}` : `Resolve ${service.label}`}
-                        </Button>
-                      );
-                    })}
+                    <div className="min-w-0 space-y-3">
+                      <div>
+                        <h2 className="truncate text-base font-semibold text-base-content">{row.title}</h2>
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
+                          {row.item.fileName && <span className="truncate">{row.item.fileName}</span>}
+                          {row.dateLabel && <span>{row.dateLabel}</span>}
+                          {row.item.sourcePageUrl && (
+                            <a
+                              href={row.item.sourcePageUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-primary hover:underline"
+                            >
+                              Source <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
 
-                    {row.readyMissingProviders.length === 0 && (
-                      <Button variant="outline" className="h-9 justify-center text-sm" onClick={() => navigate('/settings')}>
-                        Open Settings
-                      </Button>
-                    )}
-                  </div>
+                      <div className="flex flex-wrap gap-2">
+                        {IMAGE_UPLOAD_SERVICES.map((service) => {
+                          if (row.providerLinks[service.key]) return renderProviderBadge(service, 'present');
+                          if (row.readyMissingProviders.some((missing) => missing.key === service.key)) {
+                            return renderProviderBadge(service, 'ready');
+                          }
+                          return renderProviderBadge(service, 'waiting');
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col justify-between gap-3 sm:w-52">
+                      <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 px-3 py-2 text-xs text-base-content/65">
+                        {row.readyMissingProviders.length > 0
+                          ? `Ready for ${missingReadyLabels}`
+                          : row.hasResolvableSource
+                            ? 'Needs provider keys'
+                            : 'Needs a hosted source'}
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        {row.readyMissingProviders.map((service) => {
+                          const key = `${row.item.id}:${service.key}`;
+                          const isResolving = Boolean(resolving[key]);
+
+                          return (
+                            <Button
+                              key={service.key}
+                              variant="primary"
+                              className="h-9 justify-center gap-2 text-sm"
+                              disabled={isResolving || bulkResolveState.active}
+                              onClick={() => resolveProvider(row, service)}
+                            >
+                              {isResolving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                              {isResolving ? `Resolving ${service.label}` : `Resolve ${service.label}`}
+                            </Button>
+                          );
+                        })}
+
+                        {row.readyMissingProviders.length === 0 && (
+                          <Button variant="outline" className="h-9 justify-center text-sm" onClick={() => navigate('/settings')}>
+                            Open Settings
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </section>
+          </>
+        )}
+
+        {/* UDrop Integrity Tab */}
+        {activeTab === 'videos' && videoSubTab === 'udrop' && (
+          <>
+            <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                  <Shield className="h-4 w-4" />
+                  UDrop integrity
                 </div>
-              </article>
-            );
-          })}
-        </section>
+                <h1 className="text-3xl font-semibold tracking-tight text-base-content">UDrop file integrity</h1>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Button
+                  variant="primary"
+                  onClick={runUdropIntegrityCheck}
+                  className="h-10 gap-2 px-3 text-sm"
+                  disabled={udropLoading}
+                >
+                  {udropLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  {udropLoading ? 'Checking...' : 'Check UDrop'}
+                </Button>
+                <Button variant="outline" onClick={() => navigate('/settings')} className="h-10 gap-2 px-3 text-sm">
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Button>
+              </div>
+            </section>
+
+            {!udropKeysConfigured && (
+              <div className="rounded-[var(--radius-box)] border border-warning/25 bg-warning/10 px-4 py-3 text-sm text-warning">
+                UDrop API keys are not configured. Go to Settings to add them.
+              </div>
+            )}
+
+            {udropError && (
+              <div className="rounded-[var(--radius-box)] border border-error/25 bg-error/10 px-4 py-3 text-sm text-error">
+                {udropError}
+              </div>
+            )}
+
+            {notice && activeTab === 'videos' && videoSubTab === 'udrop' && notice.type === 'error' && (
+              <div className="rounded-[var(--radius-box)] border border-error/25 bg-error/10 px-4 py-3 text-sm font-medium text-error">
+                {notice.message}
+              </div>
+            )}
+
+            <section className="flex flex-wrap gap-2">
+              {[
+                { value: 'all', label: 'All', count: udropIntegrity.found.length + udropIntegrity.missing.length + udropIntegrity.noUrl.length + udropIntegrity.extra.length },
+                { value: 'missing', label: 'Missing', count: udropIntegrity.missing.length },
+                { value: 'found', label: 'Found', count: udropIntegrity.found.length },
+                { value: 'noUrl', label: 'No UDrop URL', count: udropIntegrity.noUrl.length },
+                { value: 'extra', label: 'Extra on UDrop', count: udropIntegrity.extra.length },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setUdropFilter(option.value)}
+                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                    udropFilter === option.value
+                      ? 'border-primary bg-primary text-primary-content shadow-sm'
+                      : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'
+                  }`}
+                >
+                  {option.label} <span className="opacity-70">{option.count}</span>
+                </button>
+              ))}
+            </section>
+
+            <section className="grid gap-3">
+              {udropLoading && (
+                <div className="flex min-h-64 items-center justify-center rounded-[var(--radius-box)] border border-base-300 bg-base-100 text-base-content/60">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Loading UDrop file list...
+                </div>
+              )}
+
+              {!udropLoading && (() => {
+                let displayItems = [];
+                if (udropFilter === 'all') {
+                  displayItems = [
+                    ...udropIntegrity.missing.map((i) => ({ ...i, status: 'missing' })),
+                    ...udropIntegrity.found.map((i) => ({ ...i, status: 'found' })),
+                    ...udropIntegrity.noUrl.map((i) => ({ ...i, status: 'noUrl' })),
+                    ...udropIntegrity.extra.map((i) => ({ ...i, status: 'extra' })),
+                  ];
+                } else if (udropFilter === 'missing') {
+                  displayItems = udropIntegrity.missing.map((i) => ({ ...i, status: 'missing' }));
+                } else if (udropFilter === 'found') {
+                  displayItems = udropIntegrity.found.map((i) => ({ ...i, status: 'found' }));
+                } else if (udropFilter === 'noUrl') {
+                  displayItems = udropIntegrity.noUrl.map((i) => ({ ...i, status: 'noUrl' }));
+                } else if (udropFilter === 'extra') {
+                  displayItems = udropIntegrity.extra.map((i) => ({ ...i, status: 'extra' }));
+                }
+
+                if (displayItems.length === 0) {
+                  return (
+                    <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-[var(--radius-box)] border border-base-300 bg-base-100 px-4 text-center">
+                      <ShieldCheck className="h-8 w-8 text-success" />
+                      <div>
+                        <h2 className="text-lg font-semibold text-base-content">No items in this view</h2>
+                        <p className="mt-1 text-sm text-base-content/60">
+                          {udropFilter === 'missing' ? 'All UDrop files are accounted for.' : 'Nothing to show here.'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return displayItems.map((entry) => {
+                  const { item, status, matchedFile, codes } = entry;
+
+                  // ---- Extra (orphan) UDrop files ----
+                  if (status === 'extra') {
+                    const file = entry.file || {};
+                    const title = file.name || file.filename || file.file_id || 'Unknown file';
+                    const udropUrl = file.short_url || file.url || '';
+                    return (
+                      <article
+                        key={`extra-${file.file_id || file.id || file.short_url || Math.random()}`}
+                        className="grid gap-4 rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-3 shadow-sm transition hover:border-warning/25 sm:grid-cols-[132px_1fr_auto]"
+                      >
+                        <div className="flex h-28 items-center justify-center overflow-hidden rounded-[var(--radius-box)] bg-base-200">
+                          <div className="flex flex-col items-center gap-1 text-warning/70">
+                            <AlertCircle className="h-8 w-8" />
+                            <span className="text-[10px] font-semibold uppercase tracking-wider">Orphan</span>
+                          </div>
+                        </div>
+
+                        <div className="min-w-0 space-y-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h2 className="truncate text-base font-semibold text-base-content">{title}</h2>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-warning/20 bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">
+                                <AlertCircle className="h-3 w-3" /> Not in DB
+                              </span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
+                              {file.file_id && <span>ID: {file.file_id}</span>}
+                              {file._folderName && <span>Folder: {file._folderName}</span>}
+                              {udropUrl && (
+                                <a href={udropUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                                  UDrop <ExternalLink className="h-3 w-3" />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="text-xs text-base-content/70">
+                            This file exists on UDrop but is not linked to any item in your vault. It might be safe to delete.
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col justify-between gap-3 sm:w-52">
+                          <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 px-3 py-2 text-xs text-base-content/65">
+                            Orphaned UDrop file
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            {udropUrl && (
+                              <Button variant="outline" className="h-9 justify-center gap-2 text-sm" onClick={() => window.open(udropUrl, '_blank')}>
+                                <ExternalLink className="h-4 w-4" />
+                                Open UDrop
+                              </Button>
+                            )}
+                            {(file.file_id || file.id) && (
+                              <Button
+                                variant="primary"
+                                className="h-9 justify-center gap-2 text-sm"
+                                disabled={Boolean(deletingOrphans[String(file.file_id || file.id)])}
+                                onClick={async () => {
+                                  const fid = String(file.file_id || file.id);
+                                  if (!confirm(`Delete "${file.name || file.filename || fid}" from UDrop? This cannot be undone.`)) return;
+                                  setDeletingOrphans((prev) => ({ ...prev, [fid]: true }));
+                                  try {
+                                    const auth = await authorizeUdrop(settings.udropKey1, settings.udropKey2);
+                                    await deleteUdropFile(auth.access_token, auth.account_id, fid);
+                                    setUdropIntegrity((prev) => ({
+                                      ...prev,
+                                      extra: prev.extra.filter((e) => String((e.file?.file_id || e.file?.id)) !== fid),
+                                    }));
+                                    setNotice({ type: 'success', message: `Deleted orphan file "${file.name || file.filename || fid}" from UDrop.` });
+                                  } catch (err) {
+                                    setNotice({ type: 'error', message: `Failed to delete: ${err.message || err}` });
+                                  } finally {
+                                    setDeletingOrphans((prev) => {
+                                      const next = { ...prev };
+                                      delete next[fid];
+                                      return next;
+                                    });
+                                  }
+                                }}
+                              >
+                                {deletingOrphans[String(file.file_id || file.id)] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                {deletingOrphans[String(file.file_id || file.id)] ? 'Deleting...' : 'Delete'}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  }
+
+                  // ---- Normal DB items ----
+                  const title = item.pageTitle || item.fileName || item.description || 'Untitled';
+                  const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
+                  const isScene = Boolean(item.spzUrl);
+                  const typeLabel = isScene ? '3D scene' : isVideo ? 'Video' : 'Media';
+                  const typeIcon = isScene ? <Box className="h-4 w-4" /> : isVideo ? <Video className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />;
+                  const udropUrl = item.udropWatchUrl || item.udropDirectUrl || item.udropUrl || item.spzUrl || '';
+
+                  return (
+                    <article
+                      key={item.id}
+                      className="grid gap-4 rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-3 shadow-sm transition hover:border-primary/25 sm:grid-cols-[132px_1fr_auto]"
+                    >
+                      <div className="flex h-28 items-center justify-center overflow-hidden rounded-[var(--radius-box)] bg-base-200">
+                        {item.linkPreviewImageUrl || item.imgbbThumbUrl ? (
+                          <img
+                            src={item.linkPreviewImageUrl || item.imgbbThumbUrl}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center gap-1 text-base-content/35">
+                            {typeIcon}
+                            <span className="text-[10px] font-semibold uppercase tracking-wider">{typeLabel}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="min-w-0 space-y-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h2 className="truncate text-base font-semibold text-base-content">{title}</h2>
+                            {status === 'missing' && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-error/20 bg-error/10 px-2 py-0.5 text-xs font-semibold text-error">
+                                <ShieldAlert className="h-3 w-3" /> Missing
+                              </span>
+                            )}
+                            {status === 'found' && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-success/20 bg-success/10 px-2 py-0.5 text-xs font-semibold text-success">
+                                <ShieldCheck className="h-3 w-3" /> Found
+                              </span>
+                            )}
+                            {status === 'noUrl' && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-warning/20 bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">
+                                <AlertCircle className="h-3 w-3" /> No UDrop URL
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
+                            {item.fileName && <span className="truncate">{item.fileName}</span>}
+                            {formatDate(item.createdAt || item.internalAddedTimestamp)}
+                            {udropUrl && (
+                              <a
+                                href={udropUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-primary hover:underline"
+                              >
+                                UDrop <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+
+                        {status === 'found' && matchedFile && (
+                          <div className="text-xs text-base-content/70">
+                            <div className="font-medium text-success">UDrop file: {matchedFile.name || matchedFile.file_id}</div>
+                            {matchedFile.short_url && (
+                              <a href={matchedFile.short_url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                                {matchedFile.short_url}
+                              </a>
+                            )}
+                          </div>
+                        )}
+
+                        {status === 'missing' && codes.length > 0 && (
+                          <div className="text-xs text-base-content/70">
+                            <div className="font-medium text-error">Missing UDrop codes:</div>
+                            <div className="font-mono">{codes.join(', ')}</div>
+                            <div className="mt-1 text-base-content/50">These files are no longer on UDrop. They may have been deleted or the upload failed.</div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col justify-between gap-3 sm:w-52">
+                        <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 px-3 py-2 text-xs text-base-content/65">
+                          {status === 'missing' && 'Needs re-upload to UDrop'}
+                          {status === 'found' && 'Verified on UDrop'}
+                          {status === 'noUrl' && 'No UDrop URL stored'}
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          {udropUrl && (
+                            <Button
+                              variant="outline"
+                              className="h-9 justify-center gap-2 text-sm"
+                              onClick={() => window.open(udropUrl, '_blank')}
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                              Open UDrop
+                            </Button>
+                          )}
+                          {status === 'missing' && item.sourceImageUrl && (
+                            <Button
+                              variant="primary"
+                              className="h-9 justify-center gap-2 text-sm"
+                              onClick={() => window.open(item.sourceImageUrl, '_blank')}
+                            >
+                              <UploadCloud className="h-4 w-4" />
+                              Source
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  );
+                });
+              })()}
+            </section>
+          </>
+        )}
+
+        {/* Filemoon Integrity Tab */}
+        {activeTab === 'videos' && videoSubTab === 'filemoon' && (
+          <>
+            <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                  <Film className="h-4 w-4" />
+                  Filemoon integrity
+                </div>
+                <h1 className="text-3xl font-semibold tracking-tight text-base-content">Filemoon video integrity</h1>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Button
+                  variant="primary"
+                  onClick={runFilemoonIntegrityCheck}
+                  className="h-10 gap-2 px-3 text-sm"
+                  disabled={filemoonLoading}
+                >
+                  {filemoonLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  {filemoonLoading ? 'Checking...' : 'Check Filemoon'}
+                </Button>
+                <Button variant="outline" onClick={() => navigate('/settings')} className="h-10 gap-2 px-3 text-sm">
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Button>
+              </div>
+            </section>
+
+            {!filemoonKeysConfigured && (
+              <div className="rounded-[var(--radius-box)] border border-warning/25 bg-warning/10 px-4 py-3 text-sm text-warning">
+                Filemoon API key is not configured. Go to Settings to add it.
+              </div>
+            )}
+
+            {filemoonError && (
+              <div className="rounded-[var(--radius-box)] border border-error/25 bg-error/10 px-4 py-3 text-sm text-error">
+                {filemoonError}
+              </div>
+            )}
+
+            {notice && activeTab === 'videos' && videoSubTab === 'filemoon' && notice.type === 'error' && (
+              <div className="rounded-[var(--radius-box)] border border-error/25 bg-error/10 px-4 py-3 text-sm font-medium text-error">
+                {notice.message}
+              </div>
+            )}
+
+            <section className="flex flex-wrap gap-2">
+              {[
+                { value: 'all', label: 'All', count: filemoonIntegrity.found.length + filemoonIntegrity.missing.length + filemoonIntegrity.noUrl.length + filemoonIntegrity.extra.length },
+                { value: 'missing', label: 'Missing', count: filemoonIntegrity.missing.length },
+                { value: 'found', label: 'Found', count: filemoonIntegrity.found.length },
+                { value: 'noUrl', label: 'No Filemoon URL', count: filemoonIntegrity.noUrl.length },
+                { value: 'extra', label: 'Extra on Filemoon', count: filemoonIntegrity.extra.length },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setFilemoonFilter(option.value)}
+                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                    filemoonFilter === option.value
+                      ? 'border-primary bg-primary text-primary-content shadow-sm'
+                      : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'
+                  }`}
+                >
+                  {option.label} <span className="opacity-70">{option.count}</span>
+                </button>
+              ))}
+            </section>
+
+            <section className="grid gap-3">
+              {filemoonLoading && (
+                <div className="flex min-h-64 items-center justify-center rounded-[var(--radius-box)] border border-base-300 bg-base-100 text-base-content/60">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Checking Filemoon...
+                </div>
+              )}
+
+              {!filemoonLoading && (() => {
+                let displayItems = [];
+                if (filemoonFilter === 'all') {
+                  displayItems = [
+                    ...filemoonIntegrity.missing.map((i) => ({ ...i, status: 'missing' })),
+                    ...filemoonIntegrity.found.map((i) => ({ ...i, status: 'found' })),
+                    ...filemoonIntegrity.noUrl.map((i) => ({ ...i, status: 'noUrl' })),
+                    ...filemoonIntegrity.extra.map((i) => ({ ...i, status: 'extra' })),
+                  ];
+                } else if (filemoonFilter === 'missing') {
+                  displayItems = filemoonIntegrity.missing.map((i) => ({ ...i, status: 'missing' }));
+                } else if (filemoonFilter === 'found') {
+                  displayItems = filemoonIntegrity.found.map((i) => ({ ...i, status: 'found' }));
+                } else if (filemoonFilter === 'noUrl') {
+                  displayItems = filemoonIntegrity.noUrl.map((i) => ({ ...i, status: 'noUrl' }));
+                } else if (filemoonFilter === 'extra') {
+                  displayItems = filemoonIntegrity.extra.map((i) => ({ ...i, status: 'extra' }));
+                }
+
+                if (displayItems.length === 0) {
+                  return (
+                    <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-[var(--radius-box)] border border-base-300 bg-base-100 px-4 text-center">
+                      <ShieldCheck className="h-8 w-8 text-success" />
+                      <div>
+                        <h2 className="text-lg font-semibold text-base-content">No items in this view</h2>
+                        <p className="mt-1 text-sm text-base-content/60">
+                          {filemoonFilter === 'missing' ? 'All Filemoon videos are accounted for.' : 'Nothing to show here.'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return displayItems.map((entry) => {
+                  const { item, status, matchedFile, codes } = entry;
+
+                  if (status === 'extra') {
+                    const file = entry.file || {};
+                    const title = file.title || file.name || file.file_code || 'Unknown file';
+                    const filemoonUrl = `https://filemoon.sx/d/${file.file_code || file.filecode || ''}`;
+                    return (
+                      <article
+                        key={`fm-extra-${file.file_code || file.filecode || Math.random()}`}
+                        className="grid gap-4 rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-3 shadow-sm transition hover:border-warning/25 sm:grid-cols-[132px_1fr_auto]"
+                      >
+                        <div className="flex h-28 items-center justify-center overflow-hidden rounded-[var(--radius-box)] bg-base-200">
+                          <div className="flex flex-col items-center gap-1 text-warning/70">
+                            <AlertCircle className="h-8 w-8" />
+                            <span className="text-[10px] font-semibold uppercase tracking-wider">Orphan</span>
+                          </div>
+                        </div>
+                        <div className="min-w-0 space-y-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h2 className="truncate text-base font-semibold text-base-content">{title}</h2>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-warning/20 bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">
+                                <AlertCircle className="h-3 w-3" /> Not in DB
+                              </span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
+                              {file.file_code && <span>Code: {file.file_code}</span>}
+                              {file.size && <span>{(Number(file.size) / 1024 / 1024).toFixed(1)} MB</span>}
+                              <a href={filemoonUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                                Filemoon <ExternalLink className="h-3 w-3" />
+                              </a>
+                            </div>
+                          </div>
+                          <div className="text-xs text-base-content/70">
+                            This video exists on Filemoon but is not linked to any item in your vault.
+                          </div>
+                        </div>
+                        <div className="flex flex-col justify-between gap-3 sm:w-52">
+                          <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 px-3 py-2 text-xs text-base-content/65">
+                            Orphaned Filemoon video
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <Button variant="outline" className="h-9 justify-center gap-2 text-sm" onClick={() => window.open(filemoonUrl, '_blank')}>
+                              <ExternalLink className="h-4 w-4" />
+                              Open Filemoon
+                            </Button>
+                            {(file.file_code || file.filecode) && (() => {
+                              const fc = String(file.file_code || file.filecode);
+                              return (
+                                <Button
+                                  variant="primary"
+                                  className="h-9 justify-center gap-2 text-sm"
+                                  onClick={async () => {
+                                    const tab = await chrome.tabs.create({ url: 'https://byse.sx/videos', active: true });
+                                    setTimeout(async () => {
+                                      try {
+                                        await chrome.scripting.executeScript({
+                                          target: { tabId: tab.id },
+                                          func: (code) => {
+                                            const searchbox = document.querySelector('input[placeholder*="Search"]');
+                                            if (!searchbox) return;
+                                            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                                            setter.call(searchbox, code);
+                                            searchbox.dispatchEvent(new Event('input', { bubbles: true }));
+                                          },
+                                          args: [fc],
+                                        });
+                                      } catch (e) {}
+                                    }, 3000);
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  Find on Dashboard
+                                </Button>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  }
+
+                  const title = item.pageTitle || item.fileName || item.description || 'Untitled';
+                  const filemoonUrl = item.filemoonWatchUrl || item.filemoonDirectUrl || item.filemoonUrl || '';
+
+                  return (
+                    <article
+                      key={item.id}
+                      className="grid gap-4 rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-3 shadow-sm transition hover:border-primary/25 sm:grid-cols-[132px_1fr_auto]"
+                    >
+                      <div className="flex h-28 items-center justify-center overflow-hidden rounded-[var(--radius-box)] bg-base-200">
+                        {item.filemoonThumbUrl ? (
+                          <img src={item.filemoonThumbUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex flex-col items-center gap-1 text-base-content/35">
+                            <Video className="h-4 w-4" />
+                            <span className="text-[10px] font-semibold uppercase tracking-wider">Video</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 space-y-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h2 className="truncate text-base font-semibold text-base-content">{title}</h2>
+                            {status === 'missing' && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-error/20 bg-error/10 px-2 py-0.5 text-xs font-semibold text-error">
+                                <ShieldAlert className="h-3 w-3" /> Missing
+                              </span>
+                            )}
+                            {status === 'found' && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-success/20 bg-success/10 px-2 py-0.5 text-xs font-semibold text-success">
+                                <ShieldCheck className="h-3 w-3" /> Found
+                              </span>
+                            )}
+                            {status === 'noUrl' && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-warning/20 bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">
+                                <AlertCircle className="h-3 w-3" /> No Filemoon URL
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
+                            {item.fileName && <span className="truncate">{item.fileName}</span>}
+                            {formatDate(item.createdAt || item.internalAddedTimestamp)}
+                            {filemoonUrl && (
+                              <a href={filemoonUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                                Filemoon <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                        {status === 'found' && matchedFile && (
+                          <div className="text-xs text-base-content/70">
+                            <div className="font-medium text-success">Filemoon file: {matchedFile.title || matchedFile.file_code}</div>
+                          </div>
+                        )}
+                        {status === 'missing' && codes.length > 0 && (
+                          <div className="text-xs text-base-content/70">
+                            <div className="font-medium text-error">Missing filecodes:</div>
+                            <div className="font-mono">{codes.join(', ')}</div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col justify-between gap-3 sm:w-52">
+                        <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 px-3 py-2 text-xs text-base-content/65">
+                          {status === 'missing' && 'Needs re-upload'}
+                          {status === 'found' && 'Verified on Filemoon'}
+                          {status === 'noUrl' && 'No Filemoon URL stored'}
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          {filemoonUrl && (
+                            <Button variant="outline" className="h-9 justify-center gap-2 text-sm" onClick={() => window.open(filemoonUrl, '_blank')}>
+                              <ExternalLink className="h-4 w-4" />
+                              Open Filemoon
+                            </Button>
+                          )}
+                          {(status === 'noUrl' || status === 'missing') && (
+                            <Button
+                              variant="primary"
+                              className="h-9 justify-center gap-2 text-sm"
+                              disabled={Boolean(fixingFilemoon[item.id])}
+                              onClick={async () => {
+                                setFixingFilemoon((prev) => ({ ...prev, [item.id]: true }));
+                                try {
+                                  await sendMessage('retryVideoHostUpload', {
+                                    imageId: item.id,
+                                    host: 'filemoon',
+                                  });
+                                  setNotice({ type: 'success', message: `Filemoon upload fixed for "${title}".` });
+                                } catch (err) {
+                                  setNotice({ type: 'error', message: `Failed to fix: ${err.message || err}` });
+                                } finally {
+                                  setFixingFilemoon((prev) => {
+                                    const next = { ...prev };
+                                    delete next[item.id];
+                                    return next;
+                                  });
+                                }
+                              }}
+                            >
+                              {fixingFilemoon[item.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                              {fixingFilemoon[item.id] ? 'Fixing...' : 'Fix'}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  );
+                });
+              })()}
+            </section>
+          </>
+        )}
       </main>
     </div>
   );
