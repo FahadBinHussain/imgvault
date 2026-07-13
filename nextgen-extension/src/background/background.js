@@ -2312,7 +2312,7 @@ class ImgVaultServiceWorker {
       
       // console.log(`📸 [FILEMOON] Fetching thumbnail for filecode: ${filecode}`);
       
-      const response = await fetch(`https://api.byse.sx/images/thumb?key=${apiKey}&file_code=${filecode}`);
+      const response = await fetch(`https://filemoonapi.com/api/images/thumb?key=${apiKey}&file_code=${filecode}`);
       
       if (!response.ok) {
         throw new Error(`Thumbnail API returned ${response.status}`);

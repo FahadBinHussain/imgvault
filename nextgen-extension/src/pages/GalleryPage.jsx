@@ -206,6 +206,35 @@ export default function GalleryPage() {
       requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y)));
     }
   }, [loading, images]);
+
+  // Lazy-fetch missing FileMoon thumbnails
+  useEffect(() => {
+    if (loading || !images || images.length === 0) return;
+    const needsThumb = images.filter(img => {
+      if (getMediaItemKind(img) !== 'video') return false;
+      const links = getVideoProviderLinks(img);
+      const filecode = links?.filemoon?.filecode;
+      return filecode && !img.filemoonThumbUrl;
+    });
+    if (needsThumb.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const img of needsThumb) {
+        if (cancelled) break;
+        try {
+          const links = getVideoProviderLinks(img);
+          const filecode = links?.filemoon?.filecode;
+          if (!filecode) continue;
+          const res = await sendMessage('getFilemoonThumbnail', { filecode });
+          if (res?.success && res.thumbnailUrl) {
+            await sendMessage('updateFilemoonThumbnail', { imageId: img.id, thumbnailUrl: res.thumbnailUrl });
+          }
+        } catch {}
+        await new Promise(r => setTimeout(r, 500));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [loading, images, sendMessage]);
   
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
