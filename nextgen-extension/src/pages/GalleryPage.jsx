@@ -40,6 +40,8 @@ import {
   getTechnicalMetadataEntries,
 } from '@shared/mediaFieldRegistry.js';
 import SceneUploadDialog from '../components/SceneUploadDialog';
+import { useThumbUrl } from '../hooks/useThumbUrl';
+import { CachedImg, CachedVideo } from '../components/CachedThumb';
 import SceneViewer from '../components/SceneViewer';
 
 const createVideoUploader = (service) => {
@@ -3006,7 +3008,14 @@ export default function GalleryPage() {
                         return (
                           <div className="relative w-full aspect-video" style={{ background: 'var(--color-base-200)' }}>
                             {linkPreviewImage ? (
-                              <img src={linkPreviewImage} alt={img.pageTitle || 'Link preview'} className="w-full h-full object-contain" loading="lazy" onLoad={() => handleImageLoad(img.id)} />
+                              <CachedImg
+                                thumbKey={`link-${img.id}`}
+                                src={linkPreviewImage}
+                                alt={img.pageTitle || 'Link preview'}
+                                className="w-full h-full object-contain"
+                                loading="lazy"
+                                onLoad={() => handleImageLoad(img.id)}
+                              />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.3)' }}>
                                 <Link2 style={{ width: 32, height: 32 }} />
@@ -3020,7 +3029,8 @@ export default function GalleryPage() {
                         const videoDirectUrl = getPreferredVideoDirectUrl(img);
                         const videoPosterUrl = getVideoPosterUrl(img);
                         return videoDirectUrl ? (
-                          <video
+                          <CachedVideo
+                            thumbKey={`poster-${img.id}`}
                             src={videoDirectUrl}
                             poster={videoPosterUrl || undefined}
                             className="w-full h-auto object-cover"
@@ -3035,7 +3045,8 @@ export default function GalleryPage() {
                           />
                         ) : videoPosterUrl ? (
                           <div className="relative w-full overflow-hidden aspect-video bg-base-200">
-                            <img
+                            <CachedImg
+                              thumbKey={`poster-${img.id}`}
                               src={videoPosterUrl}
                               alt={img.pageTitle || 'Saved video'}
                               className={`absolute inset-0 w-full h-full object-cover transition-all duration-700 ${loadedImages.has(img.id) ? 'opacity-100' : 'opacity-0'}`}
@@ -3051,7 +3062,8 @@ export default function GalleryPage() {
                         );
                       })()
                     ) : (
-                      <img
+                      <CachedImg
+                        thumbKey={`img-${img.id}`}
                         src={
                           getPreferredImageProviderLink(img, defaultGallerySource, 'url') ||
                           getPreferredImageProviderLink(img, defaultGallerySource, 'thumbnailUrl') ||
