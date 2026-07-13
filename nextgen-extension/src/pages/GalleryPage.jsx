@@ -3028,7 +3028,19 @@ export default function GalleryPage() {
                       (() => {
                         const videoDirectUrl = getPreferredVideoDirectUrl(img);
                         const videoPosterUrl = getVideoPosterUrl(img);
-                        return videoDirectUrl ? (
+                        return videoPosterUrl ? (
+                          <div className="relative w-full overflow-hidden aspect-video bg-base-200">
+                            <CachedImg
+                              thumbKey={`poster-${img.id}`}
+                              src={videoPosterUrl}
+                              alt={img.pageTitle || 'Saved video'}
+                              className={`absolute inset-0 w-full h-full object-cover transition-all duration-700 ${loadedImages.has(img.id) ? 'opacity-100' : 'opacity-0'}`}
+                              loading="lazy"
+                              onLoad={() => handleImageLoad(img.id)}
+                              onError={() => handleImageLoad(img.id)}
+                            />
+                          </div>
+                        ) : videoDirectUrl ? (
                           <CachedVideo
                             thumbKey={`poster-${img.id}`}
                             src={videoDirectUrl}
@@ -3043,18 +3055,6 @@ export default function GalleryPage() {
                             onCanPlayThrough={() => handleImageLoad(img.id)}
                             onError={() => handleImageLoad(img.id)}
                           />
-                        ) : videoPosterUrl ? (
-                          <div className="relative w-full overflow-hidden aspect-video bg-base-200">
-                            <CachedImg
-                              thumbKey={`poster-${img.id}`}
-                              src={videoPosterUrl}
-                              alt={img.pageTitle || 'Saved video'}
-                              className={`absolute inset-0 w-full h-full object-cover transition-all duration-700 ${loadedImages.has(img.id) ? 'opacity-100' : 'opacity-0'}`}
-                              loading="lazy"
-                              onLoad={() => handleImageLoad(img.id)}
-                              onError={() => handleImageLoad(img.id)}
-                            />
-                          </div>
                         ) : (
                           <div className="relative w-full overflow-hidden aspect-video bg-base-200 flex items-center justify-center">
                             <FileText style={{ width: 32, height: 32, color: 'oklch(from var(--color-base-content) l c h / 0.3)' }} />
