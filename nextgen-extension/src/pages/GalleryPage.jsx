@@ -178,6 +178,7 @@ export default function GalleryPage() {
   // Timeline scrollbar refs
   const pageContainerRef = useRef(null);
   const dateGroupRefs = useRef({});
+  const modalVideoRef = useRef(null);
   const [timelineData, setTimelineData] = useState([]);
 
   // Scroll restoration
@@ -760,6 +761,30 @@ export default function GalleryPage() {
     if (fullImageDetails?.id === selectedImage.id) return;
     loadFullImageDetails(selectedImage.id);
   }, [selectedImage?.id, fullImageDetails?.id]);
+
+  useEffect(() => {
+    const video = modalVideoRef.current;
+    if (!video) return;
+    const tryPlay = () => {
+      const p = video.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch((err) => {
+          if (video.readyState >= 2) {
+            const retry = video.play();
+            if (retry && typeof retry.catch === 'function') retry.catch(() => {});
+          }
+        });
+      }
+    };
+    if (video.readyState >= 1) tryPlay();
+    const onReady = () => tryPlay();
+    video.addEventListener('loadeddata', onReady);
+    video.addEventListener('canplay', onReady);
+    return () => {
+      video.removeEventListener('loadeddata', onReady);
+      video.removeEventListener('canplay', onReady);
+    };
+  }, [selectedImage?.id, getPreferredVideoDirectUrl(modalImage)]);
 
   // Get current collection name
   const currentCollection = collectionId 
@@ -3234,6 +3259,7 @@ export default function GalleryPage() {
                   })()
                 ) : shouldRenderModalVideoPlayer(modalImage) ? (
                   <video
+                    ref={modalVideoRef}
                     src={getPreferredVideoDirectUrl(modalImage)}
                     className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain
                              transition-all duration-700 ease-out
