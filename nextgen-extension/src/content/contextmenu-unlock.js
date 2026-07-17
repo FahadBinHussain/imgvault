@@ -7,6 +7,8 @@
     'open.spotify.com',
     'www.instagram.com',
     'instagram.com',
+    'designarena.ai',
+    'www.designarena.ai',
   ];
 
   const host = window.location.hostname.toLowerCase();

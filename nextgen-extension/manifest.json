@@ -97,6 +97,12 @@
       "js": ["contextmenu-unlock.js"],
       "run_at": "document_start",
       "all_frames": true
+    },
+    {
+      "matches": ["https://www.designarena.ai/*", "https://designarena.ai/*"],
+      "js": ["contextmenu-unlock.js"],
+      "run_at": "document_start",
+      "all_frames": true
     }
   ],
   
