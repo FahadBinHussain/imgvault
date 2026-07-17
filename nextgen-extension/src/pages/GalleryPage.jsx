@@ -768,11 +768,10 @@ export default function GalleryPage() {
     const tryPlay = () => {
       const p = video.play();
       if (p && typeof p.catch === 'function') {
-        p.catch((err) => {
-          if (video.readyState >= 2) {
-            const retry = video.play();
-            if (retry && typeof retry.catch === 'function') retry.catch(() => {});
-          }
+        p.catch(() => {
+          video.muted = true;
+          const retry = video.play();
+          if (retry && typeof retry.catch === 'function') retry.catch(() => {});
         });
       }
     };
@@ -3266,7 +3265,6 @@ export default function GalleryPage() {
                              ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
                     controls
                     autoPlay
-                    muted
                     playsInline
                     preload="auto"
                   />
