@@ -3124,6 +3124,7 @@ export default function GalleryPage() {
                         }
                         alt={img.pageTitle}
                         onLoad={() => handleImageLoad(img.id)}
+                        onError={() => handleImageLoad(img.id)}
                         className={`w-full h-auto object-contain transition-all duration-500 ease-out ${loadedImages.has(img.id) ? 'opacity-100' : 'opacity-0'}`}
                         loading="lazy"
                       />
