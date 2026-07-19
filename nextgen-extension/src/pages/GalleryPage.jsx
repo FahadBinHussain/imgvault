@@ -172,6 +172,7 @@ export default function GalleryPage() {
   const [isDeleting, setIsDeleting] = useState(false); // Track deletion progress
   const [isVaulting, setIsVaulting] = useState(false);
   const [loadedImages, setLoadedImages] = useState(new Set()); // Track loaded images for fade-in
+  const [failedImages, setFailedImages] = useState(new Set()); // Track images that failed to load
   const [isModalAnimating, setIsModalAnimating] = useState(false); // Track modal animation state
   const [navbarHeight, setNavbarHeight] = useState(0);
   
@@ -415,9 +416,14 @@ export default function GalleryPage() {
     });
   };
   
-  // Handle image load for fade-in effect
-  const handleImageLoad = (imageId) => {
-    setLoadedImages(prev => new Set(prev).add(imageId));
+  // Handle image load/error for fade-in effect
+  const handleImageLoad = (imageId, failed = false) => {
+    if (failed) {
+      setFailedImages(prev => new Set(prev).add(imageId));
+      setLoadedImages(prev => new Set(prev).add(imageId));
+    } else {
+      setLoadedImages(prev => new Set(prev).add(imageId));
+    }
   };
 
   // Toggle selection mode
@@ -3124,10 +3130,15 @@ export default function GalleryPage() {
                         }
                         alt={img.pageTitle}
                         onLoad={() => handleImageLoad(img.id)}
-                        onError={() => handleImageLoad(img.id)}
+                        onError={() => handleImageLoad(img.id, true)}
                         className={`w-full h-auto object-contain transition-all duration-500 ease-out ${loadedImages.has(img.id) ? 'opacity-100' : 'opacity-0'}`}
                         loading="lazy"
                       />
+                    )}
+                    {failedImages.has(img.id) && !getPreferredVideoWatchUrl(img) && !img.isLink && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-base-300/40" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.3)' }}>
+                        <FileText style={{ width: 32, height: 32 }} />
+                      </div>
                     )}
                     
                     {/* Gradient overlay on hover */}
