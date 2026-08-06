@@ -458,6 +458,19 @@ fn download_video(url: &str, output_path: &str, cookies_data: Option<&[BrowserCo
             stdout: String::new(),
             stderr: String::new(),
         })?;
+
+    let lowered_url = url.to_ascii_lowercase();
+    let host = lowered_url
+        .split("://")
+        .nth(1)
+        .and_then(|rest| rest.split('/').next())
+        .map(|h| h.split('@').last().unwrap_or(h))
+        .map(|h| h.split(':').next().unwrap_or(h).to_string())
+        .unwrap_or_default();
+
+    if host == "tiktok.com" || host.ends_with(".tiktok.com") {
+        command.arg("--impersonate").arg("chrome");
+    }
     
     // Hide CMD window on Windows
     #[cfg(target_os = "windows")]
@@ -639,6 +652,7 @@ fn download_video_with_progress(
     request_id: Option<&str>,
     stdout: &mut io::Stdout,
     format_override: Option<&str>,
+    attempt: u32,
 ) -> Result<DownloadOutcome, DownloadOutcome> {
     let output_dir = get_output_directory(output_path)
         .map_err(|message| DownloadOutcome {
@@ -678,6 +692,19 @@ fn download_video_with_progress(
         .current_dir(&output_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    let lowered_url = url.to_ascii_lowercase();
+    let host = lowered_url
+        .split("://")
+        .nth(1)
+        .and_then(|rest| rest.split('/').next())
+        .map(|h| h.split('@').last().unwrap_or(h))
+        .map(|h| h.split(':').next().unwrap_or(h).to_string())
+        .unwrap_or_default();
+
+    if host == "tiktok.com" || host.ends_with(".tiktok.com") {
+        command.arg("--impersonate").arg("chrome");
+    }
 
     let cookies_path = add_cookies_argument(&mut command, cookies_data)
         .map_err(|e| DownloadOutcome {
@@ -885,6 +912,44 @@ fn download_video_with_progress(
                 request_id,
                 stdout,
                 None,
+                attempt,
+            );
+        }
+
+        let should_retry_extraction = attempt < 2 &&
+            (lower_combined.contains("unable to extract universal data for rehydration") ||
+             lower_combined.contains("http error 403"));
+
+        if should_retry_extraction {
+            let notice = NativeResponse {
+                success: true,
+                event: Some("progress".to_string()),
+                request_id: request_id.map(|value| value.to_string()),
+                message: None,
+                line: Some(format!(
+                    "[ImgVault] Site returned an unreadable page. Retrying (attempt {} of 3)",
+                    attempt + 2
+                )),
+                stream: Some("stderr".to_string()),
+                file_path: None,
+                stdout: None,
+                stderr: None,
+            };
+
+            if let Err(error) = send_native_response(stdout, &notice) {
+                eprintln!("[NATIVE] Failed to send extraction retry notice: {}", error);
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(2500));
+
+            return download_video_with_progress(
+                url,
+                output_path,
+                cookies_data,
+                request_id,
+                stdout,
+                format_override,
+                attempt + 1,
             );
         }
 
@@ -971,7 +1036,7 @@ fn handle_native_messaging() {
                             (url, output_path) 
                         {
                             eprintln!("[NATIVE] Processing download: {} -> {}", url, output_path);
-                            match download_video_with_progress(&url, &output_path, cookies_data.as_deref(), request_id.as_deref(), &mut stdout, format.as_deref()) {
+                            match download_video_with_progress(&url, &output_path, cookies_data.as_deref(), request_id.as_deref(), &mut stdout, format.as_deref(), 0) {
                                 Ok(file_path) => {
                                     eprintln!("[NATIVE] Download successful: {}", file_path.file_path.as_deref().unwrap_or(""));
                                     NativeResponse {

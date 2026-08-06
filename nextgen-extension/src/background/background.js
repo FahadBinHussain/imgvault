@@ -179,7 +179,19 @@ class ImgVaultServiceWorker {
         return (isWatchPath && Boolean(watchVideoId)) || isReelPath || isVideosPath;
       }
 
-      return false;
+      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        return false;
+      }
+
+      if (!host || host === 'localhost' || host.endsWith('.local') || host.endsWith('.localhost')) {
+        return false;
+      }
+
+      if (path === '/' || path === '') {
+        return false;
+      }
+
+      return true;
     } catch (error) {
       return false;
     }
@@ -1333,10 +1345,24 @@ class ImgVaultServiceWorker {
     }
 
     if (/yt-dlp failed/i.test(raw)) {
-      if (/HTTP Error 403|googlevideo.*403/i.test(raw)) {
+      const details = raw
+        .split(/\r?\n/)
+        .filter((line) => !/^\s*\[debug\]/i.test(line) && !/^\s*\[\w+\] Extracting URL/i.test(line))
+        .join('\n');
+
+      if (/raise_login_required|log in for access|may not be comfortable for some audiences/i.test(details)) {
+        return 'yt-dlp failed. This post is restricted and needs a logged-in session for that site.';
+      }
+      if (/unable to extract universal data for rehydration/i.test(details)) {
+        return 'yt-dlp failed. The site returned a page it could not read. This is usually temporary, so try again.';
+      }
+      if (/googlevideo.*403|403.*googlevideo|HTTP Error 403.*fragment/i.test(details)) {
         return '[RETRY_WITH_BEST_FORMAT]yt-dlp failed with HTTP 403 on video CDN. This video may have higher format restrictions. Click "Retry with best" to try single-stream format instead.';
       }
-      if (/sign in to confirm your age/i.test(raw)) {
+      if (/HTTP Error 403/i.test(details)) {
+        return 'yt-dlp failed. The site refused the request before the download started.';
+      }
+      if (/sign in to confirm your age/i.test(details)) {
         return 'yt-dlp failed. The video appears to require an age-confirmed session.';
       }
       if (/sign in to confirm you[\'’]?re not a bot/i.test(raw)) {
@@ -1345,8 +1371,8 @@ class ImgVaultServiceWorker {
       if (/unable to open for writing/i.test(raw)) {
         return 'yt-dlp failed. The output file could not be created.';
       }
-      if (/cookies/i.test(raw) && /not found|failed|expired|invalid/i.test(raw)) {
-        return 'yt-dlp failed. The cookies used for this download were rejected.';
+      if (/cookie (?:file|jar)? ?(?:not found|is empty|expired|invalid|rejected)|failed to (?:load|parse|read) cookies|no cookies found/i.test(details)) {
+        return 'yt-dlp failed. The cookie file could not be used for this download.';
       }
       return 'yt-dlp failed. Check the logs below for the full output.';
     }
@@ -2344,7 +2370,7 @@ class ImgVaultServiceWorker {
       // console.log(`📥 [NATIVE] Sending download request for: ${url}`);
 
       const downloadFolder = await this.resolveNativeDownloadFolder();
-      const cookies = await this.getYouTubeCookiesForYtDlp();
+      const cookies = await this.getCookiesForYtDlp(url);
 
       // Generate output path with timestamp
       const outputPath = `${downloadFolder}\\%(title)s [%(id)s].%(ext)s`;
@@ -2674,13 +2700,45 @@ class ImgVaultServiceWorker {
     }
   }
 
-  async getYouTubeCookiesForYtDlp() {
-    const [youtubeCookies, googleCookies] = await Promise.all([
-      chrome.cookies.getAll({ domain: '.youtube.com' }),
-      chrome.cookies.getAll({ domain: '.google.com' }),
-    ]);
+  cookieDomainsForUrl(targetUrl = '') {
+    const domains = new Set();
+    let host = '';
 
-    const allCookies = [...youtubeCookies, ...googleCookies];
+    try {
+      host = new URL(targetUrl).hostname.toLowerCase();
+    } catch (error) {
+      host = '';
+    }
+
+    if (host) {
+      const labels = host.split('.').filter(Boolean);
+      for (let i = 0; i < labels.length - 1; i += 1) {
+        domains.add(`.${labels.slice(i).join('.')}`);
+      }
+    }
+
+    if (!host || /(^|\.)youtube\.com$/.test(host) || host === 'youtu.be') {
+      domains.add('.youtube.com');
+      domains.add('.google.com');
+    }
+
+    return Array.from(domains);
+  }
+
+  async getCookiesForYtDlp(targetUrl = '') {
+    const domains = this.cookieDomainsForUrl(targetUrl);
+
+    const results = await Promise.all(
+      domains.map(async (domain) => {
+        try {
+          return await chrome.cookies.getAll({ domain });
+        } catch (error) {
+          return [];
+        }
+      })
+    );
+
+    const allCookies = results.flat();
 
     return Array.from(
       new Map(
