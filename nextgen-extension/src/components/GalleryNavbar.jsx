@@ -28,6 +28,8 @@ const CSS = `
 .iv-filter-tab-on{opacity:1!important;color:var(--color-primary-content)!important;background:var(--color-primary)!important;box-shadow:0 2px 10px oklch(from var(--color-primary) l c h / 0.25)}
 .iv-filter-count{font-size:10px;opacity:.72}
 .iv-mobile-controls{display:flex;align-items:center;gap:8px;margin-top:8px}
+@media(min-width:768px){.iv-mobile-controls{display:none}}
+@media(max-width:767px){.iv-nav-controls{display:none}}
 .iv-mobile-controls .iv-nav-search{max-width:none}
 .iv-mobile-controls .iv-nav-sort{flex-basis:142px;flex-shrink:0}
 .iv-mobile-filters{margin-top:8px;width:100%;overflow-x:auto}
