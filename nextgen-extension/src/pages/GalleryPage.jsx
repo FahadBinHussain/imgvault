@@ -509,7 +509,7 @@ export default function GalleryPage() {
         acc[kind] += 1;
       }
       return acc;
-    }, { all: 0, image: 0, video: 0, link: 0 });
+    }, Object.fromEntries(MEDIA_FILTER_OPTIONS.map((k) => [k, 0])));
   }, [searchedImages]);
 
   const mediaFilteredImages = useMemo(() => {

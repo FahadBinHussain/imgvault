@@ -166,6 +166,7 @@ export default function GalleryNavbar({
     { value: 'image', label: 'Images' },
     { value: 'video', label: 'Videos' },
     { value: 'link', label: 'Links' },
+    { value: 'scene', label: 'Scenes' },
   ];
   const renderMediaFilterTabs = () => showMediaFilter ? (
     <div className="iv-filter-tabs" role="tablist" aria-label="Filter media type">
