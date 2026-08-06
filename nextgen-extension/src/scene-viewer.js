@@ -56,7 +56,63 @@ try {
   controls.maxDistance = 50;
   controls.target.set(0, 0, 0);
 
+  const ORBIT_KEYS = new Set(['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'a', 'd', 'w', 's', 'q', 'e', '+', '=', '-', '_']);
+  const ORBIT_SPEED = 0.025;
+  const ZOOM_SPEED = 0.05;
+  const pressedKeys = new Set();
+  const keyOffset = new THREE.Vector3();
+  const keySpherical = new THREE.Spherical();
+
+  function applyKeyboardControls() {
+    if (pressedKeys.size === 0) return;
+
+    keyOffset.copy(camera.position).sub(controls.target);
+    keySpherical.setFromVector3(keyOffset);
+
+    if (pressedKeys.has('arrowleft') || pressedKeys.has('a')) keySpherical.theta -= ORBIT_SPEED;
+    if (pressedKeys.has('arrowright') || pressedKeys.has('d')) keySpherical.theta += ORBIT_SPEED;
+    if (pressedKeys.has('arrowup') || pressedKeys.has('w')) keySpherical.phi -= ORBIT_SPEED;
+    if (pressedKeys.has('arrowdown') || pressedKeys.has('s')) keySpherical.phi += ORBIT_SPEED;
+    if (pressedKeys.has('q') || pressedKeys.has('+') || pressedKeys.has('=')) keySpherical.radius -= ZOOM_SPEED;
+    if (pressedKeys.has('e') || pressedKeys.has('-') || pressedKeys.has('_')) keySpherical.radius += ZOOM_SPEED;
+
+    keySpherical.phi = Math.max(0.001, Math.min(Math.PI - 0.001, keySpherical.phi));
+    keySpherical.radius = Math.max(controls.minDistance, Math.min(controls.maxDistance, keySpherical.radius));
+
+    camera.position.copy(controls.target).add(keyOffset.setFromSpherical(keySpherical));
+    camera.lookAt(controls.target);
+  }
+
+  window.addEventListener('keydown', (event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const key = event.key.toLowerCase();
+    if (key === 'r') {
+      event.preventDefault();
+      controls.reset();
+      return;
+    }
+    if (key === 'f') {
+      event.preventDefault();
+      if (document.fullscreenElement) {
+        document.exitFullscreen?.();
+      } else {
+        document.documentElement.requestFullscreen?.();
+      }
+      return;
+    }
+    if (!ORBIT_KEYS.has(key)) return;
+    event.preventDefault();
+    pressedKeys.add(key);
+  });
+
+  window.addEventListener('keyup', (event) => {
+    pressedKeys.delete(event.key.toLowerCase());
+  });
+
+  window.addEventListener('blur', () => pressedKeys.clear());
+
   renderer.setAnimationLoop(() => {
+    applyKeyboardControls();
     controls.update();
     renderer.render(scene, camera);
   });

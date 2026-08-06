@@ -181,6 +181,90 @@ export default function SceneViewer({ spzUrl, textureUrl, title, isOpen, onClose
     }
   }, []);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const ORBIT_KEYS = new Set(['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'a', 'd', 'w', 's', 'q', 'e', '+', '=', '-', '_']);
+    const ORBIT_SPEED = 0.025;
+    const ZOOM_SPEED = 0.05;
+    const pressed = new Set();
+    let frame = null;
+
+    const step = () => {
+      frame = requestAnimationFrame(step);
+      const camera = cameraRef.current;
+      const controls = controlsRef.current;
+      if (!camera || !controls || pressed.size === 0) return;
+
+      const target = controls.target;
+      const dx = camera.position.x - target.x;
+      const dy = camera.position.y - target.y;
+      const dz = camera.position.z - target.z;
+
+      let radius = Math.sqrt(dx * dx + dy * dy + dz * dz) || 0.001;
+      let theta = Math.atan2(dx, dz);
+      let phi = Math.acos(Math.max(-1, Math.min(1, dy / radius)));
+
+      if (pressed.has('arrowleft') || pressed.has('a')) theta -= ORBIT_SPEED;
+      if (pressed.has('arrowright') || pressed.has('d')) theta += ORBIT_SPEED;
+      if (pressed.has('arrowup') || pressed.has('w')) phi -= ORBIT_SPEED;
+      if (pressed.has('arrowdown') || pressed.has('s')) phi += ORBIT_SPEED;
+      if (pressed.has('q') || pressed.has('+') || pressed.has('=')) radius -= ZOOM_SPEED;
+      if (pressed.has('e') || pressed.has('-') || pressed.has('_')) radius += ZOOM_SPEED;
+
+      phi = Math.max(0.001, Math.min(Math.PI - 0.001, phi));
+      radius = Math.max(controls.minDistance, Math.min(controls.maxDistance, radius));
+
+      camera.position.set(
+        target.x + radius * Math.sin(phi) * Math.sin(theta),
+        target.y + radius * Math.cos(phi),
+        target.z + radius * Math.sin(phi) * Math.cos(theta)
+      );
+      camera.lookAt(target);
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key === 'escape') {
+        onClose?.();
+        return;
+      }
+      if (key === 'r') {
+        event.preventDefault();
+        resetCamera();
+        return;
+      }
+      if (key === 'f') {
+        event.preventDefault();
+        toggleFullscreen();
+        return;
+      }
+      if (!ORBIT_KEYS.has(key)) return;
+      event.preventDefault();
+      pressed.add(key);
+    };
+
+    const handleKeyUp = (event) => {
+      pressed.delete(event.key.toLowerCase());
+    };
+
+    const handleBlur = () => pressed.clear();
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+    frame = requestAnimationFrame(step);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+      if (frame) cancelAnimationFrame(frame);
+      pressed.clear();
+    };
+  }, [isOpen, onClose, resetCamera, toggleFullscreen]);
+
   if (!isOpen) return null;
 
   return (

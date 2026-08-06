@@ -3264,7 +3264,10 @@ export default function GalleryPage() {
                         className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 border-0
                                  transition-all duration-700 ease-out
                                  ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
-                        allow="accelerometer; gyroscope; webgl"
+                        allow="accelerometer; gyroscope; webgl; fullscreen"
+                        tabIndex={-1}
+                        onLoad={(event) => event.currentTarget.contentWindow?.focus()}
+                        onMouseEnter={(event) => event.currentTarget.contentWindow?.focus()}
                       />
                     );
                   })()
