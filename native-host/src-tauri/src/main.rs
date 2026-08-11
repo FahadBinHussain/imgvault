@@ -273,6 +273,46 @@ fn cleanup_temp_cookies_file(path: &Option<PathBuf>) {
     }
 }
 
+/// Rewrite mirror-site URLs to their canonical upstream URL so yt-dlp can use
+/// the dedicated extractor instead of the generic one.
+///
+/// ukdevilz.com mirrors VK videos under `/watch/{owner_id}_{video_id}`; its own
+/// `/videofile/{id}.mp4` endpoint returns stale links (Cloudflare challenge /
+/// 404) while the upstream `vk.com/video-{owner}_{id}` resolves cleanly.
+fn rewrite_mirror_url(url: &str) -> String {
+    let lowered = url.to_ascii_lowercase();
+    let host = lowered
+        .split("://")
+        .nth(1)
+        .and_then(|rest| rest.split('/').next())
+        .map(|h| h.split('@').last().unwrap_or(h))
+        .map(|h| h.split(':').next().unwrap_or(h))
+        .unwrap_or_default();
+
+    if host == "ukdevilz.com" || host.ends_with(".ukdevilz.com") {
+        if let Some(captures) = lowered
+            .split("://")
+            .nth(1)
+            .and_then(|rest| rest.split(['?', '#']).next())
+            .and_then(|path| {
+                path.strip_prefix("ukdevilz.com/watch/")
+                    .or_else(|| path.strip_prefix("www.ukdevilz.com/watch/"))
+            })
+        {
+            let video_id = captures.trim_end_matches('/');
+            if !video_id.is_empty()
+                && video_id
+                    .chars()
+                    .all(|c| c.is_ascii_digit() || c == '-' || c == '_')
+            {
+                return format!("https://vk.com/video{}", video_id);
+            }
+        }
+    }
+
+    url.to_string()
+}
+
 fn send_native_response(stdout: &mut io::Stdout, response: &NativeResponse) -> Result<(), String> {
     let response_json = serde_json::to_string(response)
         .map_err(|e| format!("Failed to serialize response: {}", e))?;
@@ -435,7 +475,7 @@ fn download_video(url: &str, output_path: &str, cookies_data: Option<&[BrowserCo
 
     let mut command = Command::new("yt-dlp");
     command
-        .arg(url)
+        .arg(rewrite_mirror_url(url))
         .arg("--verbose")
         .arg("-o")
         .arg(output_path)
@@ -459,18 +499,10 @@ fn download_video(url: &str, output_path: &str, cookies_data: Option<&[BrowserCo
             stderr: String::new(),
         })?;
 
-    let lowered_url = url.to_ascii_lowercase();
-    let host = lowered_url
-        .split("://")
-        .nth(1)
-        .and_then(|rest| rest.split('/').next())
-        .map(|h| h.split('@').last().unwrap_or(h))
-        .map(|h| h.split(':').next().unwrap_or(h).to_string())
-        .unwrap_or_default();
-
-    if host == "tiktok.com" || host.ends_with(".tiktok.com") {
-        command.arg("--impersonate").arg("chrome");
-    }
+    // Mimic a real Chrome fingerprint for every download. Needed for
+    // Cloudflare-challenged hosts (tiktok.com and other generic-extractor
+    // sites); harmless elsewhere.
+    command.arg("--impersonate").arg("chrome");
     
     // Hide CMD window on Windows
     #[cfg(target_os = "windows")]
@@ -675,7 +707,7 @@ fn download_video_with_progress(
     let format = format_override.unwrap_or("bestvideo+bestaudio/best");
     let mut command = Command::new("yt-dlp");
     command
-        .arg(url)
+        .arg(rewrite_mirror_url(url))
         .arg("--verbose")
         .arg("-o")
         .arg(output_path)
@@ -693,18 +725,10 @@ fn download_video_with_progress(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let lowered_url = url.to_ascii_lowercase();
-    let host = lowered_url
-        .split("://")
-        .nth(1)
-        .and_then(|rest| rest.split('/').next())
-        .map(|h| h.split('@').last().unwrap_or(h))
-        .map(|h| h.split(':').next().unwrap_or(h).to_string())
-        .unwrap_or_default();
-
-    if host == "tiktok.com" || host.ends_with(".tiktok.com") {
-        command.arg("--impersonate").arg("chrome");
-    }
+    // Mimic a real Chrome fingerprint for every download. Needed for
+    // Cloudflare-challenged hosts (tiktok.com and other generic-extractor
+    // sites); harmless elsewhere.
+    command.arg("--impersonate").arg("chrome");
 
     let cookies_path = add_cookies_argument(&mut command, cookies_data)
         .map_err(|e| DownloadOutcome {

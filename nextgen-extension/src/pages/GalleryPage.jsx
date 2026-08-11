@@ -35,8 +35,8 @@ import {
 } from '../utils/videoProviderLinks';
 import {
   getBaseFieldKeys,
-  getDisplayFieldKeys,
   getMediaItemKind,
+  getOverviewEntries,
   getTechnicalMetadataEntries,
 } from '@shared/mediaFieldRegistry.js';
 import SceneUploadDialog from '../components/SceneUploadDialog';
@@ -580,7 +580,9 @@ export default function GalleryPage() {
     isHttpUrl(modalImage?.sourceImageUrl)
   );
   const retryableVideoServices = isSelectedVideo && hasRetryableVideoSource ? missingVideoServices : [];
-  const displayedBaseFieldKeys = getDisplayFieldKeys(modalImage || selectedItemForType);
+  const displayedBaseFieldEntries = getOverviewEntries(modalImage || selectedItemForType);
+  const displayedBaseFieldKeys = displayedBaseFieldEntries.map((entry) => entry.key);
+  const overviewValueByKey = Object.fromEntries(displayedBaseFieldEntries.map((entry) => [entry.key, entry.value]));
   const countedBaseFieldCount = displayedBaseFieldKeys.length;
   const inlineActionClass = 'shrink-0 inline-flex items-center gap-1.5 rounded-full border border-base-300 bg-base-200/70 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-base-content/72 transition-all duration-200 hover:border-base-content/22 hover:bg-base-200 hover:text-base-content hover:shadow-sm active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40';
   const firebaseProjectId = firebaseConfig?.projectId || '';
@@ -3462,12 +3464,12 @@ export default function GalleryPage() {
                           ) : key === 'pixvidUrl' || key === 'imgbbUrl' || key === 'filemoonDirectUrl' || key === 'udropDirectUrl' ? (
                             <div className="flex items-start justify-between gap-3">
                               <p className="text-base-content font-mono text-sm break-all flex-1">
-                                {formatBaseFieldValue(modalImage?.[key])}
+                                {formatBaseFieldValue(overviewValueByKey[key] ?? modalImage?.[key])}
                               </p>
                               <Button
                                 className={inlineActionClass}
                                 onClick={() => downloadImage(
-                                  modalImage?.[key],
+                                  overviewValueByKey[key] ?? modalImage?.[key],
                                   key === 'pixvidUrl'
                                     ? 'pixvid'
                                     : key === 'imgbbUrl'
@@ -3476,7 +3478,7 @@ export default function GalleryPage() {
                                         ? 'filemoon'
                                         : 'udrop'
                                 )}
-                                disabled={!modalImage?.[key]}
+                                disabled={!(overviewValueByKey[key] ?? modalImage?.[key])}
                               >
                                 <Download className="w-3.5 h-3.5" />
                                 Download
@@ -3606,7 +3608,7 @@ export default function GalleryPage() {
                             )
                           ) : (
                             <p className="text-base-content font-mono text-sm break-all">
-                              {formatBaseFieldValue(modalImage?.[key])}
+                              {formatBaseFieldValue(overviewValueByKey[key] ?? modalImage?.[key])}
                             </p>
                           )}
                         </div>

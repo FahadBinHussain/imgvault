@@ -327,6 +327,80 @@ export function getDisplayFieldKeys(item = {}, options = {}) {
   return getBaseFieldKeys(item).filter((field) => !omitted.has(field));
 }
 
+const parseNestedObject = (value) => {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value !== 'string' || !value.trim().startsWith('{')) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+};
+
+const getNestedHosts = (item = {}, key) => {
+  const extra = parseNestedObject(item.extraMetadata);
+  const merged = {
+    ...parseNestedObject(extra[key]),
+    ...parseNestedObject(item[key]),
+  };
+  return Object.fromEntries(
+    Object.entries(merged).filter(([, saved]) => (
+      saved && typeof saved === 'object' && !Array.isArray(saved)
+    ))
+  );
+};
+
+// Overview rows for the details panel: base registry fields present on the
+// item, plus provider URLs that only live nested (imageHosts / videoHosts /
+// legacy filemoonUrl-udropUrl) so every item surfaces its URL even when the
+// top-level mirror fields are missing. extraKeys lets callers add page-specific
+// fields (deletedAt, vaultedAt, ...).
+export function getOverviewEntries(item = {}, options = {}) {
+  const { extraKeys = [] } = options;
+  const itemObj = item && typeof item === 'object' ? item : {};
+  const entries = [];
+  const seen = new Set();
+  const baseKeys = [...new Set([...getBaseFieldKeys(itemObj), ...extraKeys])];
+
+  for (const key of baseKeys) {
+    if (Object.prototype.hasOwnProperty.call(itemObj, key)) {
+      entries.push({ key, value: itemObj[key] });
+      seen.add(key);
+    }
+  }
+
+  const normalizedOwnFields = new Set(
+    Object.keys(itemObj).map((key) => key.toLowerCase().replace(/\./g, ''))
+  );
+  const add = (key, value) => {
+    if (typeof value !== 'string' || !value.trim()) return;
+    if (seen.has(key)) return;
+    // Skip nested URLs whose top-level mirror field already exists
+    // (e.g. videoHosts.filemoon.watchUrl vs filemoonWatchUrl).
+    if (key.includes('.') && normalizedOwnFields.has(key.toLowerCase().replace(/\./g, ''))) return;
+    seen.add(key);
+    entries.push({ key, value: value.trim() });
+  };
+
+  for (const [provider, saved] of Object.entries(getNestedHosts(itemObj, 'imageHosts'))) {
+    add(`${provider}.url`, saved.url || saved.displayUrl || saved.directUrl);
+    add(`${provider}.thumbnailUrl`, saved.thumbnailUrl || saved.thumbUrl);
+    add(`${provider}.deleteUrl`, saved.deleteUrl);
+  }
+  for (const [provider, saved] of Object.entries(getNestedHosts(itemObj, 'videoHosts'))) {
+    add(`${provider}.watchUrl`, saved.watchUrl || saved.displayUrl || saved.url);
+    add(`${provider}.directUrl`, saved.directUrl || saved.downloadUrl);
+    add(`${provider}.thumbnailUrl`, saved.thumbnailUrl || saved.thumbUrl);
+    add(`${provider}.deleteUrl`, saved.deleteUrl);
+  }
+  add('filemoonUrl', itemObj.filemoonUrl);
+  add('udropUrl', itemObj.udropUrl);
+  add('linkUrl', itemObj.linkUrl);
+
+  return entries;
+}
+
 export function stripKnownTopLevelMediaFields(value = {}) {
   if (!isPlainObject(value)) return {};
 

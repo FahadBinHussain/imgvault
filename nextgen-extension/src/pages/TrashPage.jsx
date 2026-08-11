@@ -21,6 +21,7 @@ import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 import {
   getBaseFieldKeys,
   getMediaItemKind,
+  getOverviewEntries,
   getTechnicalFieldKeys,
 } from '@shared/mediaFieldRegistry.js';
 
@@ -372,10 +373,11 @@ export default function TrashPage() {
     );
   };
 
-  const getOverviewKeys = (item) => (
-    [...new Set([...getBaseFieldKeys(item), 'deletedAt'])]
-      .filter((key) => Object.prototype.hasOwnProperty.call(item || {}, key))
-  );
+  // Overview rows for the details panel. Shared resolver surfaces base registry
+  // fields plus provider URLs stored only nested (imageHosts / videoHosts /
+  // legacy filemoonUrl-udropUrl) so every trashed item shows its URL even when
+  // the top-level mirror fields are missing.
+  const getOverviewEntriesFor = (item) => getOverviewEntries(item, { extraKeys: ['deletedAt'] });
 
   const formatDetailValue = (value) => {
     if (value === null || value === undefined || value === '') return 'N/A';
@@ -909,7 +911,7 @@ export default function TrashPage() {
                           ? 'bg-info/20 text-info' 
                           : 'bg-base-300/70 text-base-content/60'
                       }`}>
-                        {getOverviewKeys(selectedImage).length}
+                        {getOverviewEntriesFor(selectedImage).length}
                       </span>
                     </button>
                     <button
@@ -948,17 +950,17 @@ export default function TrashPage() {
                   {activeTab === 'noobs' && (
                     <div className="space-y-4">
                       <div className="space-y-3">
-                        {getOverviewKeys(selectedImage).map((key, index) => {
-                          const rawValue = selectedImage[key];
+                        {getOverviewEntriesFor(selectedImage).map((entry, index) => {
+                          const rawValue = entry.value;
                           const value = formatDetailValue(rawValue);
-                          const isUrl = key.toLowerCase().endsWith('url') && typeof rawValue === 'string' && rawValue;
+                          const isUrl = entry.key.toLowerCase().endsWith('url') && typeof rawValue === 'string' && rawValue;
 
                           return (
-                            <div key={key}>
+                            <div key={entry.key}>
                               <div className="text-xs font-semibold text-base-content/60 mb-1">
-                                {`${index + 1}. ${key}`}
+                                {`${index + 1}. ${entry.key}`}
                               </div>
-                              {key === 'tags' && Array.isArray(rawValue) && rawValue.length > 0 ? (
+                              {entry.key === 'tags' && Array.isArray(rawValue) && rawValue.length > 0 ? (
                                 <div className="flex flex-wrap gap-2">
                                   {rawValue.map(tag => (
                                     <span

@@ -27,10 +27,9 @@ import {
 } from '../utils/videoProviderLinks';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 import {
-  getBaseFieldKeys,
   getMediaItemKind,
+  getOverviewEntries,
   getTechnicalMetadataEntries,
-  isTruthyFlag,
 } from '@shared/mediaFieldRegistry.js';
 
 const VAULT_CONFIG_KEY = 'secretVaultConfig';
@@ -301,8 +300,14 @@ export default function VaultPage() {
 
   const overviewKeys = useMemo(() => {
     if (!selectedItem) return [];
-    const keys = [...new Set([...getBaseFieldKeys(selectedItem), 'vaultedAt'])];
-    return keys.filter((key) => Object.prototype.hasOwnProperty.call(selectedItem, key));
+    return getOverviewEntries(selectedItem, { extraKeys: ['vaultedAt'] }).map((entry) => entry.key);
+  }, [selectedItem]);
+
+  const overviewValues = useMemo(() => {
+    if (!selectedItem) return {};
+    return Object.fromEntries(
+      getOverviewEntries(selectedItem, { extraKeys: ['vaultedAt'] }).map((entry) => [entry.key, entry.value])
+    );
   }, [selectedItem]);
 
   const technicalEntries = useMemo(() => {
@@ -921,7 +926,7 @@ export default function VaultPage() {
                         </div>
                         <div className="g-field">
                           <p className={`text-base-content font-mono text-sm ${key === 'description' ? 'whitespace-pre-wrap break-words' : 'break-all'}`}>
-                            {formatDetailValue(selectedItem[key])}
+                            {formatDetailValue(overviewValues[key] ?? selectedItem[key])}
                           </p>
                         </div>
                       </div>
