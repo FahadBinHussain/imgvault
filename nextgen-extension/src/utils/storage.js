@@ -984,6 +984,60 @@ export class StorageManager {
     return true;
   }
 
+  async deleteVaultItem(id) {
+    await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.deleteVaultItemNeon(id);
+    }
+
+    try {
+      console.log('🔥 [VAULT DELETE] Permanently deleting vault item:', id);
+
+      const current = await this.getImageById(id);
+      if (!current) {
+        throw new Error('Vault item not found');
+      }
+
+      if (this.isVaultedItem(current) && current.imgbbDeleteUrl) {
+        try {
+          const imgbbDeleted = await this.deleteFromImgbb(current.imgbbDeleteUrl);
+          if (!imgbbDeleted) {
+            throw new Error('ImgBB delete URL did not confirm deletion');
+          }
+        } catch (imgbbError) {
+          console.warn('⚠️ [VAULT DELETE] ImgBB deletion failed:', imgbbError);
+          throw new Error('ImgBB deletion failed; keeping item so the delete URL is not lost.');
+        }
+      }
+
+      if (current.pixvidDeleteUrl) {
+        try {
+          await fetch(current.pixvidDeleteUrl, {
+            method: 'GET',
+            redirect: 'follow',
+          });
+          console.log('✅ [VAULT DELETE] Deleted from Pixvid');
+        } catch (pixvidError) {
+          console.warn('⚠️ [VAULT DELETE] Pixvid deletion failed:', pixvidError);
+        }
+      }
+
+      const deleteResponse = await fetch(this.buildUrl(`images/${id}`), {
+        method: 'DELETE',
+      });
+
+      if (!deleteResponse.ok) {
+        throw new Error('Failed to remove from images collection');
+      }
+
+      console.log('✅ [VAULT DELETE] Vault item permanently deleted');
+      return true;
+    } catch (error) {
+      console.error('❌ [VAULT DELETE] Error deleting vault item:', error);
+      throw error;
+    }
+  }
+
   async hasSavedLinkByUrl(pageUrl) {
     await this.ensureInitialized();
     if (this.backend === 'neon') {
@@ -2473,6 +2527,29 @@ export class StorageManager {
       await this.permanentlyDeleteNeon(item.id);
     }
     return trashed.length;
+  }
+
+  async deleteVaultItemNeon(id) {
+    const sql = this.ensureNeonReady();
+    const current = await this.getImageByIdNeon(id);
+    if (!current) {
+      throw new Error('Vault item not found');
+    }
+    if (this.isVaultedItem(current) && current.imgbbDeleteUrl) {
+      try {
+        const imgbbDeleted = await this.deleteFromImgbb(current.imgbbDeleteUrl);
+        if (!imgbbDeleted) {
+          throw new Error('ImgBB delete URL did not confirm deletion');
+        }
+      } catch {
+        throw new Error('ImgBB deletion failed; keeping item so the delete URL is not lost.');
+      }
+    }
+    if (current.pixvidDeleteUrl) {
+      try { await fetch(current.pixvidDeleteUrl, { method: 'GET' }); } catch {}
+    }
+    await sql`delete from public.media_items where id = ${id}`;
+    return true;
   }
 
   async updateTrashedImageNeon(id, updates) {

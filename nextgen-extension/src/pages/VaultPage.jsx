@@ -15,6 +15,7 @@ import {
   Link2,
   Image as ImageIcon,
   Video,
+  Trash2,
 } from 'lucide-react';
 import { Button, Spinner, Toast, Modal } from '../components/UI';
 import GalleryNavbar from '../components/GalleryNavbar';
@@ -87,6 +88,8 @@ export default function VaultPage() {
   const [loadedImages, setLoadedImages] = useState(new Set());
   const [toast, setToast] = useState(null);
   const [restoringId, setRestoringId] = useState('');
+  const [deletingId, setDeletingId] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const showToast = (message, type = 'info', duration = 3000) => {
     setToast({ message, type });
@@ -435,6 +438,22 @@ export default function VaultPage() {
     }
   };
 
+  const deleteVaultItem = async () => {
+    if (!selectedItem?.id || deletingId) return;
+    setDeletingId(selectedItem.id);
+    try {
+      await sendMessage('deleteFromVault', { id: selectedItem.id });
+      setVaultItems((prev) => prev.filter((entry) => entry.id !== selectedItem.id));
+      setShowDeleteConfirm(false);
+      setSelectedItem(null);
+      showToast('Permanently deleted from Vault.', 'success', 3000);
+    } catch (error) {
+      showToast(`Delete failed: ${error.message || String(error)}`, 'error', 5000);
+    } finally {
+      setDeletingId('');
+    }
+  };
+
   const renderLockedState = () => (
     <div className="mx-auto flex min-h-[60vh] max-w-md flex-col justify-center px-4">
       <motion.div
@@ -525,6 +544,8 @@ export default function VaultPage() {
     .g-action:hover{color:var(--color-primary);border-color:oklch(from var(--color-primary) l c h / 0.2);background:oklch(from var(--color-primary) l c h / 0.05)}
     .g-action-warn{color:var(--color-warning);background:oklch(from var(--color-warning) l c h / 0.07);border-color:oklch(from var(--color-warning) l c h / 0.12)}
     .g-action-warn:hover{background:oklch(from var(--color-warning) l c h / 0.12);border-color:oklch(from var(--color-warning) l c h / 0.2)}
+    .g-action-danger{color:var(--color-error);background:oklch(from var(--color-error) l c h / 0.07);border-color:oklch(from var(--color-error) l c h / 0.12)}
+    .g-action-danger:hover{background:oklch(from var(--color-error) l c h / 0.12);border-color:oklch(from var(--color-error) l c h / 0.2)}
     .g-action-prim{color:var(--color-primary-content);background:linear-gradient(135deg,var(--color-primary),var(--color-secondary));border:none;box-shadow:0 2px 10px oklch(from var(--color-primary) l c h / 0.2)}
     .g-action-prim:hover{filter:brightness(1.1);transform:translateY(-1px)}
   `;
@@ -871,6 +892,10 @@ export default function VaultPage() {
                       <RotateCcw style={{ width: 13, height: 13 }} />
                       <span>{restoringId === selectedItem.id ? 'Restoring...' : 'Restore'}</span>
                     </button>
+                    <button onClick={() => setShowDeleteConfirm(true)} disabled={deletingId === selectedItem.id} className="g-action g-action-danger" style={{ height: 32, padding: '0 14px' }}>
+                      <Trash2 style={{ width: 13, height: 13 }} />
+                      <span>{deletingId === selectedItem.id ? 'Deleting...' : 'Delete'}</span>
+                    </button>
                     <button onClick={lockVault} className="g-action g-action-warn" style={{ height: 32, padding: '0 14px' }}>
                       <LockKeyhole style={{ width: 13, height: 13 }} />
                       <span>Lock</span>
@@ -982,6 +1007,37 @@ export default function VaultPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        title="Delete Vault Item?"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-base-content/60">
+            This permanently removes the item from the vault and deletes hosted files
+            (ImgBB/Pixvid) when a delete URL exists. This cannot be undone.
+          </p>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={() => setShowDeleteConfirm(false)} disabled={!!deletingId}>
+              Cancel
+            </Button>
+            <Button type="button" variant="danger" onClick={deleteVaultItem} disabled={!!deletingId}>
+              {deletingId ? (
+                <>
+                  <Spinner size="sm" className="mr-2" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete Forever
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       {toast && (

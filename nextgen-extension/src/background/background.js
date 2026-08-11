@@ -1129,6 +1129,12 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'deleteFromVault':
+        this.storage.deleteVaultItem(request.data?.id || request.id)
+          .then(() => sendResponse({ success: true, data: null }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'getTrashedImages':
         this.storage.getTrashedImages()
           .then(images => sendResponse({ success: true, data: images }))

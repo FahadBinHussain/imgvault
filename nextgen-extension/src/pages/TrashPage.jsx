@@ -45,6 +45,8 @@ export default function TrashPage() {
   const [selectedImages, setSelectedImages] = useState(new Set());
   const [showBulkRestoreConfirm, setShowBulkRestoreConfirm] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [failedImages, setFailedImages] = useState(new Set());
+  const [modalImageFailed, setModalImageFailed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [navbarHeight, setNavbarHeight] = useState(0);
 
@@ -117,9 +119,27 @@ export default function TrashPage() {
     }
   };
 
-  const handleImageLoad = (imageId) => {
+  const handleImageLoad = (imageId, failed = false) => {
+    if (failed) {
+      setFailedImages(prev => new Set(prev).add(imageId));
+    }
     setLoadedImages(prev => new Set(prev).add(imageId));
   };
+
+  // Graceful fallback: if a trashed item's hosted source was removed (or the
+  // host hangs), the browser may never fire onLoad/onError for its image. Stop
+  // the infinite shimmer after a grace period so the card resolves instead of
+  // loading forever.
+  useEffect(() => {
+    if (loading || trashedImages.length === 0) return;
+    const timers = trashedImages.map(image => setTimeout(() => {
+      setLoadedImages(prev => {
+        if (prev.has(image.id)) return prev;
+        return new Set(prev).add(image.id);
+      });
+    }, 12000));
+    return () => timers.forEach(clearTimeout);
+  }, [loading, trashedImages]);
 
   // Toggle selection mode
   const toggleSelectionMode = () => {
@@ -616,6 +636,7 @@ export default function TrashPage() {
                       console.log('[TRASH] Image clicked:', image.id);
                       console.log('[TRASH] Image data:', image);
                       console.log('[TRASH] internalAddedTimestamp:', image.internalAddedTimestamp);
+                      setModalImageFailed(false);
                       setSelectedImage(image);
                       setActiveTab('noobs');
                       setFullImageDetails(null);
@@ -688,6 +709,7 @@ export default function TrashPage() {
                             src={image.linkPreviewImageUrl || getImageUrl(image)}
                             alt={image.pageTitle || 'Link preview'}
                             onLoad={() => handleImageLoad(image.id)}
+                            onError={() => handleImageLoad(image.id, true)}
                             className={`w-full h-full object-contain transition-all duration-700 ease-out
                                      ${loadedImages.has(image.id)
                                        ? 'opacity-100'
@@ -706,12 +728,22 @@ export default function TrashPage() {
                         src={getImageUrl(image)}
                         alt={image.pageTitle || 'Trashed image'}
                         onLoad={() => handleImageLoad(image.id)}
+                        onError={() => handleImageLoad(image.id, true)}
                         className={`w-full h-auto object-contain transition-all duration-700 ease-out
                                  ${loadedImages.has(image.id)
                                    ? 'opacity-100'
                                    : 'opacity-0'}`}
                         loading="lazy"
                       />
+                    )}
+
+                    {failedImages.has(image.id) && !image.filemoonUrl && !isLinkItem(image) && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-base-300/60" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.35)' }}>
+                        <ImageIcon style={{ width: 32, height: 32 }} />
+                        <span className="text-xs px-3 py-1 rounded-md" style={{ background: 'oklch(from var(--color-base-content) l c h / 0.06)' }}>
+                          Source removed or unavailable
+                        </span>
+                      </div>
                     )}
                     
                     {/* Gradient Overlay */}
@@ -795,6 +827,7 @@ export default function TrashPage() {
                       <img
                         src={selectedImage.linkPreviewImageUrl || getImageUrl(selectedImage, true)}
                         alt={selectedImage.pageTitle || 'Link preview'}
+                        onError={() => setModalImageFailed(true)}
                         className="w-full h-auto max-h-[60vh] object-contain"
                       />
                     ) : (
@@ -821,10 +854,19 @@ export default function TrashPage() {
                   <img
                     src={getImageUrl(selectedImage, true)}
                     alt={selectedImage.pageTitle}
+                    onError={() => setModalImageFailed(true)}
                     className="max-w-full max-h-full object-contain rounded-[var(--radius-box)] shadow-2xl relative z-10
                              hover:scale-[1.02] hover:shadow-[0_0_80px_rgba(239,68,68,0.3)]
                              transition-all duration-700"
                   />
+                )}
+                {modalImageFailed && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-base-200/80" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.35)' }}>
+                    <ImageIcon style={{ width: 56, height: 56 }} />
+                    <span className="text-sm px-4 py-1.5 rounded-md" style={{ background: 'oklch(from var(--color-base-content) l c h / 0.06)' }}>
+                      Source removed or unavailable
+                    </span>
+                  </div>
                 )}
               </div>
 
