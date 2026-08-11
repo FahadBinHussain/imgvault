@@ -446,9 +446,9 @@ export default function VaultPage() {
       setVaultItems((prev) => prev.filter((entry) => entry.id !== selectedItem.id));
       setShowDeleteConfirm(false);
       setSelectedItem(null);
-      showToast('Permanently deleted from Vault.', 'success', 3000);
+      showToast('Moved to Trash.', 'success', 3000);
     } catch (error) {
-      showToast(`Delete failed: ${error.message || String(error)}`, 'error', 5000);
+      showToast(`Move to Trash failed: ${error.message || String(error)}`, 'error', 5000);
     } finally {
       setDeletingId('');
     }
@@ -894,7 +894,7 @@ export default function VaultPage() {
                     </button>
                     <button onClick={() => setShowDeleteConfirm(true)} disabled={deletingId === selectedItem.id} className="g-action g-action-danger" style={{ height: 32, padding: '0 14px' }}>
                       <Trash2 style={{ width: 13, height: 13 }} />
-                      <span>{deletingId === selectedItem.id ? 'Deleting...' : 'Delete'}</span>
+                      <span>{deletingId === selectedItem.id ? 'Moving...' : 'Trash'}</span>
                     </button>
                     <button onClick={lockVault} className="g-action g-action-warn" style={{ height: 32, padding: '0 14px' }}>
                       <LockKeyhole style={{ width: 13, height: 13 }} />
@@ -1012,12 +1012,12 @@ export default function VaultPage() {
       <Modal
         isOpen={showDeleteConfirm}
         onClose={() => setShowDeleteConfirm(false)}
-        title="Delete Vault Item?"
+        title="Move to Trash?"
       >
         <div className="space-y-4">
           <p className="text-sm text-base-content/60">
-            This permanently removes the item from the vault and deletes hosted files
-            (ImgBB/Pixvid) when a delete URL exists. This cannot be undone.
+            This removes the item from the vault and moves it to Trash. Hosted
+            files stay intact and the item can be restored from Trash later.
           </p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" onClick={() => setShowDeleteConfirm(false)} disabled={!!deletingId}>
@@ -1027,12 +1027,12 @@ export default function VaultPage() {
               {deletingId ? (
                 <>
                   <Spinner size="sm" className="mr-2" />
-                  Deleting...
+                  Moving...
                 </>
               ) : (
                 <>
                   <Trash2 className="mr-2 h-4 w-4" />
-                  Delete Forever
+                  Move to Trash
                 </>
               )}
             </Button>

@@ -991,49 +991,25 @@ export class StorageManager {
     }
 
     try {
-      console.log('🔥 [VAULT DELETE] Permanently deleting vault item:', id);
+      console.log('🗑️ [VAULT DELETE] Moving vault item to trash:', id);
 
       const current = await this.getImageById(id);
       if (!current) {
         throw new Error('Vault item not found');
       }
 
-      if (this.isVaultedItem(current) && current.imgbbDeleteUrl) {
-        try {
-          const imgbbDeleted = await this.deleteFromImgbb(current.imgbbDeleteUrl);
-          if (!imgbbDeleted) {
-            throw new Error('ImgBB delete URL did not confirm deletion');
-          }
-        } catch (imgbbError) {
-          console.warn('⚠️ [VAULT DELETE] ImgBB deletion failed:', imgbbError);
-          throw new Error('ImgBB deletion failed; keeping item so the delete URL is not lost.');
-        }
-      }
-
-      if (current.pixvidDeleteUrl) {
-        try {
-          await fetch(current.pixvidDeleteUrl, {
-            method: 'GET',
-            redirect: 'follow',
-          });
-          console.log('✅ [VAULT DELETE] Deleted from Pixvid');
-        } catch (pixvidError) {
-          console.warn('⚠️ [VAULT DELETE] Pixvid deletion failed:', pixvidError);
-        }
-      }
-
-      const deleteResponse = await fetch(this.buildUrl(`images/${id}`), {
-        method: 'DELETE',
+      // Un-vault first so the item surfaces in the trash page and can be restored there.
+      await this.updateImage(id, {
+        isVaulted: false,
+        vaultMode: '',
+        vaultedAt: '',
       });
 
-      if (!deleteResponse.ok) {
-        throw new Error('Failed to remove from images collection');
-      }
-
-      console.log('✅ [VAULT DELETE] Vault item permanently deleted');
-      return true;
+      // Skip the collection-count decrement: vaulted items were already
+      // excluded from their collection count when they entered the vault.
+      return this.moveToTrash(id, { skipCollectionCount: true });
     } catch (error) {
-      console.error('❌ [VAULT DELETE] Error deleting vault item:', error);
+      console.error('❌ [VAULT DELETE] Error moving vault item to trash:', error);
       throw error;
     }
   }
@@ -1190,10 +1166,10 @@ export class StorageManager {
    * @param {string} id - Image document ID
    * @returns {Promise<void>}
    */
-  async moveToTrash(id) {
+  async moveToTrash(id, options = {}) {
     await this.ensureInitialized();
     if (this.backend === 'neon') {
-      return this.moveToTrashNeon(id);
+      return this.moveToTrashNeon(id, options);
     }
 
     try {
@@ -1244,7 +1220,7 @@ export class StorageManager {
       }
       
       // Decrement collection count if image had a collectionId
-      if (collectionId) {
+      if (collectionId && !options.skipCollectionCount) {
         try {
           await this.incrementCollectionCount(collectionId, -1);
         } catch (error) {
@@ -2444,12 +2420,12 @@ export class StorageManager {
     return this.findVideoDuplicateInItems(items, target);
   }
 
-  async moveToTrashNeon(id) {
+  async moveToTrashNeon(id, options = {}) {
     const current = await this.getImageByIdNeon(id);
     if (!current) return false;
     const sql = this.ensureNeonReady();
     await sql`update public.media_items set deleted_at = now(), updated_at = now() where id = ${id}`;
-    if (current.collectionId) {
+    if (current.collectionId && !options.skipCollectionCount) {
       await this.incrementCollectionCountNeon(current.collectionId, -1);
     }
     return true;
@@ -2535,21 +2511,15 @@ export class StorageManager {
     if (!current) {
       throw new Error('Vault item not found');
     }
-    if (this.isVaultedItem(current) && current.imgbbDeleteUrl) {
-      try {
-        const imgbbDeleted = await this.deleteFromImgbb(current.imgbbDeleteUrl);
-        if (!imgbbDeleted) {
-          throw new Error('ImgBB delete URL did not confirm deletion');
-        }
-      } catch {
-        throw new Error('ImgBB deletion failed; keeping item so the delete URL is not lost.');
-      }
-    }
-    if (current.pixvidDeleteUrl) {
-      try { await fetch(current.pixvidDeleteUrl, { method: 'GET' }); } catch {}
-    }
-    await sql`delete from public.media_items where id = ${id}`;
-    return true;
+    // Un-vault first so the item surfaces in the trash page and can be restored there.
+    await this.updateImageNeon(id, {
+      isVaulted: false,
+      vaultMode: '',
+      vaultedAt: '',
+    });
+    // Skip the collection-count decrement: vaulted items were already
+    // excluded from their collection count when they entered the vault.
+    return this.moveToTrashNeon(id, { skipCollectionCount: true });
   }
 
   async updateTrashedImageNeon(id, updates) {
