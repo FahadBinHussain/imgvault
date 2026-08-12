@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Button, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
 import { useTrash } from '../hooks/useChromeExtension';
+import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import TimelineScrollbar from '../components/TimelineScrollbar';
 import PremiumBackground from '../components/PremiumBackground';
 import GalleryNavbar from '../components/GalleryNavbar';
@@ -472,6 +473,40 @@ export default function TrashPage() {
     
     setTimelineData(timeline);
   }, [groupedImages]);
+
+  // Keyboard navigation for the detail modal (mirrors gallery)
+  const openTrashItemModal = (image) => {
+    setModalImageFailed(false);
+    setSelectedImage(image);
+    setActiveTab('noobs');
+    setFullImageDetails(null);
+  };
+
+  const navigateToNextImage = () => {
+    if (!selectedImage || filteredTrashedImages.length === 0) return;
+    const currentIndex = filteredTrashedImages.findIndex((img) => img.id === selectedImage.id);
+    if (currentIndex === -1 || currentIndex === filteredTrashedImages.length - 1) return;
+    openTrashItemModal(filteredTrashedImages[currentIndex + 1]);
+  };
+
+  const navigateToPreviousImage = () => {
+    if (!selectedImage || filteredTrashedImages.length === 0) return;
+    const currentIndex = filteredTrashedImages.findIndex((img) => img.id === selectedImage.id);
+    if (currentIndex <= 0) return;
+    openTrashItemModal(filteredTrashedImages[currentIndex - 1]);
+  };
+
+  useKeyboardShortcuts({
+    [SHORTCUTS.ARROW_RIGHT]: navigateToNextImage,
+    [SHORTCUTS.ARROW_LEFT]: navigateToPreviousImage,
+    [SHORTCUTS.ESCAPE]: () => {
+      if (selectedImage) setSelectedImage(null);
+      else if (selectionMode) setSelectionMode(false);
+    },
+    [SHORTCUTS.DELETE]: () => {
+      if (selectedImage && !showDeleteConfirm) setShowDeleteConfirm(true);
+    },
+  });
 
   return (
   <div ref={pageContainerRef} className="min-h-screen bg-base-200 text-base-content overflow-y-auto prem-page">`n      <PremiumBackground />

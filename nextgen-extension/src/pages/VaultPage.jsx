@@ -21,6 +21,7 @@ import { Button, Spinner, Toast, Modal } from '../components/UI';
 import GalleryNavbar from '../components/GalleryNavbar';
 import PremiumBackground from '../components/PremiumBackground';
 import { useChromeMessage, useTrash, useCollections } from '../hooks/useChromeExtension';
+import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import {
   getPreferredVideoProviderLink,
   getVideoProviderLinks,
@@ -255,6 +256,32 @@ export default function VaultPage() {
     setActiveTab('noobs');
     setTimeout(() => setIsModalAnimating(false), 300);
   };
+
+  // Keyboard navigation for the detail modal (mirrors gallery)
+  const navigateToNextItem = () => {
+    if (!selectedItem || filteredItems.length === 0) return;
+    const currentIndex = filteredItems.findIndex((item) => item.id === selectedItem.id);
+    if (currentIndex === -1 || currentIndex === filteredItems.length - 1) return;
+    openItemModal(filteredItems[currentIndex + 1]);
+  };
+
+  const navigateToPreviousItem = () => {
+    if (!selectedItem || filteredItems.length === 0) return;
+    const currentIndex = filteredItems.findIndex((item) => item.id === selectedItem.id);
+    if (currentIndex <= 0) return;
+    openItemModal(filteredItems[currentIndex - 1]);
+  };
+
+  useKeyboardShortcuts({
+    [SHORTCUTS.ARROW_RIGHT]: navigateToNextItem,
+    [SHORTCUTS.ARROW_LEFT]: navigateToPreviousItem,
+    [SHORTCUTS.ESCAPE]: () => {
+      if (selectedItem) closeItemModal();
+    },
+    [SHORTCUTS.DELETE]: () => {
+      if (selectedItem && !showDeleteConfirm) setShowDeleteConfirm(true);
+    },
+  });
 
   const handleMediaLoad = (id) => {
     setLoadedImages((prev) => {
