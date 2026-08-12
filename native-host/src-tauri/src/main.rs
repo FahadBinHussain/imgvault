@@ -160,6 +160,59 @@ fn remove_request_pid(request_id: &str) {
     let _ = fs::remove_file(get_request_pid_path(request_id));
 }
 
+// Completion journal: the single-threaded host keeps downloading even if the
+// extension's port dies (extension reload / service worker restart), so the
+// extension can't receive the final result. The host records the outcome to a
+// per-request journal file in the temp dir; the extension reads it on startup
+// and adopts the real result (completed -> normal completion flow with the
+// pending auto-upload, failed -> failure state) instead of guessing.
+fn get_request_journal_path(request_id: &str) -> PathBuf {
+    env::temp_dir().join(format!(
+        "imgvault-yt-dlp-journal-{}.json",
+        sanitize_request_id(request_id)
+    ))
+}
+
+fn write_download_journal(
+    request_id: &str,
+    status: &str,
+    file_path: Option<&str>,
+    message: Option<&str>,
+    stdout: Option<&str>,
+    stderr: Option<&str>,
+) -> Result<(), String> {
+    let entry = serde_json::json!({
+        "requestId": request_id,
+        "status": status,
+        "file_path": file_path,
+        "message": message,
+        "stdout": stdout,
+        "stderr": stderr,
+        "completedAt": chrono_now_ms(),
+    });
+    let path = get_request_journal_path(request_id);
+    fs::write(&path, serde_json::to_string_pretty(&entry).map_err(|e| e.to_string())?)
+        .map_err(|e| format!("Failed to write download journal {}: {}", path.display(), e))
+}
+
+fn read_download_journal(request_id: &str) -> Option<serde_json::Value> {
+    let path = get_request_journal_path(request_id);
+    let raw = fs::read_to_string(&path).ok()?;
+    serde_json::from_str::<serde_json::Value>(&raw).ok()
+}
+
+fn remove_download_journal(request_id: &str) {
+    let _ = fs::remove_file(get_request_journal_path(request_id));
+}
+
+fn chrono_now_ms() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => duration.as_millis() as i64,
+        Err(_) => 0,
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn kill_process_tree(pid: u32) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
@@ -1062,6 +1115,18 @@ fn handle_native_messaging() {
                             eprintln!("[NATIVE] Processing download: {} -> {}", url, output_path);
                             match download_video_with_progress(&url, &output_path, cookies_data.as_deref(), request_id.as_deref(), &mut stdout, format.as_deref(), 0) {
                                 Ok(file_path) => {
+                                    if let Some(active_request_id) = request_id.as_deref() {
+                                        if let Err(error) = write_download_journal(
+                                            active_request_id,
+                                            "completed",
+                                            file_path.file_path.as_deref(),
+                                            Some(&file_path.message),
+                                            Some(&file_path.stdout),
+                                            Some(&file_path.stderr),
+                                        ) {
+                                            eprintln!("[NATIVE] Failed to persist download journal: {}", error);
+                                        }
+                                    }
                                     eprintln!("[NATIVE] Download successful: {}", file_path.file_path.as_deref().unwrap_or(""));
                                     NativeResponse {
                                         success: true,
@@ -1076,6 +1141,18 @@ fn handle_native_messaging() {
                                     }
                                 },
                                 Err(e) => {
+                                    if let Some(active_request_id) = request_id.as_deref() {
+                                        if let Err(error) = write_download_journal(
+                                            active_request_id,
+                                            "failed",
+                                            None,
+                                            Some(&e.message),
+                                            Some(&e.stdout),
+                                            Some(&e.stderr),
+                                        ) {
+                                            eprintln!("[NATIVE] Failed to persist download journal: {}", error);
+                                        }
+                                    }
                                     eprintln!("[NATIVE] Download failed: {}", e.message);
                                     NativeResponse {
                                         success: false,
@@ -1142,6 +1219,58 @@ fn handle_native_messaging() {
                         stdout: None,
                         stderr: None,
                     },
+                    "read_download_journal" => {
+                        match native_msg.request_id.as_deref().and_then(read_download_journal) {
+                            Some(journal) => NativeResponse {
+                                success: true,
+                                event: Some("complete".to_string()),
+                                request_id: native_msg.request_id.clone(),
+                                message: Some(
+                                    journal
+                                        .get("status")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("unknown")
+                                        .to_string(),
+                                ),
+                                line: None,
+                                stream: None,
+                                file_path: journal
+                                    .get("file_path")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string()),
+                                stdout: Some(serde_json::to_string(&journal).unwrap_or_else(|_| "{}".to_string())),
+                                stderr: None,
+                            },
+                            None => NativeResponse {
+                                success: true,
+                                event: Some("complete".to_string()),
+                                request_id: native_msg.request_id.clone(),
+                                message: Some("missing".to_string()),
+                                line: None,
+                                stream: None,
+                                file_path: None,
+                                stdout: None,
+                                stderr: None,
+                            },
+                        }
+                    }
+                    "delete_download_journal" => {
+                        if let Some(active_request_id) = native_msg.request_id.as_deref() {
+                            remove_download_journal(active_request_id);
+                            remove_request_pid(active_request_id);
+                        }
+                        NativeResponse {
+                            success: true,
+                            event: Some("complete".to_string()),
+                            request_id: native_msg.request_id.clone(),
+                            message: Some("Download journal cleaned up".to_string()),
+                            line: None,
+                            stream: None,
+                            file_path: None,
+                            stdout: None,
+                            stderr: None,
+                        }
+                    }
                     "check_yt_dlp" => {
                         match find_yt_dlp() {
                             Ok(message) => NativeResponse {

@@ -1267,6 +1267,18 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'checkNativeDownloadJournal':
+        this.checkNativeDownloadJournal(request.requestId || '')
+          .then(result => sendResponse({ success: true, data: result }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'reconcileStaleNativeDownload':
+        this.reconcileStaleNativeDownload()
+          .then(() => sendResponse({ success: true }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'getVideoHostSettings':
         this.getMergedVideoHostSettings()
           .then(settings => sendResponse({ success: true, data: settings }))
@@ -1519,6 +1531,171 @@ class ImgVaultServiceWorker {
         'system'
       );
       throw error;
+    }
+  }
+
+  // Shared completion settle: persists the pending auto-upload (so the file
+  // flows into the upload flow exactly like a normal completion), finishes the
+  // active download record and logs the result. Used by the live native host
+  // response and by journal adoption after an extension reload.
+  async settleNativeDownloadCompleted(activeRequestId, url, filePath, message = 'Download complete') {
+    const focused = await this.isExtensionUiFocused();
+    const pendingAutoUpload = {
+      autoOpenUpload: true,
+      downloadFilePath: filePath || '',
+      downloadSourceUrl: url,
+      createdAt: Date.now(),
+      pausedUntilFocus: !focused,
+    };
+
+    await chrome.storage.local.set({ pendingAutoUpload });
+    await this.finishActiveNativeDownload(activeRequestId, {
+      status: 'completed',
+      filePath: filePath || '',
+      lastMessage: message,
+    });
+    await this.appendNativeDownloadLog(
+      activeRequestId,
+      filePath ? `Downloaded to: ${filePath}` : message,
+      'success',
+      'system'
+    );
+    if (!focused) {
+      await this.notifyTabNotFocused();
+    }
+  }
+
+  // The host persists a per-request completion journal in the temp dir (see
+  // the native host). Because the host keeps downloading even after the
+  // extension port dies, the journal lets the extension adopt the real
+  // outcome after a reload instead of marking the download interrupted.
+  async checkNativeDownloadJournal(requestId = '') {
+    const activeRequestId = String(requestId || '').trim();
+    if (!activeRequestId) return { status: 'unreachable' };
+
+    try {
+      const result = await this.handleNativeHostCommand('read_download_journal', {
+        request_id: activeRequestId,
+      }, 3000);
+
+      const journalStatus = String(result?.message || '');
+      if (journalStatus === 'completed' || journalStatus === 'failed') {
+        let journal = {};
+        try {
+          journal = JSON.parse(result?.stdout || '{}');
+        } catch (_) {
+          journal = {};
+        }
+        const current = await this.getActiveNativeDownloadRecord();
+        if (current && current.requestId === activeRequestId) {
+          if (journalStatus === 'completed') {
+            await this.settleNativeDownloadCompleted(
+              activeRequestId,
+              current.url || '',
+              journal?.file_path || result?.filePath || '',
+              journal?.message || 'Download complete (recovered after extension reload)'
+            );
+          } else {
+            const failedMessage = journal?.message || 'Native host download failed after extension reload';
+            await this.finishActiveNativeDownload(activeRequestId, {
+              status: 'failed',
+              error: failedMessage,
+              filePath: journal?.file_path || '',
+              lastMessage: this.summarizeNativeDownloadMessage(
+                failedMessage,
+                'Native host download failed after extension reload'
+              ),
+            });
+            await this.appendNativeDownloadLog(activeRequestId, failedMessage, 'error', 'system');
+          }
+        }
+        await this.cleanupNativeDownloadJournal(activeRequestId);
+        return { status: journalStatus };
+      }
+
+      // "missing" means the host that answered never saw this request — the
+      // original host process is still busy downloading and will write the
+      // journal when it finishes.
+      return { status: journalStatus === 'missing' ? 'running' : journalStatus };
+    } catch (error) {
+      return { status: 'unreachable' };
+    }
+  }
+
+  async cleanupNativeDownloadJournal(requestId = '') {
+    const activeRequestId = String(requestId || '').trim();
+    if (!activeRequestId) return;
+    try {
+      await this.handleNativeHostCommand('delete_download_journal', {
+        request_id: activeRequestId,
+      }, 3000);
+    } catch (_) {
+      // Best effort — stale temp files are harmless.
+    }
+  }
+
+  // The service worker restarts whenever the extension reloads or the browser
+  // kills an idle worker, and the native messaging port dies with the old
+  // context — no onDisconnect fires and nothing ever settles the record, so
+  // the UI would show a download stuck at "running" forever. Recover the real
+  // outcome from the host's completion journal instead:
+  //   - journal completed/failed -> adopt the result (normal completion flow
+  //     including the pending auto-upload, or failure state)
+  //   - no journal yet -> the host process is still downloading in the
+  //     background; keep the record running and let the UI poll for the
+  //     journal until it settles
+  //   - host unreachable -> mark interrupted (the host died too)
+  async reconcileStaleNativeDownload() {
+    try {
+      const current = await this.getActiveNativeDownloadRecord();
+      if (!current) return;
+
+      const status = String(current.status || '');
+      if (status !== 'running' && status !== 'cancelling') return;
+
+      // A fresh service worker never has in-flight ports; if one exists for
+      // this request, it's a live download and we must not touch it.
+      if (this.activeNativeDownloadPorts.has(current.requestId)) return;
+
+      const journalResult = await this.checkNativeDownloadJournal(current.requestId);
+      if (journalResult.status === 'completed' || journalResult.status === 'failed') {
+        return;
+      }
+
+      if (journalResult.status === 'unreachable') {
+        const interruptedMessage =
+          'Extension reloaded while the download was in progress and the native host connection was lost. The download may still have finished in the background — check the download folder before retrying.';
+        await this.setActiveNativeDownloadRecord({
+          ...current,
+          status: 'interrupted',
+          completedAt: Date.now(),
+          updatedAt: Date.now(),
+          lastMessage: interruptedMessage,
+          logs: [
+            this.buildNativeDownloadLogEntry(interruptedMessage, 'warning', 'system'),
+            ...(current.logs || []),
+          ].slice(0, 300),
+        });
+        return;
+      }
+
+      // Journal missing -> the original host is still busy downloading. Keep
+      // the record running and let the UI poll for the journal.
+      const recoveredMessage =
+        'Extension reloaded while the download was in progress — the native host kept downloading in the background. Progress will settle automatically when it finishes.';
+      await this.setActiveNativeDownloadRecord({
+        ...current,
+        status: 'running',
+        recoveredFromReload: true,
+        updatedAt: Date.now(),
+        lastMessage: recoveredMessage,
+        logs: [
+          this.buildNativeDownloadLogEntry(recoveredMessage, 'info', 'system'),
+          ...(current.logs || []),
+        ].slice(0, 300),
+      });
+    } catch (error) {
+      console.debug('Failed to reconcile stale native download:', error);
     }
   }
 
@@ -2447,34 +2624,12 @@ class ImgVaultServiceWorker {
           clearTimeout(timeout);
           
           if (response.success) {
-            (async () => {
-              const focused = await this.isExtensionUiFocused();
-              const pendingAutoUpload = {
-                autoOpenUpload: true,
-                downloadFilePath: response.filePath || '',
-                downloadSourceUrl: url,
-                createdAt: Date.now(),
-                pausedUntilFocus: !focused,
-              };
-
-              await chrome.storage.local.set({ pendingAutoUpload });
-              await this.finishActiveNativeDownload(activeRequestId, {
-                status: 'completed',
-                filePath: response.filePath || '',
-                lastMessage: response.message || 'Download complete',
-              });
-              await this.appendNativeDownloadLog(
-                activeRequestId,
-                response.filePath
-                  ? `Downloaded to: ${response.filePath}`
-                  : (response.message || 'Download complete'),
-                'success',
-                'system'
-              );
-              if (!focused) {
-                await this.notifyTabNotFocused();
-              }
-            })()
+            this.settleNativeDownloadCompleted(
+              activeRequestId,
+              url,
+              response.filePath || '',
+              response.message || 'Download complete'
+            )
               .catch((error) => {
                 console.debug('Failed to persist pending auto upload state:', error);
               })
@@ -2648,7 +2803,7 @@ class ImgVaultServiceWorker {
     return detectedFolder;
   }
 
-  async handleNativeHostCommand(command, data = {}) {
+  async handleNativeHostCommand(command, data = {}, timeoutMs = 15000) {
     try {
       // console.log(`[NATIVE] Sending host command: ${command}`, data);
 
@@ -2667,7 +2822,7 @@ class ImgVaultServiceWorker {
             port.disconnect();
             reject(new Error('Timeout waiting for native host response'));
           }
-        }, 15000);
+        }, timeoutMs);
 
         port.onMessage.addListener((response) => {
           responseReceived = true;
@@ -3337,6 +3492,10 @@ class ImgVaultServiceWorker {
 
 // Initialize service worker
 const serviceWorker = new ImgVaultServiceWorker();
+
+// Any download that was still in flight when the previous service worker
+// context died is stale — settle it as interrupted on startup.
+serviceWorker.reconcileStaleNativeDownload();
 
 // Event listeners
 chrome.runtime.onInstalled.addListener(() => {

@@ -371,6 +371,57 @@ export default function HostPage() {
     };
   }, []);
 
+  // After an extension reload the original host process keeps downloading in
+  // the background and will write a completion journal when it finishes.
+  // Poll for it while the record is a recovered download so the UI settles
+  // automatically instead of staying stuck at "running".
+  useEffect(() => {
+    const requestId = activeNativeDownload?.requestId;
+    const isRecovered = activeNativeDownload?.status === 'running' && activeNativeDownload?.recoveredFromReload;
+    if (!requestId || !isRecovered) {
+      return undefined;
+    }
+
+    let polling = true;
+
+    const pollJournal = async () => {
+      try {
+        const response = await chrome.runtime.sendMessage({
+          action: 'checkNativeDownloadJournal',
+          requestId,
+        });
+        const status = response?.success ? response?.data?.status : 'unreachable';
+
+        if (status === 'completed' || status === 'failed') {
+          polling = false;
+          return;
+        }
+
+        if (status === 'unreachable') {
+          polling = false;
+          await chrome.runtime.sendMessage({ action: 'reconcileStaleNativeDownload' });
+        }
+      } catch (error) {
+        console.debug('Failed to poll native download journal:', error);
+        polling = false;
+      }
+    };
+
+    pollJournal();
+    const interval = setInterval(() => {
+      if (!polling) {
+        clearInterval(interval);
+        return;
+      }
+      pollJournal();
+    }, 5000);
+
+    return () => {
+      polling = false;
+      clearInterval(interval);
+    };
+  }, [activeNativeDownload?.requestId, activeNativeDownload?.status, activeNativeDownload?.recoveredFromReload]);
+
   useEffect(() => {
     const handleRuntimeMessage = (message) => {
       if (message?.action !== 'nativeDownloadProgress') {
@@ -806,6 +857,11 @@ export default function HostPage() {
                   <div className="text-xs text-base-content/70">
                     Status: <span className="font-medium">{activeNativeDownload.status || 'unknown'}</span>
                   </div>
+                  {activeNativeDownload?.recoveredFromReload && (
+                    <div className="text-xs text-warning/90 break-all">
+                      Recovered from extension reload — the host kept downloading; this settles automatically when it finishes.
+                    </div>
+                  )}
                   {activeDownloadSummary && (
                     <div className="text-xs text-base-content/70 break-all">
                       Last update: {activeDownloadSummary}
