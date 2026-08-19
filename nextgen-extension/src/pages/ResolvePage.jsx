@@ -951,24 +951,21 @@ export default function ResolvePage() {
 
             <section className="flex flex-wrap gap-2">
               {[
-                { value: 'all', label: 'All', count: udropIntegrity.found.length + udropIntegrity.missing.length + udropIntegrity.noUrl.length + udropIntegrity.extra.length },
-                { value: 'missing', label: 'Broken links', count: udropIntegrity.missing.length },
-                { value: 'found', label: 'Found', count: udropIntegrity.found.length },
-                { value: 'noUrl', label: 'No UDrop URL', count: udropIntegrity.noUrl.length },
-                { value: 'extra', label: 'Extra on UDrop', count: udropIntegrity.extra.length },
+                { value: 'all', label: 'All', count: udropIntegrity.found.length + udropIntegrity.missing.length + udropIntegrity.noUrl.length + udropIntegrity.extra.length, tip: 'Every saved video, counted once. This is the full list.' },
+                { value: 'missing', label: 'Broken links', count: udropIntegrity.missing.length, tip: 'Videos whose UDrop link is broken or whose file was deleted from UDrop. These need fixing or a fresh upload.' },
+                { value: 'found', label: 'Found', count: udropIntegrity.found.length, tip: 'Videos with a working file on UDrop. Nothing to do.' },
+                { value: 'noUrl', label: 'No UDrop URL', count: udropIntegrity.noUrl.length, tip: 'Saved videos that have no UDrop link at all — they were never uploaded to UDrop.' },
+                { value: 'extra', label: 'Extra on UDrop', count: udropIntegrity.extra.length, tip: 'Files on UDrop that are not linked to any saved video. Likely old uploads or duplicates.' },
               ].map((option) => (
-                <button
+                <StatChip
                   key={option.value}
-                  type="button"
+                  value={option.value}
+                  label={option.label}
+                  count={option.count}
+                  tip={option.tip}
+                  active={udropFilter === option.value}
                   onClick={() => setUdropFilter(option.value)}
-                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                    udropFilter === option.value
-                      ? 'border-primary bg-primary text-primary-content shadow-sm'
-                      : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'
-                  }`}
-                >
-                  {option.label} <span className="opacity-70">{option.count}</span>
-                </button>
+                />
               ))}
             </section>
 
@@ -1305,24 +1302,21 @@ export default function ResolvePage() {
 
             <section className="flex flex-wrap gap-2">
               {[
-                { value: 'all', label: 'All', count: filemoonIntegrity.found.length + filemoonIntegrity.missing.length + filemoonIntegrity.noUrl.length + filemoonIntegrity.extra.length },
-                { value: 'missing', label: 'Broken links', count: filemoonIntegrity.missing.length },
-                { value: 'found', label: 'Found', count: filemoonIntegrity.found.length },
-                { value: 'noUrl', label: 'No Filemoon URL', count: filemoonIntegrity.noUrl.length },
-                { value: 'extra', label: 'Extra on Filemoon', count: filemoonIntegrity.extra.length },
+                { value: 'all', label: 'All', count: filemoonIntegrity.found.length + filemoonIntegrity.missing.length + filemoonIntegrity.noUrl.length + filemoonIntegrity.extra.length, tip: 'Every saved video, counted once. This is the full list.' },
+                { value: 'missing', label: 'Broken links', count: filemoonIntegrity.missing.length, tip: 'Videos whose Filemoon link is broken or whose file was deleted from Filemoon. These need fixing or a fresh upload.' },
+                { value: 'found', label: 'Found', count: filemoonIntegrity.found.length, tip: 'Videos with a working file on Filemoon. Nothing to do.' },
+                { value: 'noUrl', label: 'No Filemoon URL', count: filemoonIntegrity.noUrl.length, tip: 'Saved videos that have no Filemoon link at all — they were never uploaded to Filemoon.' },
+                { value: 'extra', label: 'Extra on Filemoon', count: filemoonIntegrity.extra.length, tip: 'Files on Filemoon that are not linked to any saved video. Likely old uploads or duplicates.' },
               ].map((option) => (
-                <button
+                <StatChip
                   key={option.value}
-                  type="button"
+                  value={option.value}
+                  label={option.label}
+                  count={option.count}
+                  tip={option.tip}
+                  active={filemoonFilter === option.value}
                   onClick={() => setFilemoonFilter(option.value)}
-                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                    filemoonFilter === option.value
-                      ? 'border-primary bg-primary text-primary-content shadow-sm'
-                      : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'
-                  }`}
-                >
-                  {option.label} <span className="opacity-70">{option.count}</span>
-                </button>
+                />
               ))}
             </section>
 
@@ -1563,5 +1557,32 @@ export default function ResolvePage() {
         )}
       </main>
     </div>
+  );
+}
+
+function StatChip({ value, label, count, tip, active, onClick }) {
+  const [showTip, setShowTip] = useState(false);
+  return (
+    <span className="relative inline-block">
+      <button
+        key={value}
+        type="button"
+        onMouseEnter={() => setShowTip(true)}
+        onMouseLeave={() => setShowTip(false)}
+        onClick={onClick}
+        className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+          active
+            ? 'border-primary bg-primary text-primary-content shadow-sm'
+            : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'
+        }`}
+      >
+        {label} <span className="opacity-70">{count}</span>
+      </button>
+      {showTip && (
+        <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max max-w-64 -translate-x-1/2 rounded-lg bg-[var(--color-neutral)] px-2.5 py-1.5 text-center text-xs font-normal leading-snug text-[var(--color-neutral-content)] shadow-lg">
+          {tip}
+        </div>
+      )}
+    </span>
   );
 }

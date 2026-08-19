@@ -39,9 +39,21 @@ export async function listAllFilemoonFiles(apiKey) {
     const files = result.result?.files || [];
     allFiles.push(...files);
 
-    const total = parseInt(result.result?.total || '0', 10);
-    totalPages = Math.ceil(total / perPage) || 1;
+    // The byse API names the total count `results_total` (and also reports
+    // `pages`/`results`). The old code read `.total`, which the API never
+    // sends, so pagination stopped at page 1 — files beyond the first 100
+    // were invisible to integrity checks and healthy videos were reported
+    // as broken once the account grew past 100 files.
+    const reportedTotal = parseInt(
+      result.result?.results_total ?? result.result?.total ?? '0',
+      10
+    );
+    const knownTotal = reportedTotal > 0 ? reportedTotal : allFiles.length;
+    totalPages = Math.max(1, Math.ceil(knownTotal / perPage));
     page++;
+
+    // Safety net: never loop forever if the API ever stops reporting totals.
+    if (files.length < perPage) break;
   }
 
   return allFiles;
