@@ -5,6 +5,8 @@
  *              checks if listing fails.
  */
 
+import { getVideoProviderLinks } from './videoProviderLinks.js';
+
 const UDROP_API_BASE = 'https://www.udrop.com/api/v2';
 
 /**
@@ -236,7 +238,14 @@ export async function checkUdropIntegrity(items, accessToken, accountId) {
   const dbCodes = new Set();
 
   for (const item of items) {
+    // Read URLs from the provider-links object (videoHosts / extra_metadata)
+    // as well as the legacy top-level fields — items saved through flows
+    // that only write videoHosts otherwise look like orphans forever.
+    const providerLinks = getVideoProviderLinks(item);
+    const links = providerLinks.udrop || {};
     const urls = [
+      links.watchUrl,
+      links.directUrl,
       item.udropWatchUrl,
       item.udropDirectUrl,
       item.udropUrl,

@@ -4,6 +4,8 @@
  *              against DB items by filecode.
  */
 
+import { getVideoProviderLinks } from './videoProviderLinks.js';
+
 const BYSE_API_BASE = 'https://api.byse.sx';
 
 /**
@@ -171,7 +173,14 @@ export async function checkFilemoonIntegrity(items, apiKey) {
   const dbCodes = new Set();
 
   for (const item of items) {
+    // Read URLs from the provider-links object (videoHosts / extra_metadata)
+    // as well as the legacy top-level fields — items saved through flows
+    // that only write videoHosts otherwise look like orphans forever.
+    const providerLinks = getVideoProviderLinks(item);
+    const links = providerLinks.filemoon || {};
     const urls = [
+      links.watchUrl,
+      links.directUrl,
       item.filemoonWatchUrl,
       item.filemoonDirectUrl,
       item.filemoonUrl,

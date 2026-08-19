@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Film,
   Image as ImageIcon,
+  Link2,
   Loader2,
   RefreshCw,
   Search,
@@ -110,6 +111,7 @@ export default function ResolvePage() {
   const [udropFilter, setUdropFilter] = useState('all'); // 'all' | 'missing' | 'found' | 'noUrl' | 'extra'
   const [udropKeysConfigured, setUdropKeysConfigured] = useState(false);
   const [deletingOrphans, setDeletingOrphans] = useState({});
+  const [linkingExtra, setLinkingExtra] = useState({});
 
   // ---- Filemoon integrity check state ----
   const [filemoonIntegrity, setFilemoonIntegrity] = useState({ found: [], missing: [], noUrl: [], extra: [] });
@@ -288,7 +290,8 @@ export default function ResolvePage() {
       const allItems = [...(images || []), ...(vaultImages || [])];
       const videoSceneItems = allItems.filter((item) => {
         if (!item) return false;
-        if (item.isLink) return false;
+        // Link items can be fixed/uploaded too (Fix buttons appear on their
+        // rows), so they must count as referenced when they have a host URL.
         const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
         const hasUdrop = Boolean(item.udropWatchUrl || item.udropDirectUrl || item.udropUrl);
         const isScene = Boolean(item.spzUrl);
@@ -341,7 +344,8 @@ export default function ResolvePage() {
       const allVideoItems = [...(images || []), ...(vaultImages || [])];
       const videoItems = allVideoItems.filter((item) => {
         if (!item) return false;
-        if (item.isLink) return false;
+        // Link items can be uploaded/fixed like videos, so they must count
+        // as referenced when they carry a Filemoon URL.
         if (item.kind === 'scene' || item.spzUrl) return false;
         const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
         const hasFilemoon = Boolean(item.filemoonWatchUrl || item.filemoonDirectUrl || item.filemoonUrl);
@@ -943,7 +947,7 @@ export default function ResolvePage() {
               </div>
             )}
 
-            {notice && activeTab === 'videos' && videoSubTab === 'udrop' && notice.type === 'error' && (
+            {notice && activeTab === 'videos' && videoSubTab === 'udrop' && (
               <div className="rounded-[var(--radius-box)] border border-error/25 bg-error/10 px-4 py-3 text-sm font-medium text-error">
                 {notice.message}
               </div>
@@ -1065,6 +1069,44 @@ export default function ResolvePage() {
                                 Open UDrop
                               </Button>
                             )}
+                            {(file.short_url || file.shortUrl || file.file_id || file.id) && (() => {
+                              const code = String(file.short_url || file.shortUrl || file.file_id || file.id);
+                              const linkKey = `udrop:${code}`;
+                              return (
+                                <Button
+                                  variant="outline"
+                                  className="h-9 justify-center gap-2 text-sm"
+                                  disabled={Boolean(linkingExtra[linkKey])}
+                                  onClick={async () => {
+                                    setLinkingExtra((prev) => ({ ...prev, [linkKey]: true }));
+                                    try {
+                                      const match = findMatchingItemForFile([...(images || []), ...(vaultImages || [])], file);
+                                      if (!match) {
+                                        throw new Error('No item matched by title or filename. Link the file from the dashboard instead.');
+                                      }
+                                      await sendMessage('updateImage', {
+                                        id: match.id,
+                                        udropWatchUrl: `https://www.udrop.com/file/${code}`,
+                                        udropDirectUrl: `https://www.udrop.com/file/${code}`,
+                                      });
+                                      await runUdropIntegrityCheck();
+                                      setNotice({ type: 'success', message: `Linked UDrop file "${file.name || file.filename || code}" to "${match.pageTitle || match.fileName || 'item'}".` });
+                                    } catch (err) {
+                                      setNotice({ type: 'error', message: `Link failed: ${err.message || err}` });
+                                    } finally {
+                                      setLinkingExtra((prev) => {
+                                        const next = { ...prev };
+                                        delete next[linkKey];
+                                        return next;
+                                      });
+                                    }
+                                  }}
+                                >
+                                  {linkingExtra[linkKey] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                                  {linkingExtra[linkKey] ? 'Linking...' : 'Link to item'}
+                                </Button>
+                              );
+                            })()}
                             {(file.file_id || file.id) && (
                               <Button
                                 variant="primary"
@@ -1294,7 +1336,7 @@ export default function ResolvePage() {
               </div>
             )}
 
-            {notice && activeTab === 'videos' && videoSubTab === 'filemoon' && notice.type === 'error' && (
+            {notice && activeTab === 'videos' && videoSubTab === 'filemoon' && (
               <div className="rounded-[var(--radius-box)] border border-error/25 bg-error/10 px-4 py-3 text-sm font-medium text-error">
                 {notice.message}
               </div>
@@ -1408,6 +1450,44 @@ export default function ResolvePage() {
                               <ExternalLink className="h-4 w-4" />
                               Open Filemoon
                             </Button>
+                            {(file.file_code || file.filecode) && (() => {
+                              const fc = String(file.file_code || file.filecode);
+                              const linkKey = `fm:${fc}`;
+                              return (
+                                <Button
+                                  variant="outline"
+                                  className="h-9 justify-center gap-2 text-sm"
+                                  disabled={Boolean(linkingExtra[linkKey])}
+                                  onClick={async () => {
+                                    setLinkingExtra((prev) => ({ ...prev, [linkKey]: true }));
+                                    try {
+                                      const match = findMatchingItemForFile([...(images || []), ...(vaultImages || [])], file);
+                                      if (!match) {
+                                        throw new Error('No item matched by title or filename. Link the file from the dashboard instead.');
+                                      }
+                                      await sendMessage('updateImage', {
+                                        id: match.id,
+                                        filemoonWatchUrl: `https://filemoon.sx/d/${fc}`,
+                                        filemoonDirectUrl: `https://filemoon.sx/e/${fc}`,
+                                      });
+                                      await runFilemoonIntegrityCheck();
+                                      setNotice({ type: 'success', message: `Linked ${fc} to "${match.pageTitle || match.fileName || 'item'}".` });
+                                    } catch (err) {
+                                      setNotice({ type: 'error', message: `Link failed: ${err.message || err}` });
+                                    } finally {
+                                      setLinkingExtra((prev) => {
+                                        const next = { ...prev };
+                                        delete next[linkKey];
+                                        return next;
+                                      });
+                                    }
+                                  }}
+                                >
+                                  {linkingExtra[linkKey] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                                  {linkingExtra[linkKey] ? 'Linking...' : 'Link to item'}
+                                </Button>
+                              );
+                            })()}
                             {(file.file_code || file.filecode) && (() => {
                               const fc = String(file.file_code || file.filecode);
                               return (
@@ -1585,4 +1665,48 @@ function StatChip({ value, label, count, tip, active, onClick }) {
       )}
     </span>
   );
+}
+
+/**
+ * Find the vault item an orphaned host file belongs to.
+ * Matches by title, then filename, then the bracketed slug (e.g.
+ * "[desi-bangla-...]") — comparing punctuation-insensitive so small
+ * spelling differences ("? Analdin com" vs "/ Analdin.com") still match.
+ */
+function findMatchingItemForFile(items, file) {
+  const norm = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+  const slugOf = (value) => {
+    const match = String(value || '').match(/\[([^\]]+)\]/);
+    return match ? match[1].toLowerCase() : '';
+  };
+
+  const fileTitle = norm(file.file_title || file.title || file.name || file.filename);
+  const fileName = norm(file.file_name || file.filename || file.name);
+  const fileSlug = slugOf(file.file_title || file.title || file.file_name || file.name);
+
+  const candidates = (items || []).filter((item) => item && item.id);
+  const shortEnough = (a, b) => Math.min(a.length, b.length) >= 12;
+
+  for (const item of candidates) {
+    const itemTitle = norm(item.pageTitle);
+    if (fileTitle && itemTitle && shortEnough(fileTitle, itemTitle) && (itemTitle === fileTitle || itemTitle.includes(fileTitle) || fileTitle.includes(itemTitle))) {
+      return item;
+    }
+  }
+
+  for (const item of candidates) {
+    const itemName = norm(item.fileName || item.file_name);
+    if (fileName && itemName && shortEnough(fileName, itemName) && (itemName === fileName || itemName.includes(fileName) || fileName.includes(itemName))) {
+      return item;
+    }
+  }
+
+  if (fileSlug) {
+    for (const item of candidates) {
+      const itemSlug = slugOf(item.pageTitle) || slugOf(item.fileName || item.file_name);
+      if (itemSlug && itemSlug === fileSlug) return item;
+    }
+  }
+
+  return null;
 }
