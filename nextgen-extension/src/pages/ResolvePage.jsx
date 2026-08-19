@@ -81,8 +81,8 @@ function getPreviewUrl(item, preferredSource) {
 export default function ResolvePage() {
   const navigate = useNavigate();
   const sendMessage = useChromeMessage();
-  const { images, loading, reload } = useImages();
-  const { vaultImages } = useVault();
+  const { images, loading, reload: reloadImages } = useImages();
+  const { vaultImages, reload: reloadVaultImages } = useVault();
   const { trashedImages, loading: trashLoading } = useTrash();
   const { collections, loading: collectionsLoading } = useCollections();
   const [defaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
@@ -388,7 +388,7 @@ export default function ResolvePage() {
           message: `${service.label} saved for ${row.title}.`,
         });
       }
-      if (reloadAfter) await reload({ silent: true });
+      if (reloadAfter) await reloadImages({ silent: true });
       return { ok: true };
     } catch (error) {
       const errorMessage = error.message || String(error);
@@ -467,7 +467,7 @@ export default function ResolvePage() {
       });
     }
 
-    await reload({ silent: true });
+    await reloadImages({ silent: true });
     const run = {
       id: `resolve_${Date.now()}`,
       label,
@@ -510,7 +510,7 @@ export default function ResolvePage() {
 
   const refreshAll = async () => {
     loadSettings();
-    await reload();
+    await reloadImages();
   };
 
   const renderProviderBadge = (service, state) => {
@@ -1089,6 +1089,7 @@ export default function ResolvePage() {
                                         udropWatchUrl: `https://www.udrop.com/file/${code}`,
                                         udropDirectUrl: `https://www.udrop.com/file/${code}`,
                                       });
+                                      await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
                                       await runUdropIntegrityCheck();
                                       setNotice({ type: 'success', message: `Linked UDrop file "${file.name || file.filename || code}" to "${match.pageTitle || match.fileName || 'item'}".` });
                                     } catch (err) {
@@ -1470,6 +1471,7 @@ export default function ResolvePage() {
                                         filemoonWatchUrl: `https://filemoon.sx/d/${fc}`,
                                         filemoonDirectUrl: `https://filemoon.sx/e/${fc}`,
                                       });
+                                      await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
                                       await runFilemoonIntegrityCheck();
                                       setNotice({ type: 'success', message: `Linked ${fc} to "${match.pageTitle || match.fileName || 'item'}".` });
                                     } catch (err) {
