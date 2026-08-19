@@ -19,6 +19,8 @@ import {
   getImageUploadService,
   mergeImageProviderResult,
 } from '../utils/imageProviderLinks.js';
+import { extractFilemoonFilecode, getFilemoonDirectLink, getFilemoonHlsLink } from '../utils/filemoonApi.js';
+import { getFilemoonStreamSource } from '../utils/filemoonSpa.js';
 import {
   getConfiguredVideoUploadServices,
   getVideoProviderLabel,
@@ -2443,9 +2445,9 @@ class ImgVaultServiceWorker {
 
     const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim());
     const sourceCandidates = getVideoRetrySourceCandidates(item, targetHost);
-    const sourceUrl = sourceCandidates.find(isHttpUrl);
+    const httpCandidates = sourceCandidates.filter(isHttpUrl);
 
-    if (!sourceUrl) {
+    if (httpCandidates.length === 0) {
       throw new Error(`No existing hosted video URL is available to retry ${hostLabel}.`);
     }
 
@@ -2456,20 +2458,105 @@ class ImgVaultServiceWorker {
     await this.appendUploadLog(`Retrying ${hostLabel} from hosted fallback URL...`);
 
     try {
-      const videoBlob = await this.fetchImage(sourceUrl, undefined, item.sourcePageUrl || sourceUrl);
-      const isVideoBlob = (
-        videoBlob instanceof Blob &&
-        videoBlob.size > 0 &&
-        (
-          !videoBlob.type ||
-          videoBlob.type.startsWith('video/') ||
-          videoBlob.type === 'application/octet-stream' ||
-          videoBlob.type === 'binary/octet-stream'
-        )
-      );
+      // Try each fallback URL in order until one actually returns a video
+      // file. Watch pages (text/html) and expired direct links fail fast,
+      // so a single failed candidate must not abort the whole retry.
+      let videoBlob = null;
+      let sourceUrl = '';
+      const fetchErrors = [];
 
-      if (!isVideoBlob) {
-        throw new Error(`Retry source did not return a video file${videoBlob?.type ? ` (${videoBlob.type})` : ''}.`);
+      for (const candidate of httpCandidates) {
+        let fetchTarget = candidate;
+        let referrer = item.sourcePageUrl || candidate;
+
+        // Filemoon /d/ and /e/ pages only serve HTML — resolve them through
+        // the API to the raw file URL (which needs the filemoon referer).
+        const filemoonCode = extractFilemoonFilecode(candidate);
+        if (filemoonCode) {
+          if (settings.filemoonApiKey) {
+            try {
+              const directFileUrl = await getFilemoonDirectLink(settings.filemoonApiKey, filemoonCode);
+              if (directFileUrl) {
+                fetchTarget = directFileUrl;
+                referrer = 'https://filemoon.sx/';
+              }
+            } catch (apiError) {
+              fetchErrors.push(`${candidate} -> direct link API: ${apiError.message || apiError}`);
+            }
+          } else {
+            fetchErrors.push(`${candidate} -> filemoonApiKey not available in service worker`);
+          }
+        }
+
+        try {
+          const blob = await this.fetchImage(fetchTarget, undefined, referrer);
+          const isVideoBlob = (
+            blob instanceof Blob &&
+            blob.size > 0 &&
+            (
+              !blob.type ||
+              blob.type.startsWith('video/') ||
+              blob.type === 'application/octet-stream' ||
+              blob.type === 'binary/octet-stream'
+            )
+          );
+          if (isVideoBlob) {
+            videoBlob = blob;
+            sourceUrl = candidate;
+            break;
+          }
+          fetchErrors.push(`${candidate} -> not a video (${blob?.type || 'empty'})`);
+        } catch (fetchError) {
+          fetchErrors.push(`${candidate} -> ${fetchError.message || fetchError}`);
+        }
+
+        // If the filemoon direct-link API was rejected (account without
+        // direct link permission), stream the file through HLS instead:
+        // m3u8 -> segments -> single video blob.
+        if (filemoonCode && settings.filemoonApiKey) {
+          try {
+            const hlsM3u8 = await getFilemoonHlsLink(settings.filemoonApiKey, filemoonCode);
+            if (!hlsM3u8) {
+              fetchErrors.push(`${candidate} -> hls link API: no m3u8 returned`);
+            } else {
+              const hlsBlob = await this.downloadHlsAsVideoBlob(hlsM3u8);
+              if (hlsBlob && hlsBlob.size > 0) {
+                videoBlob = hlsBlob;
+                sourceUrl = candidate;
+                break;
+              }
+              fetchErrors.push(`${candidate} -> hls produced an empty blob`);
+            }
+          } catch (hlsError) {
+            fetchErrors.push(`${candidate} -> hls: ${hlsError.message || hlsError}`);
+          }
+        }
+
+        // Last resort for filemoon: the anonymous player flow
+        // (captcha + pow + playback) which works without any API key.
+        if (filemoonCode && !videoBlob) {
+          try {
+            const stream = await getFilemoonStreamSource(filemoonCode);
+            if (!stream || !stream.url) {
+              fetchErrors.push(`${candidate} -> player flow returned no stream`);
+            } else {
+              const hlsBlob = await this.downloadHlsAsVideoBlob(stream.url);
+              if (hlsBlob && hlsBlob.size > 0) {
+                videoBlob = hlsBlob;
+                sourceUrl = candidate;
+                break;
+              }
+              fetchErrors.push(`${candidate} -> player flow produced an empty blob`);
+            }
+          } catch (spaError) {
+            fetchErrors.push(`${candidate} -> player flow: ${spaError.message || spaError}`);
+          }
+        }
+      }
+
+      if (!videoBlob) {
+        const details = fetchErrors.length > 0 ? ` Tried: ${fetchErrors.join('; ')}` : '';
+        throw new Error(`No retry source returned a video file.${details}`);
       }
 
       const fileName = item.fileName || this.extractFileName({ imageUrl: sourceUrl }) || 'video.mp4';
@@ -2477,11 +2564,15 @@ class ImgVaultServiceWorker {
       if (!uploader) {
         throw new Error(`${hostLabel} uploader is not available.`);
       }
+      // Cap the whole host upload so a hanging API surfaces as an error
+      // instead of leaving the Fix button spinning forever.
+      const uploadSignal = AbortSignal.timeout(120000);
       const result = await service.upload({
         uploader,
         blob: videoBlob,
         settings,
         data: { ...item, fileName },
+        signal: uploadSignal,
       });
       const mergedUpdates = mergeVideoProviderResult(item, targetHost, result);
       const updates = {
@@ -2503,6 +2594,70 @@ class ImgVaultServiceWorker {
     } finally {
       await chrome.storage.local.set({ uploadActive: false });
     }
+  }
+
+  /**
+   * Download an HLS stream (m3u8 + segments) into a single video blob.
+   * Used to recover video bytes from Filemoon when the direct link API is
+   * rejected for the account.
+   * @param {string} m3u8Url
+   * @returns {Promise<Blob|null>}
+   */
+  async downloadHlsAsVideoBlob(m3u8Url) {
+    const absolute = (url) => new URL(url, m3u8Url).toString();
+
+    let playlistUrl = m3u8Url;
+    let playlist = await this.fetchTextWithReferer(playlistUrl);
+
+    // Master playlist -> pick the last rendition (usually the highest).
+    if (/#EXT-X-STREAM-INF/i.test(playlist)) {
+      const lines = playlist.split(/\r?\n/);
+      let rendition = '';
+      for (let i = 0; i < lines.length; i += 1) {
+        if (/^#EXT-X-STREAM-INF/i.test(lines[i])) {
+          const next = lines[i + 1];
+          if (next && !next.startsWith('#')) rendition = next;
+        }
+      }
+      if (!rendition) throw new Error('HLS master playlist had no renditions');
+      playlistUrl = absolute(rendition.trim());
+      playlist = await this.fetchTextWithReferer(playlistUrl);
+    }
+
+    const lines = playlist.split(/\r?\n/);
+    const segmentUris = [];
+    for (let i = 0; i < lines.length; i += 1) {
+      if (/^#EXTINF/i.test(lines[i])) {
+        const next = lines[i + 1];
+        if (next && !next.startsWith('#')) segmentUris.push(absolute(next.trim()));
+      }
+    }
+    if (segmentUris.length === 0) throw new Error('HLS playlist had no segments');
+
+    const parts = [];
+    for (const uri of segmentUris) {
+      const blob = await this.fetchImage(uri, undefined, 'https://filemoon.sx/');
+      if (!(blob instanceof Blob) || blob.size === 0) {
+        throw new Error('HLS segment fetch returned empty data');
+      }
+      parts.push(await blob.arrayBuffer());
+    }
+
+    const total = parts.reduce((sum, part) => sum + part.byteLength, 0);
+    if (total === 0) return null;
+    const merged = new Uint8Array(total);
+    let offset = 0;
+    for (const part of parts) {
+      merged.set(new Uint8Array(part), offset);
+      offset += part.byteLength;
+    }
+    return new Blob([merged], { type: 'video/mp4' });
+  }
+
+  async fetchTextWithReferer(url) {
+    const blob = await this.fetchImage(url, undefined, 'https://filemoon.sx/');
+    if (!(blob instanceof Blob)) throw new Error('Playlist fetch failed');
+    return blob.text();
   }
 
   /**
@@ -2931,11 +3086,14 @@ class ImgVaultServiceWorker {
       throw new Error('Unsupported media source. Please reload the file and try again.');
     }
 
+    // Never let a fetch hang the retry/upload pipeline indefinitely.
+    const effectiveSignal = signal || AbortSignal.timeout(60000);
+
     if (imageUrl.startsWith('data:')) {
-      const response = await fetch(imageUrl, { signal });
+      const response = await fetch(imageUrl, { signal: effectiveSignal });
       return response.blob();
     } else {
-      let fetchOptions = { signal };
+      let fetchOptions = { signal: effectiveSignal };
       try {
         const parsed = new URL(imageUrl);
         const isPixivCdn = /(^|\.)pximg\.net$/i.test(parsed.hostname);

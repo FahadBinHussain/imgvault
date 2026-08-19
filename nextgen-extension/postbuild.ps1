@@ -1,9 +1,10 @@
 # Post-build script to copy icons and manifest
 Write-Host "Running post-build tasks..." -ForegroundColor Cyan
 
-# Copy manifest.json
+# Copy manifest.json (source of truth is public/manifest.json; the root
+# manifest.json is a stale leftover that must not overwrite it)
 Write-Host "Copying manifest.json..." -ForegroundColor Yellow
-Copy-Item -Path "manifest.json" -Destination "dist/manifest.json" -Force
+Copy-Item -Path "public/manifest.json" -Destination "dist/manifest.json" -Force
 
 # Copy flickr-fix.css
 Write-Host "Copying flickr-fix.css..." -ForegroundColor Yellow

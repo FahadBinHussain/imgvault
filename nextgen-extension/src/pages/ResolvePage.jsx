@@ -22,7 +22,7 @@ import PremiumBackground from '../components/PremiumBackground';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { Button } from '../components/UI';
 import { IMAGE_UPLOAD_SERVICES, VIDEO_UPLOAD_SERVICES } from '../config/providerCatalog';
-import { useChromeMessage, useChromeStorage, useCollections, useImages, useTrash } from '../hooks/useChromeExtension';
+import { useChromeMessage, useChromeStorage, useCollections, useImages, useTrash, useVault } from '../hooks/useChromeExtension';
 import {
   getImageProviderLinks,
   getImageRetrySourceCandidates,
@@ -81,6 +81,7 @@ export default function ResolvePage() {
   const navigate = useNavigate();
   const sendMessage = useChromeMessage();
   const { images, loading, reload } = useImages();
+  const { vaultImages } = useVault();
   const { trashedImages, loading: trashLoading } = useTrash();
   const { collections, loading: collectionsLoading } = useCollections();
   const [defaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
@@ -117,6 +118,7 @@ export default function ResolvePage() {
   const [filemoonFilter, setFilemoonFilter] = useState('all');
   const [filemoonKeysConfigured, setFilemoonKeysConfigured] = useState(false);
   const [fixingFilemoon, setFixingFilemoon] = useState({});
+  const [fixingUdrop, setFixingUdrop] = useState({});
 
   const loadSettings = () => {
     setSettingsLoading(true);
@@ -280,8 +282,11 @@ export default function ResolvePage() {
     try {
       const auth = await authorizeUdrop(settings.udropKey1, settings.udropKey2);
 
-      // Filter to video and scene items that have UDrop URLs
-      const videoSceneItems = (images || []).filter((item) => {
+      // Filter to video and scene items that have UDrop URLs. Vault (locked
+      // folder) items are excluded from useImages, so merge them in — their
+      // files must count as referenced or they show up as false orphans.
+      const allItems = [...(images || []), ...(vaultImages || [])];
+      const videoSceneItems = allItems.filter((item) => {
         if (!item) return false;
         if (item.isLink) return false;
         const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
@@ -294,14 +299,14 @@ export default function ResolvePage() {
       setUdropIntegrity(result);
       setNotice({
         type: result.missing.length > 0 ? 'error' : 'success',
-        message: `UDrop check: ${result.found.length} found, ${result.missing.length} missing, ${result.noUrl.length} no url, ${result.extra.length} extra on udrop.`,
+        message: `UDrop check: ${result.found.length} found, ${result.missing.length} broken links, ${result.noUrl.length} no url, ${result.extra.length} extra on udrop.`,
       });
     } catch (err) {
       setUdropError(err.message || String(err));
     } finally {
       setUdropLoading(false);
     }
-  }, [settings, images, checkUdropKeysConfigured]);
+  }, [settings, images, vaultImages, checkUdropKeysConfigured]);
 
   // Auto-run when switching to udrop tab if not loaded yet
   useEffect(() => {
@@ -330,7 +335,11 @@ export default function ResolvePage() {
     setFilemoonError(null);
     setNotice(null);
     try {
-      const videoItems = (images || []).filter((item) => {
+      // Vault (locked folder) items are excluded from useImages, so merge
+      // them in — their files must count as referenced or they show up as
+      // false orphans.
+      const allVideoItems = [...(images || []), ...(vaultImages || [])];
+      const videoItems = allVideoItems.filter((item) => {
         if (!item) return false;
         if (item.isLink) return false;
         if (item.kind === 'scene' || item.spzUrl) return false;
@@ -343,14 +352,14 @@ export default function ResolvePage() {
       setFilemoonIntegrity(result);
       setNotice({
         type: result.missing.length > 0 ? 'error' : 'success',
-        message: `Filemoon check: ${result.found.length} found, ${result.missing.length} missing, ${result.noUrl.length} no url, ${result.extra.length} extra on filemoon.`,
+        message: `Filemoon check: ${result.found.length} found, ${result.missing.length} broken links, ${result.noUrl.length} no url, ${result.extra.length} extra on filemoon.`,
       });
     } catch (err) {
       setFilemoonError(err.message || String(err));
     } finally {
       setFilemoonLoading(false);
     }
-  }, [settings, images, checkFilemoonKeysConfigured]);
+  }, [settings, images, vaultImages, checkFilemoonKeysConfigured]);
 
   useEffect(() => {
     if (activeTab === 'videos' && videoSubTab === 'filemoon' && !filemoonLoading && !filemoonError && filemoonIntegrity.found.length === 0 && filemoonIntegrity.missing.length === 0 && filemoonIntegrity.noUrl.length === 0 && filemoonIntegrity.extra.length === 0) {
@@ -943,7 +952,7 @@ export default function ResolvePage() {
             <section className="flex flex-wrap gap-2">
               {[
                 { value: 'all', label: 'All', count: udropIntegrity.found.length + udropIntegrity.missing.length + udropIntegrity.noUrl.length + udropIntegrity.extra.length },
-                { value: 'missing', label: 'Missing', count: udropIntegrity.missing.length },
+                { value: 'missing', label: 'Broken links', count: udropIntegrity.missing.length },
                 { value: 'found', label: 'Found', count: udropIntegrity.found.length },
                 { value: 'noUrl', label: 'No UDrop URL', count: udropIntegrity.noUrl.length },
                 { value: 'extra', label: 'Extra on UDrop', count: udropIntegrity.extra.length },
@@ -1131,7 +1140,7 @@ export default function ResolvePage() {
                             <h2 className="truncate text-base font-semibold text-base-content">{title}</h2>
                             {status === 'missing' && (
                               <span className="inline-flex items-center gap-1 rounded-full border border-error/20 bg-error/10 px-2 py-0.5 text-xs font-semibold text-error">
-                                <ShieldAlert className="h-3 w-3" /> Missing
+                                <ShieldAlert className="h-3 w-3" /> Broken link
                               </span>
                             )}
                             {status === 'found' && (
@@ -1174,9 +1183,9 @@ export default function ResolvePage() {
 
                         {status === 'missing' && codes.length > 0 && (
                           <div className="text-xs text-base-content/70">
-                            <div className="font-medium text-error">Missing UDrop codes:</div>
+                            <div className="font-medium text-error">Broken UDrop links:</div>
                             <div className="font-mono">{codes.join(', ')}</div>
-                            <div className="mt-1 text-base-content/50">These files are no longer on UDrop. They may have been deleted or the upload failed.</div>
+                            <div className="mt-1 text-base-content/50">These files are no longer on UDrop. They may have been deleted, the upload may have failed, or the platform may have removed them.</div>
                           </div>
                         )}
                       </div>
@@ -1201,12 +1210,40 @@ export default function ResolvePage() {
                           )}
                           {status === 'missing' && item.sourceImageUrl && (
                             <Button
-                              variant="primary"
+                              variant="outline"
                               className="h-9 justify-center gap-2 text-sm"
                               onClick={() => window.open(item.sourceImageUrl, '_blank')}
                             >
-                              <UploadCloud className="h-4 w-4" />
+                              <ExternalLink className="h-4 w-4" />
                               Source
+                            </Button>
+                          )}
+                          {(status === 'noUrl' || status === 'missing') && (
+                            <Button
+                              variant="primary"
+                              className="h-9 justify-center gap-2 text-sm"
+                              disabled={Boolean(fixingUdrop[item.id])}
+                              onClick={async () => {
+                                setFixingUdrop((prev) => ({ ...prev, [item.id]: true }));
+                                try {
+                                  await sendMessage('retryVideoHostUpload', {
+                                    imageId: item.id,
+                                    host: 'udrop',
+                                  });
+                                  setNotice({ type: 'success', message: `UDrop upload fixed for "${title}".` });
+                                } catch (err) {
+                                  setNotice({ type: 'error', message: `Failed to fix: ${err.message || err}` });
+                                } finally {
+                                  setFixingUdrop((prev) => {
+                                    const next = { ...prev };
+                                    delete next[item.id];
+                                    return next;
+                                  });
+                                }
+                              }}
+                            >
+                              {fixingUdrop[item.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                              {fixingUdrop[item.id] ? 'Fixing...' : 'Fix'}
                             </Button>
                           )}
                         </div>
@@ -1269,7 +1306,7 @@ export default function ResolvePage() {
             <section className="flex flex-wrap gap-2">
               {[
                 { value: 'all', label: 'All', count: filemoonIntegrity.found.length + filemoonIntegrity.missing.length + filemoonIntegrity.noUrl.length + filemoonIntegrity.extra.length },
-                { value: 'missing', label: 'Missing', count: filemoonIntegrity.missing.length },
+                { value: 'missing', label: 'Broken links', count: filemoonIntegrity.missing.length },
                 { value: 'found', label: 'Found', count: filemoonIntegrity.found.length },
                 { value: 'noUrl', label: 'No Filemoon URL', count: filemoonIntegrity.noUrl.length },
                 { value: 'extra', label: 'Extra on Filemoon', count: filemoonIntegrity.extra.length },
@@ -1437,7 +1474,7 @@ export default function ResolvePage() {
                             <h2 className="truncate text-base font-semibold text-base-content">{title}</h2>
                             {status === 'missing' && (
                               <span className="inline-flex items-center gap-1 rounded-full border border-error/20 bg-error/10 px-2 py-0.5 text-xs font-semibold text-error">
-                                <ShieldAlert className="h-3 w-3" /> Missing
+                                <ShieldAlert className="h-3 w-3" /> Broken link
                               </span>
                             )}
                             {status === 'found' && (
@@ -1468,8 +1505,9 @@ export default function ResolvePage() {
                         )}
                         {status === 'missing' && codes.length > 0 && (
                           <div className="text-xs text-base-content/70">
-                            <div className="font-medium text-error">Missing filecodes:</div>
+                            <div className="font-medium text-error">Broken Filemoon links:</div>
                             <div className="font-mono">{codes.join(', ')}</div>
+                            <div className="mt-1 text-base-content/50">These files are no longer on Filemoon. They may have been deleted, the upload may have failed, or the platform may have removed them.</div>
                           </div>
                         )}
                       </div>

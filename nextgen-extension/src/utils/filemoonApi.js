@@ -48,17 +48,68 @@ export async function listAllFilemoonFiles(apiKey) {
 }
 
 /**
+ * Resolve a Filemoon file to its HLS streaming playlist URL via the API.
+ * The player streams through HLS, and /hls/link is the endpoint that maps
+ * a file code to the m3u8. Falls back to this when /file/direct_link is
+ * rejected for the account.
+ * @param {string} apiKey
+ * @param {string} filecode
+ * @returns {Promise<string|null>} m3u8 URL or null when unavailable
+ */
+export async function getFilemoonHlsLink(apiKey, filecode) {
+  if (!apiKey || !filecode) return null;
+  const resp = await fetch(`${BYSE_API_BASE}/hls/link?key=${apiKey}&file_code=${filecode}`, {
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!resp.ok) throw new Error(`Byse /hls/link HTTP ${resp.status}`);
+  const result = await resp.json();
+  if (result.status !== 200) {
+    throw new Error(`Byse /hls/link rejected: ${result.msg || result.status}`);
+  }
+  const data = result.result && typeof result.result === 'object' ? result.result : {};
+  return data.link || data.url || data.hls || data.m3u8 || data.file_url || null;
+}
+
+/**
  * Get info for a single file by filecode.
  * @param {string} apiKey
  * @param {string} filecode
  * @returns {Promise<Object|null>}
  */
 export async function getFilemoonFileInfo(apiKey, filecode) {
-  const resp = await fetch(`${BYSE_API_BASE}/file/info?key=${apiKey}&file_code=${filecode}`);
+  const resp = await fetch(`${BYSE_API_BASE}/file/info?key=${apiKey}&file_code=${filecode}`, {
+    signal: AbortSignal.timeout(20000),
+  });
   if (!resp.ok) throw new Error(`Byse /file/info HTTP ${resp.status}`);
   const result = await resp.json();
   if (result.status !== 200) return null;
   return result.result || null;
+}
+
+/**
+ * Resolve a Filemoon file to its real direct file URL via the API.
+ * The /d/ and /e/ pages only serve HTML, so retries need the raw file URL.
+ * @param {string} apiKey
+ * @param {string} filecode
+ * @returns {Promise<string|null>} Direct file URL or null when unavailable
+ */
+export async function getFilemoonDirectLink(apiKey, filecode) {
+  if (!apiKey || !filecode) return null;
+  const resp = await fetch(`${BYSE_API_BASE}/file/direct_link?key=${apiKey}&file_code=${filecode}`, {
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!resp.ok) throw new Error(`Byse /file/direct_link HTTP ${resp.status}`);
+  const result = await resp.json();
+  if (result.status !== 200) {
+    throw new Error(`Byse /file/direct_link rejected: ${result.msg || result.status}`);
+  }
+  // Some Byse responses return an array, others a single object.
+  const entries = Array.isArray(result.result) ? result.result : [result.result];
+  const directFileUrl = entries.map((entry) => entry?.file_url).find(Boolean) || null;
+  if (!directFileUrl) {
+    throw new Error('Byse /file/direct_link returned no file_url');
+  }
+  return directFileUrl;
 }
 
 /**
