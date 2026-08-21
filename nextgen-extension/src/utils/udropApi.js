@@ -305,3 +305,95 @@ export async function checkUdropIntegrity(items, accessToken, accountId) {
 
   return { found, missing, noUrl, extra };
 }
+
+/**
+ * 3D scene integrity check against UDrop.
+ * Scenes are stored as .spz files on UDrop (spzUrl = udrop.com/{code}/{name}.spz).
+ * Compares the scene items' spz codes against the full UDrop file listing so the
+ * scene tab doesn't inflate the video counts (was mixed into checkUdropIntegrity).
+ * @param {Array} items – DB media items (scene items)
+ * @param {Array} allItems – every DB item; their udrop codes are excluded from
+ *                           the extra list so video files don't show as scene orphans
+ * @param {string} accessToken
+ * @param {string} accountId
+ * @returns {Promise<{found:[],missing:[],noUrl:[],extra:[]}>}
+ */
+export async function checkSceneIntegrity(items, allItems, accessToken, accountId) {
+  const found = [];
+  const missing = [];
+  const noUrl = [];
+  const extra = [];
+
+  let udropFiles = [];
+  let udropMap = new Map();
+  let listingSucceeded = false;
+
+  try {
+    udropFiles = await listAllUdropFiles(accessToken, accountId);
+    udropMap = buildUdropFileMap(udropFiles);
+    listingSucceeded = true;
+    console.log(`[udropApi] Scene check: listed ${udropFiles.length} UDrop files.`);
+  } catch (err) {
+    console.warn('[udropApi] scene listing failed:', err.message);
+  }
+
+  // Codes referenced by ANY item (videos included) never count as scene orphans
+  const referencedCodes = new Set();
+  for (const item of allItems || []) {
+    if (!item) continue;
+    const providerLinks = getVideoProviderLinks(item);
+    const links = providerLinks.udrop || {};
+    const extraLinks = Array.isArray(item.extraMetadata?.udropLinks) ? item.extraMetadata.udropLinks : [];
+    const urls = [
+      links.watchUrl,
+      links.directUrl,
+      item.udropWatchUrl,
+      item.udropDirectUrl,
+      item.udropUrl,
+      item.spzUrl,
+      item.textureUrl,
+      ...extraLinks.flatMap((entry) => [entry?.watchUrl, entry?.directUrl]).filter(Boolean),
+    ].filter(Boolean);
+    urls.map(extractUdropCode).filter(Boolean).forEach((c) => referencedCodes.add(c));
+  }
+
+  const dbCodes = new Set();
+
+  for (const item of items) {
+    const sceneUrls = [item.spzUrl, item.textureUrl].filter(Boolean);
+    const codes = sceneUrls.map(extractUdropCode).filter(Boolean);
+    const uniqueCodes = [...new Set(codes)];
+
+    if (!uniqueCodes.length) {
+      noUrl.push({ item, codes: [] });
+      continue;
+    }
+
+    uniqueCodes.forEach((c) => dbCodes.add(c));
+
+    let matchedFile = null;
+    if (listingSucceeded) {
+      matchedFile = uniqueCodes.map((code) => udropMap.get(code)).find(Boolean) || null;
+    }
+
+    if (matchedFile) {
+      found.push({ item, codes: uniqueCodes, matchedFile });
+    } else {
+      missing.push({ item, codes: uniqueCodes });
+    }
+  }
+
+  if (listingSucceeded) {
+    for (const file of udropFiles) {
+      const name = String(file.name || file.filename || '');
+      if (!name.toLowerCase().endsWith('.spz')) continue;
+      const code = file.short_url || file.shortUrl || '';
+      const fileId = String(file.file_id || file.id || '');
+      if (dbCodes.has(code) || dbCodes.has(fileId)) continue;
+      if (referencedCodes.has(code) || referencedCodes.has(fileId)) continue;
+      extra.push({ file });
+    }
+  }
+
+  return { found, missing, noUrl, extra };
+}

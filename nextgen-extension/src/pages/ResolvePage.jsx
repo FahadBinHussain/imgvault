@@ -34,6 +34,7 @@ import {
 import {
   authorizeUdrop,
   checkUdropIntegrity,
+  checkSceneIntegrity,
   deleteUdropFile,
 } from '../utils/udropApi';
 import {
@@ -112,6 +113,13 @@ export default function ResolvePage() {
   const [udropKeysConfigured, setUdropKeysConfigured] = useState(false);
   const [deletingOrphans, setDeletingOrphans] = useState({});
   const [linkingExtra, setLinkingExtra] = useState({});
+
+  // ---- 3D Scene integrity check state ----
+  const [sceneIntegrity, setSceneIntegrity] = useState({ found: [], missing: [], noUrl: [], extra: [] });
+  const [sceneLoading, setSceneLoading] = useState(false);
+  const [sceneError, setSceneError] = useState(null);
+  const [sceneFilter, setSceneFilter] = useState('all');
+  const [sceneKeysConfigured, setSceneKeysConfigured] = useState(false);
 
   // ---- Filemoon integrity check state ----
   const [filemoonIntegrity, setFilemoonIntegrity] = useState({ found: [], missing: [], noUrl: [], extra: [] });
@@ -290,17 +298,18 @@ export default function ResolvePage() {
       // remount. Vault items are excluded from getImages, merge them in.
       const [freshImages, freshVault] = await Promise.all([sendMessage('getImages'), sendMessage('getVaultImages')]);
       const allItems = [...(freshImages || []), ...(freshVault || [])];
-      const videoSceneItems = allItems.filter((item) => {
+      const videoItems = allItems.filter((item) => {
         if (!item) return false;
         // Link items can be fixed/uploaded too (Fix buttons appear on their
         // rows), so they must count as referenced when they have a host URL.
+        // Scenes are tracked on the dedicated 3D Scene Hosts tab, not here.
+        if (item.kind === 'scene' || item.spzUrl) return false;
         const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
         const hasUdrop = Boolean(item.udropWatchUrl || item.udropDirectUrl || item.udropUrl) || (Array.isArray(item.extraMetadata?.udropLinks) && item.extraMetadata.udropLinks.length > 0);
-        const isScene = Boolean(item.spzUrl);
-        return isVideo || isScene || hasUdrop;
+        return isVideo || hasUdrop;
       });
 
-      const result = await checkUdropIntegrity(videoSceneItems, auth.access_token, auth.account_id);
+      const result = await checkUdropIntegrity(videoItems, auth.access_token, auth.account_id);
       setUdropIntegrity(result);
       setNotice({
         type: result.missing.length > 0 ? 'error' : 'success',
@@ -374,6 +383,55 @@ export default function ResolvePage() {
       runFilemoonIntegrityCheck();
     }
   }, [activeTab, videoSubTab, filemoonLoading, filemoonError, filemoonIntegrity, runFilemoonIntegrityCheck]);
+
+  // ---- 3D Scene integrity helpers ----
+  const checkSceneKeysConfigured = useCallback(() => {
+    const configured = hasText(settings?.udropKey1) && hasText(settings?.udropKey2);
+    setSceneKeysConfigured(configured);
+    return configured;
+  }, [settings]);
+
+  useEffect(() => {
+    checkSceneKeysConfigured();
+  }, [checkSceneKeysConfigured]);
+
+  const runSceneIntegrityCheck = useCallback(async () => {
+    if (!checkSceneKeysConfigured()) {
+      setSceneError('UDrop keys not configured. Go to Settings.');
+      return;
+    }
+    setSceneLoading(true);
+    setSceneError(null);
+    setNotice(null);
+    try {
+      const auth = await authorizeUdrop(settings.udropKey1, settings.udropKey2);
+
+      // Fetch FRESH items; scenes live on UDrop as .spz files (spzUrl).
+      const [freshImages, freshVault] = await Promise.all([sendMessage('getImages'), sendMessage('getVaultImages')]);
+      const allItems = [...(freshImages || []), ...(freshVault || [])];
+      const sceneItems = allItems.filter((item) => {
+        if (!item) return false;
+        return item.kind === 'scene' || Boolean(item.spzUrl);
+      });
+
+      const result = await checkSceneIntegrity(sceneItems, allItems, auth.access_token, auth.account_id);
+      setSceneIntegrity(result);
+      setNotice({
+        type: result.missing.length > 0 ? 'error' : 'success',
+        message: `3D Scene check: ${result.found.length} found, ${result.missing.length} broken links, ${result.noUrl.length} no url, ${result.extra.length} extra on udrop.`,
+      });
+    } catch (err) {
+      setSceneError(err.message || String(err));
+    } finally {
+      setSceneLoading(false);
+    }
+  }, [settings, sendMessage, checkSceneKeysConfigured]);
+
+  useEffect(() => {
+    if (activeTab === 'scenes' && !sceneLoading && !sceneError && sceneIntegrity.found.length === 0 && sceneIntegrity.missing.length === 0 && sceneIntegrity.noUrl.length === 0 && sceneIntegrity.extra.length === 0) {
+      runSceneIntegrityCheck();
+    }
+  }, [activeTab, sceneLoading, sceneError, sceneIntegrity, runSceneIntegrityCheck]);
 
   const resolveProvider = async (row, service, options = {}) => {
     const { reloadAfter = true, showNotice = true } = options;
@@ -650,6 +708,18 @@ export default function ResolvePage() {
           >
             <Video className="h-4 w-4" />
             Video hosts
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('scenes')}
+            className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+              activeTab === 'scenes'
+                ? 'border-primary bg-primary text-primary-content shadow-sm'
+                : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'
+            }`}
+          >
+            <Box className="h-4 w-4" />
+            3D file hosts
           </button>
         </section>
 
@@ -1627,9 +1697,314 @@ export default function ResolvePage() {
                                   });
                                 }
                               }}
+                             >
+                               {fixingFilemoon[item.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                               {fixingFilemoon[item.id] ? 'Fixing...' : 'Fix'}
+                             </Button>
+                           )}
+                         </div>
+                       </div>
+                     </article>
+                   );
+                 });
+               })()}
+             </section>
+           </>
+         )}
+
+        {/* 3D Scene Integrity Tab */}
+        {activeTab === 'scenes' && (
+          <>
+            <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                  <Box className="h-4 w-4" />
+                  3D Scene integrity
+                </div>
+                <h1 className="text-3xl font-semibold tracking-tight text-base-content">UDrop scene files (.spz)</h1>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Button
+                  variant="primary"
+                  onClick={runSceneIntegrityCheck}
+                  className="h-10 gap-2 px-3 text-sm"
+                  disabled={sceneLoading}
+                >
+                  {sceneLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  {sceneLoading ? 'Checking...' : 'Check Scenes'}
+                </Button>
+                <Button variant="outline" onClick={() => navigate('/settings')} className="h-10 gap-2 px-3 text-sm">
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Button>
+              </div>
+            </section>
+
+            {!sceneKeysConfigured && (
+              <div className="rounded-[var(--radius-box)] border border-warning/25 bg-warning/10 px-4 py-3 text-sm text-warning">
+                UDrop API keys are not configured. Go to Settings to add them.
+              </div>
+            )}
+
+            {sceneError && (
+              <div className="rounded-[var(--radius-box)] border border-error/25 bg-error/10 px-4 py-3 text-sm text-error">
+                {sceneError}
+              </div>
+            )}
+
+            {notice && activeTab === 'scenes' && (
+              <div className={`rounded-[var(--radius-box)] border px-4 py-3 text-sm font-medium ${
+                notice.type === 'success'
+                  ? 'border-success/25 bg-success/10 text-success'
+                  : 'border-error/25 bg-error/10 text-error'
+              }`}>
+                {notice.message}
+              </div>
+            )}
+
+            <section className="flex flex-wrap gap-2">
+              {[
+                { value: 'all', label: 'All', count: sceneIntegrity.found.length + sceneIntegrity.missing.length + sceneIntegrity.noUrl.length + sceneIntegrity.extra.length, tip: 'Every saved 3D scene, counted once. This is the full list.' },
+                { value: 'missing', label: 'Broken links', count: sceneIntegrity.missing.length, tip: 'Scenes whose .spz file was deleted from UDrop or whose link is broken.' },
+                { value: 'found', label: 'Found', count: sceneIntegrity.found.length, tip: 'Scenes with a working .spz file on UDrop. Nothing to do.' },
+                { value: 'noUrl', label: 'No scene URL', count: sceneIntegrity.noUrl.length, tip: 'Saved scenes that have no UDrop link at all — they were never uploaded.' },
+                { value: 'extra', label: 'Extra on UDrop', count: sceneIntegrity.extra.length, tip: '.spz files on UDrop that are not linked to any saved scene. Likely old uploads or duplicates.' },
+              ].map((option) => (
+                <StatChip
+                  key={option.value}
+                  value={option.value}
+                  label={option.label}
+                  count={option.count}
+                  tip={option.tip}
+                  active={sceneFilter === option.value}
+                  onClick={() => setSceneFilter(option.value)}
+                />
+              ))}
+            </section>
+
+            <section className="grid gap-3">
+              {sceneLoading && (
+                <div className="flex min-h-64 items-center justify-center rounded-[var(--radius-box)] border border-base-300 bg-base-100 text-base-content/60">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Loading UDrop file list...
+                </div>
+              )}
+
+              {!sceneLoading && (() => {
+                let displayItems = [];
+                if (sceneFilter === 'all') {
+                  displayItems = [
+                    ...sceneIntegrity.missing.map((i) => ({ ...i, status: 'missing' })),
+                    ...sceneIntegrity.found.map((i) => ({ ...i, status: 'found' })),
+                    ...sceneIntegrity.noUrl.map((i) => ({ ...i, status: 'noUrl' })),
+                    ...sceneIntegrity.extra.map((i) => ({ ...i, status: 'extra' })),
+                  ];
+                } else if (sceneFilter === 'missing') {
+                  displayItems = sceneIntegrity.missing.map((i) => ({ ...i, status: 'missing' }));
+                } else if (sceneFilter === 'found') {
+                  displayItems = sceneIntegrity.found.map((i) => ({ ...i, status: 'found' }));
+                } else if (sceneFilter === 'noUrl') {
+                  displayItems = sceneIntegrity.noUrl.map((i) => ({ ...i, status: 'noUrl' }));
+                } else if (sceneFilter === 'extra') {
+                  displayItems = sceneIntegrity.extra.map((i) => ({ ...i, status: 'extra' }));
+                }
+
+                if (displayItems.length === 0) {
+                  return (
+                    <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-[var(--radius-box)] border border-base-300 bg-base-100 px-4 text-center">
+                      <ShieldCheck className="h-8 w-8 text-success" />
+                      <div>
+                        <h2 className="text-lg font-semibold text-base-content">No items in this view</h2>
+                        <p className="mt-1 text-sm text-base-content/60">
+                          {sceneFilter === 'missing' ? 'All scene files are accounted for.' : 'Nothing to show here.'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return displayItems.map((entry) => {
+                  const { item, status, matchedFile, codes } = entry;
+
+                  // ---- Extra (orphan) .spz files ----
+                  if (status === 'extra') {
+                    const file = entry.file || {};
+                    const title = file.name || file.filename || file.file_id || 'Unknown file';
+                    const udropUrl = file.short_url || file.url || '';
+                    return (
+                      <article
+                        key={`scene-extra-${file.file_id || file.id || file.short_url || Math.random()}`}
+                        className="grid gap-4 rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-3 shadow-sm transition hover:border-warning/25 sm:grid-cols-[132px_1fr_auto]"
+                      >
+                        <div className="flex h-28 items-center justify-center overflow-hidden rounded-[var(--radius-box)] bg-base-200">
+                          <div className="flex flex-col items-center gap-1 text-warning/70">
+                            <AlertCircle className="h-8 w-8" />
+                            <span className="text-[10px] font-semibold uppercase tracking-wider">Orphan</span>
+                          </div>
+                        </div>
+
+                        <div className="min-w-0 space-y-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h2 className="truncate text-base font-semibold text-base-content">{title}</h2>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-warning/20 bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">
+                                <AlertCircle className="h-3 w-3" /> Not in DB
+                              </span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
+                              {file.file_id && <span>ID: {file.file_id}</span>}
+                              {file._folderName && <span>Folder: {file._folderName}</span>}
+                              {udropUrl && (
+                                <a href={udropUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                                  UDrop <ExternalLink className="h-3 w-3" />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="text-xs text-base-content/70">
+                            This .spz file exists on UDrop but is not linked to any saved scene in your vault. It might be safe to delete.
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col justify-between gap-3 sm:w-52">
+                          <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 px-3 py-2 text-xs text-base-content/65">
+                            Orphaned scene file
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            {udropUrl && (
+                              <Button variant="outline" className="h-9 justify-center gap-2 text-sm" onClick={() => window.open(udropUrl, '_blank')}>
+                                <ExternalLink className="h-4 w-4" />
+                                Open UDrop
+                              </Button>
+                            )}
+                            {(file.file_id || file.id) && (
+                              <Button
+                                variant="primary"
+                                className="h-9 justify-center gap-2 text-sm"
+                                disabled={Boolean(deletingOrphans[String(file.file_id || file.id)])}
+                                onClick={async () => {
+                                  const fid = String(file.file_id || file.id);
+                                  if (!confirm(`Delete "${file.name || file.filename || fid}" from UDrop? This cannot be undone.`)) return;
+                                  setDeletingOrphans((prev) => ({ ...prev, [fid]: true }));
+                                  try {
+                                    const auth = await authorizeUdrop(settings.udropKey1, settings.udropKey2);
+                                    await deleteUdropFile(auth.access_token, auth.account_id, fid);
+                                    setSceneIntegrity((prev) => ({
+                                      ...prev,
+                                      extra: prev.extra.filter((e) => String((e.file?.file_id || e.file?.id)) !== fid),
+                                    }));
+                                    setNotice({ type: 'success', message: `Deleted orphan scene file "${file.name || file.filename || fid}" from UDrop.` });
+                                  } catch (err) {
+                                    setNotice({ type: 'error', message: `Failed to delete: ${err.message || err}` });
+                                  } finally {
+                                    setDeletingOrphans((prev) => {
+                                      const next = { ...prev };
+                                      delete next[fid];
+                                      return next;
+                                    });
+                                  }
+                                }}
+                              >
+                                {deletingOrphans[String(file.file_id || file.id)] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                {deletingOrphans[String(file.file_id || file.id)] ? 'Deleting...' : 'Delete'}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  }
+
+                  // ---- Normal DB scene items ----
+                  const title = item.pageTitle || item.fileName || item.description || 'Untitled';
+                  const sceneUrl = item.spzUrl || item.textureUrl || '';
+
+                  return (
+                    <article
+                      key={item.id}
+                      className="grid gap-4 rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-3 shadow-sm transition hover:border-primary/25 sm:grid-cols-[132px_1fr_auto]"
+                    >
+                      <div className="flex h-28 items-center justify-center overflow-hidden rounded-[var(--radius-box)] bg-base-200">
+                        <div className="flex flex-col items-center gap-1 text-base-content/35">
+                          <Box className="h-4 w-4" />
+                          <span className="text-[10px] font-semibold uppercase tracking-wider">3D scene</span>
+                        </div>
+                      </div>
+
+                      <div className="min-w-0 space-y-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h2 className="truncate text-base font-semibold text-base-content">{title}</h2>
+                            {status === 'missing' && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-error/20 bg-error/10 px-2 py-0.5 text-xs font-semibold text-error">
+                                <ShieldAlert className="h-3 w-3" /> Broken link
+                              </span>
+                            )}
+                            {status === 'found' && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-success/20 bg-success/10 px-2 py-0.5 text-xs font-semibold text-success">
+                                <ShieldCheck className="h-3 w-3" /> Found
+                              </span>
+                            )}
+                            {status === 'noUrl' && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-warning/20 bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">
+                                <AlertCircle className="h-3 w-3" /> No scene URL
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
+                            {item.fileName && <span className="truncate">{item.fileName}</span>}
+                            {formatDate(item.createdAt || item.internalAddedTimestamp)}
+                            {sceneUrl && (
+                              <a
+                                href={sceneUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-primary hover:underline"
+                              >
+                                UDrop <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+
+                        {status === 'found' && matchedFile && (
+                          <div className="text-xs text-base-content/70">
+                            <div className="font-medium text-success">UDrop file: {matchedFile.name || matchedFile.file_id}</div>
+                            {matchedFile.short_url && (
+                              <a href={matchedFile.short_url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                                {matchedFile.short_url}
+                              </a>
+                            )}
+                          </div>
+                        )}
+
+                        {status === 'missing' && codes.length > 0 && (
+                          <div className="text-xs text-base-content/70">
+                            <div className="font-medium text-error">Broken scene links:</div>
+                            <div className="font-mono">{codes.join(', ')}</div>
+                            <div className="mt-1 text-base-content/50">These files are no longer on UDrop. They may have been deleted or the upload may have failed.</div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col justify-between gap-3 sm:w-52">
+                        <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 px-3 py-2 text-xs text-base-content/65">
+                          {status === 'missing' && 'Needs re-upload to UDrop'}
+                          {status === 'found' && 'Verified on UDrop'}
+                          {status === 'noUrl' && 'No scene URL stored'}
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          {sceneUrl && (
+                            <Button
+                              variant="outline"
+                              className="h-9 justify-center gap-2 text-sm"
+                              onClick={() => window.open(sceneUrl, '_blank')}
                             >
-                              {fixingFilemoon[item.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-                              {fixingFilemoon[item.id] ? 'Fixing...' : 'Fix'}
+                              <ExternalLink className="h-4 w-4" />
+                              Open UDrop
                             </Button>
                           )}
                         </div>
