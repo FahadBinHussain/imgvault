@@ -129,6 +129,7 @@ export default function CollectionsPage() {
         setShowBulkDeleteConfirm={() => {}}
         isDeleting={false}
         onHeightChange={setNavbarHeight}
+        isCollectionsPage
       />
 
       <div style={{ height: navbarHeight ? `${navbarHeight + 8}px` : '90px' }} />

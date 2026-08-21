@@ -2856,6 +2856,7 @@ export default function GalleryPage() {
         isDeleting={isDeleting || isVaulting}
         onHeightChange={setNavbarHeight}
         onMoveSelectedToVault={handleBulkMoveToVault}
+        isGalleryPage
       />
 
       <div style={{ height: navbarHeight ? `${navbarHeight + 8}px` : '180px' }} />

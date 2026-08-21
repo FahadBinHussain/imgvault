@@ -102,6 +102,8 @@ export default function GalleryNavbar({
   isLogsPage = false,
   isResolvePage = false,
   isVaultPage = false,
+  isGalleryPage = false,
+  isCollectionsPage = false,
   onEmptyTrash,
   onMoveSelectedToVault,
 }) {
@@ -136,6 +138,7 @@ export default function GalleryNavbar({
     : isLogsPage ? 'Logs'
     : isResolvePage ? 'Resolve'
     : isVaultPage ? 'Secret Vault'
+    : isCollectionsPage ? 'Collections'
     : 'ImgVault';
   const pageSubtitle = collectionId && currentCollection
     ? 'Collection'
@@ -145,6 +148,7 @@ export default function GalleryNavbar({
     : isResolvePage ? 'Provider gaps'
     : isVaultPage ? vaultBreakdownParts.join(' · ')
     : isTrashPage ? `${visibleCount} item${visibleCount !== 1 ? 's' : ''}`
+    : isCollectionsPage ? 'Organize your saved items'
     : breakdownParts.join(' · ');
 
   useEffect(() => {
@@ -160,7 +164,6 @@ export default function GalleryNavbar({
   const showSort = showSearch && Array.isArray(sortOptions) && sortOptions.length > 0 && typeof setSortMode === 'function';
   const showMediaFilter = showSearch && typeof setMediaFilter === 'function';
   const showActions = !isSettingsPage && !isHostPage && !isLogsPage && !isResolvePage && !isVaultPage;
-  const isSubPage = isTrashPage || isSettingsPage || isHostPage || isLogsPage || isResolvePage || isVaultPage;
   const mediaFilterOptions = [
     { value: 'all', label: 'All' },
     { value: 'image', label: 'Images' },
@@ -250,7 +253,7 @@ export default function GalleryNavbar({
               </div>
             )}
 
-            {/* Right: Actions */}
+            {/* Right: Context actions + fixed nav block */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <ThemeToggleButton />
 
@@ -270,14 +273,39 @@ export default function GalleryNavbar({
                 </button>
               )}
 
-              {!isTrashPage && (
-                <button onClick={() => navigate('/collections')} className="iv-icon-btn" title="Collections" style={{ position: 'relative' }}>
-                  <FolderOpen style={{ width: 14, height: 14 }} />
-                  {!collectionsLoading && collections.length > 0 && (
-                    <span className="iv-badge iv-badge-count">{collections.length}</span>
-                  )}
+              {isTrashPage && typeof onEmptyTrash === 'function' && images.length > 0 && (
+                <button onClick={onEmptyTrash} className="iv-empty-btn" title="Empty Trash">
+                  <span className="hidden sm:inline">Empty</span>
+                  <span className="sm:hidden"><Trash2 style={{ width: 13, height: 13 }} /></span>
                 </button>
               )}
+
+              {showActions && (
+                <button onClick={openUploadModal} className="iv-upload-btn">
+                  <Upload style={{ width: 13, height: 13 }} />
+                  <span className="hidden sm:inline">Upload</span>
+                </button>
+              )}
+
+              <div className="iv-divider" />
+
+              <button onClick={() => navigate('/gallery')} className={`iv-icon-btn ${isGalleryPage ? 'iv-icon-btn-on' : ''}`} title="Gallery">
+                <Image style={{ width: 14, height: 14 }} />
+              </button>
+
+              <button onClick={() => navigate('/collections')} className={`iv-icon-btn ${isCollectionsPage ? 'iv-icon-btn-on' : ''}`} title="Collections" style={{ position: 'relative' }}>
+                <FolderOpen style={{ width: 14, height: 14 }} />
+                {!collectionsLoading && collections.length > 0 && (
+                  <span className="iv-badge iv-badge-count">{collections.length}</span>
+                )}
+              </button>
+
+              <button onClick={() => navigate('/trash')} className={`iv-icon-btn ${isTrashPage ? 'iv-icon-btn-on' : ''}`} title="Trash" style={{ position: 'relative' }}>
+                <Trash2 style={{ width: 14, height: 14 }} />
+                {!trashLoading && trashedImages.length > 0 && (
+                  <span className="iv-badge iv-badge-error">{trashedImages.length}</span>
+                )}
+              </button>
 
               <button onClick={() => navigate('/host')} className={`iv-icon-btn ${isHostPage ? 'iv-icon-btn-on' : ''}`} title="Native Host">
                 <Cable style={{ width: 14, height: 14 }} />
@@ -298,35 +326,6 @@ export default function GalleryNavbar({
               <button onClick={() => navigate('/settings')} className={`iv-icon-btn ${isSettingsPage ? 'iv-icon-btn-on' : ''}`} title="Settings">
                 <Settings style={{ width: 14, height: 14 }} />
               </button>
-
-              {isSubPage ? (
-                <button onClick={() => navigate('/gallery')} className="iv-icon-btn" title="Gallery">
-                  <Image style={{ width: 14, height: 14 }} />
-                </button>
-              ) : (
-                <button onClick={() => navigate('/trash')} className="iv-icon-btn" title="Trash" style={{ position: 'relative' }}>
-                  <Trash2 style={{ width: 14, height: 14 }} />
-                  {!trashLoading && trashedImages.length > 0 && (
-                    <span className="iv-badge iv-badge-error">{trashedImages.length}</span>
-                  )}
-                </button>
-              )}
-
-              {isTrashPage && typeof onEmptyTrash === 'function' && images.length > 0 && (
-                <button onClick={onEmptyTrash} className="iv-empty-btn" title="Empty Trash">
-                  <span className="hidden sm:inline">Empty</span>
-                  <span className="sm:hidden"><Trash2 style={{ width: 13, height: 13 }} /></span>
-                </button>
-              )}
-
-              {showActions && <div className="iv-divider" />}
-
-              {showActions && (
-                <button onClick={openUploadModal} className="iv-upload-btn">
-                  <Upload style={{ width: 13, height: 13 }} />
-                  <span className="hidden sm:inline">Upload</span>
-                </button>
-              )}
             </div>
           </div>
 
