@@ -243,6 +243,8 @@ export async function checkUdropIntegrity(items, accessToken, accountId) {
     // that only write videoHosts otherwise look like orphans forever.
     const providerLinks = getVideoProviderLinks(item);
     const links = providerLinks.udrop || {};
+    const extraLinks = Array.isArray(item.extraMetadata?.udropLinks) ? item.extraMetadata.udropLinks : [];
+    const extraLinkUrls = extraLinks.flatMap((entry) => [entry?.watchUrl, entry?.directUrl]).filter(Boolean);
     const urls = [
       links.watchUrl,
       links.directUrl,
@@ -251,6 +253,7 @@ export async function checkUdropIntegrity(items, accessToken, accountId) {
       item.udropUrl,
       item.spzUrl,
       item.textureUrl,
+      ...extraLinkUrls,
     ].filter(Boolean);
 
     const codes = urls.map(extractUdropCode).filter(Boolean);

@@ -284,16 +284,18 @@ export default function ResolvePage() {
     try {
       const auth = await authorizeUdrop(settings.udropKey1, settings.udropKey2);
 
-      // Filter to video and scene items that have UDrop URLs. Vault (locked
-      // folder) items are excluded from useImages, so merge them in — their
-      // files must count as referenced or they show up as false orphans.
-      const allItems = [...(images || []), ...(vaultImages || [])];
+      // Fetch FRESH items from the DB instead of trusting hook state — after a
+      // link/upload the in-memory lists are stale and the just-written URL is
+      // invisible, so the file keeps showing as a false orphan until a page
+      // remount. Vault items are excluded from getImages, merge them in.
+      const [freshImages, freshVault] = await Promise.all([sendMessage('getImages'), sendMessage('getVaultImages')]);
+      const allItems = [...(freshImages || []), ...(freshVault || [])];
       const videoSceneItems = allItems.filter((item) => {
         if (!item) return false;
         // Link items can be fixed/uploaded too (Fix buttons appear on their
         // rows), so they must count as referenced when they have a host URL.
         const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
-        const hasUdrop = Boolean(item.udropWatchUrl || item.udropDirectUrl || item.udropUrl);
+        const hasUdrop = Boolean(item.udropWatchUrl || item.udropDirectUrl || item.udropUrl) || (Array.isArray(item.extraMetadata?.udropLinks) && item.extraMetadata.udropLinks.length > 0);
         const isScene = Boolean(item.spzUrl);
         return isVideo || isScene || hasUdrop;
       });
@@ -309,7 +311,7 @@ export default function ResolvePage() {
     } finally {
       setUdropLoading(false);
     }
-  }, [settings, images, vaultImages, checkUdropKeysConfigured]);
+  }, [settings, sendMessage, checkUdropKeysConfigured]);
 
   // Auto-run when switching to udrop tab if not loaded yet
   useEffect(() => {
@@ -338,17 +340,19 @@ export default function ResolvePage() {
     setFilemoonError(null);
     setNotice(null);
     try {
-      // Vault (locked folder) items are excluded from useImages, so merge
-      // them in — their files must count as referenced or they show up as
-      // false orphans.
-      const allVideoItems = [...(images || []), ...(vaultImages || [])];
+      // Fetch FRESH items from the DB instead of trusting hook state — after a
+      // link/upload the in-memory lists are stale and the just-written URL is
+      // invisible, so the file keeps showing as a false orphan until a page
+      // remount. Vault items are excluded from getImages, merge them in.
+      const [freshImages, freshVault] = await Promise.all([sendMessage('getImages'), sendMessage('getVaultImages')]);
+      const allVideoItems = [...(freshImages || []), ...(freshVault || [])];
       const videoItems = allVideoItems.filter((item) => {
         if (!item) return false;
         // Link items can be uploaded/fixed like videos, so they must count
         // as referenced when they carry a Filemoon URL.
         if (item.kind === 'scene' || item.spzUrl) return false;
         const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
-        const hasFilemoon = Boolean(item.filemoonWatchUrl || item.filemoonDirectUrl || item.filemoonUrl);
+        const hasFilemoon = Boolean(item.filemoonWatchUrl || item.filemoonDirectUrl || item.filemoonUrl) || (Array.isArray(item.extraMetadata?.filemoonLinks) && item.extraMetadata.filemoonLinks.length > 0);
         return isVideo || hasFilemoon;
       });
 
@@ -363,7 +367,7 @@ export default function ResolvePage() {
     } finally {
       setFilemoonLoading(false);
     }
-  }, [settings, images, vaultImages, checkFilemoonKeysConfigured]);
+  }, [settings, sendMessage, checkFilemoonKeysConfigured]);
 
   useEffect(() => {
     if (activeTab === 'videos' && videoSubTab === 'filemoon' && !filemoonLoading && !filemoonError && filemoonIntegrity.found.length === 0 && filemoonIntegrity.missing.length === 0 && filemoonIntegrity.noUrl.length === 0 && filemoonIntegrity.extra.length === 0) {
@@ -1084,10 +1088,10 @@ export default function ResolvePage() {
                                       if (!match) {
                                         throw new Error('No item matched by title or filename. Link the file from the dashboard instead.');
                                       }
-                                      await sendMessage('updateImage', {
+                                      await sendMessage('linkProviderFileToItem', {
                                         id: match.id,
-                                        udropWatchUrl: `https://www.udrop.com/file/${code}`,
-                                        udropDirectUrl: `https://www.udrop.com/file/${code}`,
+                                        providerKey: 'udrop',
+                                        link: { filecode: code, watchUrl: `https://www.udrop.com/file/${code}`, directUrl: `https://www.udrop.com/file/${code}` },
                                       });
                                       await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
                                       await runUdropIntegrityCheck();
@@ -1466,10 +1470,10 @@ export default function ResolvePage() {
                                       if (!match) {
                                         throw new Error('No item matched by title or filename. Link the file from the dashboard instead.');
                                       }
-                                      await sendMessage('updateImage', {
+                                      await sendMessage('linkProviderFileToItem', {
                                         id: match.id,
-                                        filemoonWatchUrl: `https://filemoon.sx/d/${fc}`,
-                                        filemoonDirectUrl: `https://filemoon.sx/e/${fc}`,
+                                        providerKey: 'filemoon',
+                                        link: { filecode: fc, watchUrl: `https://filemoon.sx/d/${fc}`, directUrl: `https://filemoon.sx/e/${fc}` },
                                       });
                                       await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
                                       await runFilemoonIntegrityCheck();

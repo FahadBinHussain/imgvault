@@ -178,12 +178,15 @@ export async function checkFilemoonIntegrity(items, apiKey) {
     // that only write videoHosts otherwise look like orphans forever.
     const providerLinks = getVideoProviderLinks(item);
     const links = providerLinks.filemoon || {};
+    const extraLinks = Array.isArray(item.extraMetadata?.filemoonLinks) ? item.extraMetadata.filemoonLinks : [];
+    const extraLinkUrls = extraLinks.flatMap((entry) => [entry?.watchUrl, entry?.directUrl]).filter(Boolean);
     const urls = [
       links.watchUrl,
       links.directUrl,
       item.filemoonWatchUrl,
       item.filemoonDirectUrl,
       item.filemoonUrl,
+      ...extraLinkUrls,
     ].filter(Boolean);
 
     const codes = urls.map(extractFilemoonFilecode).filter(Boolean);

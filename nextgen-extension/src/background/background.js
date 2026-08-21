@@ -1113,6 +1113,12 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'linkProviderFileToItem':
+        this.storage.linkProviderFileToItem(request.data.id, request.data.providerKey, request.data.link)
+          .then(() => sendResponse({ success: true }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'deleteImage':
         this.storage.moveToTrash(request.data?.id || request.id)
           .then(() => sendResponse({ success: true, data: null }))

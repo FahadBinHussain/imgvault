@@ -1672,6 +1672,56 @@ export class StorageManager {
   }
 
   /**
+   * Link an additional provider file (filemoon/udrop) to an item WITHOUT
+   * overwriting an existing provider URL — the first link becomes the
+   * primary field, every extra link is appended to extraMetadata.<key>Links
+   * (an array of { filecode, watchUrl, directUrl }). Same-filecode links are
+   * idempotent. Fixes orphans flipping back when a second file was linked to
+   * the same item (was a real bug 2.2.x — updateImage overwrote the URL).
+   * @param {string} id
+   * @param {'filemoon'|'udrop'} providerKey
+   * @param {{filecode:string, watchUrl?:string, directUrl?:string}} link
+   * @returns {Promise<boolean>}
+   */
+  async linkProviderFileToItem(id, providerKey, link) {
+    await this.ensureInitialized();
+    const current = await this.getImageById(id);
+    if (!current) {
+      throw new Error('Item not found');
+    }
+    const filecode = String(link?.filecode || '').trim();
+    if (!filecode) {
+      throw new Error('No file code to link');
+    }
+    const existingExtra = current.extraMetadata && typeof current.extraMetadata === 'object' ? current.extraMetadata : {};
+    const linksKey = `${providerKey}Links`;
+    const existingLinks = Array.isArray(existingExtra[linksKey]) ? existingExtra[linksKey] : [];
+    const alreadyLinked = existingLinks.some((entry) => String(entry?.filecode || '') === filecode);
+    if (alreadyLinked) return true;
+
+    const nextLinks = [
+      ...existingLinks,
+      {
+        filecode,
+        watchUrl: String(link.watchUrl || ''),
+        directUrl: String(link.directUrl || ''),
+      },
+    ];
+
+    const updates = {
+      extraMetadata: { ...existingExtra, [linksKey]: nextLinks },
+    };
+    if (providerKey === 'filemoon') {
+      if (!current.filemoonWatchUrl && link.watchUrl) updates.filemoonWatchUrl = String(link.watchUrl);
+      if (!current.filemoonDirectUrl && link.directUrl) updates.filemoonDirectUrl = String(link.directUrl);
+    } else if (providerKey === 'udrop') {
+      if (!current.udropWatchUrl && link.watchUrl) updates.udropWatchUrl = String(link.watchUrl);
+      if (!current.udropDirectUrl && link.directUrl) updates.udropDirectUrl = String(link.directUrl);
+    }
+    return this.updateImage(id, updates);
+  }
+
+  /**
    * Search images by query
    * @param {string} query - Search query
    * @returns {Promise<Array>} Matching images
