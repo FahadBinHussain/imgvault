@@ -309,7 +309,7 @@ export default function ResolvePage() {
         return isVideo || hasUdrop;
       });
 
-      const result = await checkUdropIntegrity(videoItems, auth.access_token, auth.account_id);
+      const result = await checkUdropIntegrity(videoItems, allItems, auth.access_token, auth.account_id);
       setUdropIntegrity(result);
       setNotice({
         type: result.missing.length > 0 ? 'error' : 'success',

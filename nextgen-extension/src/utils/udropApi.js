@@ -209,12 +209,15 @@ export async function deleteUdropFile(accessToken, accountId, fileId) {
  * Full UDrop integrity check.
  * Uses /folder/listing to get ALL files, then compares against DB items.
  * Also identifies orphaned UDrop files (not in DB).
- * @param {Array} items – DB media items with udropWatchUrl/udropDirectUrl/spzUrl
+ * @param {Array} items – DB media items (video items) checked for found/missing/noUrl
+ * @param {Array} allItems – every DB item; their udrop codes (incl. scene spz/texture)
+ *                           are excluded from the extra list so 3D scene files don't
+ *                           show as video orphans
  * @param {string} accessToken
  * @param {string} accountId
  * @returns {Promise<{found:[],missing:[],noUrl:[],extra:[]}>}
  */
-export async function checkUdropIntegrity(items, accessToken, accountId) {
+export async function checkUdropIntegrity(items, allItems, accessToken, accountId) {
   const found = [];
   const missing = [];
   const noUrl = [];
@@ -291,12 +294,32 @@ export async function checkUdropIntegrity(items, accessToken, accountId) {
     }
   }
 
-  // 3. Find extra files: UDrop files not referenced by any DB item
+  // 3. Find extra files: UDrop files not referenced by any DB item.
+  //    Build a comprehensive referenced set from ALL items (including scenes)
+  //    so that scene spz/texture files don't show as orphans on the video tab.
   if (listingSucceeded) {
+    const referencedCodes = new Set(dbCodes);
+    for (const item of allItems || []) {
+      if (!item) continue;
+      const providerLinks = getVideoProviderLinks(item);
+      const links = providerLinks.udrop || {};
+      const extraLinks = Array.isArray(item.extraMetadata?.udropLinks) ? item.extraMetadata.udropLinks : [];
+      const urls = [
+        links.watchUrl,
+        links.directUrl,
+        item.udropWatchUrl,
+        item.udropDirectUrl,
+        item.udropUrl,
+        item.spzUrl,
+        item.textureUrl,
+        ...extraLinks.flatMap((entry) => [entry?.watchUrl, entry?.directUrl]).filter(Boolean),
+      ].filter(Boolean);
+      urls.map(extractUdropCode).filter(Boolean).forEach((c) => referencedCodes.add(c));
+    }
     for (const file of udropFiles) {
       const code = file.short_url || file.shortUrl || '';
       const fileId = String(file.file_id || file.id || '');
-      const isReferenced = dbCodes.has(code) || dbCodes.has(fileId);
+      const isReferenced = referencedCodes.has(code) || referencedCodes.has(fileId);
       if (!isReferenced) {
         extra.push({ file });
       }
