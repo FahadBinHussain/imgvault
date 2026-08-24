@@ -3,7 +3,7 @@
  * @version 2.0.0
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -24,6 +24,7 @@ import {
   getMediaItemKind,
   getOverviewEntries,
   getTechnicalFieldKeys,
+  getTechnicalMetadataEntries,
 } from '@shared/mediaFieldRegistry.js';
 import MediaDetailModal from '../components/MediaDetailModal';
 
