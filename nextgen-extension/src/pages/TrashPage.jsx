@@ -8,8 +8,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Undo2, Trash2, AlertTriangle,
-  FileText, Calendar, Cloud, Link2, Globe, AlignLeft, Tag,
-  File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint, Video
+  FileText, Calendar, Link2, Tag,
+  File, Image as ImageIcon, Hash, Fingerprint, Video
 } from 'lucide-react';
 import { Button, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
 import { useTrash } from '../hooks/useChromeExtension';
@@ -25,6 +25,7 @@ import {
   getOverviewEntries,
   getTechnicalFieldKeys,
 } from '@shared/mediaFieldRegistry.js';
+import MediaDetailModal from '../components/MediaDetailModal';
 
 export default function TrashPage() {
   const navigate = useNavigate();
@@ -508,6 +509,209 @@ export default function TrashPage() {
     },
   });
 
+  const renderTrashMedia = (item, { isModalAnimating }) => {
+    const animCls = isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100';
+    if (item.filemoonUrl) {
+      return (
+        <iframe
+          src={item.filemoonUrl}
+          className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 transition-all duration-700 ease-out ${animCls}`}
+          frameBorder="0"
+          allowFullScreen
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        />
+      );
+    }
+    if (item.udropUrl) {
+      return (
+        <video
+          src={item.udropUrl}
+          controls
+          className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 transition-all duration-700 ease-out ${animCls}`}
+        />
+      );
+    }
+    if (isLinkItem(item)) {
+      const previewUrl = item.linkPreviewImageUrl || getImageUrl(item, true);
+      return (
+        <div className={`w-full max-w-2xl rounded-[var(--radius-box)] shadow-2xl bg-base-100 overflow-hidden relative z-10 transition-all duration-700 ease-out ${animCls}`}>
+          {previewUrl ? (
+            <img
+              src={previewUrl}
+              alt={item.pageTitle || 'Link preview'}
+              onError={() => setModalImageFailed(true)}
+              className="w-full h-auto max-h-[60vh] object-contain"
+            />
+          ) : (
+            <div className="w-64 h-64 flex flex-col items-center justify-center gap-3 mx-auto">
+              <Link2 className="w-16 h-16 text-base-content/40" />
+              <span className="text-sm text-base-content/50">No preview available</span>
+            </div>
+          )}
+          {item.linkUrl && (
+            <div className="p-4 border-t border-base-300">
+              <a
+                href={item.linkUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 text-base-content hover:text-info transition-colors"
+              >
+                <Link2 className="w-5 h-5 flex-shrink-0" />
+                <span className="font-medium truncate">{item.pageTitle || item.linkUrl}</span>
+              </a>
+            </div>
+          )}
+        </div>
+      );
+    }
+    return (
+      <>
+        <img
+          src={getImageUrl(item, true)}
+          alt={item.pageTitle}
+          onError={() => setModalImageFailed(true)}
+          className={`max-w-full max-h-full object-contain rounded-[var(--radius-box)] shadow-2xl relative z-10
+                   hover:scale-[1.02] hover:shadow-[0_0_80px_rgba(239,68,68,0.3)]
+                   transition-all duration-700 ${animCls}`}
+        />
+        {modalImageFailed && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-base-200/80" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.35)' }}>
+            <ImageIcon style={{ width: 56, height: 56 }} />
+            <span className="text-sm px-4 py-1.5 rounded-md" style={{ background: 'oklch(from var(--color-base-content) l c h / 0.06)' }}>
+              Source removed or unavailable
+            </span>
+          </div>
+        )}
+      </>
+    );
+  };
+
+  const renderTrashOverviewFooter = (
+    <div className="mt-4 p-4 bg-warning/10 border border-warning/30 rounded-[var(--radius-box)]">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="text-warning mt-0.5 flex-shrink-0" size={18} />
+        <div className="text-sm">
+          <p className="font-medium text-warning">Item Still Hosted</p>
+          <p className="text-base-content/80 mt-1">
+            This item remains accessible via its URLs. Use "Delete Permanently" to remove it from all hosts.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderTrashTechnicalField = ([key, value], index) => {
+    if (key === 'creationDate') {
+      return (
+        <div key={key}>
+          <div className="text-[11px] font-semibold mb-1 flex items-center gap-2" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
+            <span style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{index + 1}.</span>
+            <Calendar className="w-3.5 h-3.5" />
+            Creation Date
+            {!editingCreationDate && (
+              <button
+                onClick={startEditingCreationDate}
+                className="ml-auto text-info hover:text-info-content text-xs px-2 py-0.5 rounded bg-info/20 hover:bg-info/30 transition-colors"
+                title="Edit"
+              >
+                Edit
+              </button>
+            )}
+          </div>
+          {editingCreationDate ? (
+            <div className="bg-base-200 rounded p-2 space-y-2">
+              <input
+                type="datetime-local"
+                value={editedCreationDate}
+                onChange={(e) => setEditedCreationDate(e.target.value)}
+                className="w-full bg-base-100 text-base-content font-mono text-sm px-2 py-1 rounded border border-base-content/30 focus:border-info focus:outline-none"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveCreationDate}
+                  disabled={isProcessing}
+                  className="px-3 py-1 text-xs rounded bg-success/20 text-success hover:bg-success/30 transition-colors disabled:opacity-50"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={cancelEditingCreationDate}
+                  disabled={isProcessing}
+                  className="px-3 py-1 text-xs rounded bg-base-content/20 text-base-content hover:bg-base-content/30 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="g-field">
+              <p className="text-base-content font-mono text-sm">
+                {value ? new Date(value).toLocaleString() : 'N/A'}
+              </p>
+            </div>
+          )}
+        </div>
+      );
+    }
+    return (
+      <div key={key}>
+        <div className="text-[11px] font-semibold mb-1 flex items-center gap-2" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
+          <span style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{index + 1}.</span>
+          {key === 'sha256' ? (
+            <Fingerprint className="w-3.5 h-3.5" />
+          ) : key === 'pHash' || key === 'aHash' || key === 'dHash' ? (
+            <Hash className="w-3.5 h-3.5" />
+          ) : (
+            <FileText className="w-3.5 h-3.5" />
+          )}
+          {key === 'sha256' ? 'SHA-256' : key}
+        </div>
+        <div className="g-field">
+          <p className="text-base-content font-mono text-sm break-all">
+            {value === null || value === undefined || value === ''
+              ? 'N/A'
+              : typeof value === 'object'
+                ? JSON.stringify(value)
+                : String(value)}
+          </p>
+        </div>
+      </div>
+    );
+  };
+
+  const renderTrashActions = (
+    <>
+      <button
+        onClick={() => setShowRestoreConfirm(true)}
+        disabled={isProcessing}
+        className="g-action g-action-prim"
+        style={{ height: 32, padding: '0 14px' }}
+      >
+        <Undo2 style={{ width: 13, height: 13 }} />
+        <span>Restore</span>
+      </button>
+      <button
+        onClick={() => setShowDeleteConfirm(true)}
+        disabled={isProcessing}
+        className="g-action g-action-danger"
+        style={{ height: 32, padding: '0 14px' }}
+      >
+        <Trash2 style={{ width: 13, height: 13 }} />
+        <span>Delete Forever</span>
+      </button>
+    </>
+  );
+
+  const trashTechnicalEntries = useMemo(() => {
+    if (!selectedImage) return [];
+    const source = fullImageDetails || selectedImage;
+    const entries = getTechnicalMetadataEntries(source);
+    if (source.creationDate) {
+      entries.unshift(['creationDate', source.creationDate]);
+    }
+    return entries;
+  }, [selectedImage, fullImageDetails]);
+
   return (
   <div ref={pageContainerRef} className="min-h-screen bg-base-200 text-base-content overflow-y-auto prem-page">`n      <PremiumBackground />
       {/* Timeline Scrollbar */}
@@ -826,529 +1030,22 @@ export default function TrashPage() {
       </div>
 
       {/* Image Detail Modal */}
-      <Modal 
+      <MediaDetailModal
         isOpen={!!selectedImage}
         onClose={() => setSelectedImage(null)}
-        className="!max-w-[95vw] !w-full !h-[95vh] !p-0 !overflow-hidden"
-      >
-        {selectedImage && (
-          <div className="flex flex-col lg:flex-row h-full relative">
-              
-              {/* Dark Overlay Background */}
-              <div className="absolute inset-0 bg-base-content/20 backdrop-blur-sm" />
-
-              {/* LEFT SIDE - IMAGE/VIDEO with Zoom Animation */}
-              <div className="flex-1 min-h-[35vh] lg:min-h-0 flex items-center justify-center bg-gradient-to-br from-base-300 to-base-200 p-3 sm:p-6 lg:p-8 relative z-10">
-                {/* Radial glow effect */}
-                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
-                              w-4/5 h-4/5 bg-error/10 rounded-full blur-3xl"></div>
-                
-                {/* Conditional rendering for video or image */}
-                {selectedImage.filemoonUrl ? (
-                  <iframe
-                    src={selectedImage.filemoonUrl}
-                    className="w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10"
-                    frameBorder="0"
-                    allowFullScreen
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  />
-                ) : selectedImage.udropUrl ? (
-                  <video
-                    src={selectedImage.udropUrl}
-                    controls
-                    className="w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10"
-                  />
-                ) : isLinkItem(selectedImage) ? (
-                  <div className="w-full max-w-2xl rounded-[var(--radius-box)] shadow-2xl bg-base-100 overflow-hidden relative z-10">
-                    {(selectedImage.linkPreviewImageUrl || getImageUrl(selectedImage, true)) ? (
-                      <img
-                        src={selectedImage.linkPreviewImageUrl || getImageUrl(selectedImage, true)}
-                        alt={selectedImage.pageTitle || 'Link preview'}
-                        onError={() => setModalImageFailed(true)}
-                        className="w-full h-auto max-h-[60vh] object-contain"
-                      />
-                    ) : (
-                      <div className="w-64 h-64 flex flex-col items-center justify-center gap-3 mx-auto">
-                        <Link2 className="w-16 h-16 text-base-content/40" />
-                        <span className="text-sm text-base-content/50">No preview available</span>
-                      </div>
-                    )}
-                    {selectedImage.linkUrl && (
-                      <div className="p-4 border-t border-base-300">
-                        <a
-                          href={selectedImage.linkUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-3 text-base-content hover:text-info transition-colors"
-                        >
-                          <Link2 className="w-5 h-5 flex-shrink-0" />
-                          <span className="font-medium truncate">{selectedImage.pageTitle || selectedImage.linkUrl}</span>
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <img
-                    src={getImageUrl(selectedImage, true)}
-                    alt={selectedImage.pageTitle}
-                    onError={() => setModalImageFailed(true)}
-                    className="max-w-full max-h-full object-contain rounded-[var(--radius-box)] shadow-2xl relative z-10
-                             hover:scale-[1.02] hover:shadow-[0_0_80px_rgba(239,68,68,0.3)]
-                             transition-all duration-700"
-                  />
-                )}
-                {modalImageFailed && (
-                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-base-200/80" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.35)' }}>
-                    <ImageIcon style={{ width: 56, height: 56 }} />
-                    <span className="text-sm px-4 py-1.5 rounded-md" style={{ background: 'oklch(from var(--color-base-content) l c h / 0.06)' }}>
-                      Source removed or unavailable
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* RIGHT SIDE - DETAILS */}
-  <div className="w-full lg:w-[550px] lg:flex-shrink-0 bg-base-100/90 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-base-300 
-                            overflow-y-auto flex flex-col relative z-10"
-       style={{ scrollbarWidth: 'thin', scrollbarColor: 'var(--color-base-300) transparent' }}
-              >
-                {/* Close Button */}
-                <button
-                  onClick={() => setSelectedImage(null)}
-                  className="absolute top-4 right-4 z-50 w-11 h-11 rounded-full bg-error/20 
-                           hover:bg-error/35 border border-error/50 hover:border-error 
-                           flex items-center justify-center transition-all duration-300 
-                           hover:scale-110 hover:rotate-90 group shadow-xl"
-                  title="Close"
-                >
-                  <span className="text-error group-hover:text-error-content text-2xl font-bold">✕</span>
-                </button>
-
-                <div className="p-6 flex-1 pt-16">
-                  {/* Details Header */}
-                  <h2 className="text-2xl font-bold text-base-content mb-4 bg-gradient-to-r from-error to-warning bg-clip-text text-transparent">
-                    Details
-                  </h2>
-
-                  {/* Tab Navigation */}
-                  <div className="flex gap-2 mb-4 border-b border-base-300 overflow-x-auto whitespace-nowrap">
-                    <button
-                      onClick={() => handleTabSwitch('noobs')}
-                      className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${
-                        activeTab === 'noobs'
-                          ? 'text-info border-b-2 border-info'
-                          : 'text-base-content/60 hover:text-base-content/85'
-                      }`}
-                    >
-                      <span>For Noobs 👶</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        activeTab === 'noobs' 
-                          ? 'bg-info/20 text-info' 
-                          : 'bg-base-300/70 text-base-content/60'
-                      }`}>
-                        {getOverviewEntriesFor(selectedImage).length}
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => handleTabSwitch('nerds')}
-                      className={`px-4 py-2 font-semibold transition-all flex items-center gap-2 ${
-                        activeTab === 'nerds'
-                          ? 'text-success border-b-2 border-success'
-                          : 'text-base-content/60 hover:text-base-content/85'
-                      }`}
-                    >
-                      <span>For Nerds 🤓</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        activeTab === 'nerds' 
-                          ? 'bg-success/20 text-success' 
-                          : 'bg-base-300/70 text-base-content/60'
-                      }`}>
-                        {fullImageDetails ? (() => {
-                          const fixedKeys = new Set([
-                            'id',
-                            ...getBaseFieldKeys(fullImageDetails),
-                            ...getTechnicalFieldKeys(),
-                          ]);
-                          const fixedCount = [...fixedKeys]
-                            .filter((key) => key === 'id' || Object.prototype.hasOwnProperty.call(fullImageDetails, key))
-                            .length;
-                          const remainingCount = Object.keys(fullImageDetails)
-                            .filter((key) => !fixedKeys.has(key))
-                            .length;
-                          return fixedCount + remainingCount;
-                        })() : '...'}
-                      </span>
-                    </button>
-                  </div>
-
-                  {/* For Noobs Tab */}
-                  {activeTab === 'noobs' && (
-                    <div className="space-y-4">
-                      <div className="space-y-3">
-                        {getOverviewEntriesFor(selectedImage).map((entry, index) => {
-                          const rawValue = entry.value;
-                          const value = formatDetailValue(rawValue);
-                          const isUrl = entry.key.toLowerCase().endsWith('url') && typeof rawValue === 'string' && rawValue;
-
-                          return (
-                            <div key={entry.key}>
-                              <div className="text-xs font-semibold text-base-content/60 mb-1">
-                                {`${index + 1}. ${entry.key}`}
-                              </div>
-                              {entry.key === 'tags' && Array.isArray(rawValue) && rawValue.length > 0 ? (
-                                <div className="flex flex-wrap gap-2">
-                                  {rawValue.map(tag => (
-                                    <span
-                                      key={tag}
-                                      className="px-3 py-1 rounded-full bg-primary/15 text-primary text-sm"
-                                    >
-                                      {tag}
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : isUrl ? (
-                                <div className="bg-base-200 rounded p-2">
-                                  <a
-                                    href={rawValue}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-info hover:opacity-80 break-all text-sm"
-                                  >
-                                    {rawValue}
-                                  </a>
-                                </div>
-                              ) : (
-                                <div className="bg-base-200 rounded p-2">
-                                  <p className="text-base-content font-mono text-sm break-all">
-                                    {value}
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Warning Box */}
-                      <div className="mt-4 p-4 bg-warning/10 border border-warning/30 rounded-[var(--radius-box)]">
-                        <div className="flex items-start gap-3">
-                          <AlertTriangle className="text-warning mt-0.5 flex-shrink-0" size={18} />
-                          <div className="text-sm">
-                            <p className="font-medium text-warning">Item Still Hosted</p>
-                            <p className="text-base-content/80 mt-1">
-                              This item remains accessible via its URLs. Use "Delete Permanently" to remove it from all hosts.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* For Nerds Tab */}
-                  {activeTab === 'nerds' && selectedImage && (
-                    <div className="space-y-4">
-                      {loadingNerdsTab && !fullImageDetails ? (
-                        <div className="flex justify-center items-center py-10">
-                          <Spinner size="md" />
-                          <span className="ml-3 text-base-content/80">Loading technical details...</span>
-                        </div>
-                      ) : (
-                        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-                          {/* Document ID */}
-                          <div>
-                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                              <Database className="w-3.5 h-3.5" />
-                              Document ID
-                            </div>
-                            <div className="bg-base-200 rounded p-2">
-                              <p className="text-base-content font-mono text-sm break-all">
-                                {selectedImage.id || 'N/A'}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* File Name */}
-                          <div>
-                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                              <File className="w-3.5 h-3.5" />
-                              File Name
-                            </div>
-                            <div className="bg-base-200 rounded p-2">
-                              <p className="text-base-content font-mono text-sm break-all">
-                                {fullImageDetails?.fileName || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* File Type */}
-                          <div>
-                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                              <FileText className="w-3.5 h-3.5" />
-                              File Type
-                            </div>
-                            <div className="bg-base-200 rounded p-2">
-                              <p className="text-base-content font-mono text-sm">
-                                {fullImageDetails?.fileType || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* File Type Source */}
-                          {fullImageDetails?.fileTypeSource && (
-                            <div>
-                              <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                                <FileText className="w-3.5 h-3.5" />
-                                File Type Source
-                              </div>
-                              <div className="bg-base-200 rounded p-2">
-                                <p className="text-base-content font-mono text-sm">
-                                  {fullImageDetails.fileTypeSource}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* File Size */}
-                          <div>
-                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                              <Database className="w-3.5 h-3.5" />
-                              File Size
-                            </div>
-                            <div className="bg-base-200 rounded p-2">
-                              <p className="text-base-content font-mono text-sm">
-                                {fullImageDetails?.fileSize 
-                                  ? `${(fullImageDetails.fileSize / 1024).toFixed(2)} KB` 
-                                  : loadingNerdsTab ? 'Loading...' : 'N/A'}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Creation Date */}
-                          {fullImageDetails?.creationDate && (
-                            <div>
-                              <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                                <Calendar className="w-3.5 h-3.5" />
-                                Creation Date
-                                {!editingCreationDate && (
-                                  <button
-                                    onClick={startEditingCreationDate}
-                                    className="ml-auto text-info hover:text-info-content text-xs px-2 py-0.5 rounded bg-info/20 hover:bg-info/30 transition-colors"
-                                    title="Edit"
-                                  >
-                                    Edit
-                                  </button>
-                                )}
-                              </div>
-                              {editingCreationDate ? (
-                                <div className="bg-base-200 rounded p-2 space-y-2">
-                                  <input
-                                    type="datetime-local"
-                                    value={editedCreationDate}
-                                    onChange={(e) => setEditedCreationDate(e.target.value)}
-                                    className="w-full bg-base-100 text-base-content font-mono text-sm px-2 py-1 rounded border border-base-content/30 focus:border-info focus:outline-none"
-                                  />
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={handleSaveCreationDate}
-                                      disabled={isProcessing}
-                                      className="px-3 py-1 text-xs rounded bg-success/20 text-success hover:bg-success/30 transition-colors disabled:opacity-50"
-                                    >
-                                      Save
-                                    </button>
-                                    <button
-                                      onClick={cancelEditingCreationDate}
-                                      disabled={isProcessing}
-                                      className="px-3 py-1 text-xs rounded bg-base-content/20 text-base-content hover:bg-base-content/30 transition-colors disabled:opacity-50"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="bg-base-200 rounded p-2">
-                                  <p className="text-base-content font-mono text-sm">
-                                    {new Date(fullImageDetails.creationDate).toLocaleString()}
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Creation Date Source */}
-                          {fullImageDetails?.creationDateSource && (
-                            <div>
-                              <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                                <Calendar className="w-3.5 h-3.5" />
-                                Creation Date Source
-                              </div>
-                              <div className="bg-base-200 rounded p-2">
-                                <p className="text-base-content font-mono text-sm">
-                                  {fullImageDetails.creationDateSource}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Width */}
-                          {fullImageDetails?.width && (
-                            <div>
-                              <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                                <Ruler className="w-3.5 h-3.5" />
-                                Width
-                              </div>
-                              <div className="bg-base-200 rounded p-2">
-                                <p className="text-base-content font-mono text-sm">
-                                  {fullImageDetails.width}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Height */}
-                          {fullImageDetails?.height && (
-                            <div>
-                              <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                                <Ruler className="w-3.5 h-3.5" />
-                                Height
-                              </div>
-                              <div className="bg-base-200 rounded p-2">
-                                <p className="text-base-content font-mono text-sm">
-                                  {fullImageDetails.height}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* SHA-256 */}
-                          <div>
-                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                              <Fingerprint className="w-3.5 h-3.5" />
-                              SHA-256
-                            </div>
-                            <div className="bg-base-200 rounded p-2">
-                              <p className="text-base-content font-mono text-sm break-all">
-                                {fullImageDetails?.sha256 || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* pHash */}
-                          <div>
-                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                              <Hash className="w-3.5 h-3.5" />
-                              pHash
-                            </div>
-                            <div className="bg-base-200 rounded p-2">
-                              <p className="text-base-content font-mono text-sm break-all">
-                                {fullImageDetails?.pHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* aHash */}
-                          <div>
-                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                              <Hash className="w-3.5 h-3.5" />
-                              aHash
-                            </div>
-                            <div className="bg-base-200 rounded p-2">
-                              <p className="text-base-content font-mono text-sm break-all">
-                                {fullImageDetails?.aHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* dHash */}
-                          <div>
-                            <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                              <Hash className="w-3.5 h-3.5" />
-                              dHash
-                            </div>
-                            <div className="bg-base-200 rounded p-2">
-                              <p className="text-base-content font-mono text-sm break-all">
-                                {fullImageDetails?.dHash || (loadingNerdsTab ? 'Loading...' : 'N/A')}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* All remaining raw fields in the same style */}
-                          {fullImageDetails && (() => {
-                            // Exclude only fields rendered in the fixed technical section above.
-                            const knownFields = new Set([
-                              'id',
-                              ...getBaseFieldKeys(fullImageDetails),
-                              ...getTechnicalFieldKeys(),
-                            ]);
-                            
-                            // Get all remaining fields (everything that's not in knownFields) and sort alphabetically
-                            const remainingFields = Object.entries(fullImageDetails)
-                              .filter(([key]) => !knownFields.has(key))
-                              .sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
-                            
-                            return remainingFields.map(([key, value]) => (
-                              <div key={key}>
-                                <div className="text-xs font-semibold text-base-content/60 mb-1 flex items-center gap-2">
-                                  <FileText className="w-3.5 h-3.5" />
-                                  {key}
-                                </div>
-                                <div className="bg-base-200 rounded p-2">
-                                  <p className="text-base-content font-mono text-sm break-all">
-                                    {value === null || value === undefined || value === ''
-                                      ? 'N/A'
-                                      : typeof value === 'object'
-                                        ? JSON.stringify(value)
-                                        : String(value)}
-                                  </p>
-                                </div>
-                              </div>
-                            ));
-                          })()}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Action Buttons */}
-                  <div className="flex gap-2 pt-6 border-t border-base-300 mt-6">
-                    <button
-                      onClick={() => setShowRestoreConfirm(true)}
-                      disabled={isProcessing}
-                      className="group relative flex-1 px-6 py-2.5 rounded-[var(--radius-box)] overflow-hidden
-                               bg-success text-success-content
-                               border border-success/30 
-                               transform transition-all duration-300
-                               hover:scale-105 hover:shadow-xl
-                               active:scale-95
-                               disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                    >
-                      <div className="relative flex items-center justify-center gap-2 font-semibold">
-                        <Undo2 className="w-5 h-5 group-hover:-rotate-12 transition-transform duration-300" />
-                        <span>Restore</span>
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={() => setShowDeleteConfirm(true)}
-                      disabled={isProcessing}
-                      className="group relative flex-1 px-6 py-2.5 rounded-[var(--radius-box)] overflow-hidden
-                               bg-error text-error-content
-                               border border-error/30 
-                               transform transition-all duration-300
-                               hover:scale-105 hover:shadow-xl
-                               active:scale-95
-                               disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                    >
-                      <div className="relative flex items-center justify-center gap-2 font-semibold">
-                        <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
-                        <span>Delete Forever</span>
-                      </div>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-        )}
-      </Modal>
+        item={selectedImage}
+        activeTab={activeTab}
+        onTabChange={handleTabSwitch}
+        isLink={isLinkItem(selectedImage)}
+        overviewEntries={getOverviewEntriesFor(selectedImage)}
+        technicalEntries={trashTechnicalEntries}
+        technicalLoading={loadingNerdsTab}
+        renderMedia={renderTrashMedia}
+        actions={renderTrashActions}
+        renderTechnicalField={renderTrashTechnicalField}
+        overviewFooter={renderTrashOverviewFooter}
+        technicalEmptyText="No extra technical fields on this document."
+      />
 
       {/* Restore Confirmation Modal */}
       <Modal isOpen={showRestoreConfirm} onClose={() => setShowRestoreConfirm(false)}>

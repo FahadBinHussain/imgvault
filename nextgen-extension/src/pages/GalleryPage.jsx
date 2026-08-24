@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Trash2, Download, X, FolderOpen,
   FileText, Calendar, Cloud, Link2, Globe, AlignLeft, Tag,
-  File, Database, Image as ImageIcon, Ruler, Hash, Fingerprint, LockKeyhole,
+  File, Image as ImageIcon, Ruler, LockKeyhole,
   Box
 } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
@@ -43,6 +43,7 @@ import SceneUploadDialog from '../components/SceneUploadDialog';
 import { useThumbUrl } from '../hooks/useThumbUrl';
 import { CachedImg, CachedVideo } from '../components/CachedThumb';
 import SceneViewer from '../components/SceneViewer';
+import MediaDetailModal from '../components/MediaDetailModal';
 
 const createVideoUploader = (service) => {
   if (service?.uploaderKey === 'filemoonUploader') return new FilemoonUploader();
@@ -2738,6 +2739,409 @@ export default function GalleryPage() {
     .g-input::placeholder{color:oklch(from var(--color-base-content) l c h / 0.2)}
   `;
 
+  const renderModalMedia = (item, { isModalAnimating }) => {
+    if (modalImage?.isLink) {
+      const linkPreviewUrl = modalImage?.linkUrl || modalImage?.sourcePageUrl || '';
+      const linkPreviewImage = getLinkPreviewImage(modalImage);
+      return (
+        <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 overflow-hidden border border-base-300 bg-base-100
+                   transition-all duration-700 ease-out
+                   ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
+          <div className="h-full p-4 sm:p-6">
+            <div className="h-full rounded-[var(--radius-box)] border border-base-300 bg-base-100 overflow-hidden">
+              <div className="h-full flex flex-col md:flex-row">
+                <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between min-w-0">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-base-content/70">
+                      <Link2 className="w-4 h-4" />
+                      <span className="text-xs font-semibold uppercase tracking-wide">Saved Link</span>
+                    </div>
+                    <h3 className="text-xl font-bold text-base-content leading-snug">
+                      {modalImage?.pageTitle || 'Untitled Link'}
+                    </h3>
+                    <p className="text-base-content/70 text-sm leading-relaxed">
+                      {modalImage?.description || 'Saved page bookmark'}
+                    </p>
+                  </div>
+                  <a
+                    href={linkPreviewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-info text-sm break-all hover:underline mt-4"
+                  >
+                    {linkPreviewUrl || 'N/A'}
+                  </a>
+                </div>
+                <div className="md:w-[42%] lg:w-[40%] h-48 md:h-auto bg-base-200 border-t md:border-t-0 md:border-l border-base-300">
+                  {linkPreviewImage ? (
+                    <img
+                      src={linkPreviewImage}
+                      alt={modalImage?.pageTitle || 'Link preview'}
+                      className="w-full h-full object-contain"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-base-content/45">
+                      <Link2 className="w-12 h-12" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    if (modalImage?._isScene) {
+      const viewerUrl = chrome.runtime.getURL('scene-viewer.html')
+        + '?url=' + encodeURIComponent(modalImage.spzUrl || '')
+        + '&id=' + encodeURIComponent(modalImage.id || '')
+        + '&title=' + encodeURIComponent(modalImage.pageTitle || '3D Scene');
+      return (
+        <iframe
+          src={viewerUrl}
+          className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 border-0
+                   transition-all duration-700 ease-out
+                   ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
+          allow="accelerometer; gyroscope; webgl; fullscreen"
+          tabIndex={-1}
+          onLoad={(event) => event.currentTarget.contentWindow?.focus()}
+          onMouseEnter={(event) => event.currentTarget.contentWindow?.focus()}
+        />
+      );
+    }
+    if (shouldRenderModalVideoPlayer(modalImage)) {
+      return (
+        <video
+          ref={modalVideoRef}
+          src={getPreferredVideoDirectUrl(modalImage)}
+          className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain
+                   transition-all duration-700 ease-out
+                   ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
+          controls
+          autoPlay
+          playsInline
+          preload="auto"
+        />
+      );
+    }
+    if (getPreferredVideoWatchUrl(modalImage)) {
+      return (
+        <iframe
+          src={getPreferredVideoWatchUrl(modalImage)}
+          className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10
+                   transition-all duration-700 ease-out
+                   ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
+          frameBorder="0"
+          allowFullScreen
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        />
+      );
+    }
+    if (isResolvingModalMediaType) {
+      return (
+        <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 flex items-center justify-center bg-base-200/60
+                   transition-all duration-700 ease-out
+                   ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
+          <div className="text-center space-y-3">
+            <Spinner size="lg" />
+            <div className="text-sm text-base-content/70">Loading media details...</div>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <img
+        src={
+          getPreferredImageProviderLink(modalImage, defaultGallerySource, 'url') ||
+          modalImage.sourceImageUrl
+        }
+        alt={modalImage.pageTitle}
+        className={`max-w-full max-h-full object-contain rounded-[var(--radius-box)] shadow-2xl relative z-10
+                 transition-all duration-700 ease-out
+                 hover:scale-[1.02] hover:shadow-primary/30
+                 ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
+      />
+    );
+  };
+
+  const renderModalDocumentId = (item) => (
+    <div className="flex items-start justify-between gap-3">
+      <p className="text-base-content font-mono text-sm break-all flex-1">
+        {formatBaseFieldValue(item?.id)}
+      </p>
+      {canOpenFirestoreConsole && (
+        <a href={firestoreConsoleUrl} target="_blank" rel="noopener noreferrer" className="g-action">Open</a>
+      )}
+    </div>
+  );
+
+  const renderModalOverviewField = (entry, index) => {
+    const key = entry.key;
+    return (
+      <div key={key}>
+        <div className="text-[11px] font-semibold mb-1 flex items-center gap-2" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
+          <span style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{index + 1}.</span>
+          <span className="font-mono">{key}</span>
+        </div>
+        <div className="g-field">
+          {key === 'collectionId' ? (
+            editingField === 'collectionId' ? (
+              <div className="space-y-3">
+                <select
+                  value={editValues.collectionId ?? (modalImage?.collectionId || '')}
+                  onChange={(e) => setEditValues({ ...editValues, collectionId: e.target.value })}
+                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content focus:outline-none focus:border-primary"
+                >
+                  <option value="">No Collection</option>
+                  {collections.map((collection) => (
+                    <option key={collection.id} value={collection.id}>
+                      {collection.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => saveEdit('collectionId')}>
+                    Save Collection
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditingField(null);
+                      setEditValues((prev) => ({ ...prev, collectionId: modalImage?.collectionId || '' }));
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-base-content font-mono text-sm break-all">
+                  {collections.find((collection) => collection.id === modalImage?.collectionId)?.name ||
+                    formatBaseFieldValue(modalImage?.collectionId)}
+                </p>
+                <Button variant="ghost" size="sm" onClick={() => startEditing('collectionId')}>
+                  {modalImage?.collectionId ? 'Change Collection' : 'Add to Collection'}
+                </Button>
+              </div>
+            )
+          ) : key === 'pixvidUrl' || key === 'imgbbUrl' || key === 'filemoonDirectUrl' || key === 'udropDirectUrl' ? (
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-base-content font-mono text-sm break-all flex-1">
+                {formatBaseFieldValue(overviewValueByKey[key] ?? modalImage?.[key])}
+              </p>
+              <Button
+                className={inlineActionClass}
+                onClick={() => downloadImage(
+                  overviewValueByKey[key] ?? modalImage?.[key],
+                  key === 'pixvidUrl'
+                    ? 'pixvid'
+                    : key === 'imgbbUrl'
+                      ? 'imgbb'
+                      : key === 'filemoonDirectUrl'
+                        ? 'filemoon'
+                        : 'udrop'
+                )}
+                disabled={!(overviewValueByKey[key] ?? modalImage?.[key])}
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download
+              </Button>
+            </div>
+          ) : key === 'sourceImageUrl' || key === 'sourcePageUrl' || key === 'linkUrl' ? (
+            editingField === key ? (
+              <div className="space-y-3">
+                <input
+                  type="url"
+                  value={editValues[key] ?? (modalImage?.[key] || '')}
+                  onChange={(e) => setEditValues({ ...editValues, [key]: e.target.value })}
+                  placeholder={
+                    key === 'sourceImageUrl'
+                      ? 'https://example.com/image.jpg'
+                      : 'https://example.com/page'
+                  }
+                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content focus:outline-none focus:border-primary"
+                />
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => saveEdit(key)}>
+                    Save URL
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditingField(null);
+                      setEditValues((prev) => ({ ...prev, [key]: modalImage?.[key] || '' }));
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-base-content font-mono text-sm break-all flex-1">
+                  {formatBaseFieldValue(modalImage?.[key])}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    className={`${inlineActionClass} px-2 py-2`}
+                    onClick={() => window.open(modalImage?.[key], '_blank', 'noopener,noreferrer')}
+                    disabled={!modalImage?.[key]}
+                    title="Open in new tab"
+                    aria-label={`Open ${key} in new tab`}
+                  >
+                    <Link2 className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => startEditing(key)}>
+                    Edit
+                  </Button>
+                </div>
+              </div>
+            )
+          ) : key === 'description' ? (
+            editingField === 'description' ? (
+              <div className="space-y-3">
+                <textarea
+                  value={editValues.description ?? (modalImage?.description || '')}
+                  onChange={(e) => setEditValues({ ...editValues, description: e.target.value })}
+                  rows={4}
+                  placeholder="Add a description..."
+                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content focus:outline-none focus:border-primary resize-y"
+                />
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => saveEdit('description')}>
+                    Save Description
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditingField(null);
+                      setEditValues((prev) => ({ ...prev, description: modalImage?.description || '' }));
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-base-content font-mono text-sm whitespace-pre-wrap break-words flex-1">
+                  {formatBaseFieldValue(modalImage?.description)}
+                </p>
+                <Button variant="ghost" size="sm" onClick={() => startEditing('description')}>
+                  Edit
+                </Button>
+              </div>
+            )
+          ) : key === 'creationDate' ? (
+            editingField === 'creationDate' ? (
+              <div className="space-y-3">
+                <input
+                  type="datetime-local"
+                  value={editValues.creationDate ?? (modalImage?.creationDate ? (() => { const d = new Date(modalImage.creationDate); const offset = d.getTimezoneOffset() * 60000; return new Date(d.getTime() - offset).toISOString().slice(0, 16); })() : '')}
+                  onChange={(e) => setEditValues({ ...editValues, creationDate: e.target.value })}
+                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content focus:outline-none focus:border-primary font-mono text-sm"
+                />
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => saveEdit('creationDate')}>
+                    Save Date
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditingField(null);
+                      setEditValues((prev) => ({ ...prev, creationDate: modalImage?.creationDate || '' }));
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-base-content font-mono text-sm">
+                  {modalImage?.creationDate ? new Date(modalImage.creationDate).toLocaleString() : 'N/A'}
+                </p>
+                <Button variant="ghost" size="sm" onClick={() => startEditing('creationDate')}>
+                  Edit
+                </Button>
+              </div>
+            )
+          ) : (
+            <p className="text-base-content font-mono text-sm break-all">
+              {formatBaseFieldValue(overviewValueByKey[key] ?? modalImage?.[key])}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderModalActions = (
+    <>
+      <button
+        onClick={handleMoveSelectedToVault}
+        disabled={isVaulting}
+        className="g-action g-action-warn"
+        style={{ height: 32, padding: '0 14px' }}
+      >
+        <LockKeyhole style={{ width: 13, height: 13 }} />
+        <span>{isVaulting ? 'Moving...' : 'Vault'}</span>
+      </button>
+      <button
+        onClick={() => setShowDeleteConfirm(true)}
+        className="g-action g-action-err"
+        style={{ height: 32, padding: '0 14px' }}
+      >
+        <Trash2 style={{ width: 13, height: 13 }} />
+        <span>Delete</span>
+      </button>
+    </>
+  );
+
+  const renderModalOverviewFooter = (
+    <div className="pt-4 border-t border-base-300">
+      {isSelectedVideo && retryableVideoServices.length > 0 && (
+        <div className="mb-4 rounded-[var(--radius-box)] border border-warning/20 bg-warning/10 p-3 text-sm text-base-content">
+          <div className="mb-2 flex items-center gap-2 font-semibold">
+            <Cloud className="h-4 w-4 text-warning" />
+            Missing host upload
+          </div>
+          <p className="mb-3 text-xs text-base-content/70">
+            This video is saved already. Retry only the failed host below.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {retryableVideoServices.map((service) => (
+              <Button
+                key={service.key}
+                className={inlineActionClass}
+                onClick={() => retryVideoHostUpload(service.key)}
+                disabled={Boolean(retryingVideoHost)}
+              >
+                <Cloud className="h-3.5 w-3.5" />
+                {retryingVideoHost === service.key ? `Retrying ${service.label}...` : `Retry ${service.label}`}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+      {isResolvingModalMediaType ? (
+        <div className="text-sm text-base-content/60 italic">
+          Loading media details...
+        </div>
+      ) : isSelectedVideo && !getPreferredVideoDirectUrl(modalImage) ? (
+        <div className="text-sm text-base-content/60 italic">
+          No direct video download URLs available.
+        </div>
+      ) : null}
+    </div>
+  );
+
   return (
   <div ref={pageContainerRef} className="min-h-screen bg-base-200 text-base-content overflow-y-auto g-page">
       <style>{galleryCSS}</style>
@@ -3214,532 +3618,27 @@ export default function GalleryPage() {
         ))}
 
         {/* Animated Photo Viewer / Lightbox Modal */}
-        <Modal
+        <MediaDetailModal
           isOpen={!!selectedImage}
           onClose={() => {
             setSelectedImage(null);
             setActiveTab('noobs');
             setFullImageDetails(null);
           }}
-          className="!max-w-[95vw] !w-full !h-[95vh] !p-0 !overflow-hidden"
-        >
-          {selectedImage && (
-            <div className={`flex flex-col lg:flex-row h-full relative transition-all duration-500 ease-out
-                          ${isModalAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
-              
-              {/* Dark Overlay Background with Fade */}
-              <div className={`absolute inset-0 bg-base-300/90 transition-opacity duration-500
-                            ${isModalAnimating ? 'opacity-0' : 'opacity-100'}`} />
-
-              {/* LEFT SIDE - IMAGE/VIDEO with Zoom Animation */}
-              <div className="flex-1 min-h-[35vh] lg:min-h-0 flex items-center justify-center bg-gradient-to-br from-base-300 to-base-200 p-3 sm:p-6 lg:p-8 relative z-10">
-                {/* Radial glow effect */}
-                <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
-                              w-4/5 h-4/5 bg-primary/10 rounded-full blur-3xl
-                              transition-all duration-700 ease-out
-                              ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}></div>
-                
-                {/* Conditional rendering for video or image */}
-                {modalImage?.isLink ? (
-                  (() => {
-                    const linkPreviewUrl = modalImage?.linkUrl || modalImage?.sourcePageUrl || '';
-                    const linkPreviewImage = getLinkPreviewImage(modalImage);
-                    return (
-                      <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 overflow-hidden border border-base-300 bg-base-100
-                                 transition-all duration-700 ease-out
-                                 ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
-                        <div className="h-full p-4 sm:p-6">
-                          <div className="h-full rounded-[var(--radius-box)] border border-base-300 bg-base-100 overflow-hidden">
-                            <div className="h-full flex flex-col md:flex-row">
-                              <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between min-w-0">
-                                <div className="space-y-3">
-                                  <div className="flex items-center gap-2 text-base-content/70">
-                                    <Link2 className="w-4 h-4" />
-                                    <span className="text-xs font-semibold uppercase tracking-wide">Saved Link</span>
-                                  </div>
-                                  <h3 className="text-xl font-bold text-base-content leading-snug">
-                                    {modalImage?.pageTitle || 'Untitled Link'}
-                                  </h3>
-                                  <p className="text-base-content/70 text-sm leading-relaxed">
-                                    {modalImage?.description || 'Saved page bookmark'}
-                                  </p>
-                                </div>
-                                <a
-                                  href={linkPreviewUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-info text-sm break-all hover:underline mt-4"
-                                >
-                                  {linkPreviewUrl || 'N/A'}
-                                </a>
-                              </div>
-                              <div className="md:w-[42%] lg:w-[40%] h-48 md:h-auto bg-base-200 border-t md:border-t-0 md:border-l border-base-300">
-                                {linkPreviewImage ? (
-                                  <img
-                                    src={linkPreviewImage}
-                                    alt={modalImage?.pageTitle || 'Link preview'}
-                                    className="w-full h-full object-contain"
-                                    loading="lazy"
-                                  />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center text-base-content/45">
-                                    <Link2 className="w-12 h-12" />
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()
-                ) : modalImage?._isScene ? (
-                  (() => {
-                    const viewerUrl = chrome.runtime.getURL('scene-viewer.html')
-                      + '?url=' + encodeURIComponent(modalImage.spzUrl || '')
-                      + '&id=' + encodeURIComponent(modalImage.id || '')
-                      + '&title=' + encodeURIComponent(modalImage.pageTitle || '3D Scene');
-                    return (
-                      <iframe
-                        src={viewerUrl}
-                        className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 border-0
-                                 transition-all duration-700 ease-out
-                                 ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
-                        allow="accelerometer; gyroscope; webgl; fullscreen"
-                        tabIndex={-1}
-                        onLoad={(event) => event.currentTarget.contentWindow?.focus()}
-                        onMouseEnter={(event) => event.currentTarget.contentWindow?.focus()}
-                      />
-                    );
-                  })()
-                ) : shouldRenderModalVideoPlayer(modalImage) ? (
-                  <video
-                    ref={modalVideoRef}
-                    src={getPreferredVideoDirectUrl(modalImage)}
-                    className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain
-                             transition-all duration-700 ease-out
-                             ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
-                    controls
-                    autoPlay
-                    playsInline
-                    preload="auto"
-                  />
-                ) : getPreferredVideoWatchUrl(modalImage) ? (
-                  <iframe
-                    src={getPreferredVideoWatchUrl(modalImage)}
-                    className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10
-                             transition-all duration-700 ease-out
-                             ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
-                    frameBorder="0"
-                    allowFullScreen
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  />
-                ) : isResolvingModalMediaType ? (
-                  <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 flex items-center justify-center bg-base-200/60
-                             transition-all duration-700 ease-out
-                             ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
-                    <div className="text-center space-y-3">
-                      <Spinner size="lg" />
-                      <div className="text-sm text-base-content/70">Loading media details...</div>
-                    </div>
-                  </div>
-                ) : (
-                  <img
-                    src={
-                      getPreferredImageProviderLink(modalImage, defaultGallerySource, 'url') ||
-                      modalImage.sourceImageUrl
-                    }
-                    alt={modalImage.pageTitle}
-                    className={`max-w-full max-h-full object-contain rounded-[var(--radius-box)] shadow-2xl relative z-10
-                             transition-all duration-700 ease-out
-                             hover:scale-[1.02] hover:shadow-primary/30
-                             ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
-                  />
-                )}
-              </div>
-
-              {/* RIGHT SIDE - DETAILS */}
-  <div className={`w-full lg:w-[550px] lg:flex-shrink-0 overflow-y-auto flex flex-col relative z-10
-                            transition-all duration-500 ease-out
-                            ${isModalAnimating ? 'translate-y-8 opacity-0' : 'translate-y-0 opacity-100'}`}
-          style={{
-            scrollbarWidth: 'thin', scrollbarColor: 'oklch(from var(--color-base-content) l c h / 0.06) transparent',
-            background: 'oklch(from var(--color-base-100) l c h / 0.8)',
-            backdropFilter: 'blur(24px)',
-            borderLeft: '1px solid oklch(from var(--color-base-content) l c h / 0.06)',
-            fontFamily: "'Outfit', system-ui, sans-serif",
-          }}
-              >
-                {/* Close Button */}
-                <button
-                  onClick={() => {
-                    setSelectedImage(null);
-                    setActiveTab('noobs');
-                    setFullImageDetails(null);
-                  }}
-                  className={`g-modal-close ${isModalAnimating ? 'opacity-0' : 'opacity-100'}`}
-                  title="Close"
-                >
-                  <span style={{ fontSize: 16, fontWeight: 700 }}>✕</span>
-                </button>
-
-                <div className="p-6 flex-1 pt-16">
-              {/* Details Header */}
-              <h2 className="text-2xl font-bold text-base-content mb-4">
-                Details
-              </h2>
-
-              {/* Tab Navigation */}
-              <div className="flex items-center justify-between gap-3 mb-4" style={{ borderBottom: '1px solid oklch(from var(--color-base-content) l c h / 0.06)' }}>
-                {!isSelectedLink && <div className="flex gap-1 overflow-x-auto whitespace-nowrap">
-                <button
-                  onClick={() => handleTabSwitch('noobs')}
-                  className={`g-tab ${activeTab === 'noobs' ? 'g-tab-on' : ''}`}
-                >
-                  <span>Overview</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-md ml-1.5"
-                    style={{ background: activeTab === 'noobs' ? 'oklch(from var(--color-primary) l c h / 0.1)' : 'oklch(from var(--color-base-content) l c h / 0.05)', color: activeTab === 'noobs' ? 'var(--color-primary)' : 'oklch(from var(--color-base-content) l c h / 0.4)' }}>
-                    {countedBaseFieldCount}
-                  </span>
-                </button>
-                <button
-                  onClick={() => handleTabSwitch('nerds')}
-                  className={`g-tab ${activeTab === 'nerds' ? 'g-tab-succ' : ''}`}
-                >
-                  <span>Technical</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-md ml-1.5"
-                    style={{ background: activeTab === 'nerds' ? 'oklch(from var(--color-success) l c h / 0.1)' : 'oklch(from var(--color-base-content) l c h / 0.05)', color: activeTab === 'nerds' ? 'var(--color-success)' : 'oklch(from var(--color-base-content) l c h / 0.4)' }}>
-                    {nerdsVisibleFieldCount}
-                  </span>
-                </button>
-                </div>}
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleMoveSelectedToVault}
-                    disabled={isVaulting}
-                    className="g-action g-action-warn"
-                    style={{ height: 32, padding: '0 14px' }}
-                  >
-                    <LockKeyhole style={{ width: 13, height: 13 }} />
-                    <span>{isVaulting ? 'Moving...' : 'Vault'}</span>
-                  </button>
-                  <button
-                    onClick={() => setShowDeleteConfirm(true)}
-                    className="g-action g-action-err"
-                    style={{ height: 32, padding: '0 14px' }}
-                  >
-                    <Trash2 style={{ width: 13, height: 13 }} />
-                    <span>Delete</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* For Noobs Tab */}
-              {(activeTab === 'noobs' || isSelectedLink) && (
-                <div className="space-y-4">
-                  <div className="space-y-3 pr-2">
-                    <div>
-                        <div className="text-[11px] font-semibold mb-1 flex items-center gap-2" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
-                          <span className="font-mono">firestoreDocumentId</span>
-                        </div>
-                        <div className="g-field flex items-start justify-between gap-3">
-                          <p className="text-base-content font-mono text-sm break-all flex-1">
-                            {formatBaseFieldValue(selectedImage?.id)}
-                          </p>
-                          {canOpenFirestoreConsole && (
-                            <a href={firestoreConsoleUrl} target="_blank" rel="noopener noreferrer" className="g-action">Open</a>
-                          )}
-                        </div>
-                    </div>
-                    {displayedBaseFieldKeys.map((key, index) => (
-                      <div key={key}>
-                        <div className="text-[11px] font-semibold mb-1 flex items-center gap-2" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
-                          <span style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{index + 1}.</span>
-                          <span className="font-mono">{key}</span>
-                        </div>
-                        <div className="g-field">
-                          {key === 'collectionId' ? (
-                            editingField === 'collectionId' ? (
-                              <div className="space-y-3">
-                                <select
-                                  value={editValues.collectionId ?? (modalImage?.collectionId || '')}
-                                  onChange={(e) => setEditValues({ ...editValues, collectionId: e.target.value })}
-                                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content focus:outline-none focus:border-primary"
-                                >
-                                  <option value="">No Collection</option>
-                                  {collections.map((collection) => (
-                                    <option key={collection.id} value={collection.id}>
-                                      {collection.name}
-                                    </option>
-                                  ))}
-                                </select>
-                                <div className="flex gap-2">
-                                  <Button size="sm" onClick={() => saveEdit('collectionId')}>
-                                    Save Collection
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                      setEditingField(null);
-                                      setEditValues((prev) => ({ ...prev, collectionId: modalImage?.collectionId || '' }));
-                                    }}
-                                  >
-                                    Cancel
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="text-base-content font-mono text-sm break-all">
-                                  {collections.find((collection) => collection.id === modalImage?.collectionId)?.name ||
-                                    formatBaseFieldValue(modalImage?.collectionId)}
-                                </p>
-                                <Button variant="ghost" size="sm" onClick={() => startEditing('collectionId')}>
-                                  {modalImage?.collectionId ? 'Change Collection' : 'Add to Collection'}
-                                </Button>
-                              </div>
-                            )
-                          ) : key === 'pixvidUrl' || key === 'imgbbUrl' || key === 'filemoonDirectUrl' || key === 'udropDirectUrl' ? (
-                            <div className="flex items-start justify-between gap-3">
-                              <p className="text-base-content font-mono text-sm break-all flex-1">
-                                {formatBaseFieldValue(overviewValueByKey[key] ?? modalImage?.[key])}
-                              </p>
-                              <Button
-                                className={inlineActionClass}
-                                onClick={() => downloadImage(
-                                  overviewValueByKey[key] ?? modalImage?.[key],
-                                  key === 'pixvidUrl'
-                                    ? 'pixvid'
-                                    : key === 'imgbbUrl'
-                                      ? 'imgbb'
-                                      : key === 'filemoonDirectUrl'
-                                        ? 'filemoon'
-                                        : 'udrop'
-                                )}
-                                disabled={!(overviewValueByKey[key] ?? modalImage?.[key])}
-                              >
-                                <Download className="w-3.5 h-3.5" />
-                                Download
-                              </Button>
-                            </div>
-                          ) : key === 'sourceImageUrl' || key === 'sourcePageUrl' || key === 'linkUrl' ? (
-                            editingField === key ? (
-                              <div className="space-y-3">
-                                <input
-                                  type="url"
-                                  value={editValues[key] ?? (modalImage?.[key] || '')}
-                                  onChange={(e) => setEditValues({ ...editValues, [key]: e.target.value })}
-                                  placeholder={
-                                    key === 'sourceImageUrl'
-                                      ? 'https://example.com/image.jpg'
-                                      : 'https://example.com/page'
-                                  }
-                                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content focus:outline-none focus:border-primary"
-                                />
-                                <div className="flex gap-2">
-                                  <Button size="sm" onClick={() => saveEdit(key)}>
-                                    Save URL
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                      setEditingField(null);
-                                      setEditValues((prev) => ({ ...prev, [key]: modalImage?.[key] || '' }));
-                                    }}
-                                  >
-                                    Cancel
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex items-start justify-between gap-3">
-                                <p className="text-base-content font-mono text-sm break-all flex-1">
-                                  {formatBaseFieldValue(modalImage?.[key])}
-                                </p>
-                                <div className="flex items-center gap-2">
-                                  <Button
-                                    className={`${inlineActionClass} px-2 py-2`}
-                                    onClick={() => window.open(modalImage?.[key], '_blank', 'noopener,noreferrer')}
-                                    disabled={!modalImage?.[key]}
-                                    title="Open in new tab"
-                                    aria-label={`Open ${key} in new tab`}
-                                  >
-                                    <Link2 className="w-3.5 h-3.5" />
-                                  </Button>
-                                  <Button variant="ghost" size="sm" onClick={() => startEditing(key)}>
-                                    Edit
-                                  </Button>
-                                </div>
-                              </div>
-                            )
-                          ) : key === 'description' ? (
-                            editingField === 'description' ? (
-                              <div className="space-y-3">
-                                <textarea
-                                  value={editValues.description ?? (modalImage?.description || '')}
-                                  onChange={(e) => setEditValues({ ...editValues, description: e.target.value })}
-                                  rows={4}
-                                  placeholder="Add a description..."
-                                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content focus:outline-none focus:border-primary resize-y"
-                                />
-                                <div className="flex gap-2">
-                                  <Button size="sm" onClick={() => saveEdit('description')}>
-                                    Save Description
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                      setEditingField(null);
-                                      setEditValues((prev) => ({ ...prev, description: modalImage?.description || '' }));
-                                    }}
-                                  >
-                                    Cancel
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex items-start justify-between gap-3">
-                                <p className="text-base-content font-mono text-sm whitespace-pre-wrap break-words flex-1">
-                                  {formatBaseFieldValue(modalImage?.description)}
-                                </p>
-                                <Button variant="ghost" size="sm" onClick={() => startEditing('description')}>
-                                  Edit
-                                </Button>
-                              </div>
-                            )
-                          ) : key === 'creationDate' ? (
-                            editingField === 'creationDate' ? (
-                              <div className="space-y-3">
-                                <input
-                                  type="datetime-local"
-                                  value={editValues.creationDate ?? (modalImage?.creationDate ? (() => { const d = new Date(modalImage.creationDate); const offset = d.getTimezoneOffset() * 60000; return new Date(d.getTime() - offset).toISOString().slice(0, 16); })() : '')}
-                                  onChange={(e) => setEditValues({ ...editValues, creationDate: e.target.value })}
-                                  className="w-full px-3 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content focus:outline-none focus:border-primary font-mono text-sm"
-                                />
-                                <div className="flex gap-2">
-                                  <Button size="sm" onClick={() => saveEdit('creationDate')}>
-                                    Save Date
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                      setEditingField(null);
-                                      setEditValues((prev) => ({ ...prev, creationDate: modalImage?.creationDate || '' }));
-                                    }}
-                                  >
-                                    Cancel
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="text-base-content font-mono text-sm">
-                                  {modalImage?.creationDate ? new Date(modalImage.creationDate).toLocaleString() : 'N/A'}
-                                </p>
-                                <Button variant="ghost" size="sm" onClick={() => startEditing('creationDate')}>
-                                  Edit
-                                </Button>
-                              </div>
-                            )
-                          ) : (
-                            <p className="text-base-content font-mono text-sm break-all">
-                              {formatBaseFieldValue(overviewValueByKey[key] ?? modalImage?.[key])}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                    <div className="pt-4 border-t border-base-300">
-                      {isSelectedVideo && retryableVideoServices.length > 0 && (
-                        <div className="mb-4 rounded-[var(--radius-box)] border border-warning/20 bg-warning/10 p-3 text-sm text-base-content">
-                          <div className="mb-2 flex items-center gap-2 font-semibold">
-                            <Cloud className="h-4 w-4 text-warning" />
-                            Missing host upload
-                          </div>
-                          <p className="mb-3 text-xs text-base-content/70">
-                            This video is saved already. Retry only the failed host below.
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {retryableVideoServices.map((service) => (
-                              <Button
-                                key={service.key}
-                                className={inlineActionClass}
-                                onClick={() => retryVideoHostUpload(service.key)}
-                                disabled={Boolean(retryingVideoHost)}
-                              >
-                                <Cloud className="h-3.5 w-3.5" />
-                                {retryingVideoHost === service.key ? `Retrying ${service.label}...` : `Retry ${service.label}`}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {isResolvingModalMediaType ? (
-                        <div className="text-sm text-base-content/60 italic">
-                          Loading media details...
-                        </div>
-                      ) : isSelectedVideo && !getPreferredVideoDirectUrl(modalImage) ? (
-                        <div className="text-sm text-base-content/60 italic">
-                          No direct video download URLs available.
-                        </div>
-                      ) : null}
-                    </div>
-                </div>
-              )}
-
-              {/* For Nerds Tab */}
-              {activeTab === 'nerds' && !isSelectedLink && (
-                <div className="space-y-4">
-                  {loadingNerdsTab && !fullImageDetails ? (
-                    <div className="flex justify-center items-center py-10">
-                      <Spinner size="md" />
-                      <span className="ml-3 text-base-content/70">Loading technical details...</span>
-                    </div>
-                  ) : (
-                    <div className="space-y-4 pr-2">
-                      {fullImageDetails && nerdsEntries.length === 0 && (
-                        <div className="text-sm text-base-content/60 italic">
-                          No extra technical fields on this document.
-                        </div>
-                      )}
-
-                      {fullImageDetails && nerdsEntries.map(([key, value], index) => (
-                          <div key={key}>
-                            <div className="text-[11px] font-semibold mb-1 flex items-center gap-2" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
-                              <span style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{index + 1}.</span>
-                              {key === 'sha256' ? (
-                                <Fingerprint className="w-3.5 h-3.5" />
-                              ) : key === 'pHash' || key === 'aHash' || key === 'dHash' ? (
-                                <Hash className="w-3.5 h-3.5" />
-                              ) : (
-                                <FileText className="w-3.5 h-3.5" />
-                              )}
-                              {key === 'sha256' ? 'SHA-256' : key}
-                            </div>
-                            <div className="g-field">
-                              <p className="text-base-content font-mono text-sm break-all">
-                                {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-                </div>
-              </div>
-            </div>
-          )}
-        </Modal>
-
+          item={selectedImage}
+          activeTab={activeTab}
+          onTabChange={handleTabSwitch}
+          isLink={isSelectedLink}
+          overviewEntries={displayedBaseFieldEntries}
+          technicalEntries={nerdsEntries}
+          technicalLoading={loadingNerdsTab}
+          renderMedia={renderModalMedia}
+          actions={renderModalActions}
+          renderOverviewField={renderModalOverviewField}
+          renderDocumentId={renderModalDocumentId}
+          overviewFooter={renderModalOverviewFooter}
+          technicalEmptyText="No extra technical fields on this document."
+        />
         {/* Delete Confirmation Modal */}
         <Modal isOpen={showDeleteConfirm} onClose={() => !isDeleting && setShowDeleteConfirm(false)}>
           <div className="text-center space-y-6" style={{ fontFamily: "'Outfit', system-ui, sans-serif" }}>

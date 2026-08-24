@@ -32,6 +32,7 @@ import {
   getOverviewEntries,
   getTechnicalMetadataEntries,
 } from '@shared/mediaFieldRegistry.js';
+import MediaDetailModal from '../components/MediaDetailModal';
 
 const VAULT_CONFIG_KEY = 'secretVaultConfig';
 const VAULT_SESSION_KEY = 'imgvault-vault-unlocked';
@@ -582,6 +583,102 @@ export default function VaultPage() {
     .g-action-prim:hover{filter:brightness(1.1);transform:translateY(-1px)}
   `;
 
+  const renderVaultMedia = (item, { isModalAnimating }) => {
+    const animCls = isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100';
+    if (isLinkItem(item)) {
+      return (
+        <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 overflow-hidden border border-base-300 bg-base-100 transition-all duration-700 ease-out ${animCls}`}>
+          <div className="h-full p-4 sm:p-6">
+            <div className="h-full rounded-[var(--radius-box)] border border-base-300 bg-base-100 overflow-hidden">
+              <div className="h-full flex flex-col md:flex-row">
+                <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between min-w-0">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-base-content/70">
+                      <Link2 className="w-4 h-4" />
+                      <span className="text-xs font-semibold uppercase tracking-wide">Saved Link</span>
+                    </div>
+                    <h3 className="text-xl font-bold text-base-content leading-snug">
+                      {item.pageTitle || 'Untitled Link'}
+                    </h3>
+                    <p className="text-base-content/70 text-sm leading-relaxed whitespace-pre-wrap">
+                      {item.description || 'Saved page bookmark'}
+                    </p>
+                  </div>
+                  <a href={item.linkUrl || item.sourcePageUrl || '#'} target="_blank" rel="noopener noreferrer" className="text-info text-sm break-all hover:underline mt-4">
+                    {item.linkUrl || item.sourcePageUrl || 'N/A'}
+                  </a>
+                </div>
+                <div className="md:w-[42%] lg:w-[40%] h-48 md:h-auto bg-base-200 border-t md:border-t-0 md:border-l border-base-300">
+                  {getLinkPreviewImage(item) ? (
+                    <img src={getLinkPreviewImage(item)} alt={item.pageTitle || 'Link preview'} className="w-full h-full object-contain" loading="lazy" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-base-content/45">
+                      <Link2 className="w-12 h-12" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    if (getKind(item) === 'Video' && getVideoDirectUrl(item)) {
+      return (
+        <video
+          src={getVideoDirectUrl(item)}
+          className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain transition-all duration-700 ease-out ${animCls}`}
+          controls
+          preload="metadata"
+          playsInline
+        />
+      );
+    }
+    if (getKind(item) === 'Video' && getVideoWatchUrl(item)) {
+      return (
+        <iframe
+          src={getVideoWatchUrl(item)}
+          className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 transition-all duration-700 ease-out ${animCls}`}
+          frameBorder="0"
+          allowFullScreen
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          title={item.pageTitle || 'Vault video'}
+        />
+      );
+    }
+    if (getPreviewUrl(item)) {
+      return (
+        <img
+          src={getPreviewUrl(item)}
+          alt={item.pageTitle || item.fileName || 'Vault item'}
+          className={`max-w-full max-h-full object-contain rounded-[var(--radius-box)] shadow-2xl relative z-10 transition-all duration-700 ease-out hover:scale-[1.02] hover:shadow-primary/30 ${animCls}`}
+        />
+      );
+    }
+    return (
+      <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 flex items-center justify-center bg-base-200 transition-all duration-700 ease-out ${animCls}`}>
+        <ImageIcon className="h-16 w-16 text-base-content/30" />
+      </div>
+    );
+  };
+
+  const renderVaultActions = (
+    <>
+      <button onClick={() => restoreItem(selectedItem)} disabled={restoringId === selectedItem?.id} className="g-action g-action-prim" style={{ height: 32, padding: '0 14px' }}>
+        <RotateCcw style={{ width: 13, height: 13 }} />
+        <span>{restoringId === selectedItem?.id ? 'Restoring...' : 'Restore'}</span>
+      </button>
+      <button onClick={() => setShowDeleteConfirm(true)} disabled={deletingId === selectedItem?.id} className="g-action g-action-danger" style={{ height: 32, padding: '0 14px' }}>
+        <Trash2 style={{ width: 13, height: 13 }} />
+        <span>{deletingId === selectedItem?.id ? 'Moving...' : 'Trash'}</span>
+      </button>
+      <button onClick={lockVault} className="g-action g-action-warn" style={{ height: 32, padding: '0 14px' }}>
+        <LockKeyhole style={{ width: 13, height: 13 }} />
+        <span>Lock</span>
+      </button>
+    </>
+  );
+
   return (
     <div className="min-h-screen bg-base-200 text-base-content g-page">
       <style>{vaultGalleryCSS}</style>
@@ -807,182 +904,20 @@ export default function VaultPage() {
         </main>
       )}
 
-      <Modal
+      <MediaDetailModal
         isOpen={!!selectedItem}
         onClose={closeItemModal}
-        className="!max-w-[95vw] !w-full !h-[95vh] !p-0 !overflow-hidden"
-      >
-        {selectedItem && (
-          <div className={`flex flex-col lg:flex-row h-full relative transition-all duration-500 ease-out ${isModalAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
-            <div className={`absolute inset-0 bg-base-300/90 transition-opacity duration-500 ${isModalAnimating ? 'opacity-0' : 'opacity-100'}`} />
-
-            <div className="flex-1 min-h-[35vh] lg:min-h-0 flex items-center justify-center bg-gradient-to-br from-base-300 to-base-200 p-3 sm:p-6 lg:p-8 relative z-10">
-              <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4/5 h-4/5 bg-primary/10 rounded-full blur-3xl transition-all duration-700 ease-out ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`} />
-
-              {isLinkItem(selectedItem) ? (
-                <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 overflow-hidden border border-base-300 bg-base-100 transition-all duration-700 ease-out ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
-                  <div className="h-full p-4 sm:p-6">
-                    <div className="h-full rounded-[var(--radius-box)] border border-base-300 bg-base-100 overflow-hidden">
-                      <div className="h-full flex flex-col md:flex-row">
-                        <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between min-w-0">
-                          <div className="space-y-3">
-                            <div className="flex items-center gap-2 text-base-content/70">
-                              <Link2 className="w-4 h-4" />
-                              <span className="text-xs font-semibold uppercase tracking-wide">Saved Link</span>
-                            </div>
-                            <h3 className="text-xl font-bold text-base-content leading-snug">
-                              {selectedItem.pageTitle || 'Untitled Link'}
-                            </h3>
-                            <p className="text-base-content/70 text-sm leading-relaxed whitespace-pre-wrap">
-                              {selectedItem.description || 'Saved page bookmark'}
-                            </p>
-                          </div>
-                          <a href={selectedItem.linkUrl || selectedItem.sourcePageUrl || '#'} target="_blank" rel="noopener noreferrer" className="text-info text-sm break-all hover:underline mt-4">
-                            {selectedItem.linkUrl || selectedItem.sourcePageUrl || 'N/A'}
-                          </a>
-                        </div>
-                        <div className="md:w-[42%] lg:w-[40%] h-48 md:h-auto bg-base-200 border-t md:border-t-0 md:border-l border-base-300">
-                          {getLinkPreviewImage(selectedItem) ? (
-                            <img src={getLinkPreviewImage(selectedItem)} alt={selectedItem.pageTitle || 'Link preview'} className="w-full h-full object-contain" loading="lazy" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-base-content/45">
-                              <Link2 className="w-12 h-12" />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : getKind(selectedItem) === 'Video' && getVideoDirectUrl(selectedItem) ? (
-                <video
-                  src={getVideoDirectUrl(selectedItem)}
-                  className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain transition-all duration-700 ease-out ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
-                  controls
-                  preload="metadata"
-                  playsInline
-                />
-              ) : getKind(selectedItem) === 'Video' && getVideoWatchUrl(selectedItem) ? (
-                <iframe
-                  src={getVideoWatchUrl(selectedItem)}
-                  className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 transition-all duration-700 ease-out ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
-                  frameBorder="0"
-                  allowFullScreen
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  title={selectedItem.pageTitle || 'Vault video'}
-                />
-              ) : getPreviewUrl(selectedItem) ? (
-                <img
-                  src={getPreviewUrl(selectedItem)}
-                  alt={selectedItem.pageTitle || selectedItem.fileName || 'Vault item'}
-                  className={`max-w-full max-h-full object-contain rounded-[var(--radius-box)] shadow-2xl relative z-10 transition-all duration-700 ease-out hover:scale-[1.02] hover:shadow-primary/30 ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
-                />
-              ) : (
-                <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 flex items-center justify-center bg-base-200 transition-all duration-700 ease-out ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
-                  <ImageIcon className="h-16 w-16 text-base-content/30" />
-                </div>
-              )}
-            </div>
-
-            <div
-              className={`w-full lg:w-[550px] lg:flex-shrink-0 overflow-y-auto flex flex-col relative z-10 transition-all duration-500 ease-out ${isModalAnimating ? 'translate-y-8 opacity-0' : 'translate-y-0 opacity-100'}`}
-              style={{
-                scrollbarWidth: 'thin',
-                scrollbarColor: 'oklch(from var(--color-base-content) l c h / 0.06) transparent',
-                background: 'oklch(from var(--color-base-100) l c h / 0.8)',
-                backdropFilter: 'blur(24px)',
-                borderLeft: '1px solid oklch(from var(--color-base-content) l c h / 0.06)',
-                fontFamily: "'Outfit', system-ui, sans-serif",
-              }}
-            >
-              <button onClick={closeItemModal} className={`g-modal-close ${isModalAnimating ? 'opacity-0' : 'opacity-100'}`} title="Close">
-                <span style={{ fontSize: 16, fontWeight: 700 }}>x</span>
-              </button>
-
-              <div className="p-6 flex-1 pt-16">
-                <h2 className="text-2xl font-bold text-base-content mb-4">Details</h2>
-
-                <div className="flex items-center justify-between gap-3 mb-4" style={{ borderBottom: '1px solid oklch(from var(--color-base-content) l c h / 0.06)' }}>
-                  {!isLinkItem(selectedItem) && (
-                    <div className="flex gap-1 overflow-x-auto whitespace-nowrap">
-                      <button onClick={() => setActiveTab('noobs')} className={`g-tab ${activeTab === 'noobs' ? 'g-tab-on' : ''}`}>
-                        <span>Overview</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-md ml-1.5" style={{ background: activeTab === 'noobs' ? 'oklch(from var(--color-primary) l c h / 0.1)' : 'oklch(from var(--color-base-content) l c h / 0.05)', color: activeTab === 'noobs' ? 'var(--color-primary)' : 'oklch(from var(--color-base-content) l c h / 0.4)' }}>
-                          {overviewKeys.length}
-                        </span>
-                      </button>
-                      <button onClick={() => setActiveTab('nerds')} className={`g-tab ${activeTab === 'nerds' ? 'g-tab-succ' : ''}`}>
-                        <span>Technical</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-md ml-1.5" style={{ background: activeTab === 'nerds' ? 'oklch(from var(--color-success) l c h / 0.1)' : 'oklch(from var(--color-base-content) l c h / 0.05)', color: activeTab === 'nerds' ? 'var(--color-success)' : 'oklch(from var(--color-base-content) l c h / 0.4)' }}>
-                          {technicalEntries.length}
-                        </span>
-                      </button>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => restoreItem(selectedItem)} disabled={restoringId === selectedItem.id} className="g-action g-action-prim" style={{ height: 32, padding: '0 14px' }}>
-                      <RotateCcw style={{ width: 13, height: 13 }} />
-                      <span>{restoringId === selectedItem.id ? 'Restoring...' : 'Restore'}</span>
-                    </button>
-                    <button onClick={() => setShowDeleteConfirm(true)} disabled={deletingId === selectedItem.id} className="g-action g-action-danger" style={{ height: 32, padding: '0 14px' }}>
-                      <Trash2 style={{ width: 13, height: 13 }} />
-                      <span>{deletingId === selectedItem.id ? 'Moving...' : 'Trash'}</span>
-                    </button>
-                    <button onClick={lockVault} className="g-action g-action-warn" style={{ height: 32, padding: '0 14px' }}>
-                      <LockKeyhole style={{ width: 13, height: 13 }} />
-                      <span>Lock</span>
-                    </button>
-                  </div>
-                </div>
-
-                {(activeTab === 'noobs' || isLinkItem(selectedItem)) && (
-                  <div className="space-y-4">
-                    <div>
-                      <div className="text-[11px] font-semibold mb-1 flex items-center gap-2" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
-                        <span className="font-mono">firestoreDocumentId</span>
-                      </div>
-                      <div className="g-field">
-                        <p className="text-base-content font-mono text-sm break-all">{formatDetailValue(selectedItem.id)}</p>
-                      </div>
-                    </div>
-                    {overviewKeys.map((key, index) => (
-                      <div key={key}>
-                        <div className="text-[11px] font-semibold mb-1 flex items-center gap-2" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
-                          <span style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{index + 1}.</span>
-                          <span className="font-mono">{key}</span>
-                        </div>
-                        <div className="g-field">
-                          <p className={`text-base-content font-mono text-sm ${key === 'description' ? 'whitespace-pre-wrap break-words' : 'break-all'}`}>
-                            {formatDetailValue(overviewValues[key] ?? selectedItem[key])}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {activeTab === 'nerds' && !isLinkItem(selectedItem) && (
-                  <div className="space-y-4">
-                    {technicalEntries.length === 0 ? (
-                      <div className="g-field text-sm text-base-content/60">No extra technical fields on this vault item.</div>
-                    ) : technicalEntries.map(([key, value], index) => (
-                      <div key={key}>
-                        <div className="text-[11px] font-semibold mb-1 flex items-center gap-2" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
-                          <span style={{ color: 'var(--color-success)', fontWeight: 700 }}>{index + 1}.</span>
-                          <span className="font-mono">{key}</span>
-                        </div>
-                        <div className="g-field">
-                          <p className="text-base-content font-mono text-sm break-all">{formatDetailValue(value)}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </Modal>
+        item={selectedItem}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        isLink={isLinkItem(selectedItem)}
+        overviewEntries={getOverviewEntries(selectedItem, { extraKeys: ['vaultedAt'] })}
+        technicalEntries={getTechnicalMetadataEntries(selectedItem)}
+        technicalLoading={false}
+        renderMedia={renderVaultMedia}
+        actions={renderVaultActions}
+        technicalEmptyText="No extra technical fields on this vault item."
+      />
 
       <Modal
         isOpen={showChangePassword}
