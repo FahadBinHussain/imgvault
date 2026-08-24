@@ -39,6 +39,7 @@ import {
 } from '../utils/udropApi';
 import {
   checkFilemoonIntegrity,
+  deleteFilemoonFile,
 } from '../utils/filemoonApi';
 
 const IMAGE_SETTING_KEYS = Array.from(
@@ -112,6 +113,7 @@ export default function ResolvePage() {
   const [udropFilter, setUdropFilter] = useState('all'); // 'all' | 'missing' | 'found' | 'noUrl' | 'extra'
   const [udropKeysConfigured, setUdropKeysConfigured] = useState(false);
   const [deletingOrphans, setDeletingOrphans] = useState({});
+  const [deletingFilemoonOrphans, setDeletingFilemoonOrphans] = useState({});
   const [linkingExtra, setLinkingExtra] = useState({});
 
   // ---- 3D Scene integrity check state ----
@@ -1661,6 +1663,41 @@ export default function ResolvePage() {
                                 >
                                   <Trash2 className="h-4 w-4" />
                                   Find on Dashboard
+                                </Button>
+                              );
+                            })()}
+                            {(file.file_code || file.filecode) && (() => {
+                              const fc = String(file.file_code || file.filecode);
+                              const delKey = `fm:${fc}`;
+                              return (
+                                <Button
+                                  variant="primary"
+                                  className="h-9 justify-center gap-2 text-sm"
+                                  disabled={Boolean(deletingFilemoonOrphans[delKey])}
+                                  onClick={async () => {
+                                    if (!confirm(`Delete "${title}" (${fc}) from Filemoon? This cannot be undone.`)) return;
+                                    setDeletingFilemoonOrphans((prev) => ({ ...prev, [delKey]: true }));
+                                    try {
+                                      await deleteFilemoonFile(settings.filemoonApiKey, fc);
+                                      setFilemoonIntegrity((prev) => ({
+                                        ...prev,
+                                        extra: prev.extra.filter((e) => String((e.file?.file_code || e.file?.filecode)) !== fc),
+                                      }));
+                                      await runFilemoonIntegrityCheck();
+                                      setNotice({ type: 'success', message: `Deleted orphan file "${title}" from Filemoon.` });
+                                    } catch (err) {
+                                      setNotice({ type: 'error', message: `Delete failed: ${err.message || err}` });
+                                    } finally {
+                                      setDeletingFilemoonOrphans((prev) => {
+                                        const next = { ...prev };
+                                        delete next[delKey];
+                                        return next;
+                                      });
+                                    }
+                                  }}
+                                >
+                                  {deletingFilemoonOrphans[delKey] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                  {deletingFilemoonOrphans[delKey] ? 'Deleting...' : 'Delete from Filemoon'}
                                 </Button>
                               );
                             })()}
