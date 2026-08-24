@@ -1146,40 +1146,75 @@ export default function ResolvePage() {
                             {(file.short_url || file.shortUrl || file.file_id || file.id) && (() => {
                               const code = String(file.short_url || file.shortUrl || file.file_id || file.id);
                               const linkKey = `udrop:${code}`;
+                              const pendingMatch = findPendingItemForFile([...(images || []), ...(vaultImages || [])], file);
                               return (
-                                <Button
-                                  variant="outline"
-                                  className="h-9 justify-center gap-2 text-sm"
-                                  disabled={Boolean(linkingExtra[linkKey])}
-                                  onClick={async () => {
-                                    setLinkingExtra((prev) => ({ ...prev, [linkKey]: true }));
-                                    try {
-                                      const match = findMatchingItemForFile([...(images || []), ...(vaultImages || [])], file);
-                                      if (!match) {
-                                        throw new Error('No item matched by title or filename. Link the file from the dashboard instead.');
+                                <>
+                                  {pendingMatch && (
+                                    <Button
+                                      variant="outline"
+                                      className="h-9 justify-center gap-2 border-success/30 bg-success/10 text-sm text-success hover:bg-success/15"
+                                      disabled={Boolean(linkingExtra[linkKey])}
+                                      onClick={async () => {
+                                        setLinkingExtra((prev) => ({ ...prev, [linkKey]: true }));
+                                        try {
+                                          await sendMessage('finalizeUploadedVideo', {
+                                            id: pendingMatch.id,
+                                            videoUploadResults: {
+                                              udrop: { filecode: code, watchUrl: `https://www.udrop.com/file/${code}`, directUrl: `https://www.udrop.com/file/${code}` },
+                                            },
+                                          });
+                                          await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
+                                          await runUdropIntegrityCheck();
+                                          setNotice({ type: 'success', message: `Recovered "${pendingMatch.fileName || pendingMatch.pageTitle || 'pending upload'}" from the interrupted upload.` });
+                                        } catch (err) {
+                                          setNotice({ type: 'error', message: `Recovery failed: ${err.message || err}` });
+                                        } finally {
+                                          setLinkingExtra((prev) => {
+                                            const next = { ...prev };
+                                            delete next[linkKey];
+                                            return next;
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      {linkingExtra[linkKey] ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                                      {linkingExtra[linkKey] ? 'Recovering...' : 'Recover pending upload'}
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="outline"
+                                    className="h-9 justify-center gap-2 text-sm"
+                                    disabled={Boolean(linkingExtra[linkKey])}
+                                    onClick={async () => {
+                                      setLinkingExtra((prev) => ({ ...prev, [linkKey]: true }));
+                                      try {
+                                        const match = findMatchingItemForFile([...(images || []), ...(vaultImages || [])], file);
+                                        if (!match) {
+                                          throw new Error('No item matched by title or filename. Link the file from the dashboard instead.');
+                                        }
+                                        await sendMessage('linkProviderFileToItem', {
+                                          id: match.id,
+                                          providerKey: 'udrop',
+                                          link: { filecode: code, watchUrl: `https://www.udrop.com/file/${code}`, directUrl: `https://www.udrop.com/file/${code}` },
+                                        });
+                                        await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
+                                        await runUdropIntegrityCheck();
+                                        setNotice({ type: 'success', message: `Linked UDrop file "${file.name || file.filename || code}" to "${match.pageTitle || match.fileName || 'item'}".` });
+                                      } catch (err) {
+                                        setNotice({ type: 'error', message: `Link failed: ${err.message || err}` });
+                                      } finally {
+                                        setLinkingExtra((prev) => {
+                                          const next = { ...prev };
+                                          delete next[linkKey];
+                                          return next;
+                                        });
                                       }
-                                      await sendMessage('linkProviderFileToItem', {
-                                        id: match.id,
-                                        providerKey: 'udrop',
-                                        link: { filecode: code, watchUrl: `https://www.udrop.com/file/${code}`, directUrl: `https://www.udrop.com/file/${code}` },
-                                      });
-                                      await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
-                                      await runUdropIntegrityCheck();
-                                      setNotice({ type: 'success', message: `Linked UDrop file "${file.name || file.filename || code}" to "${match.pageTitle || match.fileName || 'item'}".` });
-                                    } catch (err) {
-                                      setNotice({ type: 'error', message: `Link failed: ${err.message || err}` });
-                                    } finally {
-                                      setLinkingExtra((prev) => {
-                                        const next = { ...prev };
-                                        delete next[linkKey];
-                                        return next;
-                                      });
-                                    }
-                                  }}
-                                >
-                                  {linkingExtra[linkKey] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
-                                  {linkingExtra[linkKey] ? 'Linking...' : 'Link to item'}
-                                </Button>
+                                    }}
+                                  >
+                                    {linkingExtra[linkKey] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                                    {linkingExtra[linkKey] ? 'Linking...' : 'Link to item'}
+                                  </Button>
+                                </>
                               );
                             })()}
                             {(file.file_id || file.id) && (
@@ -1528,40 +1563,75 @@ export default function ResolvePage() {
                             {(file.file_code || file.filecode) && (() => {
                               const fc = String(file.file_code || file.filecode);
                               const linkKey = `fm:${fc}`;
+                              const pendingMatch = findPendingItemForFile([...(images || []), ...(vaultImages || [])], file);
                               return (
-                                <Button
-                                  variant="outline"
-                                  className="h-9 justify-center gap-2 text-sm"
-                                  disabled={Boolean(linkingExtra[linkKey])}
-                                  onClick={async () => {
-                                    setLinkingExtra((prev) => ({ ...prev, [linkKey]: true }));
-                                    try {
-                                      const match = findMatchingItemForFile([...(images || []), ...(vaultImages || [])], file);
-                                      if (!match) {
-                                        throw new Error('No item matched by title or filename. Link the file from the dashboard instead.');
+                                <>
+                                  {pendingMatch && (
+                                    <Button
+                                      variant="outline"
+                                      className="h-9 justify-center gap-2 border-success/30 bg-success/10 text-sm text-success hover:bg-success/15"
+                                      disabled={Boolean(linkingExtra[linkKey])}
+                                      onClick={async () => {
+                                        setLinkingExtra((prev) => ({ ...prev, [linkKey]: true }));
+                                        try {
+                                          await sendMessage('finalizeUploadedVideo', {
+                                            id: pendingMatch.id,
+                                            videoUploadResults: {
+                                              filemoon: { filecode: fc, watchUrl: `https://filemoon.sx/d/${fc}`, directUrl: `https://filemoon.sx/e/${fc}` },
+                                            },
+                                          });
+                                          await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
+                                          await runFilemoonIntegrityCheck();
+                                          setNotice({ type: 'success', message: `Recovered "${pendingMatch.fileName || pendingMatch.pageTitle || 'pending upload'}" from the interrupted upload.` });
+                                        } catch (err) {
+                                          setNotice({ type: 'error', message: `Recovery failed: ${err.message || err}` });
+                                        } finally {
+                                          setLinkingExtra((prev) => {
+                                            const next = { ...prev };
+                                            delete next[linkKey];
+                                            return next;
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      {linkingExtra[linkKey] ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                                      {linkingExtra[linkKey] ? 'Recovering...' : 'Recover pending upload'}
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="outline"
+                                    className="h-9 justify-center gap-2 text-sm"
+                                    disabled={Boolean(linkingExtra[linkKey])}
+                                    onClick={async () => {
+                                      setLinkingExtra((prev) => ({ ...prev, [linkKey]: true }));
+                                      try {
+                                        const match = findMatchingItemForFile([...(images || []), ...(vaultImages || [])], file);
+                                        if (!match) {
+                                          throw new Error('No item matched by title or filename. Link the file from the dashboard instead.');
+                                        }
+                                        await sendMessage('linkProviderFileToItem', {
+                                          id: match.id,
+                                          providerKey: 'filemoon',
+                                          link: { filecode: fc, watchUrl: `https://filemoon.sx/d/${fc}`, directUrl: `https://filemoon.sx/e/${fc}` },
+                                        });
+                                        await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
+                                        await runFilemoonIntegrityCheck();
+                                        setNotice({ type: 'success', message: `Linked ${fc} to "${match.pageTitle || match.fileName || 'item'}".` });
+                                      } catch (err) {
+                                        setNotice({ type: 'error', message: `Link failed: ${err.message || err}` });
+                                      } finally {
+                                        setLinkingExtra((prev) => {
+                                          const next = { ...prev };
+                                          delete next[linkKey];
+                                          return next;
+                                        });
                                       }
-                                      await sendMessage('linkProviderFileToItem', {
-                                        id: match.id,
-                                        providerKey: 'filemoon',
-                                        link: { filecode: fc, watchUrl: `https://filemoon.sx/d/${fc}`, directUrl: `https://filemoon.sx/e/${fc}` },
-                                      });
-                                      await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
-                                      await runFilemoonIntegrityCheck();
-                                      setNotice({ type: 'success', message: `Linked ${fc} to "${match.pageTitle || match.fileName || 'item'}".` });
-                                    } catch (err) {
-                                      setNotice({ type: 'error', message: `Link failed: ${err.message || err}` });
-                                    } finally {
-                                      setLinkingExtra((prev) => {
-                                        const next = { ...prev };
-                                        delete next[linkKey];
-                                        return next;
-                                      });
-                                    }
-                                  }}
-                                >
-                                  {linkingExtra[linkKey] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
-                                  {linkingExtra[linkKey] ? 'Linking...' : 'Link to item'}
-                                </Button>
+                                    }}
+                                  >
+                                    {linkingExtra[linkKey] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                                    {linkingExtra[linkKey] ? 'Linking...' : 'Link to item'}
+                                  </Button>
+                                </>
                               );
                             })()}
                             {(file.file_code || file.filecode) && (() => {
@@ -2090,4 +2160,18 @@ function findMatchingItemForFile(items, file) {
   }
 
   return null;
+}
+
+/**
+ * Like findMatchingItemForFile but restricted to items that were reserved
+ * by createPendingUpload (extraMetadata.pendingUpload). An orphaned host file
+ * that matches a pending item is almost certainly the interrupted upload's
+ * file — linking it recovers the item instead of leaving a ghost orphan.
+ */
+function findPendingItemForFile(items, file) {
+  const pendingItems = (items || []).filter(
+    (item) => item && item.id && item.extraMetadata?.pendingUpload
+  );
+  if (pendingItems.length === 0) return null;
+  return findMatchingItemForFile(pendingItems, file);
 }

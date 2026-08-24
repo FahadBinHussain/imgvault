@@ -894,6 +894,18 @@ export default function GalleryPage() {
         throw new Error('Select at least one configured video host.');
       }
 
+      // DB-first: reserve the item now so a browser/tab death mid-upload
+      // leaves the item in the DB (marked pendingUpload) instead of an
+      // unrecoverable orphan file on the host.
+      const pendingReservation = await sendMessage('createPendingUpload', {
+        ...uploadData,
+        fileName: uploadData.fileName || getFileNameFromPath(uploadData.filePath || '') || 'video.mp4',
+      }).catch(async (err) => {
+        await appendClientUploadLog(`[PENDING UPLOAD] Failed to reserve DB item: ${err.message || String(err)}`, 'error');
+        return null;
+      });
+      const pendingItemId = pendingReservation?.id || null;
+
       for (const service of selectedServices) {
         const uploader = createVideoUploader(service);
         if (!uploader) {
@@ -948,6 +960,24 @@ export default function GalleryPage() {
       }
 
       await chrome.storage.local.set({ uploadStatus: 'Saving video metadata...' });
+
+      // Finalize the reserved item with the real host links. If the
+      // reservation failed earlier, fall back to the legacy save path.
+      if (pendingItemId) {
+        const finalized = await sendMessage('finalizeUploadedVideo', {
+          id: pendingItemId,
+          videoUploadResults: uploadResults,
+          udropResult: uploadResults.udrop,
+          filemoonResult: uploadResults.filemoon,
+          videoUploadErrors: uploadErrors,
+        });
+        await appendClientUploadLog(`[SAVE VIDEO] Finalized item with ID: ${finalized.id}`, 'success');
+        if (uploadErrors.length > 0) {
+          finalized.videoUploadErrors = uploadErrors;
+        }
+        return finalized;
+      }
+
       const saved = await sendMessage('saveUploadedVideo', {
         ...uploadData,
         videoUploadResults: uploadResults,
@@ -962,6 +992,14 @@ export default function GalleryPage() {
       return saved;
     } catch (error) {
       await appendClientUploadLog(`Direct video upload failed: ${error.message || String(error)}`, 'error');
+      if (pendingItemId) {
+        try {
+          await sendMessage('deleteImage', { id: pendingItemId });
+          await appendClientUploadLog(`[PENDING UPLOAD] Removed reserved DB item ${pendingItemId} after failed upload.`, 'warning');
+        } catch (cleanupErr) {
+          await appendClientUploadLog(`[PENDING UPLOAD] Cleanup of ${pendingItemId} failed: ${cleanupErr.message || String(cleanupErr)}`, 'error');
+        }
+      }
       throw error;
     } finally {
       if (activeVideoUploadControllerRef.current === uploadController) {

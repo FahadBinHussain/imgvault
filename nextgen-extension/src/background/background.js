@@ -1299,6 +1299,18 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'createPendingUpload':
+        this.createPendingUpload(request.data)
+          .then(result => sendResponse({ success: true, data: result }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'finalizeUploadedVideo':
+        this.finalizeUploadedVideo(request.data)
+          .then(result => sendResponse({ success: true, data: result }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'retryVideoHostUpload':
         this.retryVideoHostUpload(request.data)
           .then(result => sendResponse({ success: true, data: result }))
@@ -3381,6 +3393,84 @@ class ImgVaultServiceWorker {
       id: savedId,
       ...videoMetadata
     };
+  }
+
+  // DB-first video upload: create the item BEFORE uploading so that even if
+  // the browser/tab dies mid-upload (or the save step is interrupted), the
+  // item already exists in the DB and a half-finished file on the host can be
+  // recovered via the resolve page instead of showing up as a ghost orphan.
+  // Mark it pendingUpload so the resolve page can offer to link orphaned host
+  // files to it. finalizeUploadedVideo() fills in the host links afterwards.
+  async createPendingUpload(data) {
+    const fileName = this.extractFileName(data);
+
+    let cleanSourceImageUrl = data.originalSourceUrl || data.imageUrl;
+    if (cleanSourceImageUrl && cleanSourceImageUrl.startsWith('data:')) {
+      cleanSourceImageUrl = '';
+    }
+
+    const videoMetadata = {
+      sourceImageUrl: cleanSourceImageUrl,
+      sourcePageUrl: data.pageUrl,
+      pageTitle: data.pageTitle,
+      fileName,
+      fileSize: data.fileSize || 0,
+      fileType: data.fileType || data.fileMimeType || '',
+      fileTypeSource: data.fileTypeSource || 'File object',
+      duration: Number.isFinite(data.duration) ? data.duration : null,
+      width: Number.isFinite(data.width) ? data.width : null,
+      height: Number.isFinite(data.height) ? data.height : null,
+      tags: data.tags || [],
+      description: data.description || '',
+      collectionId: data.collectionId || null,
+      isVideo: true,
+      extraMetadata: {
+        pendingUpload: true,
+        pendingUploadStartedAt: new Date().toISOString(),
+        pendingUploadFileName: fileName || '',
+      },
+    };
+
+    const sanitized = sanitizeForNeon(videoMetadata);
+    const savedId = await this.storage.saveImage(sanitized);
+    await this.appendUploadLog(`[PENDING UPLOAD] Reserved DB item ${savedId} before upload.`);
+    return { id: savedId };
+  }
+
+  // Update an item created by createPendingUpload with the real host links
+  // once the upload finishes. Also used by the resolve page to adopt an orphan
+  // host file into a pending item (linkProviderFileToItem-style recovery).
+  async finalizeUploadedVideo(data) {
+    const { id, videoUploadResults } = data || {};
+    if (!id) throw new Error('finalizeUploadedVideo requires an item id');
+
+    const current = await this.storage.getImageById(id);
+    if (!current) throw new Error(`Item ${id} not found`);
+
+    const results = videoUploadResults || {
+      ...(data.filemoonResult ? { filemoon: data.filemoonResult } : {}),
+      ...(data.udropResult ? { udrop: data.udropResult } : {}),
+    };
+
+    let merged = { ...current };
+    for (const [providerKey, result] of Object.entries(results)) {
+      merged = mergeVideoProviderResult(merged, providerKey, result);
+    }
+
+    const extraMetadata = {
+      ...(merged.extraMetadata && typeof merged.extraMetadata === 'object' ? merged.extraMetadata : {}),
+    };
+    delete extraMetadata.pendingUpload;
+    delete extraMetadata.pendingUploadStartedAt;
+    delete extraMetadata.pendingUploadFileName;
+
+    await this.storage.updateImage(id, {
+      ...merged,
+      extraMetadata,
+    });
+
+    await this.appendUploadLog(`[FINALIZE UPLOAD] Linked host URLs to item ${id}.`, 'success');
+    return { id, ...merged, extraMetadata };
   }
 
   async handleFetchFile({ mediaId, url }) {
