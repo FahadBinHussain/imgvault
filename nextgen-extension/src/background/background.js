@@ -2507,7 +2507,10 @@ class ImgVaultServiceWorker {
         }
 
         try {
-          const blob = await this.fetchImage(fetchTarget, undefined, referrer);
+          // Videos are large — the 60s default is too short for a slow host,
+          // so the whole candidate fails with "user aborted". Give the retry
+          // download a generous timeout instead.
+          const blob = await this.fetchImage(fetchTarget, AbortSignal.timeout(600000), referrer);
           const isVideoBlob = (
             blob instanceof Blob &&
             blob.size > 0 &&
@@ -2525,7 +2528,8 @@ class ImgVaultServiceWorker {
           }
           fetchErrors.push(`${candidate} -> not a video (${blob?.type || 'empty'})`);
         } catch (fetchError) {
-          fetchErrors.push(`${candidate} -> ${fetchError.message || fetchError}`);
+          const isTimeout = fetchError?.name === 'AbortError' || /aborted/i.test(fetchError?.message || '');
+          fetchErrors.push(`${candidate} -> ${isTimeout ? 'timed out after 10 minutes' : fetchError.message || fetchError}`);
         }
 
         // If the filemoon direct-link API was rejected (account without
@@ -2654,7 +2658,7 @@ class ImgVaultServiceWorker {
 
     const parts = [];
     for (const uri of segmentUris) {
-      const blob = await this.fetchImage(uri, undefined, 'https://filemoon.sx/');
+      const blob = await this.fetchImage(uri, AbortSignal.timeout(600000), 'https://filemoon.sx/');
       if (!(blob instanceof Blob) || blob.size === 0) {
         throw new Error('HLS segment fetch returned empty data');
       }
