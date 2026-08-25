@@ -31,20 +31,211 @@ const formatBytes = (bytes) => {
 // connection keeps streaming.
 const STALL_TIMEOUT_MS = 60000;
 
-/**
- * Stream a URL into a Blob while reporting download progress. Follows
- * redirects automatically (udrop direct links redirect to a download_token
- * URL that serves the actual file). Aborts only on a stall.
- * @param {string} url
- * @param {string} [referrer]
- * @param {Function} [onProgress] ({loaded, total, percent})
- * @returns {Promise<Blob>}
- */
-async function fetchVideoAsBlob(url, referrer, onProgress) {
-  const opts = {};
+// Parallel chunked download settings. udrop throttles a single long-lived
+// connection down to a fraction of its speed after the initial burst, but
+// HTTP Range requests are served at full speed per-connection. Splitting the
+// file into N concurrent range requests defeats the per-connection throttle
+// and is dramatically faster (measured ~6x on a 708 MB udrop file).
+const PARALLEL_CONNECTIONS = 6;
+const PARALLEL_MIN_SIZE = 32 * 1024 * 1024;
+const CHUNK_STALL_TIMEOUT_MS = 45000;
+const CHUNK_MAX_RETRIES = 3;
+
+const buildFetchOpts = (referrer, extra = {}) => {
+  const opts = { ...extra };
   if (typeof referrer === 'string' && /^https?:\/\//i.test(referrer)) {
     opts.referrer = referrer;
     opts.referrerPolicy = 'no-referrer-when-downgrade';
+  }
+  return opts;
+};
+
+/**
+ * Probe a URL with a tiny Range request to learn its total size, content
+ * type and whether the server honors HTTP Range (206). Follows redirects
+ * (udrop direct links redirect to a download_token URL) and returns the
+ * final URL so parallel chunk requests can hit it directly.
+ * @param {string} url
+ * @param {string} [referrer]
+ * @returns {Promise<{supportsRange:boolean,total:number,type:string,finalUrl:string,status:number}>}
+ */
+async function probeDownload(url, referrer) {
+  let resp;
+  try {
+    resp = await fetch(url, buildFetchOpts(referrer, { headers: { Range: 'bytes=0-0' } }));
+  } catch (err) {
+    return { supportsRange: false, total: 0, type: '', finalUrl: url, status: 0 };
+  }
+  const contentRange = resp.headers.get('Content-Range') || '';
+  const rangeMatch = contentRange.match(/\/(\d+)$/);
+  const total = rangeMatch ? Number(rangeMatch[1]) : 0;
+  try { await resp.body?.cancel(); } catch (_) { /* free the probe body */ }
+  return {
+    supportsRange: resp.status === 206 && total > 0,
+    total,
+    type: resp.headers.get('Content-Type') || '',
+    finalUrl: resp.url || url,
+    status: resp.status,
+  };
+}
+
+/**
+ * Stream one byte range into a Uint8Array. Aborts only on a stall (no
+ * bytes for CHUNK_STALL_TIMEOUT_MS) and counts bytes via onChunkBytes.
+ * @param {string} url
+ * @param {string} [referrer]
+ * @param {number} start
+ * @param {number} end
+ * @param {Function} [onChunkBytes]
+ * @returns {Promise<Uint8Array>}
+ */
+async function downloadRangeChunk(url, referrer, start, end, onChunkBytes) {
+  const controller = new AbortController();
+  let stallTimer;
+  const resetStall = () => {
+    if (stallTimer) clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => controller.abort(), CHUNK_STALL_TIMEOUT_MS);
+  };
+  resetStall();
+
+  let resp;
+  try {
+    resp = await fetch(url, buildFetchOpts(referrer, {
+      headers: { Range: `bytes=${start}-${end}` },
+      signal: controller.signal,
+    }));
+  } catch (err) {
+    throw Object.assign(new Error('Chunk stalled (no data).'), { stalled: true });
+  }
+  if (resp.status !== 206) {
+    throw Object.assign(new Error(`Server ignored Range (HTTP ${resp.status}).`), { rangeNotHonored: true });
+  }
+
+  const reader = resp.body.getReader();
+  const parts = [];
+  try {
+    for (;;) {
+      resetStall();
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        parts.push(value);
+        if (onChunkBytes) onChunkBytes(value.byteLength);
+      }
+    }
+  } catch (err) {
+    throw Object.assign(new Error('Chunk stalled (no data).'), { stalled: true });
+  } finally {
+    if (stallTimer) clearTimeout(stallTimer);
+    try { reader.cancel(); } catch (_) { /* already done */ }
+  }
+
+  const merged = new Uint8Array(parts.reduce((sum, part) => sum + part.byteLength, 0));
+  let offset = 0;
+  for (const part of parts) {
+    merged.set(new Uint8Array(part), offset);
+    offset += part.byteLength;
+  }
+  return merged;
+}
+
+/**
+ * Download a whole file in parallel byte-range chunks and merge them back
+ * into a single Blob. Each chunk runs its own connection with its own stall
+ * timeout and is retried independently if it stalls.
+ * @param {string} url  Final (post-redirect) URL
+ * @param {string} [referrer]
+ * @param {number} total
+ * @param {string} [type]
+ * @param {Function} [onProgress] ({loaded, total, percent})
+ * @returns {Promise<Blob>}
+ */
+async function downloadVideoParallel(url, referrer, total, type, onProgress) {
+  const connections = Math.min(
+    PARALLEL_CONNECTIONS,
+    Math.max(2, Math.floor(total / (16 * 1024 * 1024)))
+  );
+  const chunkSize = Math.ceil(total / connections);
+  const jobs = [];
+  for (let i = 0; i < connections; i += 1) {
+    const start = i * chunkSize;
+    const end = Math.min(start + chunkSize - 1, total - 1);
+    if (start >= total) break;
+    jobs.push({ index: i, start, end });
+  }
+
+  const results = new Array(jobs.length);
+  let downloadedTotal = 0;
+
+  await Promise.all(jobs.map(async (job) => {
+    let attempts = 0;
+    for (;;) {
+      attempts += 1;
+      let chunkLoaded = 0;
+      const countBytes = (n) => {
+        chunkLoaded += n;
+        downloadedTotal += n;
+        if (onProgress) {
+          onProgress({
+            loaded: downloadedTotal,
+            total,
+            percent: Math.round((downloadedTotal / total) * 100),
+          });
+        }
+      };
+      try {
+        const buffer = await downloadRangeChunk(url, referrer, job.start, job.end, countBytes);
+        results[job.index] = buffer;
+        return;
+      } catch (err) {
+        // Roll back progress counted for the failed attempt so retries
+        // don't over-count, then retry the whole chunk from its start.
+        downloadedTotal -= chunkLoaded;
+        chunkLoaded = 0;
+        if (err.rangeNotHonored) throw err;
+        if (attempts >= CHUNK_MAX_RETRIES) {
+          throw Object.assign(new Error(`Chunk ${job.index + 1} failed after ${attempts} attempts.`), { chunkFailed: true });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000 * attempts));
+      }
+    }
+  }));
+
+  const totalBytes = results.reduce((sum, buffer) => sum + buffer.byteLength, 0);
+  if (totalBytes !== total) {
+    throw new Error(`Parallel download size mismatch: got ${totalBytes} bytes, expected ${total}.`);
+  }
+  const merged = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const buffer of results) {
+    merged.set(buffer, offset);
+    offset += buffer.byteLength;
+  }
+  return new Blob([merged], { type: type || 'video/mp4' });
+}
+
+/**
+ * Stream a URL into a Blob while reporting download progress. Follows
+ * redirects automatically (udrop direct links redirect to a download_token
+ * URL that serves the actual file). For large range-capable hosts it uses
+ * parallel chunked downloads to defeat per-connection throttling; otherwise
+ * it falls back to a single stream. Either way there is no total-time cap —
+ * only stall timeouts — so any file size will complete.
+ * @param {string} url
+ * @param {string} [referrer]
+ * @param {Function} [onProgress] ({loaded, total, percent})
+ * @param {Object} [opts]
+ * @param {boolean} [opts.skipProbe]  Skip the range probe (used for small
+ *                                     HLS segments/playlists where the extra
+ *                                     round trip is pure overhead).
+ * @returns {Promise<Blob>}
+ */
+async function fetchVideoAsBlob(url, referrer, onProgress, opts = {}) {
+  if (!opts.skipProbe) {
+    const probe = await probeDownload(url, referrer);
+    if (probe.supportsRange && probe.total >= PARALLEL_MIN_SIZE) {
+      return downloadVideoParallel(probe.finalUrl, referrer, probe.total, probe.type, onProgress);
+    }
   }
 
   const controller = new AbortController();
@@ -54,11 +245,10 @@ async function fetchVideoAsBlob(url, referrer, onProgress) {
     stallTimer = setTimeout(() => controller.abort(), STALL_TIMEOUT_MS);
   };
   resetStall();
-  opts.signal = controller.signal;
 
   let resp;
   try {
-    resp = await fetch(url, opts);
+    resp = await fetch(url, buildFetchOpts(referrer, { signal: controller.signal }));
   } catch (err) {
     throw new Error('Download stalled (no data for 60s). The connection may be blocked.');
   }
@@ -98,7 +288,7 @@ async function fetchVideoAsBlob(url, referrer, onProgress) {
 }
 
 async function fetchText(url, referrer) {
-  const blob = await fetchVideoAsBlob(url, referrer);
+  const blob = await fetchVideoAsBlob(url, referrer, undefined, { skipProbe: true });
   return blob.text();
 }
 
@@ -140,7 +330,7 @@ async function downloadHlsAsVideoBlob(m3u8Url, onProgress) {
         segment: true,
       });
     }
-    const blob = await fetchVideoAsBlob(segmentUris[i], 'https://filemoon.sx/');
+    const blob = await fetchVideoAsBlob(segmentUris[i], 'https://filemoon.sx/', undefined, { skipProbe: true });
     if (!(blob instanceof Blob) || blob.size === 0) throw new Error('HLS segment fetch returned empty data');
     parts.push(await blob.arrayBuffer());
   }
