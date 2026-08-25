@@ -201,18 +201,19 @@ export function isTruthyFlag(value) {
 }
 
 export function hasAnyVideoProviderLink(item = {}) {
-  const extra = getExtraMetadata(item);
-  const videoHosts = isPlainObject(item.videoHosts)
-    ? item.videoHosts
+  const safeItem = item && typeof item === 'object' ? item : {};
+  const extra = getExtraMetadata(safeItem);
+  const videoHosts = isPlainObject(safeItem.videoHosts)
+    ? safeItem.videoHosts
     : (isPlainObject(extra.videoHosts) ? extra.videoHosts : {});
 
   return Boolean(
-    item.filemoonWatchUrl ||
-    item.filemoonDirectUrl ||
-    item.filemoonUrl ||
-    item.udropWatchUrl ||
-    item.udropDirectUrl ||
-    item.udropUrl ||
+    safeItem.filemoonWatchUrl ||
+    safeItem.filemoonDirectUrl ||
+    safeItem.filemoonUrl ||
+    safeItem.udropWatchUrl ||
+    safeItem.udropDirectUrl ||
+    safeItem.udropUrl ||
     Object.values(videoHosts).some((host) => (
       isPlainObject(host) &&
       (host.watchUrl || host.directUrl)
