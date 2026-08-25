@@ -3804,6 +3804,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return serviceWorker.handleMessage(request, sender, sendResponse);
 });
 
+// Keepalive port — the page holds a port open while awaiting a long
+// operation (e.g. the Fix retry download). Each ping resets the SW idle
+// timer so Chrome doesn't kill the worker mid-response.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === 'swKeepalive') {
+    port.onMessage.addListener((msg) => {
+      if (msg?.type === 'ping') {
+        port.postMessage({ type: 'pong' });
+      }
+    });
+  }
+});
+
 // Handle extension icon click
 chrome.action.onClicked.addListener(async (tab) => {
   const currentUrl = tab?.url || '';

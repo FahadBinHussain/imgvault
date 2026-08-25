@@ -40,6 +40,7 @@ import {
 import {
   checkFilemoonIntegrity,
 } from '../utils/filemoonApi';
+import { withServiceWorkerKeepalive } from '../utils/swKeepalive';
 
 const IMAGE_SETTING_KEYS = Array.from(
   new Set([
@@ -1375,10 +1376,12 @@ export default function ResolvePage() {
                               onClick={async () => {
                                 setFixingUdrop((prev) => ({ ...prev, [item.id]: true }));
                                 try {
-                                  await sendMessage('retryVideoHostUpload', {
-                                    imageId: item.id,
-                                    host: 'udrop',
-                                  });
+                                  await withServiceWorkerKeepalive(() =>
+                                    sendMessage('retryVideoHostUpload', {
+                                      imageId: item.id,
+                                      host: 'udrop',
+                                    })
+                                  );
                                   setNotice({ type: 'success', message: `UDrop upload fixed for "${title}".` });
                                 } catch (err) {
                                   setNotice({ type: 'error', message: `Failed to fix: ${err.message || err}` });
@@ -1752,10 +1755,12 @@ export default function ResolvePage() {
                               onClick={async () => {
                                 setFixingFilemoon((prev) => ({ ...prev, [item.id]: true }));
                                 try {
-                                  await sendMessage('retryVideoHostUpload', {
-                                    imageId: item.id,
-                                    host: 'filemoon',
-                                  });
+                                  await withServiceWorkerKeepalive(() =>
+                                    sendMessage('retryVideoHostUpload', {
+                                      imageId: item.id,
+                                      host: 'filemoon',
+                                    })
+                                  );
                                   setNotice({ type: 'success', message: `Filemoon upload fixed for "${title}".` });
                                 } catch (err) {
                                   setNotice({ type: 'error', message: `Failed to fix: ${err.message || err}` });
