@@ -85,7 +85,6 @@ export default function VaultPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
   const [activeTab, setActiveTab] = useState('noobs');
-  const [isModalAnimating, setIsModalAnimating] = useState(false);
   const [loadedImages, setLoadedImages] = useState(new Set());
   const [toast, setToast] = useState(null);
   const [restoringId, setRestoringId] = useState('');
@@ -252,10 +251,8 @@ export default function VaultPage() {
   };
 
   const openItemModal = (item) => {
-    setIsModalAnimating(true);
     setSelectedItem(item);
     setActiveTab('noobs');
-    setTimeout(() => setIsModalAnimating(false), 300);
   };
 
   // Keyboard navigation for the detail modal (mirrors gallery)
@@ -317,31 +314,6 @@ export default function VaultPage() {
   };
 
   const groupedItems = useMemo(() => groupItemsByDate(filteredItems), [filteredItems]);
-
-  const formatDetailValue = (value) => {
-    if (value === null || value === undefined || value === '') return 'N/A';
-    if (Array.isArray(value)) return value.length ? value.join(', ') : '[]';
-    if (typeof value === 'boolean') return value ? 'true' : 'false';
-    if (typeof value === 'object') return JSON.stringify(value);
-    return String(value);
-  };
-
-  const overviewKeys = useMemo(() => {
-    if (!selectedItem) return [];
-    return getOverviewEntries(selectedItem, { extraKeys: ['vaultedAt'] }).map((entry) => entry.key);
-  }, [selectedItem]);
-
-  const overviewValues = useMemo(() => {
-    if (!selectedItem) return {};
-    return Object.fromEntries(
-      getOverviewEntries(selectedItem, { extraKeys: ['vaultedAt'] }).map((entry) => [entry.key, entry.value])
-    );
-  }, [selectedItem]);
-
-  const technicalEntries = useMemo(() => {
-    if (!selectedItem) return [];
-    return getTechnicalMetadataEntries(selectedItem);
-  }, [selectedItem]);
 
   const createVault = async (event) => {
     event.preventDefault();

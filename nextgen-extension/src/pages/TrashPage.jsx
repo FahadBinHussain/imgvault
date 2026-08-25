@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Undo2, Trash2, AlertTriangle,
-  FileText, Calendar, Link2, Tag,
+  FileText, Calendar, Link2,
   File, Image as ImageIcon, Hash, Fingerprint, Video
 } from 'lucide-react';
 import { Button, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
@@ -20,10 +20,8 @@ import GalleryNavbar from '../components/GalleryNavbar';
 import { getPreferredVideoProviderLink, getVideoProviderLinks } from '../utils/videoProviderLinks';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 import {
-  getBaseFieldKeys,
   getMediaItemKind,
   getOverviewEntries,
-  getTechnicalFieldKeys,
   getTechnicalMetadataEntries,
 } from '@shared/mediaFieldRegistry.js';
 import MediaDetailModal from '../components/MediaDetailModal';
@@ -381,14 +379,6 @@ export default function TrashPage() {
   // legacy filemoonUrl-udropUrl) so every trashed item shows its URL even when
   // the top-level mirror fields are missing.
   const getOverviewEntriesFor = (item) => getOverviewEntries(item, { extraKeys: ['deletedAt'] });
-
-  const formatDetailValue = (value) => {
-    if (value === null || value === undefined || value === '') return 'N/A';
-    if (Array.isArray(value)) return value.length ? value.join(', ') : '[]';
-    if (typeof value === 'boolean') return value ? 'true' : 'false';
-    if (typeof value === 'object') return JSON.stringify(value);
-    return String(value);
-  };
 
   const formatDate = (dateString) => {
     if (!dateString) return 'Unknown';

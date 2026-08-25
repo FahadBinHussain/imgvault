@@ -8,8 +8,8 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Trash2, Download, X, FolderOpen,
-  FileText, Calendar, Cloud, Link2, Globe, AlignLeft, Tag,
-  File, Image as ImageIcon, Ruler, LockKeyhole,
+  FileText, Cloud, Link2, Tag,
+  File, Image as ImageIcon, LockKeyhole,
   Box
 } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
@@ -174,7 +174,6 @@ export default function GalleryPage() {
   const [isVaulting, setIsVaulting] = useState(false);
   const [loadedImages, setLoadedImages] = useState(new Set()); // Track loaded images for fade-in
   const [failedImages, setFailedImages] = useState(new Set()); // Track images that failed to load
-  const [isModalAnimating, setIsModalAnimating] = useState(false); // Track modal animation state
   const [navbarHeight, setNavbarHeight] = useState(0);
   
   // Timeline scrollbar refs
@@ -582,9 +581,7 @@ export default function GalleryPage() {
   );
   const retryableVideoServices = isSelectedVideo && hasRetryableVideoSource ? missingVideoServices : [];
   const displayedBaseFieldEntries = getOverviewEntries(modalImage || selectedItemForType);
-  const displayedBaseFieldKeys = displayedBaseFieldEntries.map((entry) => entry.key);
   const overviewValueByKey = Object.fromEntries(displayedBaseFieldEntries.map((entry) => [entry.key, entry.value]));
-  const countedBaseFieldCount = displayedBaseFieldKeys.length;
   const inlineActionClass = 'shrink-0 inline-flex items-center gap-1.5 rounded-full border border-base-300 bg-base-200/70 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-base-content/72 transition-all duration-200 hover:border-base-content/22 hover:bg-base-200 hover:text-base-content hover:shadow-sm active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40';
   const firebaseProjectId = firebaseConfig?.projectId || '';
   const firestoreCollectionName = modalImage?.deletedAt ? 'trash' : 'images';
@@ -756,7 +753,6 @@ export default function GalleryPage() {
   const nerdsEntries = fullImageDetails
     ? getTechnicalMetadataEntries(fullImageDetails)
     : [];
-  const nerdsVisibleFieldCount = fullImageDetails ? nerdsEntries.length : '...';
   const isResolvingModalMediaType = Boolean(
     selectedImage?.id &&
     fullImageDetails?.id !== selectedImage?.id &&
@@ -3452,15 +3448,11 @@ export default function GalleryPage() {
                     if (selectionMode) {
                       toggleImageSelection(img.id, e);
                     } else if (getMediaItemKind(img) === 'scene') {
-                      setIsModalAnimating(true);
                       setSelectedImage({ ...img, _isScene: true });
-                      setTimeout(() => setIsModalAnimating(false), 300);
                     } else {
-                      setIsModalAnimating(true);
                       setSelectedImage(img);
                       setActiveTab('noobs');
                       setFullImageDetails(null);
-                      setTimeout(() => setIsModalAnimating(false), 300);
                     }
                   }}
                 >

@@ -6,7 +6,7 @@
  * field renderers for page-specific editing.
  */
 import React, { useState, useEffect } from 'react';
-import { FileText, Database, Hash, Fingerprint } from 'lucide-react';
+import { FileText, Hash, Fingerprint } from 'lucide-react';
 import { Modal, Spinner } from './UI';
 
 const formatDetailValue = (value) => {
