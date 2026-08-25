@@ -130,6 +130,7 @@ export default function ResolvePage() {
   const [filemoonKeysConfigured, setFilemoonKeysConfigured] = useState(false);
   const [fixingFilemoon, setFixingFilemoon] = useState({});
   const [fixingUdrop, setFixingUdrop] = useState({});
+  const [fixProgress, setFixProgress] = useState({});
 
   const loadSettings = () => {
     setSettingsLoading(true);
@@ -1375,12 +1376,15 @@ export default function ResolvePage() {
                               disabled={Boolean(fixingUdrop[item.id])}
                               onClick={async () => {
                                 setFixingUdrop((prev) => ({ ...prev, [item.id]: true }));
+                                setFixProgress((prev) => ({ ...prev, [item.id]: { phase: 'download', message: 'Starting...', percent: null } }));
                                 try {
                                   const [freshItem, hostSettings] = await Promise.all([
                                     sendMessage('getImageById', { id: item.id }),
                                     sendMessage('getVideoHostSettings'),
                                   ]);
-                                  const updates = await retryVideoHostPageSide(freshItem, 'udrop', hostSettings);
+                                  const updates = await retryVideoHostPageSide(freshItem, 'udrop', hostSettings, {
+                                    onProgress: (progress) => setFixProgress((prev) => ({ ...prev, [item.id]: progress })),
+                                  });
                                   await sendMessage('updateImage', { id: item.id, ...updates });
                                   await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
                                   await runUdropIntegrityCheck();
@@ -1393,12 +1397,30 @@ export default function ResolvePage() {
                                     delete next[item.id];
                                     return next;
                                   });
+                                  setFixProgress((prev) => {
+                                    const next = { ...prev };
+                                    delete next[item.id];
+                                    return next;
+                                  });
                                 }
                               }}
                             >
                               {fixingUdrop[item.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
                               {fixingUdrop[item.id] ? 'Fixing...' : 'Fix'}
                             </Button>
+                          )}
+                          {fixProgress[item.id] && (
+                            <div className="flex flex-col gap-1.5">
+                              <div className="text-[11px] leading-tight text-base-content/70">
+                                {fixProgress[item.id].message || 'Working...'}
+                              </div>
+                              <div className="h-1.5 w-full overflow-hidden rounded-full bg-base-300">
+                                <div
+                                  className="h-full rounded-full bg-gradient-to-r from-primary-500 to-secondary-500 transition-all duration-300"
+                                  style={{ width: `${Math.max(4, fixProgress[item.id].percent ?? 100)}%` }}
+                                />
+                              </div>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1756,12 +1778,15 @@ export default function ResolvePage() {
                               disabled={Boolean(fixingFilemoon[item.id])}
                               onClick={async () => {
                                 setFixingFilemoon((prev) => ({ ...prev, [item.id]: true }));
+                                setFixProgress((prev) => ({ ...prev, [item.id]: { phase: 'download', message: 'Starting...', percent: null } }));
                                 try {
                                   const [freshItem, hostSettings] = await Promise.all([
                                     sendMessage('getImageById', { id: item.id }),
                                     sendMessage('getVideoHostSettings'),
                                   ]);
-                                  const updates = await retryVideoHostPageSide(freshItem, 'filemoon', hostSettings);
+                                  const updates = await retryVideoHostPageSide(freshItem, 'filemoon', hostSettings, {
+                                    onProgress: (progress) => setFixProgress((prev) => ({ ...prev, [item.id]: progress })),
+                                  });
                                   await sendMessage('updateImage', { id: item.id, ...updates });
                                   await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
                                   await runFilemoonIntegrityCheck();
@@ -1774,12 +1799,30 @@ export default function ResolvePage() {
                                     delete next[item.id];
                                     return next;
                                   });
+                                  setFixProgress((prev) => {
+                                    const next = { ...prev };
+                                    delete next[item.id];
+                                    return next;
+                                  });
                                 }
                               }}
                              >
                                {fixingFilemoon[item.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
                                {fixingFilemoon[item.id] ? 'Fixing...' : 'Fix'}
                              </Button>
+                           )}
+                           {fixProgress[item.id] && (
+                             <div className="flex flex-col gap-1.5">
+                               <div className="text-[11px] leading-tight text-base-content/70">
+                                 {fixProgress[item.id].message || 'Working...'}
+                               </div>
+                               <div className="h-1.5 w-full overflow-hidden rounded-full bg-base-300">
+                                 <div
+                                   className="h-full rounded-full bg-gradient-to-r from-primary-500 to-secondary-500 transition-all duration-300"
+                                   style={{ width: `${Math.max(4, fixProgress[item.id].percent ?? 100)}%` }}
+                                 />
+                               </div>
+                             </div>
                            )}
                          </div>
                        </div>

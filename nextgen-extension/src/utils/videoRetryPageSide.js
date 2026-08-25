@@ -13,15 +13,88 @@ const createVideoUploader = (service) => {
   return null;
 };
 
-async function fetchVideoAsBlob(url, referrer) {
-  const opts = { signal: AbortSignal.timeout(600000) };
+const formatBytes = (bytes) => {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${units[unit]}`;
+};
+
+// A download can legitimately take a long time (large files on slow hosts),
+// so there is NO total-time cap — only a stall timeout that aborts when no
+// bytes arrive for a while. Any file size will complete as long as the
+// connection keeps streaming.
+const STALL_TIMEOUT_MS = 60000;
+
+/**
+ * Stream a URL into a Blob while reporting download progress. Follows
+ * redirects automatically (udrop direct links redirect to a download_token
+ * URL that serves the actual file). Aborts only on a stall.
+ * @param {string} url
+ * @param {string} [referrer]
+ * @param {Function} [onProgress] ({loaded, total, percent})
+ * @returns {Promise<Blob>}
+ */
+async function fetchVideoAsBlob(url, referrer, onProgress) {
+  const opts = {};
   if (typeof referrer === 'string' && /^https?:\/\//i.test(referrer)) {
     opts.referrer = referrer;
     opts.referrerPolicy = 'no-referrer-when-downgrade';
   }
-  const resp = await fetch(url, opts);
+
+  const controller = new AbortController();
+  let stallTimer;
+  const resetStall = () => {
+    if (stallTimer) clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => controller.abort(), STALL_TIMEOUT_MS);
+  };
+  resetStall();
+  opts.signal = controller.signal;
+
+  let resp;
+  try {
+    resp = await fetch(url, opts);
+  } catch (err) {
+    throw new Error('Download stalled (no data for 60s). The connection may be blocked.');
+  }
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return resp.blob();
+
+  const total = Number(resp.headers.get('Content-Length')) || 0;
+  const reader = resp.body.getReader();
+  const chunks = [];
+  let loaded = 0;
+
+  try {
+    for (;;) {
+      resetStall();
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        loaded += value.byteLength;
+        chunks.push(value);
+      }
+      if (onProgress) {
+        onProgress({
+          loaded,
+          total,
+          percent: total > 0 ? Math.round((loaded / total) * 100) : null,
+        });
+      }
+    }
+  } catch (err) {
+    throw new Error('Download stalled (no data for 60s). The connection may be blocked.');
+  } finally {
+    if (stallTimer) clearTimeout(stallTimer);
+    try { reader.cancel(); } catch (_) { /* already done */ }
+  }
+
+  const type = resp.headers.get('Content-Type') || '';
+  return new Blob(chunks, { type });
 }
 
 async function fetchText(url, referrer) {
@@ -29,7 +102,7 @@ async function fetchText(url, referrer) {
   return blob.text();
 }
 
-async function downloadHlsAsVideoBlob(m3u8Url) {
+async function downloadHlsAsVideoBlob(m3u8Url, onProgress) {
   let playlistUrl = m3u8Url;
   let playlist = await fetchText(playlistUrl, 'https://filemoon.sx/');
 
@@ -58,8 +131,16 @@ async function downloadHlsAsVideoBlob(m3u8Url) {
   if (segmentUris.length === 0) throw new Error('HLS playlist had no segments');
 
   const parts = [];
-  for (const uri of segmentUris) {
-    const blob = await fetchVideoAsBlob(uri, 'https://filemoon.sx/');
+  for (let i = 0; i < segmentUris.length; i += 1) {
+    if (onProgress) {
+      onProgress({
+        loaded: i + 1,
+        total: segmentUris.length,
+        percent: Math.round(((i + 1) / segmentUris.length) * 100),
+        segment: true,
+      });
+    }
+    const blob = await fetchVideoAsBlob(segmentUris[i], 'https://filemoon.sx/');
     if (!(blob instanceof Blob) || blob.size === 0) throw new Error('HLS segment fetch returned empty data');
     parts.push(await blob.arrayBuffer());
   }
@@ -77,12 +158,23 @@ async function downloadHlsAsVideoBlob(m3u8Url) {
 /**
  * Page-side video retry. Runs entirely in the page/tab context (no SW
  * lifetime limits), so large video downloads can take as long as needed.
+ * Downloads are streamed (no total-time cap, only a stall timeout) and
+ * progress is reported for both the download and the upload.
  * @param {Object} item     Full item from the DB
  * @param {string} targetHost  e.g. 'filemoon'
  * @param {Object} settings Host settings (from getVideoHostSettings message)
+ * @param {Object} [options]
+ * @param {Function} [options.onProgress] ({phase, message, loaded, total, percent})
  * @returns {Promise<Object>} updates { videoHosts, watchUrl, … }
  */
-export async function retryVideoHostPageSide(item, targetHost, settings) {
+export async function retryVideoHostPageSide(item, targetHost, settings, options = {}) {
+  const { onProgress } = options;
+  const report = (phase, message, extra = {}) => {
+    if (typeof onProgress === 'function') {
+      onProgress({ phase, message, ...extra });
+    }
+  };
+
   const host = String(targetHost || '').trim().toLowerCase();
   const service = getVideoUploadService(host);
 
@@ -127,7 +219,13 @@ export async function retryVideoHostPageSide(item, targetHost, settings) {
     }
 
     try {
-      const blob = await fetchVideoAsBlob(fetchTarget, referrer);
+      report('download', `Downloading from ${new URL(fetchTarget).hostname}...`);
+      const blob = await fetchVideoAsBlob(fetchTarget, referrer, (p) => {
+        const label = p.total > 0
+          ? `Downloading ${formatBytes(p.loaded)} / ${formatBytes(p.total)}`
+          : `Downloading ${formatBytes(p.loaded)}...`;
+        report('download', label, { loaded: p.loaded, total: p.total, percent: p.percent });
+      });
       const isVideoBlob = (
         blob instanceof Blob &&
         blob.size > 0 &&
@@ -145,8 +243,8 @@ export async function retryVideoHostPageSide(item, targetHost, settings) {
       }
       fetchErrors.push(`${candidate} -> not a video (${blob?.type || 'empty'})`);
     } catch (fetchError) {
-      const isTimeout = fetchError?.name === 'AbortError' || /aborted/i.test(fetchError?.message || '');
-      fetchErrors.push(`${candidate} -> ${isTimeout ? 'timed out after 10 minutes' : fetchError.message || fetchError}`);
+      const isTimeout = fetchError?.name === 'AbortError' || /aborted|stalled/i.test(fetchError?.message || '');
+      fetchErrors.push(`${candidate} -> ${isTimeout ? 'download stalled (no data for 60s)' : fetchError.message || fetchError}`);
     }
 
     if (filemoonCode && settings.filemoonApiKey) {
@@ -155,7 +253,14 @@ export async function retryVideoHostPageSide(item, targetHost, settings) {
         if (!hlsM3u8) {
           fetchErrors.push(`${candidate} -> hls link API: no m3u8 returned`);
         } else {
-          const hlsBlob = await downloadHlsAsVideoBlob(hlsM3u8);
+          report('download', 'Downloading HLS stream...');
+          const hlsBlob = await downloadHlsAsVideoBlob(hlsM3u8, (p) => {
+            report('download', `Downloading HLS segment ${p.loaded} / ${p.total}`, {
+              loaded: p.loaded,
+              total: p.total,
+              percent: p.percent,
+            });
+          });
           if (hlsBlob && hlsBlob.size > 0) {
             videoBlob = hlsBlob;
             sourceUrl = candidate;
@@ -174,7 +279,14 @@ export async function retryVideoHostPageSide(item, targetHost, settings) {
         if (!stream || !stream.url) {
           fetchErrors.push(`${candidate} -> player flow returned no stream`);
         } else {
-          const hlsBlob = await downloadHlsAsVideoBlob(stream.url);
+          report('download', 'Downloading HLS stream...');
+          const hlsBlob = await downloadHlsAsVideoBlob(stream.url, (p) => {
+            report('download', `Downloading HLS segment ${p.loaded} / ${p.total}`, {
+              loaded: p.loaded,
+              total: p.total,
+              percent: p.percent,
+            });
+          });
           if (hlsBlob && hlsBlob.size > 0) {
             videoBlob = hlsBlob;
             sourceUrl = candidate;
@@ -197,15 +309,21 @@ export async function retryVideoHostPageSide(item, targetHost, settings) {
   const uploader = createVideoUploader(service);
   if (!uploader) throw new Error(`${service.label} uploader is not available.`);
 
-  const uploadSignal = AbortSignal.timeout(120000);
-  const result = await service.upload({
+  report('upload', `Uploading ${formatBytes(videoBlob.size)} to ${service.label}...`);
+  const result = await service.uploadWithProgress({
     uploader,
     blob: videoBlob,
     settings,
     data: { ...item, fileName },
-    signal: uploadSignal,
+    onProgress: ({ loaded, total, percent }) => {
+      const label = total > 0
+        ? `Uploading ${formatBytes(loaded)} / ${formatBytes(total)} to ${service.label}`
+        : `Uploading ${formatBytes(loaded)} to ${service.label}...`;
+      report('upload', label, { loaded, total, percent });
+    },
   });
 
+  report('save', 'Saving host URLs...');
   const mergedUpdates = mergeVideoProviderResult(item, host, result);
   return {
     videoHosts: mergedUpdates.videoHosts,
