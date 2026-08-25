@@ -40,7 +40,7 @@ import {
 import {
   checkFilemoonIntegrity,
 } from '../utils/filemoonApi';
-import { withServiceWorkerKeepalive } from '../utils/swKeepalive';
+import { retryVideoHostPageSide } from '../utils/videoRetryPageSide';
 
 const IMAGE_SETTING_KEYS = Array.from(
   new Set([
@@ -1376,12 +1376,14 @@ export default function ResolvePage() {
                               onClick={async () => {
                                 setFixingUdrop((prev) => ({ ...prev, [item.id]: true }));
                                 try {
-                                  await withServiceWorkerKeepalive(() =>
-                                    sendMessage('retryVideoHostUpload', {
-                                      imageId: item.id,
-                                      host: 'udrop',
-                                    })
-                                  );
+                                  const [freshItem, hostSettings] = await Promise.all([
+                                    sendMessage('getImageById', { id: item.id }),
+                                    sendMessage('getVideoHostSettings'),
+                                  ]);
+                                  const updates = await retryVideoHostPageSide(freshItem, 'udrop', hostSettings);
+                                  await sendMessage('updateImage', { id: item.id, ...updates });
+                                  await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
+                                  await runUdropIntegrityCheck();
                                   setNotice({ type: 'success', message: `UDrop upload fixed for "${title}".` });
                                 } catch (err) {
                                   setNotice({ type: 'error', message: `Failed to fix: ${err.message || err}` });
@@ -1755,12 +1757,14 @@ export default function ResolvePage() {
                               onClick={async () => {
                                 setFixingFilemoon((prev) => ({ ...prev, [item.id]: true }));
                                 try {
-                                  await withServiceWorkerKeepalive(() =>
-                                    sendMessage('retryVideoHostUpload', {
-                                      imageId: item.id,
-                                      host: 'filemoon',
-                                    })
-                                  );
+                                  const [freshItem, hostSettings] = await Promise.all([
+                                    sendMessage('getImageById', { id: item.id }),
+                                    sendMessage('getVideoHostSettings'),
+                                  ]);
+                                  const updates = await retryVideoHostPageSide(freshItem, 'filemoon', hostSettings);
+                                  await sendMessage('updateImage', { id: item.id, ...updates });
+                                  await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
+                                  await runFilemoonIntegrityCheck();
                                   setNotice({ type: 'success', message: `Filemoon upload fixed for "${title}".` });
                                 } catch (err) {
                                   setNotice({ type: 'error', message: `Failed to fix: ${err.message || err}` });
