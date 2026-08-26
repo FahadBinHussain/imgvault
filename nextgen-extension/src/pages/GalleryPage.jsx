@@ -1079,64 +1079,34 @@ export default function GalleryPage() {
       const opaqueName = `${Array.from(crypto.getRandomValues(new Uint8Array(16)))
         .map((b) => b.toString(16).padStart(2, '0')).join('')}.bin`;
 
-      // 2) Upload the encrypted blob to udrop as parallel chunks. udrop
-      //    throttles sustained single-connection uploads (speed drops after
-      //    ~50-200MB), but parallel connections each stay fast, so splitting
-      //    into ~20MB chunks and uploading with limited concurrency beats a
-      //    single big POST.
-      const CHUNK_SIZE = 20 * 1024 * 1024; // 20 MiB
-      const chunkCount = Math.max(1, Math.ceil(encryptedBlob.size / CHUNK_SIZE));
-      const chunks = [];
+      // 2) XHR upload the single encrypted blob with real progress
       const uploader = new UDropUploader();
-      let uploadedBytes = 0;
-      const totalBytes = encryptedBlob.size;
-
-      const uploadOne = async (index) => {
-        const start = index * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, encryptedBlob.size);
-        const part = encryptedBlob.slice(start, end);
-        const name = `${opaqueName}.part${index}`;
-        const result = await uploader.uploadWithProgress(
-          part,
-          settings.udropKey1,
-          settings.udropKey2,
-          name,
-          async ({ loaded }) => {
-            const sentThis = uploadedBytes + (loaded || 0);
-            const pct = Math.round((sentThis / totalBytes) * 100);
-            const label = `${pct}% (${formatBytes(sentThis)} / ${formatBytes(totalBytes)})`;
-            await chrome.storage.local.set({ uploadStatus: `Uploading to vault: ${label}` });
-          },
-          uploadController.signal
-        );
-        uploadedBytes += (end - start);
-        return {
-          url: result.watchUrl || result.displayUrl || result.url || '',
-          fileId: result.fileId || '',
-          size: end - start,
-        };
-      };
-
-      // limited concurrency = 4
-      const CONCURRENCY = 4;
-      let cursor = 0;
-      const worker = async () => {
-        while (cursor < chunkCount && !uploadController.signal.aborted) {
-          const idx = cursor++;
-          const res = await uploadOne(idx);
-          chunks[idx] = res;
-          const pct = Math.round((uploadedBytes / totalBytes) * 100);
-          await appendClientUploadLog(`Uploaded chunk ${idx + 1}/${chunkCount} (${pct}% total)`);
-        }
-      };
-      const workers = Array.from({ length: Math.min(CONCURRENCY, chunkCount) }, () => worker());
-      await Promise.all(workers);
+      let uploadLogPct = -10;
+      await appendClientUploadLog(`Uploading ${formatBytes(encryptedBlob.size)} encrypted blob to vault...`);
+      const result = await uploader.uploadWithProgress(
+        encryptedBlob,
+        settings.udropKey1,
+        settings.udropKey2,
+        opaqueName,
+        async ({ loaded, total, percent }) => {
+          const totalLabel = total ? formatBytes(total) : formatBytes(encryptedBlob.size);
+          const loadedLabel = formatBytes(loaded);
+          const percentLabel = percent !== null
+            ? `${percent}% (${loadedLabel} / ${totalLabel})`
+            : `${loadedLabel} sent`;
+          await chrome.storage.local.set({ uploadStatus: `Uploading to vault: ${percentLabel}` });
+          if (percent !== null && (percent - uploadLogPct >= 10 || percent === 100)) {
+            uploadLogPct = percent;
+            appendClientUploadLog(`Uploading to vault: ${percentLabel}`).catch(() => {});
+          }
+        },
+        uploadController.signal
+      );
 
       const encrypted = {
-        encryptedBlobChunks: chunks,
-        encryptedBlobUrl: chunks[0]?.url || '',
-        encryptedBlobWatchUrl: chunks[0]?.url || '',
-        encryptedBlobFileId: chunks[0]?.fileId || '',
+        encryptedBlobUrl: result.watchUrl || result.displayUrl || result.url || '',
+        encryptedBlobWatchUrl: result.watchUrl || result.displayUrl || result.url || '',
+        encryptedBlobFileId: result.fileId || '',
         encryptedMetadata,
         encryptedMimeType: blob.type || 'application/octet-stream',
         encryptedFileName: opaqueName,
