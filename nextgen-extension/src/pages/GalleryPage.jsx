@@ -1041,10 +1041,17 @@ export default function GalleryPage() {
       const fileName = uploadData.fileName || (kind === 'video' ? 'video.mp4' : 'image.jpg');
       const creationDate = uploadData.fileLastModified ? new Date(uploadData.fileLastModified).toISOString() : null;
 
-      // 1) Encrypt with chunked progress
+      // 1) Encrypt with chunked progress (log + status bar)
+      let lastLogPct = -10;
       await appendClientUploadLog(`Encrypting ${formatBytes(blob.size)}...`);
       const encryptedBlob = await encryptBlob(masterKey, blob, (p) => {
-        chrome.storage.local.set({ uploadStatus: `Encrypting ${formatBytes(blob.size)}... ${p.percent}%` }).catch(() => {});
+        const msg = `Encrypting ${formatBytes(blob.size)}... ${p.percent}%`;
+        chrome.storage.local.set({ uploadStatus: msg }).catch(() => {});
+        // log every ~10% so the output shows movement without spamming
+        if (p.percent - lastLogPct >= 10 || p.percent === 100) {
+          lastLogPct = p.percent;
+          appendClientUploadLog(msg).catch(() => {});
+        }
       });
 
       const metadata = {
@@ -1072,29 +1079,64 @@ export default function GalleryPage() {
       const opaqueName = `${Array.from(crypto.getRandomValues(new Uint8Array(16)))
         .map((b) => b.toString(16).padStart(2, '0')).join('')}.bin`;
 
-      // 2) XHR upload to udrop with real byte progress
+      // 2) Upload the encrypted blob to udrop as parallel chunks. udrop
+      //    throttles sustained single-connection uploads (speed drops after
+      //    ~50-200MB), but parallel connections each stay fast, so splitting
+      //    into ~20MB chunks and uploading with limited concurrency beats a
+      //    single big POST.
+      const CHUNK_SIZE = 20 * 1024 * 1024; // 20 MiB
+      const chunkCount = Math.max(1, Math.ceil(encryptedBlob.size / CHUNK_SIZE));
+      const chunks = [];
       const uploader = new UDropUploader();
-      const result = await uploader.uploadWithProgress(
-        encryptedBlob,
-        settings.udropKey1,
-        settings.udropKey2,
-        opaqueName,
-        async ({ loaded, total, percent }) => {
-          const totalLabel = total ? formatBytes(total) : formatBytes(encryptedBlob.size);
-          const loadedLabel = formatBytes(loaded);
-          const message = percent !== null
-            ? `Uploading to vault: ${percent}% (${loadedLabel} / ${totalLabel})`
-            : `Uploading to vault: ${loadedLabel} sent`;
-          await chrome.storage.local.set({ uploadStatus: message });
-          await appendClientUploadLog(message);
-        },
-        uploadController.signal
-      );
+      let uploadedBytes = 0;
+      const totalBytes = encryptedBlob.size;
+
+      const uploadOne = async (index) => {
+        const start = index * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, encryptedBlob.size);
+        const part = encryptedBlob.slice(start, end);
+        const name = `${opaqueName}.part${index}`;
+        const result = await uploader.uploadWithProgress(
+          part,
+          settings.udropKey1,
+          settings.udropKey2,
+          name,
+          async ({ loaded }) => {
+            const sentThis = uploadedBytes + (loaded || 0);
+            const pct = Math.round((sentThis / totalBytes) * 100);
+            const label = `${pct}% (${formatBytes(sentThis)} / ${formatBytes(totalBytes)})`;
+            await chrome.storage.local.set({ uploadStatus: `Uploading to vault: ${label}` });
+          },
+          uploadController.signal
+        );
+        uploadedBytes += (end - start);
+        return {
+          url: result.watchUrl || result.displayUrl || result.url || '',
+          fileId: result.fileId || '',
+          size: end - start,
+        };
+      };
+
+      // limited concurrency = 4
+      const CONCURRENCY = 4;
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < chunkCount && !uploadController.signal.aborted) {
+          const idx = cursor++;
+          const res = await uploadOne(idx);
+          chunks[idx] = res;
+          const pct = Math.round((uploadedBytes / totalBytes) * 100);
+          await appendClientUploadLog(`Uploaded chunk ${idx + 1}/${chunkCount} (${pct}% total)`);
+        }
+      };
+      const workers = Array.from({ length: Math.min(CONCURRENCY, chunkCount) }, () => worker());
+      await Promise.all(workers);
 
       const encrypted = {
-        encryptedBlobUrl: result.watchUrl || result.displayUrl || result.url || '',
-        encryptedBlobWatchUrl: result.watchUrl || result.displayUrl || result.url || '',
-        encryptedBlobFileId: result.fileId || '',
+        encryptedBlobChunks: chunks,
+        encryptedBlobUrl: chunks[0]?.url || '',
+        encryptedBlobWatchUrl: chunks[0]?.url || '',
+        encryptedBlobFileId: chunks[0]?.fileId || '',
         encryptedMetadata,
         encryptedMimeType: blob.type || 'application/octet-stream',
         encryptedFileName: opaqueName,
@@ -1105,7 +1147,6 @@ export default function GalleryPage() {
       const saved = await sendMessage('saveVaultedUpload', {
         uploadData,
         encrypted,
-        udropResult: result,
         blobSize: blob.size,
       });
       await appendClientUploadLog(`Encrypted vault item saved with ID: ${saved.id}`, 'success');

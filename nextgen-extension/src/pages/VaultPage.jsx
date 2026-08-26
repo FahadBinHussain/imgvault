@@ -117,6 +117,7 @@ export default function VaultPage() {
         const result = await sendMessage('vaultDecryptBlob', {
           url: selectedItem.encryptedBlobUrl,
           fileId: selectedItem.encryptedBlobFileId || '',
+          chunks: selectedItem.encryptedBlobChunks || [],
           mimeType: selectedItem.encryptedMimeType || 'application/octet-stream',
         });
         if (cancelled) return;

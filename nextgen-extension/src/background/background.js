@@ -1221,8 +1221,13 @@ class ImgVaultServiceWorker {
    * Decrypt a vaulted blob (fetched from the encrypted blob URL) and return the
    * plaintext Blob. Requires unlocked vault. Regenerates the udrop download URL
    * if the stored one is stale.
+   * @param {string} url - primary encrypted blob URL (first chunk)
+   * @param {string} mimeType
+   * @param {string} fileId
+   * @param {Array<{url:string,fileId:string,size:number}>} [chunks] - optional
+   *   full chunk list; when present, fetch all chunks in parallel and join.
    */
-  async decryptVaultBlob(url, mimeType = 'application/octet-stream', fileId = '') {
+  async decryptVaultBlob(url, mimeType = 'application/octet-stream', fileId = '', chunks = []) {
     if (!this.vaultMasterKey) {
       throw new Error('Secret Vault is locked. Unlock it before viewing encrypted items.');
     }
@@ -1231,24 +1236,36 @@ class ImgVaultServiceWorker {
     }
     const { decryptBlob } = await import('../utils/vaultCrypto.js');
 
-    let fetchUrl = url;
-    let encryptedBlob = null;
-    try {
-      const resp = await fetch(fetchUrl);
-      if (resp.ok) {
-        encryptedBlob = await resp.blob();
-      } else {
-        throw new Error(`HTTP ${resp.status}`);
+    const effectiveChunks = Array.isArray(chunks) && chunks.length > 0
+      ? chunks
+      : [{ url, fileId, size: 0 }];
+
+    const fetchOne = async (chunk, index) => {
+      let fetchUrl = chunk.url;
+      let resp;
+      try {
+        resp = await fetch(fetchUrl);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      } catch (_) {
+        const fresh = await this.resolveUdropDownloadUrl(chunk.url, chunk.fileId);
+        if (fresh && fresh !== chunk.url) {
+          resp = await fetch(fresh);
+          if (!resp.ok) throw new Error(`Failed to fetch regenerated chunk: HTTP ${resp.status}`);
+        } else {
+          throw new Error(`Failed to fetch encrypted chunk ${index} from ${chunk.url}`);
+        }
       }
-    } catch (_) {
-      const fresh = await this.resolveUdropDownloadUrl(url, fileId);
-      if (fresh && fresh !== url) {
-        const resp = await fetch(fresh);
-        if (!resp.ok) throw new Error(`Failed to fetch regenerated encrypted blob: HTTP ${resp.status}`);
-        encryptedBlob = await resp.blob();
-      } else {
-        throw new Error(`Failed to fetch encrypted blob from ${url}`);
-      }
+      return resp.blob();
+    };
+
+    let encryptedBlob;
+    if (effectiveChunks.length === 1) {
+      encryptedBlob = await fetchOne(effectiveChunks[0], 0);
+    } else {
+      const blobs = await Promise.all(effectiveChunks.map((c, i) => fetchOne(c, i)));
+      const total = blobs.reduce((n, b) => n + b.size, 0);
+      encryptedBlob = new Blob(blobs, { type: 'application/octet-stream' });
+      void total;
     }
 
     return decryptBlob(this.vaultMasterKey, encryptedBlob, mimeType);
@@ -1354,7 +1371,7 @@ class ImgVaultServiceWorker {
 
     if (current.encryptedBlobUrl && this.vaultMasterKey) {
       try {
-        const blob = await this.decryptVaultBlob(current.encryptedBlobUrl, current.encryptedMimeType, current.encryptedBlobFileId);
+        const blob = await this.decryptVaultBlob(current.encryptedBlobUrl, current.encryptedMimeType, current.encryptedBlobFileId, current.encryptedBlobChunks);
         const { decryptMetadata } = await import('../utils/vaultCrypto.js');
         const meta = await decryptMetadata(this.vaultMasterKey, current.encryptedMetadata);
         const isVideo = Boolean(meta.isVideo || current.isVideo || String(meta.fileType || '').startsWith('video/'));
@@ -1448,6 +1465,7 @@ class ImgVaultServiceWorker {
           encryptedBlobUrl: '',
           encryptedBlobWatchUrl: '',
           encryptedBlobFileId: '',
+          encryptedBlobChunks: [],
           encryptedMetadata: '',
           encryptedMimeType: '',
           encryptedFileName: '',
@@ -1542,7 +1560,7 @@ class ImgVaultServiceWorker {
         return true;
 
       case 'vaultDecryptBlob':
-        this.decryptVaultBlob(request.data?.url, request.data?.mimeType, request.data?.fileId)
+        this.decryptVaultBlob(request.data?.url, request.data?.mimeType, request.data?.fileId, request.data?.chunks)
           .then((blob) => sendResponse({ success: true, data: { blob } }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
