@@ -257,6 +257,11 @@ export default function GalleryPage() {
   const [uploadModalMetaTab, setUploadModalMetaTab] = useState('noobs');
   const [uploadHostSettings, setUploadHostSettings] = useState({});
   const [selectedUploadHostKeys, setSelectedUploadHostKeys] = useState([]);
+  const [uploadToVault, setUploadToVault] = useState(false);
+  const [vaultLockedForUpload, setVaultLockedForUpload] = useState(false);
+  const [vaultUnlockCode, setVaultUnlockCode] = useState('');
+  const [vaultUnlockError, setVaultUnlockError] = useState('');
+  const [vaultUnlocking, setVaultUnlocking] = useState(false);
   const [uploadQueue, setUploadQueue] = useState([]);
   const [uploadQueuePreviewUrls, setUploadQueuePreviewUrls] = useState([]);
   const [activeUploadQueueIndex, setActiveUploadQueueIndex] = useState(0);
@@ -1716,6 +1721,7 @@ export default function GalleryPage() {
       width: metadata?.width ?? null,
       height: metadata?.height ?? null,
       selectedHostKeys,
+      isVaulted: Boolean(uploadToVault),
     };
   };
 
@@ -1736,6 +1742,11 @@ export default function GalleryPage() {
 
   const uploadPreparedMedia = async (uploadData) => {
     assertSerializableUploadData(uploadData);
+
+    // Vaulted uploads go through the SW (encrypt → udrop), bypassing client-side XHR.
+    if (uploadData.isVaulted) {
+      return uploadImage(uploadData);
+    }
 
     if (uploadData.isVideo && uploadData.fileBlob) {
       return uploadVideoDirectly(uploadData);
@@ -1880,6 +1891,7 @@ export default function GalleryPage() {
   };
 
   const getSelectedUploadHostKeysOrWarn = () => {
+    if (uploadToVault) return [];
     const selectedHostKeys = reconcileSelectedHostKeys(selectedUploadHostKeys, configuredUploadServices);
     if (selectedHostKeys.length === 0) {
       showToast('Select at least one upload host first.', 'warning', 3000);
@@ -1955,8 +1967,40 @@ export default function GalleryPage() {
     await handleBatchUploadSubmit(false, selectedHostKeys, files, { uploadImageData, uploadMetadata, uploadPageUrl });
   };
 
+  const handleVaultUnlockSubmit = async (event) => {
+    if (event) event.preventDefault();
+    if (!vaultUnlockCode || vaultUnlocking) return;
+    setVaultUnlocking(true);
+    setVaultUnlockError('');
+    try {
+      await sendMessage('vaultUnlockWithPasscode', { passcode: vaultUnlockCode });
+      setVaultLockedForUpload(false);
+      setVaultUnlockCode('');
+      await handleUploadSubmit(false);
+    } catch (error) {
+      setVaultUnlockError(error?.message || 'Failed to unlock Secret Vault.');
+    } finally {
+      setVaultUnlocking(false);
+    }
+  };
+
   const handleUploadSubmit = async (ignoreDuplicates = false) => {
     if (!uploadImageData) return;
+
+    // Vaulted uploads need the vault unlocked. If it's locked, show the lock screen.
+    if (uploadToVault) {
+      try {
+        const status = await sendMessage('getVaultStatus');
+        if (status?.configured && !status?.unlocked) {
+          setVaultLockedForUpload(true);
+          setVaultUnlockCode('');
+          setVaultUnlockError('');
+          return;
+        }
+      } catch (_) {
+        // fall through; the SW will surface a clear error if still locked
+      }
+    }
 
     const selectedHostKeys = getSelectedUploadHostKeysOrWarn();
     if (!selectedHostKeys) return;
@@ -3791,7 +3835,7 @@ export default function GalleryPage() {
                 </button>
                 <button
                   onClick={() => handleUploadSubmit(false)}
-                  disabled={uploading || batchUploadState.active || !uploadImageData || configuredUploadServices.length === 0 || selectedUploadHostKeys.length === 0}
+                  disabled={uploading || batchUploadState.active || !uploadImageData || ((configuredUploadServices.length === 0 || selectedUploadHostKeys.length === 0) && !uploadToVault)}
                   className="px-4 py-2 rounded-[var(--radius-box)] bg-gradient-to-r from-primary-500 to-secondary-500 
                            hover:from-primary-600 hover:to-secondary-600 text-primary-content text-sm font-medium 
                            transition-all disabled:opacity-50 disabled:cursor-not-allowed
@@ -4215,18 +4259,106 @@ export default function GalleryPage() {
                 <div className="min-h-0 space-y-4 overflow-y-auto pr-2"
                      style={{ scrollbarGutter: 'stable' }}>
 
-                  <UploadHostSelector
-                    services={configuredUploadServices}
-                    selectedKeys={selectedUploadHostKeys}
-                    onChange={setSelectedUploadHostKeys}
-                    disabled={uploading}
-                    emptyMessage={
-                      uploadImageData?.isVideo
-                        ? 'No video hosts are configured. Add Filemoon or UDrop keys in Settings.'
-                        : 'No image hosts are configured. Add Pixvid or ImgBB API keys in Settings.'
-                    }
-                  />
+                  {/* Secret Vault toggle: encrypt this upload instead of sending to plaintext hosts */}
+                  {!vaultLockedForUpload && (
+                  <div className={`rounded-[var(--radius-box)] border transition-colors ${uploadToVault ? 'border-primary/40 bg-primary/5' : 'border-base-300 bg-base-200'}`}>
+                    <label className="flex cursor-pointer items-center justify-between gap-4 p-4 select-none">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <LockKeyhole className={`h-4 w-4 ${uploadToVault ? 'text-primary' : 'text-base-content/40'}`} />
+                          <p className="text-sm font-medium text-base-content">
+                            Upload to Secret Vault
+                          </p>
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-base-content/60">
+                          {uploadToVault
+                            ? 'Encrypted before upload — stored as an opaque blob on udrop. Needs the vault unlocked.'
+                            : 'Encrypts the file and stores it hidden in the Secret Vault.'}
+                        </p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={uploadToVault}
+                        onChange={(e) => setUploadToVault(e.target.checked)}
+                        disabled={uploading}
+                        className="peer sr-only"
+                      />
+                      <span
+                        aria-hidden="true"
+                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${uploadToVault ? 'bg-primary' : 'bg-base-300'}`}
+                      >
+                        <span
+                          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${uploadToVault ? 'translate-x-[22px]' : 'translate-x-0.5'}`}
+                        />
+                      </span>
+                    </label>
+                  </div>
+                  )}
+
+                  {!uploadToVault && (
+                    <UploadHostSelector
+                      services={configuredUploadServices}
+                      selectedKeys={selectedUploadHostKeys}
+                      onChange={setSelectedUploadHostKeys}
+                      disabled={uploading}
+                      emptyMessage={
+                        uploadImageData?.isVideo
+                          ? 'No video hosts are configured. Add Filemoon or UDrop keys in Settings.'
+                          : 'No image hosts are configured. Add Pixvid or ImgBB API keys in Settings.'
+                      }
+                    />
+                  )}
                   
+                  {/* Secret Vault lock screen: shown when a vaulted upload is started while locked */}
+                  {vaultLockedForUpload && (
+                    <div className="flex flex-col items-center justify-center rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-8 text-center">
+                      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-[var(--radius-box)] bg-primary/10 text-primary">
+                        <LockKeyhole className="h-7 w-7" />
+                      </div>
+                      <h3 className="text-lg font-bold text-base-content">Unlock Secret Vault</h3>
+                      <p className="mt-1 mb-5 text-sm text-base-content/60">
+                        This upload will be encrypted. Enter your vault passcode to continue.
+                      </p>
+                      <form onSubmit={handleVaultUnlockSubmit} className="w-full max-w-xs space-y-3">
+                        <input
+                          type="password"
+                          value={vaultUnlockCode}
+                          onChange={(e) => setVaultUnlockCode(e.target.value)}
+                          placeholder="Vault passcode"
+                          autoFocus
+                          disabled={vaultUnlocking}
+                          className="w-full px-4 py-3 rounded-[var(--radius-box)] bg-base-100 border border-base-300 text-base-content
+                                   placeholder-base-content/40 focus:outline-none focus:border-primary focus:ring-2
+                                   focus:ring-primary/20 transition-all"
+                        />
+                        {vaultUnlockError && (
+                          <p className="rounded-[var(--radius-box)] border border-error/20 bg-error/10 px-3 py-2 text-sm text-error">
+                            {vaultUnlockError}
+                          </p>
+                        )}
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setVaultLockedForUpload(false)}
+                            disabled={vaultUnlocking}
+                            className="flex-1 px-4 py-2.5 rounded-[var(--radius-box)] bg-base-300 hover:bg-base-content/15 text-base-content font-medium transition-colors text-sm disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={!vaultUnlockCode || vaultUnlocking}
+                            className="flex-1 px-4 py-2.5 rounded-[var(--radius-box)] bg-gradient-to-r from-primary-500 to-secondary-500
+                                     hover:from-primary-600 hover:to-secondary-600 text-primary-content text-sm font-medium
+                                     transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
+                          >
+                            {vaultUnlocking ? 'Unlocking...' : 'Unlock & Upload'}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  )}
+
                   {/* Duplicate Detection - Enhanced UI - Moved to top of right column */}
                   {duplicateData && (
                     <div className="space-y-4 p-5 rounded-[var(--radius-box)] bg-warning/10 border-2 border-warning/30">
@@ -4357,7 +4489,7 @@ export default function GalleryPage() {
                             </button>
                             <button
                               onClick={handleDuplicateUploadAnyway}
-                              disabled={uploading || batchUploadState.active || configuredUploadServices.length === 0 || selectedUploadHostKeys.length === 0}
+                              disabled={uploading || batchUploadState.active || ((configuredUploadServices.length === 0 || selectedUploadHostKeys.length === 0) && !uploadToVault)}
                               className="flex-1 px-4 py-2.5 rounded-[var(--radius-box)] bg-warning hover:brightness-95 font-medium 
                                        transition-all disabled:opacity-50 disabled:cursor-not-allowed
                                        shadow-lg hover:shadow-xl text-sm"

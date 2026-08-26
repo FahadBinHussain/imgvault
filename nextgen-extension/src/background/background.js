@@ -28,6 +28,13 @@ import {
   getVideoUploadService,
   mergeVideoProviderResult,
 } from '../utils/videoProviderLinks.js';
+import {
+  encryptBlob,
+  encryptMetadata,
+  hashVaultPasscode,
+  unwrapMasterKey,
+  createVaultConfig,
+} from '../utils/vaultCrypto.js';
 
 const NATIVE_DOWNLOAD_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 const TAB_NOT_FOCUSED_NOTIFICATION_ID = 'imgvault-native-tab-not-focused';
@@ -86,6 +93,7 @@ class ImgVaultServiceWorker {
     this.udropUploader = new UDropUploader();
     this.activeUploadController = null;
     this.activeNativeDownloadPorts = new Map();
+    this.vaultMasterKey = null;
     this.initialized = false;
     this.defaultActionIcon = {
       16: 'icons/1-16.png',
@@ -1050,6 +1058,413 @@ class ImgVaultServiceWorker {
   }
 
   /**
+   * Set the in-memory vault master key (imported from raw bytes sent by the page).
+   * Only holds while the vault is unlocked; cleared on vaultClearMasterKey.
+   */
+  async setVaultMasterKey(keyB64) {
+    if (!keyB64) {
+      this.vaultMasterKey = null;
+      return;
+    }
+    const raw = Uint8Array.from(atob(keyB64), (c) => c.charCodeAt(0));
+    this.vaultMasterKey = await crypto.subtle.importKey(
+      'raw',
+      raw,
+      { name: 'AES-GCM', length: 256 },
+      true,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  /**
+   * Vault status for the UI: configured? currently unlocked?
+   */
+  async getVaultStatus() {
+    const config = await this.storage.getVaultConfig().catch(() => null);
+    return {
+      configured: Boolean(config?.wrappedMasterKey || config?.passHash),
+      encryptionCapable: Boolean(config?.wrappedMasterKey),
+      unlocked: Boolean(this.vaultMasterKey),
+    };
+  }
+
+  /**
+   * Unlock the vault from a passcode (used by the gallery upload flow when the
+   * user turns on "Upload to Secret Vault" while the vault is locked).
+   * Verifies the passcode, unwraps the master key, holds it in memory.
+   * Returns true on success, throws a clear error otherwise.
+   */
+  async unlockVaultWithPasscode(passcode) {
+    const config = await this.storage.getVaultConfig().catch(() => null);
+    if (!config) {
+      throw new Error('Secret Vault is not set up yet. Open the Vault page to create a passcode first.');
+    }
+
+    if (config.wrappedMasterKey) {
+      const passHash = await hashVaultPasscode(passcode, config.salt);
+      if (passHash !== config.passHash) {
+        throw new Error('Wrong passcode.');
+      }
+      const masterKey = await unwrapMasterKey(config, passcode);
+      const raw = new Uint8Array(await crypto.subtle.exportKey('raw', masterKey));
+      await this.setVaultMasterKey(btoa(String.fromCharCode(...raw)));
+      return true;
+    }
+
+    // Legacy vault (no wrapped key yet): verify passcode and upgrade it in place.
+    const passHash = await hashVaultPasscode(passcode, config.salt);
+    if (passHash !== config.passHash) {
+      throw new Error('Wrong passcode.');
+    }
+    const upgraded = await createVaultConfig(passcode);
+    const newConfig = {
+      ...config,
+      kdfSalt: upgraded.kdfSalt,
+      kdfIterations: upgraded.kdfIterations,
+      wrappedMasterKey: upgraded.wrappedMasterKey,
+      vaultVersion: upgraded.vaultVersion,
+    };
+    const masterKey = await unwrapMasterKey(newConfig, passcode);
+    const raw = new Uint8Array(await crypto.subtle.exportKey('raw', masterKey));
+    await this.setVaultMasterKey(btoa(String.fromCharCode(...raw)));
+    await this.storage.saveVaultConfig(newConfig);
+    return true;
+  }
+
+  /**
+   * Encrypt a media blob for a vaulted item and upload it to udrop as a flat
+   * opaque blob. Requires the vault to be unlocked (master key in memory).
+   * @returns {Promise<{encryptedBlobUrl:string, encryptedBlobFileId:string, encryptedMetadata:string, encryptedMimeType:string, encryptedFileName:string}>}
+   */
+   async encryptAndUploadVaultedBlob(blob, metadata = {}, onProgress) {
+    if (!this.vaultMasterKey) {
+      throw new Error('Secret Vault is locked. Unlock it before saving encrypted items.');
+    }
+
+    if (typeof onProgress === 'function') {
+      onProgress({ loaded: 0, total: 1, percent: 0, stage: 'encrypt' });
+    }
+
+    const encryptedBlob = await encryptBlob(this.vaultMasterKey, blob, (p) => {
+      if (typeof onProgress === 'function') {
+        onProgress({ ...p, stage: 'encrypt' });
+      }
+    });
+    const encryptedMetadata = await encryptMetadata(this.vaultMasterKey, metadata);
+
+    const settings = await chrome.storage.sync.get(['udropKey1', 'udropKey2']);
+    if (!settings.udropKey1 || !settings.udropKey2) {
+      throw new Error('UDrop keys are not configured. Encrypted vault items need a UDrop account.');
+    }
+
+    if (typeof onProgress === 'function') {
+      onProgress({ loaded: 0, total: 1, percent: 50, stage: 'upload' });
+    }
+
+    // NOTE: must use the fetch-based upload() here — XHR is not available in
+    // the MV3 service worker context (uploadWithProgress uses XMLHttpRequest).
+    const uploader = new UDropUploader();
+    const opaqueName = `${Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map((b) => b.toString(16).padStart(2, '0')).join('')}.bin`;
+    const result = await uploader.upload(encryptedBlob, settings.udropKey1, settings.udropKey2, opaqueName);
+
+    if (typeof onProgress === 'function') {
+      onProgress({ loaded: 1, total: 1, percent: 95, stage: 'saving' });
+    }
+
+    return {
+      // Durable short URL (watchUrl/displayUrl) as the primary blob URL; the
+      // signed direct download_url can expire, so decrypt always regenerates it
+      // from encryptedBlobFileId when the stored URL 404s.
+      encryptedBlobUrl: result.watchUrl || result.displayUrl || result.url || '',
+      encryptedBlobWatchUrl: result.watchUrl || result.displayUrl || result.url || '',
+      encryptedBlobFileId: result.fileId || '',
+      encryptedMetadata,
+      encryptedMimeType: blob.type || 'application/octet-stream',
+      encryptedFileName: opaqueName,
+    };
+  }
+
+  /**
+   * Resolve a fresh, unexpired udrop download URL for a file id.
+   * Falls back to the stored URL if regeneration fails.
+   */
+  async resolveUdropDownloadUrl(url, fileId) {
+    if (!fileId) return url;
+    try {
+      const settings = await chrome.storage.sync.get(['udropKey1', 'udropKey2']);
+      if (!settings.udropKey1 || !settings.udropKey2) return url;
+      const uploader = new UDropUploader();
+      const auth = await uploader.authorize(settings.udropKey1, settings.udropKey2);
+      const formData = new FormData();
+      formData.append('access_token', auth.access_token);
+      formData.append('account_id', auth.account_id);
+      formData.append('file_id', String(fileId));
+      const resp = await fetch('https://www.udrop.com/api/v2/file/download', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!resp.ok) return url;
+      const result = await resp.json();
+      if (result._status === 'success' && result.data?.download_url) {
+        return result.data.download_url;
+      }
+    } catch (err) {
+      console.warn('[Vault] udrop download URL regeneration failed:', err.message);
+    }
+    return url;
+  }
+
+  /**
+   * Decrypt a vaulted blob (fetched from the encrypted blob URL) and return the
+   * plaintext Blob. Requires unlocked vault. Regenerates the udrop download URL
+   * if the stored one is stale.
+   */
+  async decryptVaultBlob(url, mimeType = 'application/octet-stream', fileId = '') {
+    if (!this.vaultMasterKey) {
+      throw new Error('Secret Vault is locked. Unlock it before viewing encrypted items.');
+    }
+    if (!url) {
+      throw new Error('Encrypted item has no blob URL.');
+    }
+    const { decryptBlob } = await import('../utils/vaultCrypto.js');
+
+    let fetchUrl = url;
+    let encryptedBlob = null;
+    try {
+      const resp = await fetch(fetchUrl);
+      if (resp.ok) {
+        encryptedBlob = await resp.blob();
+      } else {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+    } catch (_) {
+      const fresh = await this.resolveUdropDownloadUrl(url, fileId);
+      if (fresh && fresh !== url) {
+        const resp = await fetch(fresh);
+        if (!resp.ok) throw new Error(`Failed to fetch regenerated encrypted blob: HTTP ${resp.status}`);
+        encryptedBlob = await resp.blob();
+      } else {
+        throw new Error(`Failed to fetch encrypted blob from ${url}`);
+      }
+    }
+
+    return decryptBlob(this.vaultMasterKey, encryptedBlob, mimeType);
+  }
+
+  /**
+   * Move an item to the Secret Vault.
+   * - Encrypted path (vault unlocked): fetch original blob from its current
+   *   provider, encrypt, re-upload as flat udrop blob, update the row with the
+   *   encrypted fields, and blank the plaintext provider URLs.
+   * - Legacy path (vault locked / no config): keep the existing flag-only
+   *   behavior (hidden but unencrypted) so pre-existing flows keep working.
+   */
+  async moveItemToVault(id) {
+    const current = await this.storage.getImageById(id);
+    if (!current) {
+      throw new Error('Item not found');
+    }
+    if (this.storage.isVaultedItem(current)) {
+      return true;
+    }
+
+    // Encrypted path: vault unlocked.
+    if (this.vaultMasterKey) {
+      try {
+        const providerLinks = current.imageHosts || current.videoHosts || {};
+        const isVideo = current.isVideo || String(current.fileType || '').startsWith('video/');
+        const sourceUrl = isVideo
+          ? (current.udropDirectUrl || current.filemoonDirectUrl || current.udropWatchUrl || '')
+          : (current.imgbbUrl || current.imgbbThumbUrl || current.pixvidUrl || current.sourceImageUrl || '');
+
+        if (!sourceUrl) {
+          throw new Error('No source URL available to encrypt this item.');
+        }
+
+        const blob = await this.fetchImage(sourceUrl, AbortSignal.timeout(60000), current.sourcePageUrl);
+
+        const encrypted = await this.encryptAndUploadVaultedBlob(blob, {
+          kind: current.kind || (isVideo ? 'video' : 'image'),
+          isVideo,
+          pageTitle: current.pageTitle || '',
+          description: current.description || '',
+          tags: Array.isArray(current.tags) ? current.tags : [],
+          fileName: current.fileName || '',
+          fileType: current.fileType || blob.type || '',
+          sourceImageUrl: current.sourceImageUrl || '',
+          sourcePageUrl: current.sourcePageUrl || '',
+          creationDate: current.creationDate || null,
+          width: current.width || null,
+          height: current.height || null,
+          duration: current.duration || null,
+        });
+
+        await this.storage.updateImage(id, {
+          isVaulted: true,
+          vaultMode: 'hidden',
+          vaultedAt: new Date().toISOString(),
+          ...encrypted,
+          pixvidUrl: '',
+          pixvidDeleteUrl: '',
+          imgbbUrl: '',
+          imgbbDeleteUrl: '',
+          imgbbThumbUrl: '',
+          filemoonWatchUrl: '',
+          filemoonDirectUrl: '',
+          udropWatchUrl: '',
+          udropDirectUrl: '',
+          sourceImageUrl: '',
+          imageHosts: null,
+          videoHosts: null,
+        });
+
+        if (current.collectionId) {
+          await this.storage.incrementCollectionCount(current.collectionId, -1);
+        }
+        return true;
+      } catch (error) {
+        console.error('[Vault] Encrypted move failed, falling back to legacy flag-only:', error.message);
+        // fall through to legacy path
+      }
+    }
+
+    // Vault has encryption support but is locked → tell the user.
+    const vaultConfig = await this.storage.getVaultConfig().catch(() => null);
+    if (vaultConfig?.wrappedMasterKey && !this.vaultMasterKey) {
+      throw new Error('Secret Vault is locked. Unlock it first so this item can be encrypted.');
+    }
+    // Legacy vault (no wrapping) or no vault → plain flag-only move is fine.
+
+    return this.storage.moveToVault(id);
+  }
+
+  /**
+   * Restore an item from the Secret Vault.
+   * - Encrypted path: decrypt the blob, re-upload through the normal providers,
+   *   and un-vault. Falls back to legacy flag-only restore when unencrypted.
+   */
+  async restoreFromVault(id) {
+    const current = await this.storage.getImageById(id);
+    if (!current) {
+      throw new Error('Vault item not found');
+    }
+
+    if (current.encryptedBlobUrl && this.vaultMasterKey) {
+      try {
+        const blob = await this.decryptVaultBlob(current.encryptedBlobUrl, current.encryptedMimeType, current.encryptedBlobFileId);
+        const { decryptMetadata } = await import('../utils/vaultCrypto.js');
+        const meta = await decryptMetadata(this.vaultMasterKey, current.encryptedMetadata);
+        const isVideo = Boolean(meta.isVideo || current.isVideo || String(meta.fileType || '').startsWith('video/'));
+        const fileName = meta.fileName || current.encryptedFileName || (isVideo ? 'video.mp4' : 'image.jpg');
+
+        let restored = {
+          pageTitle: meta.pageTitle || '',
+          description: meta.description || '',
+          tags: Array.isArray(meta.tags) ? meta.tags : [],
+          fileName,
+          fileType: meta.fileType || blob.type || '',
+          sourceImageUrl: meta.sourceImageUrl || '',
+          sourcePageUrl: meta.sourcePageUrl || '',
+          creationDate: meta.creationDate || null,
+          width: meta.width || null,
+          height: meta.height || null,
+          duration: meta.duration || null,
+        };
+
+        if (isVideo) {
+          const settings = await this.getMergedVideoHostSettings();
+          const configured = getConfiguredVideoUploadServices(settings);
+          const selected = filterUploadServicesByKeys(configured, current.selectedHostKeys || null);
+          const services = selected.length > 0 ? selected : configured;
+          if (services.length === 0) {
+            throw new Error('No video host configured to restore into.');
+          }
+          const uploadResults = {};
+          const errors = [];
+          for (const service of services) {
+            const uploader = this[service.uploaderKey];
+            if (!uploader) continue;
+            try {
+              const result = await service.upload({
+                uploader,
+                blob,
+                settings,
+                data: { ...current, fileName },
+              });
+              uploadResults[service.key] = result;
+            } catch (err) {
+              errors.push(`${service.label}: ${err.message || String(err)}`);
+            }
+          }
+          if (Object.keys(uploadResults).length === 0) {
+            throw new Error(`Restore upload failed. ${errors.join(' | ')}`);
+          }
+          for (const [providerKey, result] of Object.entries(uploadResults)) {
+            restored = mergeVideoProviderResult(restored, providerKey, result);
+          }
+          restored.isVideo = true;
+        } else {
+          const settings = await chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey']);
+          const configured = getConfiguredImageUploadServices(settings);
+          const selected = filterUploadServicesByKeys(configured, current.selectedHostKeys || null);
+          const services = selected.length > 0 ? selected : configured;
+          if (services.length === 0) {
+            throw new Error('No image host configured to restore into.');
+          }
+          const uploadResults = [];
+          for (const service of services) {
+            const uploader = this[service.uploaderKey];
+            if (!uploader) continue;
+            try {
+              const result = await service.upload({
+                uploader,
+                blob,
+                settings,
+                data: { ...current, imageUrl: current.sourcePageUrl },
+              });
+              uploadResults.push({ type: service.key, ...result });
+            } catch (err) {
+              console.warn(`${service.label} restore failed:`, err.message);
+            }
+          }
+          const successful = uploadResults.filter((r) => r && !r.error && r.url);
+          if (successful.length === 0) {
+            throw new Error('Restore upload failed on all image hosts.');
+          }
+          for (const result of successful) {
+            const service = getImageUploadService(result.type);
+            restored = mergeImageProviderResult(restored, service?.key || result.type, result);
+          }
+        }
+
+        await this.storage.updateImage(id, {
+          ...restored,
+          isVaulted: false,
+          vaultMode: '',
+          vaultedAt: '',
+          encryptedBlobUrl: '',
+          encryptedBlobWatchUrl: '',
+          encryptedBlobFileId: '',
+          encryptedMetadata: '',
+          encryptedMimeType: '',
+          encryptedFileName: '',
+        });
+
+        if (current.collectionId) {
+          await this.storage.incrementCollectionCount(current.collectionId, 1);
+        }
+        return true;
+      } catch (error) {
+        console.error('[Vault] Encrypted restore failed, falling back to legacy flag-only:', error.message);
+        // fall through to legacy restore
+      }
+    }
+
+    return this.storage.restoreFromVault(id);
+  }
+
+  /**
    * Handle runtime messages
    * @param {Object} request - Message request
    * @param {chrome.runtime.MessageSender} sender - Message sender
@@ -1101,6 +1516,35 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'vaultSetMasterKey':
+        this.setVaultMasterKey(request.data?.keyB64)
+          .then(() => sendResponse({ success: true, data: null }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'vaultClearMasterKey':
+        this.vaultMasterKey = null;
+        sendResponse({ success: true, data: null });
+        return false;
+
+      case 'getVaultStatus':
+        this.getVaultStatus()
+          .then((status) => sendResponse({ success: true, data: status }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'vaultUnlockWithPasscode':
+        this.unlockVaultWithPasscode(request.data?.passcode)
+          .then(() => sendResponse({ success: true, data: null }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'vaultDecryptBlob':
+        this.decryptVaultBlob(request.data?.url, request.data?.mimeType, request.data?.fileId)
+          .then((blob) => sendResponse({ success: true, data: { blob } }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'getImageById':
         this.storage.getImageById(request.data.id)
           .then(image => sendResponse({ success: true, data: image }))
@@ -1126,13 +1570,13 @@ class ImgVaultServiceWorker {
         return true;
 
       case 'moveToVault':
-        this.storage.moveToVault(request.data?.id || request.id)
+        this.moveItemToVault(request.data?.id || request.id)
           .then(() => sendResponse({ success: true, data: null }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
       case 'restoreFromVault':
-        this.storage.restoreFromVault(request.data?.id || request.id)
+        this.restoreFromVault(request.data?.id || request.id)
           .then(() => sendResponse({ success: true, data: null }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
@@ -1894,6 +2338,101 @@ class ImgVaultServiceWorker {
   }
 
   /**
+   * Encrypted vaulted upload: fetch blob, encrypt, upload flat opaque blob to
+   * udrop, save the item with encrypted metadata + encrypted blob URL and
+   * isVaulted set. No plaintext metadata or provider URLs are stored.
+   * @param {Object} data
+   * @param {'image'|'video'} kind
+   * @returns {Promise<Object>} saved item
+   */
+  async handleVaultedUpload(data, kind) {
+    const uploadController = new AbortController();
+    this.activeUploadController = uploadController;
+
+    try {
+      await chrome.storage.local.set({ uploadStatusLogs: [] });
+
+      if (!this.vaultMasterKey) {
+        throw new Error('Secret Vault is locked. Unlock it before saving encrypted items.');
+      }
+
+      await this.updateStatusWithLog('🔒 Fetching media for Secret Vault...');
+
+      const source = data.fileBlob instanceof Blob ? data.fileBlob : data.imageUrl;
+      const blob = await this.fetchImage(source, uploadController.signal, data.pageUrl);
+      if (!(blob instanceof Blob) || blob.size <= 0) {
+        throw new Error('Media payload is empty. Please reload the file and try again.');
+      }
+
+      const fileName = this.extractFileName(data) || (kind === 'video' ? 'video.mp4' : 'image.jpg');
+      const creationDate = data.fileLastModified ? new Date(data.fileLastModified).toISOString() : null;
+
+      const metadata = {
+        kind,
+        isVideo: kind === 'video',
+        pageTitle: data.pageTitle || '',
+        description: data.description || '',
+        tags: Array.isArray(data.tags) ? data.tags : [],
+        fileName,
+        fileType: data.fileMimeType || data.fileType || blob.type || '',
+        sourceImageUrl: data.originalSourceUrl || '',
+        sourcePageUrl: data.pageUrl || '',
+        creationDate,
+        width: Number.isFinite(data.width) ? data.width : null,
+        height: Number.isFinite(data.height) ? data.height : null,
+        duration: kind === 'video' && Number.isFinite(data.duration) ? data.duration : null,
+      };
+
+      const encrypted = await this.encryptAndUploadVaultedBlob(blob, metadata, (progress) => {
+        if (progress.stage === 'encrypt') {
+          this.updateStatusWithLog(`🔒 Encrypting ${this.formatBytes(blob.size)}... ${progress.percent}%`)
+            .catch(() => {});
+        } else if (progress.stage === 'upload') {
+          this.updateStatusWithLog(`🔒 Uploading encrypted blob to udrop (${this.formatBytes(blob.size)})...`)
+            .catch(() => {});
+        } else if (progress.stage === 'saving') {
+          this.updateStatusWithLog('🔒 Saving encrypted item...')
+            .catch(() => {});
+        }
+      });
+
+      const mediaMetadata = {
+        kind,
+        isVideo: kind === 'video',
+        pageTitle: '',   // kept blank in plaintext; lives in encryptedMetadata
+        description: '',
+        tags: [],
+        collectionId: data.collectionId || null,
+        fileName: encrypted.encryptedFileName,
+        fileSize: blob.size,
+        fileType: 'application/octet-stream',
+        fileTypeSource: 'Encrypted vault item',
+        creationDate,
+        creationDateSource: data.fileLastModified ? 'OS lastModified' : 'Current timestamp',
+        internalAddedTimestamp: new Date().toISOString(),
+        isVaulted: true,
+        vaultMode: 'hidden',
+        vaultedAt: new Date().toISOString(),
+        ...encrypted,
+      };
+
+      const sanitized = sanitizeForNeon(mediaMetadata);
+      const savedId = await this.storage.saveImage(sanitized);
+      await this.updateStatusWithLog('🔒 Encrypted item saved to Secret Vault.', 'success');
+
+      await this.archiveUploadLogRun('success', 'Encrypted vault upload completed.');
+
+      return { id: savedId, ...mediaMetadata };
+    } catch (error) {
+      console.error('Vaulted upload error:', error);
+      await this.archiveUploadLogRun('error', error.message || 'Encrypted vault upload failed.');
+      throw error;
+    } finally {
+      this.activeUploadController = null;
+    }
+  }
+
+  /**
    * Handle image upload
    * @param {ImageData} data - Image data to upload
    * @returns {Promise<Object>} Upload result
@@ -1902,6 +2441,11 @@ class ImgVaultServiceWorker {
     // Check if it's a video upload
     if (data.isVideo) {
       return this.handleVideoUpload(data);
+    }
+
+    // Encrypted vaulted upload path: skip pixvid/imgbb, store flat encrypted blob.
+    if (data.isVaulted) {
+      return this.handleVaultedUpload(data, 'image');
     }
 
     const uploadController = new AbortController();
@@ -2166,6 +2710,12 @@ class ImgVaultServiceWorker {
   async handleVideoUpload(data) {
     try {
       await chrome.storage.local.set({ uploadStatusLogs: [] });
+
+      // Encrypted vaulted upload path: skip filemoon/udrop, store flat encrypted blob.
+      if (data.isVaulted) {
+        return this.handleVaultedUpload(data, 'video');
+      }
+
       // Get API keys from storage
       const settings = await this.getMergedVideoHostSettings();
       

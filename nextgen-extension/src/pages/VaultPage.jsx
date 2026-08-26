@@ -33,6 +33,17 @@ import {
   getTechnicalMetadataEntries,
 } from '@shared/mediaFieldRegistry.js';
 import MediaDetailModal from '../components/MediaDetailModal';
+import {
+  createVaultConfig,
+  unwrapMasterKey,
+  rewrapMasterKey,
+  decryptMetadata,
+} from '../utils/vaultCrypto.js';
+import {
+  getVaultMasterKey,
+  setVaultMasterKey,
+  clearVaultMasterKey,
+} from '../utils/vaultSession.js';
 
 const VAULT_CONFIG_KEY = 'secretVaultConfig';
 const VAULT_SESSION_KEY = 'imgvault-vault-unlocked';
@@ -90,6 +101,39 @@ export default function VaultPage() {
   const [restoringId, setRestoringId] = useState('');
   const [deletingId, setDeletingId] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [decryptedUrls, setDecryptedUrls] = useState({});
+
+  // Decrypt blob on demand when an encrypted item is selected.
+  useEffect(() => {
+    setDecryptedUrls((prev) => { Object.values(prev).forEach(URL.revokeObjectURL); return {}; });
+    if (!selectedItem?.encryptedBlobUrl || !selectedItem?.id) return;
+    const masterKey = getVaultMasterKey();
+    if (!masterKey) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        // Route through SW message so the SW can regenerate a stale udrop
+        // download URL from the stored fileId (the SW has the udrop API keys).
+        const result = await sendMessage('vaultDecryptBlob', {
+          url: selectedItem.encryptedBlobUrl,
+          fileId: selectedItem.encryptedBlobFileId || '',
+          mimeType: selectedItem.encryptedMimeType || 'application/octet-stream',
+        });
+        if (cancelled) return;
+        if (!result.success || !result.data?.blob) throw new Error(result.error || 'Decrypt failed');
+        const url = URL.createObjectURL(result.data.blob);
+        if (!cancelled) setDecryptedUrls((prev) => ({ ...prev, [selectedItem.id]: url }));
+      } catch (e) {
+        console.warn('[Vault] decrypt blob failed:', e.message);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedItem?.id, selectedItem?.encryptedBlobUrl]);
+
+  // Revoke object URLs on lock.
+  useEffect(() => {
+    return () => { Object.values(decryptedUrls).forEach(URL.revokeObjectURL); };
+  }, []);
 
   const showToast = (message, type = 'info', duration = 3000) => {
     setToast({ message, type });
@@ -103,7 +147,24 @@ export default function VaultPage() {
     setLoading(true);
     try {
       const items = await sendMessage('getVaultImages');
-      setVaultItems(items || []);
+      // Decrypt metadata for encrypted items so the grid can show titles/tags.
+      // Blob content stays encrypted until the detail view decrypts on demand.
+      const masterKey = getVaultMasterKey();
+      const enriched = await Promise.all(
+        (items || []).map(async (item) => {
+          if (item.encryptedMetadata && masterKey) {
+            try {
+              const meta = await decryptMetadata(masterKey, item.encryptedMetadata);
+              return { ...item, _decryptedMeta: meta };
+            } catch (e) {
+              console.warn('[Vault] metadata decrypt failed for', item.id, e.message);
+              return item;
+            }
+          }
+          return item;
+        })
+      );
+      setVaultItems(enriched);
     } catch (error) {
       showToast(`Failed to load Secret Vault: ${error.message || String(error)}`, 'error', 5000);
       setVaultItems([]);
@@ -170,14 +231,17 @@ export default function VaultPage() {
   const filteredItems = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return vaultItems;
-    return vaultItems.filter((item) => (
-      item.pageTitle?.toLowerCase().includes(query) ||
-      item.description?.toLowerCase().includes(query) ||
-      item.fileName?.toLowerCase().includes(query) ||
-      item.sourcePageUrl?.toLowerCase().includes(query) ||
-      item.linkUrl?.toLowerCase().includes(query) ||
-      item.tags?.some((tag) => String(tag).toLowerCase().includes(query))
-    ));
+    return vaultItems.filter((item) => {
+      const meta = item._decryptedMeta || {};
+      return (
+        (item.pageTitle || meta.pageTitle || '').toLowerCase().includes(query) ||
+        (item.description || meta.description || '').toLowerCase().includes(query) ||
+        (item.fileName || '').toLowerCase().includes(query) ||
+        (item.sourcePageUrl || meta.sourcePageUrl || '').toLowerCase().includes(query) ||
+        item.linkUrl?.toLowerCase().includes(query) ||
+        (item.tags || meta.tags || []).some((tag) => String(tag).toLowerCase().includes(query))
+      );
+    });
   }, [searchQuery, vaultItems]);
 
   const isLinkItem = (item) => getMediaItemKind(item) === 'link';
@@ -328,15 +392,7 @@ export default function VaultPage() {
       return;
     }
 
-    const salt = makeSalt();
-    const passHash = await hashVaultPasscode(passcode, salt);
-    const config = {
-      salt,
-      passHash,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      mode: 'hidden',
-    };
+    const config = await createVaultConfig(passcode);
 
     await saveLocalVaultConfig(config);
     try {
@@ -345,11 +401,47 @@ export default function VaultPage() {
       console.warn('Could not sync vault config to backend:', error);
       showToast('Vault created locally, but backend sync failed. Check your database settings.', 'warning', 6000);
     }
-    sessionStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ passHash, unlockedAt: Date.now() }));
+    // Push the master key to the SW so encrypted uploads work from this session.
+    await unlockWithPasscode(passcode, config);
+    sessionStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ passHash: config.passHash, unlockedAt: Date.now() }));
     setVaultConfig(config);
     setUnlocked(true);
     setPasscode('');
     setConfirmPasscode('');
+  };
+
+  const unlockWithPasscode = async (passcode, config) => {
+    try {
+      let effectiveConfig = config;
+      let masterKey;
+      try {
+        masterKey = await unwrapMasterKey(config, passcode);
+      } catch (e) {
+        // Legacy vault (salt+passHash only, no wrapped key) → upgrade by
+        // generating a master key + wrapper under the same passcode.
+        const upgraded = await createVaultConfig(passcode);
+        effectiveConfig = {
+          ...config,
+          kdfSalt: upgraded.kdfSalt,
+          kdfIterations: upgraded.kdfIterations,
+          wrappedMasterKey: upgraded.wrappedMasterKey,
+          vaultVersion: upgraded.vaultVersion,
+        };
+        masterKey = await unwrapMasterKey(effectiveConfig, passcode);
+        try {
+          await sendMessage('saveVaultConfig', { config: effectiveConfig });
+        } catch (_) {}
+        await saveLocalVaultConfig(effectiveConfig);
+      }
+      setVaultMasterKey(masterKey);
+      const raw = new Uint8Array(await crypto.subtle.exportKey('raw', masterKey));
+      const keyB64 = btoa(String.fromCharCode(...raw));
+      await sendMessage('vaultSetMasterKey', { keyB64 });
+      return true;
+    } catch (error) {
+      console.warn('Vault master key not available for encryption:', error.message);
+      return false;
+    }
   };
 
   const unlockVault = async (event) => {
@@ -363,6 +455,7 @@ export default function VaultPage() {
       return;
     }
 
+    await unlockWithPasscode(passcode, vaultConfig);
     sessionStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ passHash, unlockedAt: Date.now() }));
     setUnlocked(true);
     setPasscode('');
@@ -392,21 +485,12 @@ export default function VaultPage() {
 
     setChangingPassword(true);
     try {
-      const salt = makeSalt();
-      const passHash = await hashVaultPasscode(newPassword, salt);
-      const updatedAt = new Date().toISOString();
-      const config = {
-        ...vaultConfig,
-        salt,
-        passHash,
-        mode: vaultConfig.mode || 'hidden',
-        updatedAt,
-        passcodeUpdatedAt: updatedAt,
-      };
+      const config = await rewrapMasterKey(vaultConfig, currentPassword, newPassword);
 
       await sendMessage('saveVaultConfig', { config });
       await saveLocalVaultConfig(config);
-      sessionStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ passHash, unlockedAt: Date.now() }));
+      await unlockWithPasscode(newPassword, config);
+      sessionStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ passHash: config.passHash, unlockedAt: Date.now() }));
       setVaultConfig(config);
       setShowChangePassword(false);
       setCurrentPassword('');
@@ -422,6 +506,10 @@ export default function VaultPage() {
 
   const lockVault = () => {
     sessionStorage.removeItem(VAULT_SESSION_KEY);
+    clearVaultMasterKey();
+    sendMessage('vaultClearMasterKey').catch(() => {});
+    Object.values(decryptedUrls).forEach(URL.revokeObjectURL);
+    setDecryptedUrls({});
     setUnlocked(false);
     setSelectedItem(null);
     setVaultItems([]);
@@ -557,6 +645,36 @@ export default function VaultPage() {
 
   const renderVaultMedia = (item, { isModalAnimating }) => {
     const animCls = isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100';
+    const encryptedUrl = item?.id ? decryptedUrls[item.id] : null;
+    const isEncrypted = Boolean(item?.encryptedBlobUrl);
+    if (isEncrypted) {
+      const isVideo = Boolean(item.isVideo || item._decryptedMeta?.isVideo || String(item.encryptedMimeType || '').startsWith('video/'));
+      if (encryptedUrl) {
+        return isVideo ? (
+          <video
+            src={encryptedUrl}
+            className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain transition-all duration-700 ease-out ${animCls}`}
+            controls
+            preload="metadata"
+            playsInline
+          />
+        ) : (
+          <img
+            src={encryptedUrl}
+            alt={item._decryptedMeta?.pageTitle || item.fileName || 'Vault item'}
+            className={`max-w-full max-h-full object-contain rounded-[var(--radius-box)] shadow-2xl relative z-10 transition-all duration-700 ease-out hover:scale-[1.02] hover:shadow-primary/30 ${animCls}`}
+          />
+        );
+      }
+      return (
+        <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 flex items-center justify-center bg-base-200 transition-all duration-700 ease-out ${animCls}`}>
+          <div className="text-center text-base-content/50">
+            <LockKeyhole className="mx-auto mb-3 h-12 w-12" />
+            <p className="text-sm">Decrypting item...</p>
+          </div>
+        </div>
+      );
+    }
     if (isLinkItem(item)) {
       return (
         <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 overflow-hidden border border-base-300 bg-base-100 transition-all duration-700 ease-out ${animCls}`}>
@@ -739,6 +857,12 @@ export default function VaultPage() {
                         />
 
                         <div className="g-card">
+                          {item.encryptedBlobUrl ? (
+                            <div className="relative w-full aspect-video flex items-center justify-center" style={{ background: 'var(--color-base-200)', color: 'oklch(from var(--color-base-content) l c h / 0.4)' }}>
+                              <LockKeyhole className="h-10 w-10" />
+                            </div>
+                          ) : (
+                          <>
                           {!loadedImages.has(item.id) && kind === 'Image' && (
                             <div className="absolute inset-0 overflow-hidden" style={{ background: 'var(--color-base-300)' }}>
                               <div className="absolute inset-0 shimmer" />
@@ -844,6 +968,8 @@ export default function VaultPage() {
                               )}
                             </div>
                           </div>
+                          </>
+                          )}
                         </div>
                       </motion.div>
                     );
