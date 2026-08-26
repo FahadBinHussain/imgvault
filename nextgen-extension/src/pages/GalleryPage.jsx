@@ -1081,7 +1081,8 @@ export default function GalleryPage() {
 
       // 2) XHR upload the single encrypted blob with real progress
       const uploader = new UDropUploader();
-      let uploadLogPct = -10;
+      let uploadLogBytes = 0;
+      const UPLOAD_LOG_STEP = 20 * 1024 * 1024; // log every ~20 MB so slow big uploads show movement
       await appendClientUploadLog(`Uploading ${formatBytes(encryptedBlob.size)} encrypted blob to vault...`);
       const result = await uploader.uploadWithProgress(
         encryptedBlob,
@@ -1095,8 +1096,8 @@ export default function GalleryPage() {
             ? `${percent}% (${loadedLabel} / ${totalLabel})`
             : `${loadedLabel} sent`;
           await chrome.storage.local.set({ uploadStatus: `Uploading to vault: ${percentLabel}` });
-          if (percent !== null && (percent - uploadLogPct >= 10 || percent === 100)) {
-            uploadLogPct = percent;
+          if (percent === 100 || loaded - uploadLogBytes >= UPLOAD_LOG_STEP) {
+            uploadLogBytes = loaded;
             appendClientUploadLog(`Uploading to vault: ${percentLabel}`).catch(() => {});
           }
         },
