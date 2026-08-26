@@ -21,6 +21,8 @@ import GalleryNavbar from '../components/GalleryNavbar';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig';
 import { IMAGE_UPLOAD_SERVICES, filterUploadServicesByKeys } from '../config/providerCatalog';
 import { FilemoonUploader, UDropUploader } from '../utils/uploaders';
+import { encryptBlob, encryptMetadata } from '../utils/vaultCrypto.js';
+import { getVaultMasterKey } from '../utils/vaultSession.js';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 import {
   getConfiguredVideoUploadServices,
@@ -1011,6 +1013,114 @@ export default function GalleryPage() {
     }
   };
 
+  // Vaulted upload: encrypt in the page (where crypto.subtle works) and
+  // XHR-upload to udrop with real progress, then save via the SW.
+  const uploadVaultedDirectly = async (uploadData) => {
+    const uploadController = new AbortController();
+    activeVideoUploadControllerRef.current = uploadController;
+
+    await chrome.storage.local.set({
+      uploadActive: true,
+      uploadStatus: 'Encrypting for Secret Vault...',
+      uploadStatusLogs: [],
+    });
+    await appendClientUploadLog('Preparing encrypted vault upload from the extension page...');
+
+    try {
+      const masterKey = getVaultMasterKey();
+      if (!masterKey) {
+        throw new Error('Secret Vault is locked. Unlock it before saving encrypted items.');
+      }
+
+      const blob = uploadData.fileBlob;
+      if (!(blob instanceof Blob) || blob.size <= 0) {
+        throw new Error('Media payload is empty. Please reload the file and try again.');
+      }
+
+      const kind = uploadData.isVideo ? 'video' : 'image';
+      const fileName = uploadData.fileName || (kind === 'video' ? 'video.mp4' : 'image.jpg');
+      const creationDate = uploadData.fileLastModified ? new Date(uploadData.fileLastModified).toISOString() : null;
+
+      // 1) Encrypt with chunked progress
+      await appendClientUploadLog(`Encrypting ${formatBytes(blob.size)}...`);
+      const encryptedBlob = await encryptBlob(masterKey, blob, (p) => {
+        chrome.storage.local.set({ uploadStatus: `Encrypting ${formatBytes(blob.size)}... ${p.percent}%` }).catch(() => {});
+      });
+
+      const metadata = {
+        kind,
+        isVideo: kind === 'video',
+        pageTitle: uploadData.pageTitle || '',
+        description: uploadData.description || '',
+        tags: Array.isArray(uploadData.tags) ? uploadData.tags : [],
+        fileName,
+        fileType: uploadData.fileMimeType || uploadData.fileType || blob.type || '',
+        sourceImageUrl: uploadData.originalSourceUrl || '',
+        sourcePageUrl: uploadData.pageUrl || '',
+        creationDate,
+        width: Number.isFinite(uploadData.width) ? uploadData.width : null,
+        height: Number.isFinite(uploadData.height) ? uploadData.height : null,
+        duration: kind === 'video' && Number.isFinite(uploadData.duration) ? uploadData.duration : null,
+      };
+      const encryptedMetadata = await encryptMetadata(masterKey, metadata);
+
+      const settings = await sendMessage('getVideoHostSettings');
+      if (!settings.udropKey1 || !settings.udropKey2) {
+        throw new Error('UDrop keys are not configured. Encrypted vault items need a UDrop account.');
+      }
+
+      const opaqueName = `${Array.from(crypto.getRandomValues(new Uint8Array(16)))
+        .map((b) => b.toString(16).padStart(2, '0')).join('')}.bin`;
+
+      // 2) XHR upload to udrop with real byte progress
+      const uploader = new UDropUploader();
+      const result = await uploader.uploadWithProgress(
+        encryptedBlob,
+        settings.udropKey1,
+        settings.udropKey2,
+        opaqueName,
+        async ({ loaded, total, percent }) => {
+          const totalLabel = total ? formatBytes(total) : formatBytes(encryptedBlob.size);
+          const loadedLabel = formatBytes(loaded);
+          const message = percent !== null
+            ? `Uploading to vault: ${percent}% (${loadedLabel} / ${totalLabel})`
+            : `Uploading to vault: ${loadedLabel} sent`;
+          await chrome.storage.local.set({ uploadStatus: message });
+          await appendClientUploadLog(message);
+        },
+        uploadController.signal
+      );
+
+      const encrypted = {
+        encryptedBlobUrl: result.watchUrl || result.displayUrl || result.url || '',
+        encryptedBlobWatchUrl: result.watchUrl || result.displayUrl || result.url || '',
+        encryptedBlobFileId: result.fileId || '',
+        encryptedMetadata,
+        encryptedMimeType: blob.type || 'application/octet-stream',
+        encryptedFileName: opaqueName,
+      };
+
+      // 3) Save via the SW
+      await chrome.storage.local.set({ uploadStatus: 'Saving encrypted item...' });
+      const saved = await sendMessage('saveVaultedUpload', {
+        uploadData,
+        encrypted,
+        udropResult: result,
+        blobSize: blob.size,
+      });
+      await appendClientUploadLog(`Encrypted vault item saved with ID: ${saved.id}`, 'success');
+      return saved;
+    } catch (error) {
+      await appendClientUploadLog(`Encrypted vault upload failed: ${error.message || String(error)}`, 'error');
+      throw error;
+    } finally {
+      if (activeVideoUploadControllerRef.current === uploadController) {
+        activeVideoUploadControllerRef.current = null;
+      }
+      await chrome.storage.local.set({ uploadActive: false });
+    }
+  };
+
   const revokeUploadPreviewUrl = () => {
     if (uploadPreviewUrlRef.current) {
       URL.revokeObjectURL(uploadPreviewUrlRef.current);
@@ -1743,9 +1853,9 @@ export default function GalleryPage() {
   const uploadPreparedMedia = async (uploadData) => {
     assertSerializableUploadData(uploadData);
 
-    // Vaulted uploads go through the SW (encrypt → udrop), bypassing client-side XHR.
+    // Vaulted uploads encrypt + XHR-upload in the page for real progress.
     if (uploadData.isVaulted) {
-      return uploadImage(uploadData);
+      return uploadVaultedDirectly(uploadData);
     }
 
     if (uploadData.isVideo && uploadData.fileBlob) {
@@ -1973,7 +2083,12 @@ export default function GalleryPage() {
     setVaultUnlocking(true);
     setVaultUnlockError('');
     try {
-      await sendMessage('vaultUnlockWithPasscode', { passcode: vaultUnlockCode });
+      const unlockResult = await sendMessage('vaultUnlockWithPasscode', { passcode: vaultUnlockCode });
+      // sendMessage resolves with response.data, so keyB64 is top-level here.
+      if (unlockResult?.keyB64) {
+        const { importMasterKeyFromB64 } = await import('../utils/vaultSession.js');
+        await importMasterKeyFromB64(unlockResult.keyB64);
+      }
       setVaultLockedForUpload(false);
       setVaultUnlockCode('');
       await handleUploadSubmit(false);

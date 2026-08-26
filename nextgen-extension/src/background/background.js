@@ -1107,8 +1107,9 @@ class ImgVaultServiceWorker {
       }
       const masterKey = await unwrapMasterKey(config, passcode);
       const raw = new Uint8Array(await crypto.subtle.exportKey('raw', masterKey));
-      await this.setVaultMasterKey(btoa(String.fromCharCode(...raw)));
-      return true;
+      const keyB64 = btoa(String.fromCharCode(...raw));
+      await this.setVaultMasterKey(keyB64);
+      return { keyB64 };
     }
 
     // Legacy vault (no wrapped key yet): verify passcode and upgrade it in place.
@@ -1126,9 +1127,10 @@ class ImgVaultServiceWorker {
     };
     const masterKey = await unwrapMasterKey(newConfig, passcode);
     const raw = new Uint8Array(await crypto.subtle.exportKey('raw', masterKey));
-    await this.setVaultMasterKey(btoa(String.fromCharCode(...raw)));
+    const keyB64 = btoa(String.fromCharCode(...raw));
+    await this.setVaultMasterKey(keyB64);
     await this.storage.saveVaultConfig(newConfig);
-    return true;
+    return { keyB64 };
   }
 
   /**
@@ -1535,7 +1537,7 @@ class ImgVaultServiceWorker {
 
       case 'vaultUnlockWithPasscode':
         this.unlockVaultWithPasscode(request.data?.passcode)
-          .then(() => sendResponse({ success: true, data: null }))
+          .then((result) => sendResponse({ success: true, data: result || null }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
@@ -1739,6 +1741,12 @@ class ImgVaultServiceWorker {
 
       case 'saveUploadedVideo':
         this.saveUploadedVideo(request.data)
+          .then(result => sendResponse({ success: true, data: result }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'saveVaultedUpload':
+        this.saveVaultedUpload(request.data)
           .then(result => sendResponse({ success: true, data: result }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
@@ -2430,6 +2438,43 @@ class ImgVaultServiceWorker {
     } finally {
       this.activeUploadController = null;
     }
+  }
+
+  /**
+   * Save a vaulted item that was encrypted and uploaded in the page (where
+   * XHR progress is available). Called by the gallery page after the udrop
+   * upload completes.
+   * @param {Object} data - { uploadData, encrypted: {encryptedBlobUrl, ...}, udropResult, blobSize }
+   */
+  async saveVaultedUpload(data) {
+    const { uploadData, encrypted, udropResult, blobSize } = data;
+    const kind = (uploadData.isVideo || uploadData.kind === 'video') ? 'video' : 'image';
+    const fileName = uploadData.fileName || (kind === 'video' ? 'video.mp4' : 'image.jpg');
+    const creationDate = uploadData.fileLastModified ? new Date(uploadData.fileLastModified).toISOString() : null;
+
+    const mediaMetadata = {
+      kind,
+      isVideo: kind === 'video',
+      pageTitle: '',
+      description: '',
+      tags: [],
+      collectionId: uploadData.collectionId || null,
+      fileName: encrypted.encryptedFileName,
+      fileSize: blobSize || uploadData.fileSize || null,
+      fileType: 'application/octet-stream',
+      fileTypeSource: 'Encrypted vault item',
+      creationDate,
+      creationDateSource: uploadData.fileLastModified ? 'OS lastModified' : 'Current timestamp',
+      internalAddedTimestamp: new Date().toISOString(),
+      isVaulted: true,
+      vaultMode: 'hidden',
+      vaultedAt: new Date().toISOString(),
+      ...encrypted,
+    };
+
+    const sanitized = sanitizeForNeon(mediaMetadata);
+    const savedId = await this.storage.saveImage(sanitized);
+    return { id: savedId, ...mediaMetadata };
   }
 
   /**

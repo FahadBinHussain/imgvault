@@ -38,3 +38,19 @@ export async function getRawKeyBytes() {
 export function clearVaultMasterKey() {
   masterKey = null;
 }
+
+/**
+ * Import a base64-encoded raw key and set it as the page-side master key.
+ * Reverses exportKey('raw') → btoa(String.fromCharCode(...)).
+ */
+export async function importMasterKeyFromB64(b64) {
+  const raw = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  masterKey = await crypto.subtle.importKey(
+    'raw',
+    raw,
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt']
+  );
+  return masterKey;
+}
