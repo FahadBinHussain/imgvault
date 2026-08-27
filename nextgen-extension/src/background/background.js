@@ -2225,7 +2225,7 @@ class ImgVaultServiceWorker {
   }
 
   async getMergedVideoHostSettings() {
-    const syncSettings = await chrome.storage.sync.get(['filemoonApiKey', 'udropKey1', 'udropKey2']);
+    const syncSettings = await chrome.storage.sync.get(['filemoonApiKey', 'udropKey1', 'udropKey2', 'teraboxCookie']);
     const merged = { ...syncSettings };
 
     if (merged.filemoonApiKey && merged.udropKey1 && merged.udropKey2) {
@@ -2247,15 +2247,21 @@ class ImgVaultServiceWorker {
         merged.udropKey2 = firebaseSettings.udropKey2;
       }
 
+      if (!merged.teraboxCookie && firebaseSettings?.teraboxCookie) {
+        merged.teraboxCookie = firebaseSettings.teraboxCookie;
+      }
+
       if (
         (!syncSettings.filemoonApiKey && merged.filemoonApiKey) ||
         (!syncSettings.udropKey1 && merged.udropKey1) ||
-        (!syncSettings.udropKey2 && merged.udropKey2)
+        (!syncSettings.udropKey2 && merged.udropKey2) ||
+        (!syncSettings.teraboxCookie && merged.teraboxCookie)
       ) {
         await chrome.storage.sync.set({
           ...(merged.filemoonApiKey ? { filemoonApiKey: merged.filemoonApiKey } : {}),
           ...(merged.udropKey1 ? { udropKey1: merged.udropKey1 } : {}),
           ...(merged.udropKey2 ? { udropKey2: merged.udropKey2 } : {}),
+          ...(merged.teraboxCookie ? { teraboxCookie: merged.teraboxCookie } : {}),
         });
       }
     } catch (error) {
@@ -3991,6 +3997,7 @@ class ImgVaultServiceWorker {
     const uploadResults = data.videoUploadResults || {
       ...(data.filemoonResult ? { filemoon: data.filemoonResult } : {}),
       ...(data.udropResult ? { udrop: data.udropResult } : {}),
+      ...(data.teraboxResult ? { terabox: data.teraboxResult } : {}),
     };
 
     for (const [providerKey, result] of Object.entries(uploadResults)) {
@@ -4067,6 +4074,7 @@ class ImgVaultServiceWorker {
     const results = videoUploadResults || {
       ...(data.filemoonResult ? { filemoon: data.filemoonResult } : {}),
       ...(data.udropResult ? { udrop: data.udropResult } : {}),
+      ...(data.teraboxResult ? { terabox: data.teraboxResult } : {}),
     };
 
     let merged = { ...current };

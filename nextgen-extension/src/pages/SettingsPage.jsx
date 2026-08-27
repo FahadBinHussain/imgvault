@@ -246,6 +246,7 @@ export default function SettingsPage() {
   const [filemoonApiKey, setFilemoonApiKey] = useChromeStorage('filemoonApiKey', '', 'sync');
   const [udropKey1, setUdropKey1] = useChromeStorage('udropKey1', '', 'sync');
   const [udropKey2, setUdropKey2] = useChromeStorage('udropKey2', '', 'sync');
+  const [teraboxCookie, setTeraboxCookie] = useChromeStorage('teraboxCookie', '', 'sync');
   const [firebaseConfigRaw, setFirebaseConfigRaw] = useChromeStorage('firebaseConfigRaw', '', 'sync');
   const [neonDatabaseUrl, setNeonDatabaseUrl] = useChromeStorage('neonDatabaseUrl', '', 'sync');
   const [defaultGallerySource, setDefaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
@@ -253,7 +254,7 @@ export default function SettingsPage() {
   const [downloadFolder, setDownloadFolder] = useChromeStorage('downloadFolder', '', 'sync');
 
   const [f, setF] = useState({
-    pixvid: '', imgbb: '', filemoon: '', udrop1: '', udrop2: '',
+    pixvid: '', imgbb: '', filemoon: '', udrop1: '', udrop2: '', terabox: '',
     firebase: '', neon: '', gallerySrc: 'imgbb', videoSrc: 'filemoon', dlFolder: '',
   });
   const [saved, setSaved] = useState(false);
@@ -269,11 +270,12 @@ export default function SettingsPage() {
   useEffect(() => {
     setF({
       pixvid: pixvidApiKey || '', imgbb: imgbbApiKey || '', filemoon: filemoonApiKey || '',
-      udrop1: udropKey1 || '', udrop2: udropKey2 || '', firebase: firebaseConfigRaw || '',
+      udrop1: udropKey1 || '', udrop2: udropKey2 || '', terabox: teraboxCookie || '',
+      firebase: firebaseConfigRaw || '',
       neon: neonDatabaseUrl || '', gallerySrc: defaultGallerySource || 'imgbb',
       videoSrc: defaultVideoSource || 'filemoon', dlFolder: downloadFolder || '',
     });
-  }, [pixvidApiKey, imgbbApiKey, filemoonApiKey, udropKey1, udropKey2, firebaseConfigRaw, neonDatabaseUrl, defaultGallerySource, defaultVideoSource, downloadFolder]);
+  }, [pixvidApiKey, imgbbApiKey, filemoonApiKey, udropKey1, udropKey2, teraboxCookie, firebaseConfigRaw, neonDatabaseUrl, defaultGallerySource, defaultVideoSource, downloadFolder]);
 
   useEffect(() => {
     if ((downloadFolder || '').trim()) return;
@@ -308,6 +310,7 @@ export default function SettingsPage() {
           if (!f.filemoon && cloud.filemoonApiKey?.trim()) { set('filemoon', cloud.filemoonApiKey); setFilemoonApiKey(cloud.filemoonApiKey); up = true; }
           if (!f.udrop1 && cloud.udropKey1?.trim()) { set('udrop1', cloud.udropKey1); setUdropKey1(cloud.udropKey1); up = true; }
           if (!f.udrop2 && cloud.udropKey2?.trim()) { set('udrop2', cloud.udropKey2); setUdropKey2(cloud.udropKey2); up = true; }
+          if (!f.terabox && cloud.teraboxCookie?.trim()) { set('terabox', cloud.teraboxCookie); setTeraboxCookie(cloud.teraboxCookie); up = true; }
           if (cloud.defaultGallerySource?.trim()) { set('gallerySrc', cloud.defaultGallerySource); setDefaultGallerySource(cloud.defaultGallerySource); up = true; }
           if (cloud.defaultVideoSource?.trim()) { set('videoSrc', cloud.defaultVideoSource); setDefaultVideoSource(cloud.defaultVideoSource); up = true; }
           setCloudStatus(up ? '✅ Synced from cloud' : '✓ Up to date');
@@ -334,12 +337,12 @@ export default function SettingsPage() {
       const nUrl = f.neon.trim();
       await chrome.storage.sync.set({ neonDatabaseUrl: nUrl });
       setPixvidApiKey(f.pixvid); setImgbbApiKey(f.imgbb); setFilemoonApiKey(f.filemoon);
-      setUdropKey1(f.udrop1); setUdropKey2(f.udrop2);
+      setUdropKey1(f.udrop1); setUdropKey2(f.udrop2); setTeraboxCookie(f.terabox);
       setDefaultGallerySource(f.gallerySrc); setDefaultVideoSource(f.videoSrc);
       setDownloadFolder(f.dlFolder); setNeonDatabaseUrl(nUrl);
       try {
         const fc = await new Promise(r => chrome.storage.sync.get(['firebaseConfig'], r)).then(r => r.firebaseConfig);
-        if ((nUrl || fc) && (f.pixvid || f.imgbb || f.filemoon || f.udrop1 || f.udrop2)) {
+        if ((nUrl || fc) && (f.pixvid || f.imgbb || f.filemoon || f.udrop1 || f.udrop2 || f.terabox)) {
           setCloudStatus('Syncing...');
           const { StorageManager } = await import('../utils/storage.js');
           const sm = new StorageManager(); await sm.init();
@@ -349,6 +352,7 @@ export default function SettingsPage() {
           if (f.filemoon) s.filemoonApiKey = f.filemoon;
           if (f.udrop1) s.udropKey1 = f.udrop1;
           if (f.udrop2) s.udropKey2 = f.udrop2;
+          if (f.terabox) s.teraboxCookie = f.terabox;
           if (f.gallerySrc) s.defaultGallerySource = f.gallerySrc;
           if (f.videoSrc) s.defaultVideoSource = f.videoSrc;
           if (Object.keys(s).length) { await sm.saveUserSettings(s); setCloudStatus('✅ Synced to cloud'); }
@@ -433,6 +437,9 @@ export default function SettingsPage() {
             </div>
             <Field label="UDrop Key 2" icon={HardDrive}>
               <input className="s-inp" type="password" value={f.udrop2} onChange={e => set('udrop2', e.target.value)} placeholder="64 characters" />
+            </Field>
+            <Field label="TeraBox Cookie" icon={HardDrive} hint="Optional. If blank, ImgVault reads your logged-in TeraBox session cookie from the browser automatically. Paste only if you want to override it (e.g. from another device).">
+              <input className="s-inp" style={{ fontFamily: "'Outfit', monospace", fontSize: 12 }} type="password" value={f.terabox} onChange={e => set('terabox', e.target.value)} placeholder="ndus=...; browserid=...; lang=..." />
             </Field>
             <div className="s-divider" />
             <Field label="Video Download Folder" icon={FolderOpen} hint="Leave blank to auto-detect your Windows Videos folder. Use double backslashes if setting manually.">

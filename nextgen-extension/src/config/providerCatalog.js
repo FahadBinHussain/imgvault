@@ -70,6 +70,23 @@ export const VIDEO_UPLOAD_SERVICES = [
     uploadWithProgress: ({ uploader, blob, settings, data, onProgress, signal }) =>
       uploader.uploadWithProgress(blob, settings.udropKey1, settings.udropKey2, data.fileName || 'video.mp4', onProgress, signal),
   },
+  {
+    key: 'terabox',
+    label: 'TeraBox',
+    sourceValue: 'terabox',
+    sourceLabel: 'TeraBox',
+    apiKeyFields: ['teraboxCookie'],
+    required: false,
+    uploaderKey: 'teraboxUploader',
+    watchUrlField: 'teraboxWatchUrl',
+    directUrlField: 'teraboxDirectUrl',
+    aliasWatchUrlField: 'teraboxUrl',
+    isConfigured: () => true, // cookie auto-reads from browser session
+    upload: ({ uploader, blob, settings, data, signal }) =>
+      uploader.upload(blob, settings?.teraboxCookie || '', data.fileName || 'video.mp4', signal),
+    uploadWithProgress: ({ uploader, blob, settings, data, onProgress, signal }) =>
+      uploader.uploadWithProgress(blob, settings?.teraboxCookie || '', data.fileName || 'video.mp4', onProgress, signal),
+  },
 ]
 
 export const IMAGE_SOURCE_OPTIONS = IMAGE_UPLOAD_SERVICES.map(({ sourceValue, sourceLabel }) => ({

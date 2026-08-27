@@ -611,3 +611,271 @@ export class UDropUploader extends BaseUploader {
   }
 }
 
+/**
+ * TeraBox Video Uploader
+ * Uploads videos to TeraBox using the PCS chunked upload protocol.
+ * Auth is the session cookie (ndus + browserid + lang); the cookie can be
+ * provided explicitly (settings field) or read live from the browser session
+ * via chrome.cookies when empty.
+ */
+export class TeraBoxUploader extends BaseUploader {
+  constructor() {
+    super('TeraBox');
+    this.apiBase = 'https://dm.terabox.com';
+    this.appId = '250528';
+    this.channel = 'dubox';
+    this.cookie = '';
+    this.jsToken = '';
+    this.CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB; doubles per 4 GB threshold
+  }
+
+  userAgent() {
+    return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+  }
+
+  headers() {
+    return {
+      'Cookie': this.cookie,
+      'Accept': 'application/json, text/plain, */*',
+      'Referer': `${this.apiBase}/`,
+      'User-Agent': this.userAgent(),
+      'X-Requested-With': 'XMLHttpRequest',
+    };
+  }
+
+  /**
+   * Resolve the session cookie. Prefers an explicit cookie string; otherwise
+   * reads the live TeraBox session cookies from the browser.
+   */
+  async resolveCookie(explicitCookie) {
+    const trimmed = String(explicitCookie || '').trim();
+    if (trimmed) {
+      this.cookie = trimmed;
+      return trimmed;
+    }
+    if (typeof chrome !== 'undefined' && chrome.cookies?.getAll) {
+      const all = await chrome.cookies.getAll({ domain: 'terabox.com' });
+      const wanted = new Set(['ndus', 'browserid', 'lang', 'bdstoken', 'PANWEB', 'cuid']);
+      const parts = all
+        .filter((c) => wanted.has(c.name))
+        .map((c) => `${c.name}=${c.value}`);
+      if (parts.length > 0) {
+        this.cookie = parts.join('; ');
+        return this.cookie;
+      }
+    }
+    throw new Error('No TeraBox cookie available. Log in to TeraBox or paste the cookie in Settings.');
+  }
+
+  async fetchJsToken() {
+    const res = await fetch(`${this.apiBase}/`, {
+      headers: {
+        'Cookie': this.cookie,
+        'User-Agent': this.userAgent(),
+        'Referer': `${this.apiBase}/`,
+      },
+    });
+    const html = await res.text();
+    const m = html.match(/function%20fn%28a%29%7Bwindow\.jsToken%20%3D%20a%7D%3Bfn%28%22([^%"]+)%22%29/);
+    if (!m?.[1]) {
+      throw new Error('TeraBox jsToken not found (login may have expired). Re-login to TeraBox.');
+    }
+    this.jsToken = m[1];
+    return this.jsToken;
+  }
+
+  async apiRequest(pathname, params = {}, body, retried = false) {
+    const qp = new URLSearchParams({
+      app_id: this.appId,
+      web: '1',
+      channel: this.channel,
+      clienttype: '0',
+      ...(this.jsToken ? { jsToken: this.jsToken } : {}),
+      ...params,
+    });
+    const res = await fetch(`${this.apiBase}${pathname}?${qp}`, {
+      method: 'POST',
+      headers: body instanceof FormData
+        ? this.headers()
+        : { ...this.headers(), 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+    let json;
+    try {
+      json = await res.json();
+    } catch {
+      throw new Error(`TeraBox ${pathname} returned non-JSON: ${String(res.status)}`);
+    }
+    if (json.errno === 4000023 && !retried) {
+      // stale jsToken → re-fetch and retry once (driver behaviour)
+      await this.fetchJsToken();
+      return this.apiRequest(pathname, params, body, true);
+    }
+    return json;
+  }
+
+  async precreate(path, size, blockList) {
+    const form = new URLSearchParams({
+      path,
+      autoinit: '1',
+      target_path: '/',
+      block_list: JSON.stringify(blockList),
+      local_mtime: String(Math.floor(Date.now() / 1000)),
+      file_limit_switch_v34: 'true',
+    });
+    const json = await this.apiRequest('/api/precreate', {}, form.toString());
+    if (json.errno !== 0) {
+      throw new Error(`TeraBox precreate failed (errno ${json.errno}): ${json.errmsg || ''}`);
+    }
+    return json;
+  }
+
+  async locateUpload() {
+    const res = await fetch(`https://dm-data.terabox.com/rest/2.0/pcs/file?method=locateupload`, {
+      headers: this.headers(),
+    });
+    const json = await res.json();
+    if (!json.host) {
+      throw new Error('TeraBox locateupload returned no upload host.');
+    }
+    return json.host;
+  }
+
+  async uploadChunk(host, path, uploadid, partseq, chunkBlob, filename) {
+    const qp = new URLSearchParams({
+      method: 'upload',
+      path,
+      uploadid,
+      partseq: String(partseq),
+      app_id: this.appId,
+      web: '1',
+      channel: this.channel,
+      clienttype: '0',
+    });
+    const form = new FormData();
+    form.append('file', chunkBlob, filename);
+    const res = await fetch(`https://${host}/rest/2.0/pcs/superfile2?${qp}`, {
+      method: 'POST',
+      headers: { 'Cookie': this.cookie, 'User-Agent': this.userAgent() },
+      body: form,
+    });
+    const json = await res.json();
+    if (!json.md5) {
+      throw new Error(`TeraBox chunk ${partseq} upload failed: ${JSON.stringify(json)}`);
+    }
+    return json.md5;
+  }
+
+  async create(path, size, uploadid, blockList) {
+    const form = new URLSearchParams({
+      path,
+      size: String(size),
+      uploadid,
+      target_path: '/',
+      block_list: JSON.stringify(blockList),
+      local_mtime: String(Math.floor(Date.now() / 1000)),
+    });
+    const json = await this.apiRequest('/api/create', { isdir: '0', rtype: '1' }, form.toString());
+    if (json.errno !== 0) {
+      throw new Error(`TeraBox create failed (errno ${json.errno}): ${json.errmsg || ''}`);
+    }
+    return json;
+  }
+
+  async getDownloadLink(path) {
+    const qp = new URLSearchParams({ target: JSON.stringify([path]), dlink: '1', origin: 'dlna' });
+    const res = await fetch(`${this.apiBase}/api/filemetas?${qp}`, { headers: this.headers() });
+    const json = await res.json();
+    if (json.errno !== 0 || !json.info?.[0]?.dlink) {
+      return '';
+    }
+    return json.info[0].dlink;
+  }
+
+  calculateChunkSize(streamSize) {
+    let chunkSize = 4 * 1024 * 1024;
+    let threshold = 4 * 1024 * 1024 * 1024;
+    if (streamSize < chunkSize) return Math.max(streamSize, 1);
+    while (streamSize > threshold) {
+      chunkSize <<= 1;
+      threshold <<= 1;
+    }
+    return chunkSize;
+  }
+
+  async upload(blob, cookie, filename, signal) {
+    return this._upload(blob, cookie, filename, null, signal);
+  }
+
+  async uploadWithProgress(blob, cookie, filename, onProgress, signal) {
+    return this._upload(blob, cookie, filename, onProgress, signal);
+  }
+
+  async _upload(blob, cookie, filename, onProgress, signal) {
+    try {
+      const safeName = String(filename || 'video.mp4').split('/').pop().split('?')[0] || 'video.mp4';
+      const path = `/${safeName}`;
+
+      await this.resolveCookie(cookie);
+      if (!this.jsToken) await this.fetchJsToken();
+
+      const size = blob.size;
+      const chunkSize = this.calculateChunkSize(size);
+      const chunkCount = Math.max(1, Math.ceil(size / chunkSize));
+      const dummyBlock = '5910a591dd8fc18c32a8f3df4fdc1761';
+      const dummyBlocks = new Array(chunkCount).fill(dummyBlock);
+
+      const pre = await this.precreate(path, size, dummyBlocks);
+      if (pre.return_type === 2) {
+        // rapid upload: file already exists server-side
+        return this._buildResult(path, pre);
+      }
+
+      const host = await this.locateUpload();
+      const blockList = [];
+      let uploaded = 0;
+      for (let i = 0; i < chunkCount; i++) {
+        if (signal?.aborted) throw new Error('Upload aborted');
+        const start = i * chunkSize;
+        const end = Math.min(start + chunkSize, size);
+        const chunk = blob.slice(start, end);
+        const md5 = await this.uploadChunk(host, path, pre.uploadid, i, chunk, safeName);
+        blockList.push(md5);
+        uploaded += (end - start);
+        if (typeof onProgress === 'function') {
+          onProgress({ loaded: uploaded, total: size, percent: Math.round((uploaded / size) * 100) });
+        }
+      }
+
+      const created = await this.create(path, size, pre.uploadid, blockList);
+      return this._buildResult(path, created);
+    } catch (error) {
+      throw new Error(`Failed to upload to TeraBox: ${error.message}`);
+    }
+  }
+
+  async _buildResult(path, info) {
+    let dlink = '';
+    try {
+      dlink = await this.getDownloadLink(path);
+    } catch (_) {
+      // keep fallback page URL
+    }
+    const fallbackUrl = `https://www.terabox.com${path}`;
+    const fsId = String(info.fs_id ?? info.file_id ?? '');
+    return {
+      url: dlink || fallbackUrl,
+      displayUrl: dlink || fallbackUrl,
+      watchUrl: dlink || fallbackUrl,
+      directUrl: dlink,
+      thumbUrl: null,
+      thumbnailUrl: null,
+      deleteUrl: null,
+      fileId: fsId,
+      filename: path.split('/').pop(),
+      apiStatus: info.errno === 0 ? 'success' : 'error',
+      apiMessage: info.errmsg || '',
+    };
+  }
+}
+

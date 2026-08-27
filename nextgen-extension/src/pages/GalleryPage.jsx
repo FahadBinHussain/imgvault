@@ -20,7 +20,7 @@ import TimelineScrollbar from '../components/TimelineScrollbar';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig';
 import { IMAGE_UPLOAD_SERVICES, filterUploadServicesByKeys } from '../config/providerCatalog';
-import { FilemoonUploader, UDropUploader } from '../utils/uploaders';
+import { FilemoonUploader, UDropUploader, TeraBoxUploader } from '../utils/uploaders';
 import { encryptBlob, encryptMetadata } from '../utils/vaultCrypto.js';
 import { getVaultMasterKey } from '../utils/vaultSession.js';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
@@ -50,6 +50,7 @@ import MediaDetailModal from '../components/MediaDetailModal';
 const createVideoUploader = (service) => {
   if (service?.uploaderKey === 'filemoonUploader') return new FilemoonUploader();
   if (service?.uploaderKey === 'udropUploader') return new UDropUploader();
+  if (service?.uploaderKey === 'teraboxUploader') return new TeraBoxUploader();
   return null;
 };
 
