@@ -1717,6 +1717,21 @@ export class StorageManager {
     } else if (providerKey === 'udrop') {
       if (!current.udropWatchUrl && link.watchUrl) updates.udropWatchUrl = String(link.watchUrl);
       if (!current.udropDirectUrl && link.directUrl) updates.udropDirectUrl = String(link.directUrl);
+    } else if (providerKey === 'terabox') {
+      const vid = String(link.fileId || link.filecode || '');
+      const existingVh = current.videoHosts && typeof current.videoHosts === 'object' ? current.videoHosts : {};
+      const existingExtraVh = updates.extraMetadata.videoHosts && typeof updates.extraMetadata.videoHosts === 'object' ? updates.extraMetadata.videoHosts : {};
+      const vh = { ...existingVh, ...existingExtraVh };
+      vh.terabox = {
+        ...(vh.terabox || {}),
+        fileId: vid,
+        filecode: vid,
+        filename: String(link.filename || ''),
+        watchUrl: String(link.watchUrl || ''),
+        directUrl: String(link.directUrl || ''),
+        url: String(link.watchUrl || link.directUrl || ''),
+      };
+      updates.extraMetadata = { ...updates.extraMetadata, videoHosts: vh };
     }
     return this.updateImage(id, updates);
   }

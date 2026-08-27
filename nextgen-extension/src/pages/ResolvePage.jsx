@@ -40,6 +40,9 @@ import {
 import {
   checkFilemoonIntegrity,
 } from '../utils/filemoonApi';
+import {
+  checkTeraBoxIntegrity,
+} from '../utils/teraBoxApi';
 import { retryVideoHostPageSide } from '../utils/videoRetryPageSide';
 
 const IMAGE_SETTING_KEYS = Array.from(
@@ -106,7 +109,7 @@ export default function ResolvePage() {
 
   // ---- UDrop integrity check state ----
   const [activeTab, setActiveTab] = useState('images'); // 'images' | 'videos'
-  const [videoSubTab, setVideoSubTab] = useState('udrop'); // 'udrop' | 'filemoon'
+  const [videoSubTab, setVideoSubTab] = useState('udrop'); // 'udrop' | 'filemoon' | 'terabox'
   const [udropLoading, setUdropLoading] = useState(false);
   const [udropError, setUdropError] = useState(null);
   const [udropIntegrity, setUdropIntegrity] = useState({ found: [], missing: [], noUrl: [], extra: [] });
@@ -131,6 +134,14 @@ export default function ResolvePage() {
   const [fixingFilemoon, setFixingFilemoon] = useState({});
   const [fixingUdrop, setFixingUdrop] = useState({});
   const [fixProgress, setFixProgress] = useState({});
+
+  // ---- TeraBox integrity check state ----
+  const [teraboxIntegrity, setTeraBoxIntegrity] = useState({ found: [], missing: [], noUrl: [], extra: [] });
+  const [teraboxLoading, setTeraBoxLoading] = useState(false);
+  const [teraboxError, setTeraBoxError] = useState(null);
+  const [teraboxFilter, setTeraBoxFilter] = useState('all');
+  const [teraboxKeysConfigured, setTeraBoxKeysConfigured] = useState(false);
+  const [fixingTeraBox, setFixingTeraBox] = useState({});
 
   const loadSettings = () => {
     setSettingsLoading(true);
@@ -385,6 +396,59 @@ export default function ResolvePage() {
       runFilemoonIntegrityCheck();
     }
   }, [activeTab, videoSubTab, filemoonLoading, filemoonError, filemoonIntegrity, runFilemoonIntegrityCheck]);
+
+  // ---- TeraBox integrity helpers ----
+  const checkTeraBoxKeysConfigured = useCallback(() => {
+    // cookie auto-reads from the browser session when the settings field is
+    // empty, so the tab is always available; a missing session surfaces as a
+    // real error from the integrity check itself.
+    setTeraBoxKeysConfigured(true);
+    return true;
+  }, []);
+
+  useEffect(() => {
+    checkTeraBoxKeysConfigured();
+  }, [checkTeraBoxKeysConfigured]);
+
+  const runTeraBoxIntegrityCheck = useCallback(async () => {
+    if (!checkTeraBoxKeysConfigured()) {
+      setTeraBoxError('TeraBox cookie not configured. Go to Settings.');
+      return;
+    }
+    setTeraBoxLoading(true);
+    setTeraBoxError(null);
+    setNotice(null);
+    try {
+      const [freshImages, freshVault] = await Promise.all([sendMessage('getImages'), sendMessage('getVaultImages')]);
+      const allVideoItems = [...(freshImages || []), ...(freshVault || [])];
+      const videoItems = allVideoItems.filter((item) => {
+        if (!item) return false;
+        if (item.kind === 'scene' || item.spzUrl) return false;
+        const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
+        const hasTeraBox = Boolean(item.teraboxWatchUrl || item.teraboxDirectUrl || item.teraboxUrl) ||
+          Boolean(item.videoHosts?.terabox?.watchUrl || item.videoHosts?.terabox?.directUrl) ||
+          Boolean(item.teraboxFileId || item.videoHosts?.terabox?.fileId);
+        return isVideo || hasTeraBox;
+      });
+
+      const result = await checkTeraBoxIntegrity(videoItems, settings.teraboxCookie);
+      setTeraBoxIntegrity(result);
+      setNotice({
+        type: result.missing.length > 0 ? 'error' : 'success',
+        message: `TeraBox check: ${result.found.length} found, ${result.missing.length} broken links, ${result.noUrl.length} no url, ${result.extra.length} extra on terabox.`,
+      });
+    } catch (err) {
+      setTeraBoxError(err.message || String(err));
+    } finally {
+      setTeraBoxLoading(false);
+    }
+  }, [settings, sendMessage, checkTeraBoxKeysConfigured]);
+
+  useEffect(() => {
+    if (activeTab === 'videos' && videoSubTab === 'terabox' && !teraboxLoading && !teraboxError && teraboxIntegrity.found.length === 0 && teraboxIntegrity.missing.length === 0 && teraboxIntegrity.noUrl.length === 0 && teraboxIntegrity.extra.length === 0) {
+      runTeraBoxIntegrityCheck();
+    }
+  }, [activeTab, videoSubTab, teraboxLoading, teraboxError, teraboxIntegrity, runTeraBoxIntegrityCheck]);
 
   // ---- 3D Scene integrity helpers ----
   const checkSceneKeysConfigured = useCallback(() => {
@@ -750,6 +814,18 @@ export default function ResolvePage() {
             >
               <Film className="h-4 w-4" />
               Filemoon integrity
+            </button>
+            <button
+              type="button"
+              onClick={() => setVideoSubTab('terabox')}
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                videoSubTab === 'terabox'
+                  ? 'border-primary bg-primary text-primary-content shadow-sm'
+                  : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'
+              }`}
+            >
+              <Box className="h-4 w-4" />
+              TeraBox integrity
             </button>
           </section>
         )}
@@ -1829,10 +1905,379 @@ export default function ResolvePage() {
                      </article>
                    );
                  });
-               })()}
+                })()}
              </section>
            </>
          )}
+
+        {/* TeraBox Integrity Tab */}
+        {activeTab === 'videos' && videoSubTab === 'terabox' && (
+          <>
+            <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                  <Box className="h-4 w-4" />
+                  TeraBox integrity
+                </div>
+                <h1 className="text-3xl font-semibold tracking-tight text-base-content">TeraBox video integrity</h1>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Button
+                  variant="primary"
+                  onClick={runTeraBoxIntegrityCheck}
+                  className="h-10 gap-2 px-3 text-sm"
+                  disabled={teraboxLoading}
+                >
+                  {teraboxLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  {teraboxLoading ? 'Checking...' : 'Check TeraBox'}
+                </Button>
+                <Button variant="outline" onClick={() => navigate('/settings')} className="h-10 gap-2 px-3 text-sm">
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Button>
+              </div>
+            </section>
+
+            {!teraboxKeysConfigured && (
+              <div className="rounded-[var(--radius-box)] border border-warning/25 bg-warning/10 px-4 py-3 text-sm text-warning">
+                TeraBox cookie is not configured. Go to Settings to add it, or log in to TeraBox in this browser.
+              </div>
+            )}
+
+            {teraboxError && (
+              <div className="rounded-[var(--radius-box)] border border-error/25 bg-error/10 px-4 py-3 text-sm text-error">
+                {teraboxError}
+              </div>
+            )}
+
+            {notice && activeTab === 'videos' && videoSubTab === 'terabox' && (
+              <div className="rounded-[var(--radius-box)] border border-error/25 bg-error/10 px-4 py-3 text-sm font-medium text-error">
+                {notice.message}
+              </div>
+            )}
+
+            <section className="flex flex-wrap gap-2">
+              {[
+                { value: 'all', label: 'All', count: teraboxIntegrity.found.length + teraboxIntegrity.missing.length + teraboxIntegrity.noUrl.length + teraboxIntegrity.extra.length, tip: 'Every saved video, counted once. This is the full list.' },
+                { value: 'missing', label: 'Broken links', count: teraboxIntegrity.missing.length, tip: 'Videos whose TeraBox link is broken or whose file was deleted from TeraBox. These need fixing or a fresh upload.' },
+                { value: 'found', label: 'Found', count: teraboxIntegrity.found.length, tip: 'Videos with a working file on TeraBox. Nothing to do.' },
+                { value: 'noUrl', label: 'No TeraBox URL', count: teraboxIntegrity.noUrl.length, tip: 'Saved videos that have no TeraBox link at all — they were never uploaded to TeraBox.' },
+                { value: 'extra', label: 'Extra on TeraBox', count: teraboxIntegrity.extra.length, tip: 'Files on TeraBox that are not linked to any saved video. Likely old uploads or duplicates.' },
+              ].map((option) => (
+                <StatChip
+                  key={option.value}
+                  value={option.value}
+                  label={option.label}
+                  count={option.count}
+                  tip={option.tip}
+                  active={teraboxFilter === option.value}
+                  onClick={() => setTeraBoxFilter(option.value)}
+                />
+              ))}
+            </section>
+
+            <section className="grid gap-3">
+              {teraboxLoading && (
+                <div className="flex min-h-64 items-center justify-center rounded-[var(--radius-box)] border border-base-300 bg-base-100 text-base-content/60">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Checking TeraBox...
+                </div>
+              )}
+
+              {!teraboxLoading && (() => {
+                let displayItems = [];
+                if (teraboxFilter === 'all') {
+                  displayItems = [
+                    ...teraboxIntegrity.missing.map((i) => ({ ...i, status: 'missing' })),
+                    ...teraboxIntegrity.found.map((i) => ({ ...i, status: 'found' })),
+                    ...teraboxIntegrity.noUrl.map((i) => ({ ...i, status: 'noUrl' })),
+                    ...teraboxIntegrity.extra.map((i) => ({ ...i, status: 'extra' })),
+                  ];
+                } else if (teraboxFilter === 'missing') {
+                  displayItems = teraboxIntegrity.missing.map((i) => ({ ...i, status: 'missing' }));
+                } else if (teraboxFilter === 'found') {
+                  displayItems = teraboxIntegrity.found.map((i) => ({ ...i, status: 'found' }));
+                } else if (teraboxFilter === 'noUrl') {
+                  displayItems = teraboxIntegrity.noUrl.map((i) => ({ ...i, status: 'noUrl' }));
+                } else if (teraboxFilter === 'extra') {
+                  displayItems = teraboxIntegrity.extra.map((i) => ({ ...i, status: 'extra' }));
+                }
+
+                if (displayItems.length === 0) {
+                  return (
+                    <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-[var(--radius-box)] border border-base-300 bg-base-100 px-4 text-center">
+                      <ShieldCheck className="h-8 w-8 text-success" />
+                      <div>
+                        <h2 className="text-lg font-semibold text-base-content">No items in this view</h2>
+                        <p className="mt-1 text-sm text-base-content/60">
+                          {teraboxFilter === 'missing' ? 'All TeraBox videos are accounted for.' : 'Nothing to show here.'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return displayItems.map((entry) => {
+                  const { item, status, matchedFile } = entry;
+
+                  if (status === 'extra') {
+                    const file = entry.file || {};
+                    const title = file.title || file.name || file.filename || file.server_filename || 'Unknown file';
+                    const fsId = String(file.fs_id || file.file_id || '');
+                    const tbxUrl = `https://www.terabox.com/sharing/link?fidlist=${encodeURIComponent(JSON.stringify([fsId]))}`;
+                    return (
+                      <article
+                        key={`tbx-extra-${fsId || Math.random()}`}
+                        className="grid gap-4 rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-3 shadow-sm transition hover:border-warning/25 sm:grid-cols-[132px_1fr_auto]"
+                      >
+                        <div className="flex h-28 items-center justify-center overflow-hidden rounded-[var(--radius-box)] bg-base-200">
+                          <div className="flex flex-col items-center gap-1 text-warning/70">
+                            <AlertCircle className="h-8 w-8" />
+                            <span className="text-[10px] font-semibold uppercase tracking-wider">Orphan</span>
+                          </div>
+                        </div>
+                        <div className="min-w-0 space-y-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h2 className="truncate text-base font-semibold text-base-content">{title}</h2>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-warning/20 bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">
+                                <AlertCircle className="h-3 w-3" /> Not in DB
+                              </span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
+                              {fsId && <span>FS ID: {fsId}</span>}
+                              {file.size && <span>{(Number(file.size) / 1024 / 1024).toFixed(1)} MB</span>}
+                              {file._folder && <span>Folder: {file._folder}</span>}
+                              <a href={tbxUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                                TeraBox <ExternalLink className="h-3 w-3" />
+                              </a>
+                            </div>
+                          </div>
+                          <div className="text-xs text-base-content/70">
+                            This video exists on TeraBox but is not linked to any item in your vault.
+                          </div>
+                        </div>
+                        <div className="flex flex-col justify-between gap-3 sm:w-52">
+                          <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 px-3 py-2 text-xs text-base-content/65">
+                            Orphaned TeraBox video
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <Button variant="outline" className="h-9 justify-center gap-2 text-sm" onClick={() => window.open(tbxUrl, '_blank')}>
+                              <ExternalLink className="h-4 w-4" />
+                              Open TeraBox
+                            </Button>
+                            {fsId && (() => {
+                              const linkKey = `tbx:${fsId}`;
+                              const pendingMatch = findPendingItemForFile([...(images || []), ...(vaultImages || [])], file);
+                              return (
+                                <>
+                                  {pendingMatch && (
+                                    <Button
+                                      variant="outline"
+                                      className="h-9 justify-center gap-2 border-success/30 bg-success/10 text-sm text-success hover:bg-success/15"
+                                      disabled={Boolean(linkingExtra[linkKey])}
+                                      onClick={async () => {
+                                        setLinkingExtra((prev) => ({ ...prev, [linkKey]: true }));
+                                        try {
+                                          await sendMessage('finalizeUploadedVideo', {
+                                            id: pendingMatch.id,
+                                            videoUploadResults: {
+                                              terabox: { fileId: fsId, filecode: fsId, filename: title, watchUrl: tbxUrl, directUrl: '' },
+                                            },
+                                          });
+                                          await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
+                                          await runTeraBoxIntegrityCheck();
+                                          setNotice({ type: 'success', message: `Recovered "${pendingMatch.fileName || pendingMatch.pageTitle || 'pending upload'}" from the interrupted upload.` });
+                                        } catch (err) {
+                                          setNotice({ type: 'error', message: `Recovery failed: ${err.message || err}` });
+                                        } finally {
+                                          setLinkingExtra((prev) => {
+                                            const next = { ...prev };
+                                            delete next[linkKey];
+                                            return next;
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      {linkingExtra[linkKey] ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                                      {linkingExtra[linkKey] ? 'Recovering...' : 'Recover pending upload'}
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="outline"
+                                    className="h-9 justify-center gap-2 text-sm"
+                                    disabled={Boolean(linkingExtra[linkKey])}
+                                    onClick={async () => {
+                                      setLinkingExtra((prev) => ({ ...prev, [linkKey]: true }));
+                                      try {
+                                        const match = findMatchingItemForFile([...(images || []), ...(vaultImages || [])], file);
+                                        if (!match) {
+                                          throw new Error('No item matched by title or filename. Link the file from the dashboard instead.');
+                                        }
+                                        await sendMessage('linkProviderFileToItem', {
+                                          id: match.id,
+                                          providerKey: 'terabox',
+                                          link: { filecode: fsId, fileId: fsId, filename: title, watchUrl: tbxUrl, directUrl: '' },
+                                        });
+                                        await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
+                                        await runTeraBoxIntegrityCheck();
+                                        setNotice({ type: 'success', message: `Linked ${title} to "${match.pageTitle || match.fileName || 'item'}".` });
+                                      } catch (err) {
+                                        setNotice({ type: 'error', message: `Link failed: ${err.message || err}` });
+                                      } finally {
+                                        setLinkingExtra((prev) => {
+                                          const next = { ...prev };
+                                          delete next[linkKey];
+                                          return next;
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    {linkingExtra[linkKey] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                                    {linkingExtra[linkKey] ? 'Linking...' : 'Link to item'}
+                                  </Button>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  }
+
+                  const title = item.pageTitle || item.fileName || item.description || 'Untitled';
+                  const teraboxLinks = item.videoHosts?.terabox || {};
+                  const teraboxUrl = teraboxLinks.watchUrl || teraboxLinks.directUrl || teraboxLinks.url || item.teraboxWatchUrl || item.teraboxDirectUrl || item.teraboxUrl || '';
+
+                  return (
+                    <article
+                      key={item.id}
+                      className="grid gap-4 rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-3 shadow-sm transition hover:border-primary/25 sm:grid-cols-[132px_1fr_auto]"
+                    >
+                      <div className="flex h-28 items-center justify-center overflow-hidden rounded-[var(--radius-box)] bg-base-200">
+                        <div className="flex flex-col items-center gap-1 text-base-content/35">
+                          <Video className="h-4 w-4" />
+                          <span className="text-[10px] font-semibold uppercase tracking-wider">Video</span>
+                        </div>
+                      </div>
+                      <div className="min-w-0 space-y-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h2 className="truncate text-base font-semibold text-base-content">{title}</h2>
+                            {status === 'missing' && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-error/20 bg-error/10 px-2 py-0.5 text-xs font-semibold text-error">
+                                <ShieldAlert className="h-3 w-3" /> Broken link
+                              </span>
+                            )}
+                            {status === 'found' && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-success/20 bg-success/10 px-2 py-0.5 text-xs font-semibold text-success">
+                                <ShieldCheck className="h-3 w-3" /> Found
+                              </span>
+                            )}
+                            {status === 'noUrl' && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-warning/20 bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">
+                                <AlertCircle className="h-3 w-3" /> No TeraBox URL
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
+                            {item.fileName && <span className="truncate">{item.fileName}</span>}
+                            {formatDate(item.createdAt || item.internalAddedTimestamp)}
+                            {teraboxUrl && (
+                              <a href={teraboxUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                                TeraBox <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                        {status === 'found' && matchedFile && (
+                          <div className="text-xs text-base-content/70">
+                            <div className="font-medium text-success">TeraBox file: {matchedFile.server_filename || matchedFile.title || matchedFile.fs_id}</div>
+                          </div>
+                        )}
+                        {status === 'missing' && (
+                          <div className="text-xs text-base-content/70">
+                            <div className="font-medium text-error">Broken TeraBox link</div>
+                            <div className="mt-1 text-base-content/50">The TeraBox file could not be found. It may have been deleted, the upload may have failed, or the platform may have removed it.</div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col justify-between gap-3 sm:w-52">
+                        <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 px-3 py-2 text-xs text-base-content/65">
+                          {status === 'missing' && 'Needs re-upload'}
+                          {status === 'found' && 'Verified on TeraBox'}
+                          {status === 'noUrl' && 'No TeraBox URL stored'}
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          {teraboxUrl && (
+                            <Button variant="outline" className="h-9 justify-center gap-2 text-sm" onClick={() => window.open(teraboxUrl, '_blank')}>
+                              <ExternalLink className="h-4 w-4" />
+                              Open TeraBox
+                            </Button>
+                          )}
+                          {(status === 'noUrl' || status === 'missing') && (
+                            <Button
+                              variant="primary"
+                              className="h-9 justify-center gap-2 text-sm"
+                              disabled={Boolean(fixingTeraBox[item.id])}
+                              onClick={async () => {
+                                setFixingTeraBox((prev) => ({ ...prev, [item.id]: true }));
+                                setFixProgress((prev) => ({ ...prev, [item.id]: { phase: 'download', message: 'Starting...', percent: null } }));
+                                try {
+                                  const [freshItem, hostSettings] = await Promise.all([
+                                    sendMessage('getImageById', { id: item.id }),
+                                    sendMessage('getVideoHostSettings'),
+                                  ]);
+                                  const updates = await retryVideoHostPageSide(freshItem, 'terabox', hostSettings, {
+                                    onProgress: (progress) => setFixProgress((prev) => ({ ...prev, [item.id]: progress })),
+                                  });
+                                  await sendMessage('updateImage', { id: item.id, ...updates });
+                                  await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
+                                  await runTeraBoxIntegrityCheck();
+                                  setNotice({ type: 'success', message: `TeraBox upload fixed for "${title}".` });
+                                } catch (err) {
+                                  setNotice({ type: 'error', message: `Failed to fix: ${err.message || err}` });
+                                } finally {
+                                  setFixingTeraBox((prev) => {
+                                    const next = { ...prev };
+                                    delete next[item.id];
+                                    return next;
+                                  });
+                                  setFixProgress((prev) => {
+                                    const next = { ...prev };
+                                    delete next[item.id];
+                                    return next;
+                                  });
+                                }
+                              }}
+                            >
+                              {fixingTeraBox[item.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                              {fixingTeraBox[item.id] ? 'Fixing...' : 'Fix'}
+                            </Button>
+                          )}
+                          {fixProgress[item.id] && (
+                            <div className="flex flex-col gap-1.5">
+                              <div className="text-[11px] leading-tight text-base-content/70">
+                                {fixProgress[item.id].message || 'Working...'}
+                              </div>
+                              <div className="h-1.5 w-full overflow-hidden rounded-full bg-base-300">
+                                <div
+                                  className="h-full rounded-full bg-gradient-to-r from-primary-500 to-secondary-500 transition-all duration-300"
+                                  style={{ width: `${Math.max(4, fixProgress[item.id].percent ?? 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  );
+                });
+              })()}
+            </section>
+          </>
+        )}
 
         {/* 3D Scene Integrity Tab */}
         {activeTab === 'scenes' && (
