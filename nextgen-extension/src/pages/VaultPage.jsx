@@ -20,11 +20,10 @@ import {
 import { Button, Spinner, Toast, Modal } from '../components/UI';
 import GalleryNavbar from '../components/GalleryNavbar';
 import PremiumBackground from '../components/PremiumBackground';
-import { useChromeMessage, useTrash, useCollections } from '../hooks/useChromeExtension';
+import { useChromeMessage, useTrash, useCollections, useChromeStorage } from '../hooks/useChromeExtension';
 import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import {
   getPreferredVideoProviderLink,
-  getVideoProviderLinks,
 } from '../utils/videoProviderLinks';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 import {
@@ -78,6 +77,7 @@ export default function VaultPage() {
   const sendMessage = useChromeMessage();
   const { trashedImages, loading: trashLoading } = useTrash();
   const { collections, loading: collectionsLoading } = useCollections();
+  const [defaultVideoSource] = useChromeStorage('defaultVideoSource', 'filemoon', 'sync');
   const [navbarHeight, setNavbarHeight] = useState(0);
   const [vaultConfig, setVaultConfig] = useState(null);
   const [configLoading, setConfigLoading] = useState(true);
@@ -259,11 +259,11 @@ export default function VaultPage() {
   );
 
   const getVideoDirectUrl = (item) => (
-    getPreferredVideoProviderLink(item, 'udrop', 'directUrl')
+    getPreferredVideoProviderLink(item, defaultVideoSource, 'directUrl')
   );
 
   const getVideoWatchUrl = (item) => (
-    getPreferredVideoProviderLink(item, 'filemoon', 'watchUrl') ||
+    getPreferredVideoProviderLink(item, defaultVideoSource, 'watchUrl') ||
     getVideoDirectUrl(item)
   );
 
@@ -279,10 +279,8 @@ export default function VaultPage() {
   const getVideoPosterUrl = (item) => {
     const isLikelyVideoUrl = (url) => typeof url === 'string' && /\.(mp4|webm|mov|m4v|mkv|avi|ogv)(?:[?#].*)?$/i.test(url.trim());
     const firstImageLikeUrl = (...urls) => urls.find((url) => typeof url === 'string' && url.trim() && !isLikelyVideoUrl(url)) || '';
-    const links = getVideoProviderLinks(item);
     const videoThumb =
-      links?.filemoon?.thumbnailUrl ||
-      links?.udrop?.thumbnailUrl ||
+      getPreferredVideoProviderLink(item, defaultVideoSource, 'thumbnailUrl') ||
       '';
     return firstImageLikeUrl(
       item?.videoThumbnailUrl,

@@ -1672,6 +1672,39 @@ export class StorageManager {
   }
 
   /**
+   * Persist a per-provider video thumbnail URL so gallery thumbnails follow
+   * the provider preference order (2.11.x). Writes into extraMetadata.videoHosts
+   * so every provider round-trips; keeps the legacy filemoonThumbUrl top-level
+   * field for filemoon for backward compat with pages that still read it.
+   * @param {string} id - item id
+   * @param {string} providerKey - filemoon | udrop | terabox
+   * @param {string} thumbnailUrl
+   * @returns {Promise<boolean>}
+   */
+  async updateVideoThumbnail(id, providerKey, thumbnailUrl) {
+    await this.ensureInitialized();
+    const key = String(providerKey || '').trim().toLowerCase();
+    const current = await this.getImageById(id);
+    if (!current) throw new Error('Item not found');
+    const existingVh = current.videoHosts && typeof current.videoHosts === 'object' ? current.videoHosts : {};
+    const existingExtraVh = current.extraMetadata?.videoHosts && typeof current.extraMetadata.videoHosts === 'object'
+      ? current.extraMetadata.videoHosts
+      : {};
+    const vh = { ...existingVh, ...existingExtraVh };
+    vh[key] = {
+      ...(vh[key] || {}),
+      thumbnailUrl: String(thumbnailUrl || ''),
+    };
+    const updates = {
+      extraMetadata: { ...(current.extraMetadata || {}), videoHosts: vh },
+    };
+    if (key === 'filemoon') {
+      updates.filemoonThumbUrl = String(thumbnailUrl || '');
+    }
+    return this.updateImage(id, updates);
+  }
+
+  /**
    * Link an additional provider file (filemoon/udrop) to an item WITHOUT
    * overwriting an existing provider URL — the first link becomes the
    * primary field, every extra link is appended to extraMetadata.<key>Links
@@ -1684,8 +1717,6 @@ export class StorageManager {
    * @returns {Promise<boolean>}
    */
   async linkProviderFileToItem(id, providerKey, link) {
-    await this.ensureInitialized();
-    const current = await this.getImageById(id);
     if (!current) {
       throw new Error('Item not found');
     }

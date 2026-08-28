@@ -70,7 +70,8 @@ export function getPreferredVideoProviderLink(item, preferredProvider = DEFAULT_
   for (const key of orderedKeys) {
     const link = links[key];
     if (!link) continue;
-    const value = pickText(link[field], field === 'watchUrl' ? link.directUrl : link.watchUrl);
+    const fallback = field === 'watchUrl' ? link.directUrl : field === 'thumbnailUrl' ? '' : link.watchUrl;
+    const value = pickText(link[field], fallback);
     if (value) return value;
   }
 

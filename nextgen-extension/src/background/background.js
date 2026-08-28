@@ -1691,14 +1691,18 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
-      case 'getFilemoonThumbnail':
-        this.getFilemoonThumbnail(request.data?.filecode || request.filecode)
+      case 'getVideoThumbnail':
+        this.getVideoThumbnail(request.data?.providerKey || request.providerKey, request.data?.filecode || request.filecode)
           .then(thumbnailUrl => sendResponse({ success: true, data: thumbnailUrl }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
-      case 'updateFilemoonThumbnail':
-        this.storage.updateImage(request.data?.imageId || request.imageId, { filemoonThumbUrl: request.data?.thumbnailUrl || request.thumbnailUrl })
+      case 'updateVideoThumbnail':
+        this.storage.updateVideoThumbnail(
+          request.data?.imageId || request.imageId,
+          request.data?.providerKey || request.providerKey,
+          request.data?.thumbnailUrl || request.thumbnailUrl
+        )
           .then(() => sendResponse({ success: true }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
@@ -3299,6 +3303,23 @@ class ImgVaultServiceWorker {
     const blob = await this.fetchImage(url, undefined, 'https://filemoon.sx/');
     if (!(blob instanceof Blob)) throw new Error('Playlist fetch failed');
     return blob.text();
+  }
+
+  /**
+   * Get a video thumbnail for a given provider. Dispatches per provider so the
+   * gallery's thumbnail resolution is symmetric with the selected video source
+   * (2.11.x). Only providers with a thumbnail API return a value; udrop/terabox
+   * return null (they have no thumbnail endpoint).
+   * @param {string} providerKey - filemoon | udrop | terabox
+   * @param {string} filecode - provider file code / id
+   * @returns {Promise<string|null>} Thumbnail URL or null
+   */
+  async getVideoThumbnail(providerKey, filecode) {
+    const key = String(providerKey || '').trim().toLowerCase();
+    if (key === 'filemoon') {
+      return this.getFilemoonThumbnail(filecode);
+    }
+    return null;
   }
 
   /**

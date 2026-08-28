@@ -221,14 +221,29 @@ export default function GalleryPage() {
   // Lazy-fetch missing FileMoon thumbnails
   useEffect(() => {
     if (loading || !images || images.length === 0) return;
+    const extractFilecode = (providerKey, links) => {
+      const link = links?.[providerKey];
+      if (!link) return null;
+      const stored = pickText(link.filecode, link.fileId);
+      if (stored) return stored;
+      if (providerKey === 'filemoon') {
+        const m = String(link.watchUrl || link.directUrl || '').match(/filemoon\.sx\/(?:d|e)\/([a-zA-Z0-9]+)/i);
+        return m?.[1] || null;
+      }
+      if (providerKey === 'udrop') {
+        const m = String(link.watchUrl || link.directUrl || '').match(/udrop\.com(?:\/file)?\/([^\/\?#]+)/i);
+        return m?.[1] || null;
+      }
+      return null;
+    };
     const needsThumb = images.filter(img => {
       if (getMediaItemKind(img) !== 'video') return false;
       const links = getVideoProviderLinks(img);
-      const filecode = links?.filemoon?.filecode || (() => {
-        const m = String(links?.filemoon?.watchUrl || links?.filemoon?.directUrl || '').match(/filemoon\.sx\/(?:d|e)\/([a-zA-Z0-9]+)/i);
-        return m?.[1] || null;
-      })();
-      return filecode && !img.filemoonThumbUrl;
+      const orderedKeys = [
+        defaultVideoSource,
+        ...VIDEO_UPLOAD_SERVICES.map((service) => service.key).filter((key) => key !== defaultVideoSource),
+      ];
+      return orderedKeys.some((key) => extractFilecode(key, links) && !links?.[key]?.thumbnailUrl);
     });
     if (needsThumb.length === 0) return;
     let cancelled = false;
@@ -237,23 +252,27 @@ export default function GalleryPage() {
         if (cancelled) break;
         try {
           const links = getVideoProviderLinks(img);
-          const filecode = links?.filemoon?.filecode || (() => {
-            const m = String(links?.filemoon?.watchUrl || links?.filemoon?.directUrl || '').match(/filemoon\.sx\/(?:d|e)\/([a-zA-Z0-9]+)/i);
-            return m?.[1] || null;
-          })();
-          if (!filecode) continue;
-          const res = await sendMessage('getFilemoonThumbnail', { filecode });
-          const thumbUrl = typeof res === 'string' ? res : res?.thumbnailUrl || (res?.success ? res.thumbnailUrl : '');
-          if (thumbUrl) {
-            await sendMessage('updateFilemoonThumbnail', { imageId: img.id, thumbnailUrl: thumbUrl });
-            setFilemoonThumbs((prev) => ({ ...prev, [img.id]: thumbUrl }));
+          const orderedKeys = [
+            defaultVideoSource,
+            ...VIDEO_UPLOAD_SERVICES.map((service) => service.key).filter((key) => key !== defaultVideoSource),
+          ];
+          for (const key of orderedKeys) {
+            const filecode = extractFilecode(key, links);
+            if (!filecode || links?.[key]?.thumbnailUrl) continue;
+            const res = await sendMessage('getVideoThumbnail', { providerKey: key, filecode });
+            const thumbUrl = typeof res === 'string' ? res : res?.thumbnailUrl || (res?.success ? res.thumbnailUrl : '');
+            if (thumbUrl) {
+              await sendMessage('updateVideoThumbnail', { imageId: img.id, providerKey: key, thumbnailUrl: thumbUrl });
+              setFilemoonThumbs((prev) => ({ ...prev, [img.id]: thumbUrl }));
+              break;
+            }
           }
         } catch {}
         await new Promise(r => setTimeout(r, 500));
       }
     })();
     return () => { cancelled = true; };
-  }, [loading, images, sendMessage]);
+  }, [loading, images, defaultVideoSource, sendMessage]);
   
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -741,10 +760,8 @@ export default function GalleryPage() {
   const firstImageLikeUrl = (...urls) => urls.find((url) => typeof url === 'string' && url.trim() && !isLikelyVideoUrl(url)) || '';
   const getVideoPosterUrl = (item) => {
     const liveThumb = filemoonThumbs[item?.id];
-    const links = getVideoProviderLinks(item);
     const videoThumb =
-      links?.filemoon?.thumbnailUrl ||
-      links?.udrop?.thumbnailUrl ||
+      getPreferredVideoProviderLink(item, defaultVideoSource, 'thumbnailUrl') ||
       liveThumb ||
       '';
     return firstImageLikeUrl(

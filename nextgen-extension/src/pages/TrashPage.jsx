@@ -12,12 +12,12 @@ import {
   File, Image as ImageIcon, Hash, Fingerprint, Video
 } from 'lucide-react';
 import { Button, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
-import { useTrash } from '../hooks/useChromeExtension';
+import { useTrash, useChromeStorage } from '../hooks/useChromeExtension';
 import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import TimelineScrollbar from '../components/TimelineScrollbar';
 import PremiumBackground from '../components/PremiumBackground';
 import GalleryNavbar from '../components/GalleryNavbar';
-import { getPreferredVideoProviderLink, getVideoProviderLinks } from '../utils/videoProviderLinks';
+import { getPreferredVideoProviderLink } from '../utils/videoProviderLinks';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 import {
   getMediaItemKind,
@@ -29,6 +29,7 @@ import MediaDetailModal from '../components/MediaDetailModal';
 export default function TrashPage() {
   const navigate = useNavigate();
   const { trashedImages, loading, reload, restoreFromTrash, permanentlyDelete, emptyTrash } = useTrash();
+  const [defaultVideoSource] = useChromeStorage('defaultVideoSource', 'filemoon', 'sync');
   const [selectedImage, setSelectedImage] = useState(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -334,7 +335,7 @@ export default function TrashPage() {
   };
 
   const getImageUrl = (image, useFullSize = false) => {
-    const videoUrl = getPreferredVideoProviderLink(image, 'filemoon', 'watchUrl');
+    const videoUrl = getPreferredVideoProviderLink(image, defaultVideoSource, 'watchUrl');
     // Prefer the full hosted image everywhere; keep thumb as a last fallback.
     if (useFullSize) {
       return videoUrl || getPreferredImageProviderLink(image, 'imgbb', 'url') || image.sourceImageUrl;
@@ -348,8 +349,7 @@ export default function TrashPage() {
   };
 
   const getVideoDirectUrl = (image) => {
-    const links = getVideoProviderLinks(image);
-    return links?.filemoon?.directUrl || links?.udrop?.directUrl || links?.filemoon?.watchUrl || links?.udrop?.watchUrl || '';
+    return getPreferredVideoProviderLink(image, defaultVideoSource, 'directUrl');
   };
 
   const isLinkItem = (image) => {
@@ -359,10 +359,8 @@ export default function TrashPage() {
   const getVideoPosterUrl = (image) => {
     const isLikelyVideoUrl = (url) => typeof url === 'string' && /\.(mp4|webm|mov|m4v|mkv|avi|ogv)(?:[?#].*)?$/i.test(url.trim());
     const firstImageLikeUrl = (...urls) => urls.find((url) => typeof url === 'string' && url.trim() && !isLikelyVideoUrl(url)) || '';
-    const links = getVideoProviderLinks(image);
     const videoThumb =
-      links?.filemoon?.thumbnailUrl ||
-      links?.udrop?.thumbnailUrl ||
+      getPreferredVideoProviderLink(image, defaultVideoSource, 'thumbnailUrl') ||
       '';
     return firstImageLikeUrl(
       image?.videoThumbnailUrl,
