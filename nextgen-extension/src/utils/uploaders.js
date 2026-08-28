@@ -621,7 +621,7 @@ export class UDropUploader extends BaseUploader {
 export class TeraBoxUploader extends BaseUploader {
   constructor() {
     super('TeraBox');
-    this.apiBase = 'https://dm.terabox.com';
+    this.apiBase = 'https://www.terabox.com';
     this.appId = '250528';
     this.channel = 'dubox';
     this.cookie = '';

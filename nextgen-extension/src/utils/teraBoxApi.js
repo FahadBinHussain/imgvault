@@ -7,7 +7,7 @@
  *              the browser session via chrome.cookies.
  */
 
-const TERABOX_API_BASE = 'https://dm.terabox.com';
+const TERABOX_API_BASE = 'https://www.terabox.com';
 
 const hasText = (value) => typeof value === 'string' && value.trim().length > 0;
 
