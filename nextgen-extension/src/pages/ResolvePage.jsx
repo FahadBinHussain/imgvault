@@ -484,6 +484,7 @@ export default function ResolvePage() {
       if (!item || !item.id) continue;
       setFixingTeraBox((prev) => ({ ...prev, [item.id]: true }));
       setFixProgress((prev) => ({ ...prev, [item.id]: { phase: 'download', message: 'Starting...', percent: null } }));
+      let succeeded = false;
       try {
         const [freshItem, hostSettings] = await Promise.all([
           sendMessage('getImageById', { id: item.id }),
@@ -494,19 +495,28 @@ export default function ResolvePage() {
         });
         await sendMessage('updateImage', { id: item.id, ...updates });
         completed += 1;
+        succeeded = true;
       } catch (err) {
         failed += 1;
+        console.error(`[resolveAll] Failed to resolve "${item.pageTitle || item.fileName || item.id}" to ${label}:`, err);
+        setFixProgress((prev) => ({ ...prev, [item.id]: { phase: 'error', message: `Failed: ${err.message || err}` } }));
+        setNotice({
+          type: 'error',
+          message: `Failed to resolve "${item.pageTitle || item.fileName || item.id}" to ${label}: ${err.message || err}`,
+        });
       } finally {
         setFixingTeraBox((prev) => {
           const next = { ...prev };
           delete next[item.id];
           return next;
         });
-        setFixProgress((prev) => {
-          const next = { ...prev };
-          delete next[item.id];
-          return next;
-        });
+        if (succeeded) {
+          setFixProgress((prev) => {
+            const next = { ...prev };
+            delete next[item.id];
+            return next;
+          });
+        }
       }
     }
 
