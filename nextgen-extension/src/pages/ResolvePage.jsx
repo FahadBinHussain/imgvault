@@ -469,11 +469,8 @@ export default function ResolvePage() {
     }
   }, [activeTab, videoSubTab, teraboxLoading, teraboxError, teraboxIntegrity, runTeraBoxIntegrityCheck]);
 
-  const resolveAllTeraBox = useCallback(async () => {
-    const noUrl = teraboxIntegrity.noUrl || [];
-    const missing = teraboxIntegrity.missing || [];
-    const targets = [...noUrl, ...missing];
-    if (targets.length === 0 || resolvingAllTeraBox) return;
+  const resolveAllVideoHost = useCallback(async (hostKey, targets, label) => {
+    if (!targets || targets.length === 0 || resolvingAllTeraBox) return;
 
     setResolvingAllTeraBox(true);
     let completed = 0;
@@ -490,7 +487,7 @@ export default function ResolvePage() {
           sendMessage('getImageById', { id: item.id }),
           sendMessage('getVideoHostSettings'),
         ]);
-        const updates = await retryVideoHostPageSide(freshItem, 'terabox', hostSettings, {
+        const updates = await retryVideoHostPageSide(freshItem, hostKey, hostSettings, {
           onProgress: (progress) => setFixProgress((prev) => ({ ...prev, [item.id]: progress })),
         });
         await sendMessage('updateImage', { id: item.id, ...updates });
@@ -512,13 +509,30 @@ export default function ResolvePage() {
     }
 
     await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
-    await runTeraBoxIntegrityCheck();
+    if (hostKey === 'terabox') await runTeraBoxIntegrityCheck();
+    if (hostKey === 'udrop') await runUdropIntegrityCheck();
+    if (hostKey === 'filemoon') await runFilemoonIntegrityCheck();
     setResolvingAllTeraBox(false);
     setNotice({
       type: failed > 0 ? 'error' : 'success',
-      message: `Resolved ${completed}/${targets.length} to TeraBox. ${failed} failed.`,
+      message: `Resolved ${completed}/${targets.length} to ${label}. ${failed} failed.`,
     });
-  }, [teraboxIntegrity, resolvingAllTeraBox, sendMessage, runTeraBoxIntegrityCheck, reloadImages, reloadVaultImages]);
+  }, [resolvingAllTeraBox, sendMessage, runTeraBoxIntegrityCheck, runUdropIntegrityCheck, runFilemoonIntegrityCheck, reloadImages, reloadVaultImages]);
+
+  const resolveAllTeraBox = useCallback(async () => {
+    const targets = [...(teraboxIntegrity.noUrl || []), ...(teraboxIntegrity.missing || [])];
+    await resolveAllVideoHost('terabox', targets, 'TeraBox');
+  }, [teraboxIntegrity, resolveAllVideoHost]);
+
+  const resolveAllUdrop = useCallback(async () => {
+    const targets = [...(udropIntegrity.noUrl || []), ...(udropIntegrity.missing || [])];
+    await resolveAllVideoHost('udrop', targets, 'UDrop');
+  }, [udropIntegrity, resolveAllVideoHost]);
+
+  const resolveAllFilemoon = useCallback(async () => {
+    const targets = [...(filemoonIntegrity.noUrl || []), ...(filemoonIntegrity.missing || [])];
+    await resolveAllVideoHost('filemoon', targets, 'Filemoon');
+  }, [filemoonIntegrity, resolveAllVideoHost]);
 
   // ---- 3D Scene integrity helpers ----
   const checkSceneKeysConfigured = useCallback(() => {
@@ -1143,6 +1157,15 @@ export default function ResolvePage() {
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <Button
                   variant="primary"
+                  onClick={resolveAllUdrop}
+                  className="h-10 gap-2 px-3 text-sm"
+                  disabled={resolvingAllTeraBox || (udropIntegrity.noUrl.length + udropIntegrity.missing.length) === 0}
+                >
+                  {resolvingAllTeraBox ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                  {resolvingAllTeraBox ? 'Resolving...' : `Resolve all to UDrop (${udropIntegrity.noUrl.length + udropIntegrity.missing.length})`}
+                </Button>
+                <Button
+                  variant="primary"
                   onClick={runUdropIntegrityCheck}
                   className="h-10 gap-2 px-3 text-sm"
                   disabled={udropLoading}
@@ -1591,6 +1614,15 @@ export default function ResolvePage() {
               </div>
 
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Button
+                  variant="primary"
+                  onClick={resolveAllFilemoon}
+                  className="h-10 gap-2 px-3 text-sm"
+                  disabled={resolvingAllTeraBox || (filemoonIntegrity.noUrl.length + filemoonIntegrity.missing.length) === 0}
+                >
+                  {resolvingAllTeraBox ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                  {resolvingAllTeraBox ? 'Resolving...' : `Resolve all to Filemoon (${filemoonIntegrity.noUrl.length + filemoonIntegrity.missing.length})`}
+                </Button>
                 <Button
                   variant="primary"
                   onClick={runFilemoonIntegrityCheck}
