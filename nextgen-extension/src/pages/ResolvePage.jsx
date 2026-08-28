@@ -62,6 +62,15 @@ function isImageItem(item) {
   return Boolean(item) && !item.isLink && !item.isVideo && item.kind !== 'scene' && !item.spzUrl && !String(item.fileType || '').startsWith('video/');
 }
 
+function isVaultedEncryptedItem(item) {
+  return Boolean(item) && Boolean(
+    item.encryptedBlobUrl ||
+    item.encryptedBlobWatchUrl ||
+    item.extraMetadata?.encryptedBlobUrl ||
+    item.extraMetadata?.encryptedBlobWatchUrl
+  );
+}
+
 function formatDate(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -318,7 +327,11 @@ export default function ResolvePage() {
         // Scenes are tracked on the dedicated 3D Scene Hosts tab, not here.
         if (item.kind === 'scene' || item.spzUrl) return false;
         const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
-        const hasUdrop = Boolean(item.udropWatchUrl || item.udropDirectUrl || item.udropUrl) || (Array.isArray(item.extraMetadata?.udropLinks) && item.extraMetadata.udropLinks.length > 0);
+        const hasUdrop = Boolean(
+          item.udropWatchUrl || item.udropDirectUrl || item.udropUrl ||
+          item.encryptedBlobUrl || item.encryptedBlobWatchUrl ||
+          item.extraMetadata?.encryptedBlobUrl || item.extraMetadata?.encryptedBlobWatchUrl
+        ) || (Array.isArray(item.extraMetadata?.udropLinks) && item.extraMetadata.udropLinks.length > 0);
         return isVideo || hasUdrop;
       });
 
@@ -1847,11 +1860,14 @@ export default function ResolvePage() {
                               Open Filemoon
                             </Button>
                           )}
-                          {(status === 'noUrl' || status === 'missing') && (
+                           {(status === 'noUrl' || status === 'missing') && (() => {
+                            const encrypted = isVaultedEncryptedItem(item);
+                            return (
                             <Button
                               variant="primary"
                               className="h-9 justify-center gap-2 text-sm"
-                              disabled={Boolean(fixingFilemoon[item.id])}
+                              disabled={Boolean(fixingFilemoon[item.id]) || encrypted}
+                              title={encrypted ? 'Encrypted vault file — Filemoon does not accept this format. Use the UDrop or TeraBox tab to resolve it.' : undefined}
                               onClick={async () => {
                                 setFixingFilemoon((prev) => ({ ...prev, [item.id]: true }));
                                 setFixProgress((prev) => ({ ...prev, [item.id]: { phase: 'download', message: 'Starting...', percent: null } }));
@@ -1883,10 +1899,11 @@ export default function ResolvePage() {
                                 }
                               }}
                              >
-                               {fixingFilemoon[item.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-                               {fixingFilemoon[item.id] ? 'Fixing...' : 'Fix'}
+                               {fixingFilemoon[item.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : encrypted ? <AlertCircle className="h-4 w-4" /> : <UploadCloud className="h-4 w-4" />}
+                               {fixingFilemoon[item.id] ? 'Fixing...' : encrypted ? 'Unsupported on Filemoon' : 'Fix'}
                              </Button>
-                           )}
+                            );
+                          })()}
                            {fixProgress[item.id] && (
                              <div className="flex flex-col gap-1.5">
                                <div className="text-[11px] leading-tight text-base-content/70">
