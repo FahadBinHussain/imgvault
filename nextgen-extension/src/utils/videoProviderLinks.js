@@ -88,19 +88,45 @@ export function getMissingVideoUploadServices(item) {
   return VIDEO_UPLOAD_SERVICES.filter((service) => !hasVideoProviderLink(item, service.key));
 }
 
-export function getVideoRetrySourceCandidates(item, targetProviderKey) {
+export function getVideoRetrySourceCandidates(item, targetProviderKey, sourceHost = '') {
   const links = getVideoProviderLinks(item);
   const candidates = [];
+  const requested = String(sourceHost || '').trim().toLowerCase();
 
   for (const service of VIDEO_UPLOAD_SERVICES) {
     if (service.key === targetProviderKey) continue;
+    if (requested && service.key !== requested) continue;
     const link = links[service.key];
     if (!link) continue;
     candidates.push(link.directUrl, link.watchUrl);
   }
 
-  candidates.push(item?.sourceImageUrl);
+  // Only fall back to the raw source image URL when no specific source host
+  // was requested — explicit user choice must never be overridden.
+  if (!requested) candidates.push(item?.sourceImageUrl);
   return candidates.filter(hasText);
+}
+
+/**
+ * List the video hosts an item currently has a link on (excluding the target
+ * host being re-uploaded to). Used to offer the user an explicit download
+ * source when fixing a broken host — symmetric, no hidden fallback order.
+ * @param {Object} item
+ * @param {string} [targetProviderKey] host being fixed (excluded)
+ * @returns {Array<{key:string,label:string}>}
+ */
+export function getVideoSourceHostOptions(item, targetProviderKey = '') {
+  const links = getVideoProviderLinks(item);
+  const target = String(targetProviderKey || '').trim().toLowerCase();
+  const options = [];
+  for (const service of VIDEO_UPLOAD_SERVICES) {
+    if (target && service.key === target) continue;
+    const link = links[service.key];
+    if (!link) continue;
+    const hasUrl = Boolean(pickText(link.directUrl, link.watchUrl, link.url));
+    if (hasUrl) options.push({ key: service.key, label: service.label });
+  }
+  return options;
 }
 
 export function buildVideoProviderLinkFromResult(result = {}) {

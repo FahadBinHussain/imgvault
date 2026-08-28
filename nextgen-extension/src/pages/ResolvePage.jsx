@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import PremiumBackground from '../components/PremiumBackground';
 import GalleryNavbar from '../components/GalleryNavbar';
-import { Button } from '../components/UI';
+import { Button, Modal } from '../components/UI';
 import { IMAGE_UPLOAD_SERVICES, VIDEO_UPLOAD_SERVICES } from '../config/providerCatalog';
 import { useChromeMessage, useChromeStorage, useCollections, useImages, useTrash, useVault } from '../hooks/useChromeExtension';
 import {
@@ -44,6 +44,7 @@ import {
   checkTeraBoxIntegrity,
 } from '../utils/teraBoxApi';
 import { retryVideoHostPageSide } from '../utils/videoRetryPageSide';
+import { getVideoSourceHostOptions } from '../utils/videoProviderLinks';
 
 const IMAGE_SETTING_KEYS = Array.from(
   new Set([
@@ -143,6 +144,7 @@ export default function ResolvePage() {
   const [fixingFilemoon, setFixingFilemoon] = useState({});
   const [fixingUdrop, setFixingUdrop] = useState({});
   const [fixProgress, setFixProgress] = useState({});
+  const [fixSourcePicker, setFixSourcePicker] = useState(null); // { targetHost, item, hostSettings, sources, label, recheck }
 
   // ---- TeraBox integrity check state ----
   const [teraboxIntegrity, setTeraBoxIntegrity] = useState({ found: [], missing: [], noUrl: [], extra: [] });
@@ -533,6 +535,60 @@ export default function ResolvePage() {
     const targets = [...(filemoonIntegrity.noUrl || []), ...(filemoonIntegrity.missing || [])];
     await resolveAllVideoHost('filemoon', targets, 'Filemoon');
   }, [filemoonIntegrity, resolveAllVideoHost]);
+
+  // Run a Fix for a single video, optionally restricted to an explicit source
+  // host the video is already on. No hidden fallback chain — if the user picks
+  // a source, only that host is used as the download source.
+  const runVideoFix = async (item, targetHost, hostSettings, sourceHost, label, recheck) => {
+    const setFixing = targetHost === 'terabox' ? setFixingTeraBox
+      : targetHost === 'udrop' ? setFixingUdrop
+      : setFixingFilemoon;
+    setFixing((prev) => ({ ...prev, [item.id]: true }));
+    setFixProgress((prev) => ({ ...prev, [item.id]: { phase: 'download', message: 'Starting...', percent: null } }));
+    try {
+      const updates = await retryVideoHostPageSide(item, targetHost, hostSettings, {
+        ...(sourceHost ? { sourceHost } : {}),
+        onProgress: (progress) => setFixProgress((prev) => ({ ...prev, [item.id]: progress })),
+      });
+      await sendMessage('updateImage', { id: item.id, ...updates });
+      await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
+      await recheck();
+      setNotice({ type: 'success', message: `${label} upload fixed for "${item.pageTitle || item.fileName || item.description || 'item'}".` });
+    } catch (err) {
+      setNotice({ type: 'error', message: `Failed to fix: ${err.message || err}` });
+    } finally {
+      setFixing((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      setFixProgress((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+    }
+  };
+
+  // Clicking "Fix" opens a source picker when the video is on more than one
+  // host, so the user decides where the file is downloaded from (symmetric —
+  // no hardcoded filemoon-first fallback). Single-source videos fix directly.
+  const startVideoFix = async (item, targetHost, label, recheck) => {
+    try {
+      const [freshItem, hostSettings] = await Promise.all([
+        sendMessage('getImageById', { id: item.id }),
+        sendMessage('getVideoHostSettings'),
+      ]);
+      const sources = getVideoSourceHostOptions(freshItem, targetHost);
+      if (sources.length <= 1) {
+        await runVideoFix(freshItem, targetHost, hostSettings, '', label, recheck);
+        return;
+      }
+      setFixSourcePicker({ targetHost, item: freshItem, hostSettings, sources, label, recheck });
+    } catch (err) {
+      setNotice({ type: 'error', message: `Failed to fix: ${err.message || err}` });
+    }
+  };
 
   // ---- 3D Scene integrity helpers ----
   const checkSceneKeysConfigured = useCallback(() => {
@@ -1543,36 +1599,7 @@ export default function ResolvePage() {
                               variant="primary"
                               className="h-9 justify-center gap-2 text-sm"
                               disabled={Boolean(fixingUdrop[item.id])}
-                              onClick={async () => {
-                                setFixingUdrop((prev) => ({ ...prev, [item.id]: true }));
-                                setFixProgress((prev) => ({ ...prev, [item.id]: { phase: 'download', message: 'Starting...', percent: null } }));
-                                try {
-                                  const [freshItem, hostSettings] = await Promise.all([
-                                    sendMessage('getImageById', { id: item.id }),
-                                    sendMessage('getVideoHostSettings'),
-                                  ]);
-                                  const updates = await retryVideoHostPageSide(freshItem, 'udrop', hostSettings, {
-                                    onProgress: (progress) => setFixProgress((prev) => ({ ...prev, [item.id]: progress })),
-                                  });
-                                  await sendMessage('updateImage', { id: item.id, ...updates });
-                                  await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
-                                  await runUdropIntegrityCheck();
-                                  setNotice({ type: 'success', message: `UDrop upload fixed for "${title}".` });
-                                } catch (err) {
-                                  setNotice({ type: 'error', message: `Failed to fix: ${err.message || err}` });
-                                } finally {
-                                  setFixingUdrop((prev) => {
-                                    const next = { ...prev };
-                                    delete next[item.id];
-                                    return next;
-                                  });
-                                  setFixProgress((prev) => {
-                                    const next = { ...prev };
-                                    delete next[item.id];
-                                    return next;
-                                  });
-                                }
-                              }}
+                              onClick={() => startVideoFix(item, 'udrop', 'UDrop', runUdropIntegrityCheck)}
                             >
                               {fixingUdrop[item.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
                               {fixingUdrop[item.id] ? 'Fixing...' : 'Fix'}
@@ -1957,40 +1984,11 @@ export default function ResolvePage() {
                               className="h-9 justify-center gap-2 text-sm"
                               disabled={Boolean(fixingFilemoon[item.id]) || encrypted}
                               title={encrypted ? 'Encrypted vault file — Filemoon does not accept this format. Use the UDrop or TeraBox tab to resolve it.' : undefined}
-                              onClick={async () => {
-                                setFixingFilemoon((prev) => ({ ...prev, [item.id]: true }));
-                                setFixProgress((prev) => ({ ...prev, [item.id]: { phase: 'download', message: 'Starting...', percent: null } }));
-                                try {
-                                  const [freshItem, hostSettings] = await Promise.all([
-                                    sendMessage('getImageById', { id: item.id }),
-                                    sendMessage('getVideoHostSettings'),
-                                  ]);
-                                  const updates = await retryVideoHostPageSide(freshItem, 'filemoon', hostSettings, {
-                                    onProgress: (progress) => setFixProgress((prev) => ({ ...prev, [item.id]: progress })),
-                                  });
-                                  await sendMessage('updateImage', { id: item.id, ...updates });
-                                  await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
-                                  await runFilemoonIntegrityCheck();
-                                  setNotice({ type: 'success', message: `Filemoon upload fixed for "${title}".` });
-                                } catch (err) {
-                                  setNotice({ type: 'error', message: `Failed to fix: ${err.message || err}` });
-                                } finally {
-                                  setFixingFilemoon((prev) => {
-                                    const next = { ...prev };
-                                    delete next[item.id];
-                                    return next;
-                                  });
-                                  setFixProgress((prev) => {
-                                    const next = { ...prev };
-                                    delete next[item.id];
-                                    return next;
-                                  });
-                                }
-                              }}
-                             >
-                               {fixingFilemoon[item.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : encrypted ? <AlertCircle className="h-4 w-4" /> : <UploadCloud className="h-4 w-4" />}
-                               {fixingFilemoon[item.id] ? 'Fixing...' : encrypted ? 'Unsupported on Filemoon' : 'Fix'}
-                             </Button>
+                              onClick={() => !encrypted && startVideoFix(item, 'filemoon', 'Filemoon', runFilemoonIntegrityCheck)}
+                            >
+                              {fixingFilemoon[item.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : encrypted ? <AlertCircle className="h-4 w-4" /> : <UploadCloud className="h-4 w-4" />}
+                              {fixingFilemoon[item.id] ? 'Fixing...' : encrypted ? 'Unsupported on Filemoon' : 'Fix'}
+                            </Button>
                             );
                           })()}
                            {fixProgress[item.id] && (
@@ -2336,36 +2334,7 @@ export default function ResolvePage() {
                               variant="primary"
                               className="h-9 justify-center gap-2 text-sm"
                               disabled={Boolean(fixingTeraBox[item.id])}
-                              onClick={async () => {
-                                setFixingTeraBox((prev) => ({ ...prev, [item.id]: true }));
-                                setFixProgress((prev) => ({ ...prev, [item.id]: { phase: 'download', message: 'Starting...', percent: null } }));
-                                try {
-                                  const [freshItem, hostSettings] = await Promise.all([
-                                    sendMessage('getImageById', { id: item.id }),
-                                    sendMessage('getVideoHostSettings'),
-                                  ]);
-                                  const updates = await retryVideoHostPageSide(freshItem, 'terabox', hostSettings, {
-                                    onProgress: (progress) => setFixProgress((prev) => ({ ...prev, [item.id]: progress })),
-                                  });
-                                  await sendMessage('updateImage', { id: item.id, ...updates });
-                                  await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
-                                  await runTeraBoxIntegrityCheck();
-                                  setNotice({ type: 'success', message: `TeraBox upload fixed for "${title}".` });
-                                } catch (err) {
-                                  setNotice({ type: 'error', message: `Failed to fix: ${err.message || err}` });
-                                } finally {
-                                  setFixingTeraBox((prev) => {
-                                    const next = { ...prev };
-                                    delete next[item.id];
-                                    return next;
-                                  });
-                                  setFixProgress((prev) => {
-                                    const next = { ...prev };
-                                    delete next[item.id];
-                                    return next;
-                                  });
-                                }
-                              }}
+                              onClick={() => startVideoFix(item, 'terabox', 'TeraBox', runTeraBoxIntegrityCheck)}
                             >
                               {fixingTeraBox[item.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
                               {fixingTeraBox[item.id] ? 'Fixing...' : 'Fix'}
@@ -2697,6 +2666,35 @@ export default function ResolvePage() {
               })()}
             </section>
           </>
+        )}
+
+        {fixSourcePicker && (
+          <Modal
+            isOpen
+            onClose={() => setFixSourcePicker(null)}
+            title={`Download source for ${fixSourcePicker.label} fix`}
+          >
+            <div className="space-y-2">
+              <p className="text-sm text-base-content/70">
+                This video is on {fixSourcePicker.sources.length} host(s). Pick which one to download the full file from.
+              </p>
+              {fixSourcePicker.sources.map((source) => (
+                <Button
+                  key={source.key}
+                  variant="outline"
+                  className="h-10 w-full justify-center gap-2 text-sm"
+                  onClick={async () => {
+                    const { targetHost, item, hostSettings, label, recheck } = fixSourcePicker;
+                    setFixSourcePicker(null);
+                    await runVideoFix(item, targetHost, hostSettings, source.key, label, recheck);
+                  }}
+                >
+                  <UploadCloud className="h-4 w-4" />
+                  Download from {source.label}
+                </Button>
+              ))}
+            </div>
+          </Modal>
         )}
       </main>
     </div>

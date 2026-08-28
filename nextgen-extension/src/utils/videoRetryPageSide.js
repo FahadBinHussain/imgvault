@@ -181,6 +181,19 @@ async function fetchVideoAsBlob(url, referrer, onProgress) {
       try { reader.cancel(); } catch (_) { /* already done */ }
     }
 
+    // Guard against truncated downloads: if the server declared a total
+    // (Content-Length) and the stream ended with fewer bytes, the file is
+    // partial — never hand a truncated blob to the uploader (was a real bug
+    // where a cut-off filemoon stream got uploaded to terabox as "complete").
+    if (!stalled && total > 0 && loaded < total) {
+      if (retries < RESUME_MAX_RETRIES) {
+        retries += 1;
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+      throw new Error(`Download truncated: got ${loaded} of ${total} bytes.`);
+    }
+
     if (!stalled) return new Blob(chunks, { type });
 
     if (loaded > 0 && retries < RESUME_MAX_RETRIES) {
@@ -260,11 +273,15 @@ async function downloadHlsAsVideoBlob(m3u8Url, onProgress) {
  * @param {string} targetHost  e.g. 'filemoon'
  * @param {Object} settings Host settings (from getVideoHostSettings message)
  * @param {Object} [options]
+ * @param {string} [options.sourceHost]  Restrict the download to a specific
+ *        host the video is already on (e.g. 'udrop'). When omitted, all other
+ *        hosts are tried in catalog order. Explicit user choice is honoured —
+ *        no hidden fallback chain when set.
  * @param {Function} [options.onProgress] ({phase, message, loaded, total, percent})
  * @returns {Promise<Object>} updates { videoHosts, watchUrl, … }
  */
 export async function retryVideoHostPageSide(item, targetHost, settings, options = {}) {
-  const { onProgress } = options;
+  const { onProgress, sourceHost } = options;
   const report = (phase, message, extra = {}) => {
     if (typeof onProgress === 'function') {
       onProgress({ phase, message, ...extra });
@@ -283,10 +300,14 @@ export async function retryVideoHostPageSide(item, targetHost, settings, options
     throw new Error(`${service.label} API settings are not configured.`);
   }
 
-  const sourceCandidates = getVideoRetrySourceCandidates(item, host);
+  const requestedSource = String(sourceHost || '').trim().toLowerCase();
+  const sourceCandidates = getVideoRetrySourceCandidates(item, host, requestedSource);
   const httpCandidates = sourceCandidates.filter(isHttpUrl);
   if (httpCandidates.length === 0) {
-    throw new Error(`No existing hosted video URL is available to retry ${service.label}.`);
+    const extra = requestedSource
+      ? ` (no ${requestedSource} link on this item)`
+      : '';
+    throw new Error(`No existing hosted video URL is available to retry ${service.label}.${extra}`);
   }
 
   let videoBlob = null;
