@@ -3310,27 +3310,26 @@ class ImgVaultServiceWorker {
     try {
       const settings = await this.storage.getUserSettings();
       const apiKey = settings?.filemoonApiKey;
-      
+
       if (!apiKey) {
         throw new Error('Filemoon API key not configured');
       }
-      
-      // console.log(`📸 [FILEMOON] Fetching thumbnail for filecode: ${filecode}`);
-      
-      const response = await fetch(`https://filemoonapi.com/api/images/thumb?key=${apiKey}&file_code=${filecode}`);
-      
+
+      // Byse /file/info returns player_img as the thumbnail URL.
+      // filemoonapi.com is unreliable (returns 522), so use byse as primary.
+      const response = await fetch(`https://api.byse.sx/file/info?key=${apiKey}&file_code=${filecode}`);
+
       if (!response.ok) {
-        throw new Error(`Thumbnail API returned ${response.status}`);
+        throw new Error(`Byse /file/info returned ${response.status}`);
       }
-      
+
       const result = await response.json();
-      // console.log(`📸 [FILEMOON] Thumbnail API response:`, result);
-      
-      if (result.status === 200 && result.result?.thumbnail) {
-        // console.log(`✅ [FILEMOON] Thumbnail URL: ${result.result.thumbnail}`);
-        return result.result.thumbnail;
+      const playerImg = result?.result?.[0]?.player_img || result?.result?.player_img;
+
+      if (playerImg) {
+        return playerImg;
       }
-      
+
       console.warn(`⚠️ [FILEMOON] Thumbnail not available yet for filecode: ${filecode}`);
       return null;
     } catch (error) {

@@ -35,7 +35,7 @@ export function getVideoProviderLinks(item = {}) {
     const watchUrl = pickText(saved.watchUrl, saved.displayUrl, saved.url, item[service.watchUrlField], item[service.aliasWatchUrlField]);
     const directUrl = pickText(saved.directUrl, saved.downloadUrl, item[service.directUrlField]);
     const deleteUrl = pickText(saved.deleteUrl);
-    const thumbnailUrl = pickText(saved.thumbnailUrl, saved.thumbUrl);
+    const thumbnailUrl = pickText(saved.thumbnailUrl, saved.thumbUrl, item[`${service.key}ThumbUrl`]);
 
     if (watchUrl || directUrl || deleteUrl || thumbnailUrl) {
       links[service.key] = {

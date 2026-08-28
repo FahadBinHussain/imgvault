@@ -218,7 +218,10 @@ export default function GalleryPage() {
     const needsThumb = images.filter(img => {
       if (getMediaItemKind(img) !== 'video') return false;
       const links = getVideoProviderLinks(img);
-      const filecode = links?.filemoon?.filecode;
+      const filecode = links?.filemoon?.filecode || (() => {
+        const m = String(links?.filemoon?.watchUrl || links?.filemoon?.directUrl || '').match(/filemoon\.sx\/(?:d|e)\/([a-zA-Z0-9]+)/i);
+        return m?.[1] || null;
+      })();
       return filecode && !img.filemoonThumbUrl;
     });
     if (needsThumb.length === 0) return;
