@@ -1524,7 +1524,6 @@ export default function GalleryPage() {
 
       await chrome.storage.local.set({ uploadActive: false, uploadStatus: '' });
       setBatchUploadState((current) => ({ ...current, active: false }));
-      setShowUploadModal(false);
       showToast('Upload cancelled.', 'warning', 3000);
     } catch (error) {
       console.error('Failed to cancel upload:', error);
