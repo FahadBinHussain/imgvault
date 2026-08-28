@@ -43,6 +43,7 @@ import {
 } from '@shared/mediaFieldRegistry.js';
 import SceneUploadDialog from '../components/SceneUploadDialog';
 import { useThumbUrl } from '../hooks/useThumbUrl';
+import MpegtsPlayer from '../components/MpegtsPlayer';
 import { CachedImg, CachedVideo } from '../components/CachedThumb';
 import SceneViewer from '../components/SceneViewer';
 import MediaDetailModal from '../components/MediaDetailModal';
@@ -185,6 +186,7 @@ export default function GalleryPage() {
   const [navbarHeight, setNavbarHeight] = useState(0);
   const [filemoonThumbs, setFilemoonThumbs] = useState({}); // { imageId: thumbnailUrl } live-updated from lazy fetch
   const [modalPlaybackUrl, setModalPlaybackUrl] = useState(''); // fresh playback URL for terabox (dlinks expire in 8h)
+  const [modalContainerType, setModalContainerType] = useState(''); // 'ts' | 'mp4' | 'webm' | '' after probing
   
   // Timeline scrollbar refs
   const pageContainerRef = useRef(null);
@@ -306,6 +308,41 @@ export default function GalleryPage() {
     })();
     return () => { cancelled = true; setModalPlaybackUrl(''); };
   }, [selectedImage?.id, defaultVideoSource, sendMessage]);
+
+  // Probe the container of the resolved playback URL so the modal renders the
+  // right player: MPEG-TS (Chrome <video> can't decode) uses mpegts.js, mp4/webm
+  // use the native <video>. Symmetric — driven by the actual file bytes, not by
+  // which provider it came from.
+  useEffect(() => {
+    const target = modalPlaybackUrl || (selectedImage && getPreferredVideoDirectUrl(selectedImage));
+    if (!selectedImage?.id || getMediaItemKind(selectedImage) !== 'video' || !target) {
+      setModalContainerType('');
+      return;
+    }
+    let cancelled = false;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+    (async () => {
+      try {
+        const resp = await fetch(target, {
+          signal: controller.signal,
+          headers: { Range: 'bytes=0-15' },
+        });
+        const buf = new Uint8Array(await resp.arrayBuffer());
+        if (!cancelled) {
+          if (buf.length >= 4 && buf[0] === 0x47 && buf[1] === 0x40) setModalContainerType('ts');
+          else if (buf.length >= 12 && String.fromCharCode(...buf.slice(4, 8)) === 'ftyp') setModalContainerType('mp4');
+          else if (buf.length >= 4 && buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) setModalContainerType('webm');
+          else setModalContainerType('');
+        }
+      } catch {
+        if (!cancelled) setModalContainerType('');
+      } finally {
+        clearTimeout(timer);
+      }
+    })();
+    return () => { cancelled = true; clearTimeout(timer); controller.abort(); };
+  }, [modalPlaybackUrl, selectedImage?.id, defaultVideoSource]);
   
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -3049,10 +3086,21 @@ export default function GalleryPage() {
       );
     }
     if (shouldRenderModalVideoPlayer(modalImage)) {
+      const playSrc = modalPlaybackUrl || getPreferredVideoDirectUrl(modalImage);
+      if (modalContainerType === 'ts') {
+        return (
+          <MpegtsPlayer
+            src={playSrc}
+            className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain
+                     transition-all duration-700 ease-out
+                     ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
+          />
+        );
+      }
       return (
         <video
           ref={modalVideoRef}
-          src={modalPlaybackUrl || getPreferredVideoDirectUrl(modalImage)}
+          src={playSrc}
           className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain
                    transition-all duration-700 ease-out
                    ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
