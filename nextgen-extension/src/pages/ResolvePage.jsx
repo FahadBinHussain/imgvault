@@ -322,16 +322,15 @@ export default function ResolvePage() {
       const allItems = [...(freshImages || []), ...(freshVault || [])];
       const videoItems = allItems.filter((item) => {
         if (!item) return false;
+        // Vaulted encrypted blobs are opaque — their udrop file is the vault's
+        // own blob (trashed ones are auto-deleted), not a normal host video.
+        if (isVaultedEncryptedItem(item)) return false;
         // Link items can be fixed/uploaded too (Fix buttons appear on their
         // rows), so they must count as referenced when they have a host URL.
         // Scenes are tracked on the dedicated 3D Scene Hosts tab, not here.
         if (item.kind === 'scene' || item.spzUrl) return false;
         const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
-        const hasUdrop = Boolean(
-          item.udropWatchUrl || item.udropDirectUrl || item.udropUrl ||
-          item.encryptedBlobUrl || item.encryptedBlobWatchUrl ||
-          item.extraMetadata?.encryptedBlobUrl || item.extraMetadata?.encryptedBlobWatchUrl
-        ) || (Array.isArray(item.extraMetadata?.udropLinks) && item.extraMetadata.udropLinks.length > 0);
+        const hasUdrop = Boolean(item.udropWatchUrl || item.udropDirectUrl || item.udropUrl) || (Array.isArray(item.extraMetadata?.udropLinks) && item.extraMetadata.udropLinks.length > 0);
         return isVideo || hasUdrop;
       });
 

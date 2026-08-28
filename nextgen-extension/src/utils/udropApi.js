@@ -66,7 +66,7 @@ export async function listUdropFolder(accessToken, accountId, folderId = '') {
 
   const data = result.data || {};
 const files = (Array.isArray(data.files) ? data.files : []).filter(
-      (f) => f.status !== 'deleted'
+      (f) => f.status !== 'trash' && f.status !== 'deleted'
     );
   const folders = Array.isArray(data.folders)
     ? data.folders
@@ -256,10 +256,6 @@ export async function checkUdropIntegrity(items, allItems, accessToken, accountI
       item.udropUrl,
       item.spzUrl,
       item.textureUrl,
-      item.encryptedBlobUrl,
-      item.encryptedBlobWatchUrl,
-      item.extraMetadata?.encryptedBlobUrl,
-      item.extraMetadata?.encryptedBlobWatchUrl,
       ...extraLinkUrls,
     ].filter(Boolean);
 
@@ -316,10 +312,6 @@ export async function checkUdropIntegrity(items, allItems, accessToken, accountI
         item.udropUrl,
         item.spzUrl,
         item.textureUrl,
-        item.encryptedBlobUrl,
-        item.encryptedBlobWatchUrl,
-        item.extraMetadata?.encryptedBlobUrl,
-        item.extraMetadata?.encryptedBlobWatchUrl,
         ...extraLinks.flatMap((entry) => [entry?.watchUrl, entry?.directUrl]).filter(Boolean),
       ].filter(Boolean);
       urls.map(extractUdropCode).filter(Boolean).forEach((c) => referencedCodes.add(c));
