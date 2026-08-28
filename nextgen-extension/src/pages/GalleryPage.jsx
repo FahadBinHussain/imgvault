@@ -259,7 +259,7 @@ export default function GalleryPage() {
   const [isManualUploadMode, setIsManualUploadMode] = useState(false); // Track if triggered by context menu with no srcUrl
   const [uploadModalMetaTab, setUploadModalMetaTab] = useState('noobs');
   const [uploadHostSettings, setUploadHostSettings] = useState({});
-  const [selectedUploadHostKeys, setSelectedUploadHostKeys] = useState([]);
+  const [selectedUploadHostKeys, setSelectedUploadHostKeys, selectedKeysLoading] = useChromeStorage('selectedUploadHostKeys', [], 'local');
   const [uploadToVault, setUploadToVault] = useState(false);
   const [vaultLockedForUpload, setVaultLockedForUpload] = useState(false);
   const [vaultUnlockCode, setVaultUnlockCode] = useState('');
@@ -1298,7 +1298,6 @@ export default function GalleryPage() {
     setShowCreateCollection(false);
     setNewCollectionName('');
     setUploadHostSettings({});
-    setSelectedUploadHostKeys([]);
     setUploadQueue([]);
     setUploadAttemptStarted(false);
     setBatchUploadState({
@@ -1357,6 +1356,7 @@ export default function GalleryPage() {
   }, [showUploadModal, uploadImageData, sendMessage]);
 
   useEffect(() => {
+    if (configuredUploadServices.length === 0) return;
     setSelectedUploadHostKeys((current) => reconcileSelectedHostKeys(current, configuredUploadServices));
   }, [configuredUploadServices]);
 
