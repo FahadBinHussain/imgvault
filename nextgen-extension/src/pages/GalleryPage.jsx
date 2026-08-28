@@ -178,6 +178,7 @@ export default function GalleryPage() {
   const [loadedImages, setLoadedImages] = useState(new Set()); // Track loaded images for fade-in
   const [failedImages, setFailedImages] = useState(new Set()); // Track images that failed to load
   const [navbarHeight, setNavbarHeight] = useState(0);
+  const [filemoonThumbs, setFilemoonThumbs] = useState({}); // { imageId: thumbnailUrl } live-updated from lazy fetch
   
   // Timeline scrollbar refs
   const pageContainerRef = useRef(null);
@@ -236,6 +237,7 @@ export default function GalleryPage() {
           const res = await sendMessage('getFilemoonThumbnail', { filecode });
           if (res?.success && res.thumbnailUrl) {
             await sendMessage('updateFilemoonThumbnail', { imageId: img.id, thumbnailUrl: res.thumbnailUrl });
+            setFilemoonThumbs((prev) => ({ ...prev, [img.id]: res.thumbnailUrl }));
           }
         } catch {}
         await new Promise(r => setTimeout(r, 500));
@@ -729,10 +731,12 @@ export default function GalleryPage() {
   const isLikelyVideoUrl = (url) => typeof url === 'string' && /\.(mp4|webm|mov|m4v|mkv|avi|ogv)(?:[?#].*)?$/i.test(url.trim());
   const firstImageLikeUrl = (...urls) => urls.find((url) => typeof url === 'string' && url.trim() && !isLikelyVideoUrl(url)) || '';
   const getVideoPosterUrl = (item) => {
+    const liveThumb = filemoonThumbs[item?.id];
     const links = getVideoProviderLinks(item);
     const videoThumb =
       links?.filemoon?.thumbnailUrl ||
       links?.udrop?.thumbnailUrl ||
+      liveThumb ||
       '';
     return firstImageLikeUrl(
       item?.videoThumbnailUrl,
