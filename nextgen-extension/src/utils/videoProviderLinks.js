@@ -16,6 +16,12 @@ export function getVideoProviderLabel(key) {
   return getVideoUploadService(key)?.label || String(key || '').trim();
 }
 
+export function getStrictVideoProviderLink(item, providerKey, field = 'watchUrl') {
+  const link = getVideoProviderLinks(item)?.[providerKey];
+  if (!link) return '';
+  return pickText(link[field], field === 'watchUrl' ? link.directUrl : '');
+}
+
 export function getConfiguredVideoUploadServices(settings) {
   return VIDEO_UPLOAD_SERVICES.filter((service) => service.isConfigured(settings));
 }

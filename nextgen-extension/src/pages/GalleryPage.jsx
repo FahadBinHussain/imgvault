@@ -19,7 +19,7 @@ import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import TimelineScrollbar from '../components/TimelineScrollbar';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig';
-import { IMAGE_UPLOAD_SERVICES, VIDEO_UPLOAD_SERVICES, filterUploadServicesByKeys } from '../config/providerCatalog';
+import { IMAGE_UPLOAD_SERVICES, filterUploadServicesByKeys } from '../config/providerCatalog';
 import { FilemoonUploader, UDropUploader, TeraBoxUploader } from '../utils/uploaders';
 import { encryptBlob, encryptMetadata } from '../utils/vaultCrypto.js';
 import { getVaultMasterKey } from '../utils/vaultSession.js';
@@ -27,7 +27,7 @@ import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 import {
   getConfiguredVideoUploadServices,
   getMissingVideoUploadServices,
-  getPreferredVideoProviderLink,
+  getStrictVideoProviderLink,
   getVideoProviderLabel,
   getVideoProviderLinks,
   getVideoUploadService,
@@ -239,11 +239,8 @@ export default function GalleryPage() {
     const needsThumb = images.filter(img => {
       if (getMediaItemKind(img) !== 'video') return false;
       const links = getVideoProviderLinks(img);
-      const orderedKeys = [
-        defaultVideoSource,
-        ...VIDEO_UPLOAD_SERVICES.map((service) => service.key).filter((key) => key !== defaultVideoSource),
-      ];
-      return orderedKeys.some((key) => extractFilecode(key, links) && !links?.[key]?.thumbnailUrl);
+      const filecode = extractFilecode(defaultVideoSource, links);
+      return filecode && !links?.[defaultVideoSource]?.thumbnailUrl;
     });
     if (needsThumb.length === 0) return;
     let cancelled = false;
@@ -252,20 +249,13 @@ export default function GalleryPage() {
         if (cancelled) break;
         try {
           const links = getVideoProviderLinks(img);
-          const orderedKeys = [
-            defaultVideoSource,
-            ...VIDEO_UPLOAD_SERVICES.map((service) => service.key).filter((key) => key !== defaultVideoSource),
-          ];
-          for (const key of orderedKeys) {
-            const filecode = extractFilecode(key, links);
-            if (!filecode || links?.[key]?.thumbnailUrl) continue;
-            const res = await sendMessage('getVideoThumbnail', { providerKey: key, filecode });
-            const thumbUrl = typeof res === 'string' ? res : res?.thumbnailUrl || (res?.success ? res.thumbnailUrl : '');
-            if (thumbUrl) {
-              await sendMessage('updateVideoThumbnail', { imageId: img.id, providerKey: key, thumbnailUrl: thumbUrl });
-              setFilemoonThumbs((prev) => ({ ...prev, [img.id]: thumbUrl }));
-              break;
-            }
+          const filecode = extractFilecode(defaultVideoSource, links);
+          if (!filecode || links?.[defaultVideoSource]?.thumbnailUrl) continue;
+          const res = await sendMessage('getVideoThumbnail', { providerKey: defaultVideoSource, filecode });
+          const thumbUrl = typeof res === 'string' ? res : res?.thumbnailUrl || (res?.success ? res.thumbnailUrl : '');
+          if (thumbUrl) {
+            await sendMessage('updateVideoThumbnail', { imageId: img.id, providerKey: defaultVideoSource, thumbnailUrl: thumbUrl });
+            setFilemoonThumbs((prev) => ({ ...prev, [img.id]: thumbUrl }));
           }
         } catch {}
         await new Promise(r => setTimeout(r, 500));
@@ -631,7 +621,7 @@ export default function GalleryPage() {
     ? `https://console.firebase.google.com/u/1/project/${encodeURIComponent(firebaseProjectId)}/firestore/databases/-default-/data/~2F${encodeURIComponent(firestoreCollectionName)}~2F${encodeURIComponent(selectedImage.id)}?view=panel-view`
     : '';
   const getPreferredVideoWatchUrl = (item) => {
-    return getPreferredVideoProviderLink(item, defaultVideoSource, 'watchUrl');
+    return getStrictVideoProviderLink(item, defaultVideoSource, 'watchUrl');
   };
 
   const getFileNameFromPath = (filePath = '') => {
@@ -754,44 +744,28 @@ export default function GalleryPage() {
     throw new DOMException('A requested file or directory could not be found at the time an operation was processed.', 'NotFoundError');
   };
   const getPreferredVideoDirectUrl = (item) => {
-    return getPreferredVideoProviderLink(item, defaultVideoSource, 'directUrl');
+    return getStrictVideoProviderLink(item, defaultVideoSource, 'directUrl');
   };
   const isLikelyVideoUrl = (url) => typeof url === 'string' && /\.(mp4|webm|mov|m4v|mkv|avi|ogv)(?:[?#].*)?$/i.test(url.trim());
-  const firstImageLikeUrl = (...urls) => urls.find((url) => typeof url === 'string' && url.trim() && !isLikelyVideoUrl(url)) || '';
   const getVideoPosterUrl = (item) => {
     const liveThumb = filemoonThumbs[item?.id];
-    const videoThumb =
-      getPreferredVideoProviderLink(item, defaultVideoSource, 'thumbnailUrl') ||
-      liveThumb ||
-      '';
-    return firstImageLikeUrl(
-      item?.videoThumbnailUrl,
-      item?.linkPreviewImageUrl,
-      videoThumb,
-      getPreferredImageProviderLink(item, defaultGallerySource, 'thumbnailUrl'),
-      item?.imgbbThumbUrl,
-      getPreferredImageProviderLink(item, defaultGallerySource, 'url')
-    );
+    const videoThumb = getStrictVideoProviderLink(item, defaultVideoSource, 'thumbnailUrl') || liveThumb || '';
+    return isLikelyVideoUrl(videoThumb) ? '' : videoThumb;
   };
   const isFilemoonHtmlUrl = (url) => typeof url === 'string' && /filemoon\.sx\/(?:d|e)\//i.test(url);
   const getModalVideoSource = (item) => {
     // Returns { type: 'video'|'iframe', src } for the modal. Filemoon /e/ URLs
     // are HTML embeddable players (iframe); other providers give a real file
-    // URL that plays in a <video>. Iterates providers in preference order.
+    // URL that plays in a <video>. Only the selected host (defaultVideoSource)
+    // is used — no fallback chain.
     const links = getVideoProviderLinks(item);
-    const orderedKeys = [
-      defaultVideoSource,
-      ...VIDEO_UPLOAD_SERVICES.map((service) => service.key).filter((key) => key !== defaultVideoSource),
-    ];
-    for (const key of orderedKeys) {
-      const link = links[key];
-      if (!link) continue;
-      const directUrl = pickText(link.directUrl, link.downloadUrl);
-      const watchUrl = pickText(link.watchUrl, link.displayUrl, link.url);
-      if (isFilemoonHtmlUrl(directUrl)) return { type: 'iframe', src: directUrl };
-      if (directUrl) return { type: 'video', src: directUrl };
-      if (isFilemoonHtmlUrl(watchUrl)) return { type: 'iframe', src: directUrl || watchUrl };
-    }
+    const link = links[defaultVideoSource];
+    if (!link) return null;
+    const directUrl = pickText(link.directUrl, link.downloadUrl);
+    const watchUrl = pickText(link.watchUrl, link.displayUrl, link.url);
+    if (isFilemoonHtmlUrl(directUrl)) return { type: 'iframe', src: directUrl };
+    if (directUrl) return { type: 'video', src: directUrl };
+    if (isFilemoonHtmlUrl(watchUrl)) return { type: 'iframe', src: directUrl || watchUrl };
     return null;
   };
   const shouldRenderModalVideoPlayer = (item) => getModalVideoSource(item)?.type === 'video';

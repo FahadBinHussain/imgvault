@@ -27,6 +27,13 @@ export function getImageProviderLabel(key) {
   return getImageUploadService(key)?.label || String(key || '').trim();
 }
 
+export function getStrictImageProviderLink(item, providerKey, field = 'url') {
+  const link = getImageProviderLinks(item)?.[providerKey];
+  if (!link) return '';
+  if (field === 'thumbnailUrl') return pickText(link.thumbnailUrl, link.thumbUrl);
+  return pickText(link[field], link.displayUrl, link.directUrl, link.url);
+}
+
 export function getImageProviderLinks(item = {}) {
   item = item && typeof item === 'object' ? item : {};
   const extra = parseObject(item.extraMetadata);

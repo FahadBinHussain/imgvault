@@ -23,7 +23,7 @@ import PremiumBackground from '../components/PremiumBackground';
 import { useChromeMessage, useTrash, useCollections, useChromeStorage } from '../hooks/useChromeExtension';
 import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import {
-  getPreferredVideoProviderLink,
+  getStrictVideoProviderLink,
 } from '../utils/videoProviderLinks';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 import {
@@ -259,12 +259,11 @@ export default function VaultPage() {
   );
 
   const getVideoDirectUrl = (item) => (
-    getPreferredVideoProviderLink(item, defaultVideoSource, 'directUrl')
+    getStrictVideoProviderLink(item, defaultVideoSource, 'directUrl')
   );
 
   const getVideoWatchUrl = (item) => (
-    getPreferredVideoProviderLink(item, defaultVideoSource, 'watchUrl') ||
-    getVideoDirectUrl(item)
+    getStrictVideoProviderLink(item, defaultVideoSource, 'watchUrl')
   );
 
   const getLinkPreviewImage = (item) => (
@@ -278,18 +277,8 @@ export default function VaultPage() {
 
   const getVideoPosterUrl = (item) => {
     const isLikelyVideoUrl = (url) => typeof url === 'string' && /\.(mp4|webm|mov|m4v|mkv|avi|ogv)(?:[?#].*)?$/i.test(url.trim());
-    const firstImageLikeUrl = (...urls) => urls.find((url) => typeof url === 'string' && url.trim() && !isLikelyVideoUrl(url)) || '';
-    const videoThumb =
-      getPreferredVideoProviderLink(item, defaultVideoSource, 'thumbnailUrl') ||
-      '';
-    return firstImageLikeUrl(
-      item?.videoThumbnailUrl,
-      item?.linkPreviewImageUrl,
-      videoThumb,
-      getPreferredImageProviderLink(item, 'imgbb', 'thumbnailUrl'),
-      item?.imgbbThumbUrl,
-      getPreferredImageProviderLink(item, 'imgbb', 'url')
-    );
+    const videoThumb = getStrictVideoProviderLink(item, defaultVideoSource, 'thumbnailUrl');
+    return isLikelyVideoUrl(videoThumb) ? '' : videoThumb;
   };
 
   const getKind = (item) => {

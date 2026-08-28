@@ -17,7 +17,7 @@ import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import TimelineScrollbar from '../components/TimelineScrollbar';
 import PremiumBackground from '../components/PremiumBackground';
 import GalleryNavbar from '../components/GalleryNavbar';
-import { getPreferredVideoProviderLink } from '../utils/videoProviderLinks';
+import { getStrictVideoProviderLink } from '../utils/videoProviderLinks';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 import {
   getMediaItemKind,
@@ -335,7 +335,7 @@ export default function TrashPage() {
   };
 
   const getImageUrl = (image, useFullSize = false) => {
-    const videoUrl = getPreferredVideoProviderLink(image, defaultVideoSource, 'watchUrl');
+    const videoUrl = getStrictVideoProviderLink(image, defaultVideoSource, 'watchUrl');
     // Prefer the full hosted image everywhere; keep thumb as a last fallback.
     if (useFullSize) {
       return videoUrl || getPreferredImageProviderLink(image, 'imgbb', 'url') || image.sourceImageUrl;
@@ -349,7 +349,7 @@ export default function TrashPage() {
   };
 
   const getVideoDirectUrl = (image) => {
-    return getPreferredVideoProviderLink(image, defaultVideoSource, 'directUrl');
+    return getStrictVideoProviderLink(image, defaultVideoSource, 'directUrl');
   };
 
   const isLinkItem = (image) => {
@@ -358,18 +358,8 @@ export default function TrashPage() {
 
   const getVideoPosterUrl = (image) => {
     const isLikelyVideoUrl = (url) => typeof url === 'string' && /\.(mp4|webm|mov|m4v|mkv|avi|ogv)(?:[?#].*)?$/i.test(url.trim());
-    const firstImageLikeUrl = (...urls) => urls.find((url) => typeof url === 'string' && url.trim() && !isLikelyVideoUrl(url)) || '';
-    const videoThumb =
-      getPreferredVideoProviderLink(image, defaultVideoSource, 'thumbnailUrl') ||
-      '';
-    return firstImageLikeUrl(
-      image?.videoThumbnailUrl,
-      image?.linkPreviewImageUrl,
-      videoThumb,
-      getPreferredImageProviderLink(image, 'imgbb', 'thumbnailUrl'),
-      image?.imgbbThumbUrl,
-      getPreferredImageProviderLink(image, 'imgbb', 'url')
-    );
+    const videoThumb = getStrictVideoProviderLink(image, defaultVideoSource, 'thumbnailUrl');
+    return isLikelyVideoUrl(videoThumb) ? '' : videoThumb;
   };
 
   // Overview rows for the details panel. Shared resolver surfaces base registry
