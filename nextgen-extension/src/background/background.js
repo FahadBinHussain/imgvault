@@ -1692,13 +1692,13 @@ class ImgVaultServiceWorker {
         return true;
 
       case 'getFilemoonThumbnail':
-        this.getFilemoonThumbnail(request.filecode)
+        this.getFilemoonThumbnail(request.data?.filecode || request.filecode)
           .then(thumbnailUrl => sendResponse({ success: true, data: thumbnailUrl }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
       case 'updateFilemoonThumbnail':
-        this.storage.updateImage(request.imageId, { filemoonThumbUrl: request.thumbnailUrl })
+        this.storage.updateImage(request.data?.imageId || request.imageId, { filemoonThumbUrl: request.data?.thumbnailUrl || request.thumbnailUrl })
           .then(() => sendResponse({ success: true }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;

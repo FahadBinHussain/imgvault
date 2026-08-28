@@ -232,7 +232,10 @@ export default function GalleryPage() {
         if (cancelled) break;
         try {
           const links = getVideoProviderLinks(img);
-          const filecode = links?.filemoon?.filecode;
+          const filecode = links?.filemoon?.filecode || (() => {
+            const m = String(links?.filemoon?.watchUrl || links?.filemoon?.directUrl || '').match(/filemoon\.sx\/(?:d|e)\/([a-zA-Z0-9]+)/i);
+            return m?.[1] || null;
+          })();
           if (!filecode) continue;
           const res = await sendMessage('getFilemoonThumbnail', { filecode });
           const thumbUrl = typeof res === 'string' ? res : res?.thumbnailUrl || (res?.success ? res.thumbnailUrl : '');
