@@ -621,7 +621,11 @@ export class UDropUploader extends BaseUploader {
 export class TeraBoxUploader extends BaseUploader {
   constructor() {
     super('TeraBox');
-    this.apiBase = 'https://www.terabox.com';
+    // The dm homepage moved to a captcha gate (breaks jsToken scraping), so
+    // the token is scraped from www while all /api/* calls stay on dm (which
+    // is where the PCS API actually works). Fixed in 2.11.8.
+    this.tokenBase = 'https://www.terabox.com';
+    this.apiBase = 'https://dm.terabox.com';
     this.appId = '250528';
     this.channel = 'dubox';
     this.cookie = '';
@@ -668,11 +672,11 @@ export class TeraBoxUploader extends BaseUploader {
   }
 
   async fetchJsToken() {
-    const res = await fetch(`${this.apiBase}/`, {
+    const res = await fetch(`${this.tokenBase}/`, {
       headers: {
         'Cookie': this.cookie,
         'User-Agent': this.userAgent(),
-        'Referer': `${this.apiBase}/`,
+        'Referer': `${this.tokenBase}/`,
       },
     });
     const html = await res.text();

@@ -7,7 +7,11 @@
  *              the browser session via chrome.cookies.
  */
 
-const TERABOX_API_BASE = 'https://www.terabox.com';
+const TERABOX_API_BASE = 'https://dm.terabox.com';
+// Only the dm homepage moved to a captcha gate (breaks jsToken scraping), so
+// the token is scraped from www while all /api/* calls stay on dm (which is
+// where the PCS API actually works). Fixed in 2.11.8.
+const TERABOX_TOKEN_BASE = 'https://www.terabox.com';
 
 const hasText = (value) => typeof value === 'string' && value.trim().length > 0;
 
@@ -29,8 +33,8 @@ async function resolveCookie(explicitCookie) {
 }
 
 async function fetchJsToken(cookie) {
-  const res = await fetch(`${TERABOX_API_BASE}/`, {
-    headers: { 'Cookie': cookie, 'User-Agent': userAgent(), 'Referer': `${TERABOX_API_BASE}/` },
+  const res = await fetch(`${TERABOX_TOKEN_BASE}/`, {
+    headers: { 'Cookie': cookie, 'User-Agent': userAgent(), 'Referer': `${TERABOX_TOKEN_BASE}/` },
   });
   const html = await res.text();
   const m = html.match(/function%20fn%28a%29%7Bwindow\.jsToken%20%3D%20a%7D%3Bfn%28%22([^%"]+)%22%29/);
