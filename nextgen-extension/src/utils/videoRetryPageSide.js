@@ -1,7 +1,7 @@
 import { getVideoRetrySourceCandidates, getVideoUploadService, mergeVideoProviderResult } from './videoProviderLinks.js';
 import { extractFilemoonFilecode, getFilemoonDirectLink, getFilemoonHlsLink } from './filemoonApi.js';
 import { getFilemoonStreamSource } from './filemoonSpa.js';
-import { FilemoonUploader, UDropUploader } from './uploaders.js';
+import { FilemoonUploader, UDropUploader, TeraBoxUploader } from './uploaders.js';
 
 const absolute = (url, base) => new URL(url, base).toString();
 
@@ -10,6 +10,7 @@ const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(v
 const createVideoUploader = (service) => {
   if (service?.uploaderKey === 'filemoonUploader') return new FilemoonUploader();
   if (service?.uploaderKey === 'udropUploader') return new UDropUploader();
+  if (service?.uploaderKey === 'teraboxUploader') return new TeraBoxUploader();
   return null;
 };
 
