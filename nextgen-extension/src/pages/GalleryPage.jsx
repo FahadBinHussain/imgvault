@@ -184,6 +184,7 @@ export default function GalleryPage() {
   const [failedImages, setFailedImages] = useState(new Set()); // Track images that failed to load
   const [navbarHeight, setNavbarHeight] = useState(0);
   const [filemoonThumbs, setFilemoonThumbs] = useState({}); // { imageId: thumbnailUrl } live-updated from lazy fetch
+  const [modalPlaybackUrl, setModalPlaybackUrl] = useState(''); // fresh playback URL for terabox (dlinks expire in 8h)
   
   // Timeline scrollbar refs
   const pageContainerRef = useRef(null);
@@ -218,7 +219,10 @@ export default function GalleryPage() {
     }
   }, [loading, images]);
 
-  // Lazy-fetch missing FileMoon thumbnails
+  // Lazy-fetch missing video thumbnails for the selected host. Filemoon thumbs
+  // are stable (videothumbs.me) and get persisted; TeraBox thumbs are signed
+  // and expire (8h), so they stay live-only — re-fetched on every page load,
+  // never written to the DB where they'd go stale.
   useEffect(() => {
     if (loading || !images || images.length === 0) return;
     const extractFilecode = (providerKey, links) => {
@@ -240,7 +244,9 @@ export default function GalleryPage() {
       if (getMediaItemKind(img) !== 'video') return false;
       const links = getVideoProviderLinks(img);
       const filecode = extractFilecode(defaultVideoSource, links);
-      return filecode && !links?.[defaultVideoSource]?.thumbnailUrl;
+      if (!filecode) return false;
+      // terabox thumbs are expiring — always refresh; other hosts skip when persisted
+      return defaultVideoSource === 'terabox' || !links?.[defaultVideoSource]?.thumbnailUrl;
     });
     if (needsThumb.length === 0) return;
     let cancelled = false;
@@ -250,12 +256,17 @@ export default function GalleryPage() {
         try {
           const links = getVideoProviderLinks(img);
           const filecode = extractFilecode(defaultVideoSource, links);
-          if (!filecode || links?.[defaultVideoSource]?.thumbnailUrl) continue;
+          if (!filecode) continue;
+          if (defaultVideoSource !== 'terabox' && links?.[defaultVideoSource]?.thumbnailUrl) continue;
           const res = await sendMessage('getVideoThumbnail', { providerKey: defaultVideoSource, filecode });
           const thumbUrl = typeof res === 'string' ? res : res?.thumbnailUrl || (res?.success ? res.thumbnailUrl : '');
           if (thumbUrl) {
-            await sendMessage('updateVideoThumbnail', { imageId: img.id, providerKey: defaultVideoSource, thumbnailUrl: thumbUrl });
-            setFilemoonThumbs((prev) => ({ ...prev, [img.id]: thumbUrl }));
+            if (defaultVideoSource === 'terabox') {
+              setFilemoonThumbs((prev) => ({ ...prev, [img.id]: thumbUrl }));
+            } else {
+              await sendMessage('updateVideoThumbnail', { imageId: img.id, providerKey: defaultVideoSource, thumbnailUrl: thumbUrl });
+              setFilemoonThumbs((prev) => ({ ...prev, [img.id]: thumbUrl }));
+            }
           }
         } catch {}
         await new Promise(r => setTimeout(r, 500));
@@ -263,6 +274,38 @@ export default function GalleryPage() {
     })();
     return () => { cancelled = true; };
   }, [loading, images, defaultVideoSource, sendMessage]);
+
+  // Refresh the playback URL when the modal opens for a video whose provider
+  // has expiring direct links (terabox dlinks last 8h; stored link is stale).
+  useEffect(() => {
+    if (!selectedImage?.id || getMediaItemKind(selectedImage) !== 'video') {
+      setModalPlaybackUrl('');
+      return;
+    }
+    const links = getVideoProviderLinks(selectedImage);
+    const link = links[defaultVideoSource];
+    if (!link) { setModalPlaybackUrl(''); return; }
+    const filecode = pickText(link.filecode, link.fileId);
+    if (defaultVideoSource !== 'terabox' || !filecode) {
+      setModalPlaybackUrl('');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await sendMessage('getVideoPlaybackUrl', {
+          providerKey: 'terabox',
+          filecode,
+          fileName: link.filename || selectedImage.fileName || '',
+        });
+        const url = typeof res === 'string' ? res : res?.data || '';
+        if (!cancelled) setModalPlaybackUrl(url || '');
+      } catch {
+        if (!cancelled) setModalPlaybackUrl('');
+      }
+    })();
+    return () => { cancelled = true; setModalPlaybackUrl(''); };
+  }, [selectedImage?.id, defaultVideoSource, sendMessage]);
   
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -3009,7 +3052,7 @@ export default function GalleryPage() {
       return (
         <video
           ref={modalVideoRef}
-          src={getPreferredVideoDirectUrl(modalImage)}
+          src={modalPlaybackUrl || getPreferredVideoDirectUrl(modalImage)}
           className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain
                    transition-all duration-700 ease-out
                    ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}

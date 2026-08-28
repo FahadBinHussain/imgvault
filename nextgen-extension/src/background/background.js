@@ -21,6 +21,7 @@ import {
 } from '../utils/imageProviderLinks.js';
 import { extractFilemoonFilecode, getFilemoonDirectLink, getFilemoonHlsLink } from '../utils/filemoonApi.js';
 import { getFilemoonStreamSource } from '../utils/filemoonSpa.js';
+import { resolveTeraBoxThumbnail, resolveTeraBoxPlaybackUrl } from '../utils/teraBoxApi.js';
 import {
   getConfiguredVideoUploadServices,
   getVideoProviderLabel,
@@ -1697,6 +1698,16 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'getVideoPlaybackUrl':
+        this.getVideoPlaybackUrl(
+          request.data?.providerKey || request.providerKey,
+          request.data?.filecode || request.filecode,
+          request.data?.fileName || request.fileName
+        )
+          .then(playbackUrl => sendResponse({ success: true, data: playbackUrl }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'updateVideoThumbnail':
         this.storage.updateVideoThumbnail(
           request.data?.imageId || request.imageId,
@@ -3308,8 +3319,8 @@ class ImgVaultServiceWorker {
   /**
    * Get a video thumbnail for a given provider. Dispatches per provider so the
    * gallery's thumbnail resolution is symmetric with the selected video source
-   * (2.11.x). Only providers with a thumbnail API return a value; udrop/terabox
-   * return null (they have no thumbnail endpoint).
+   * (2.11.x). Only providers with a thumbnail API return a value; udrop has no
+   * thumbnail endpoint, terabox returns the /api/list thumbs entry.
    * @param {string} providerKey - filemoon | udrop | terabox
    * @param {string} filecode - provider file code / id
    * @returns {Promise<string|null>} Thumbnail URL or null
@@ -3318,6 +3329,32 @@ class ImgVaultServiceWorker {
     const key = String(providerKey || '').trim().toLowerCase();
     if (key === 'filemoon') {
       return this.getFilemoonThumbnail(filecode);
+    }
+    if (key === 'terabox') {
+      const settings = await this.getMergedVideoHostSettings();
+      const cookie = settings?.teraboxCookie || '';
+      const thumb = await resolveTeraBoxThumbnail(cookie, filecode);
+      return thumb || null;
+    }
+    return null;
+  }
+
+  /**
+   * Resolve a currently-valid playback URL for a provider file. TeraBox
+   * dlinks expire after 8h, so playback must refresh the link at open time
+   * instead of using the stored (possibly stale) directUrl.
+   * @param {string} providerKey - filemoon | udrop | terabox
+   * @param {string} filecode - provider file code / id (fs_id for terabox)
+   * @param {string} [fileName] - fallback name match for terabox
+   * @returns {Promise<string|null>} Playable file URL or null (use stored)
+   */
+  async getVideoPlaybackUrl(providerKey, filecode, fileName = '') {
+    const key = String(providerKey || '').trim().toLowerCase();
+    if (key === 'terabox') {
+      const settings = await this.getMergedVideoHostSettings();
+      const cookie = settings?.teraboxCookie || '';
+      const url = await resolveTeraBoxPlaybackUrl(cookie, filecode, fileName);
+      return url || null;
     }
     return null;
   }

@@ -153,6 +153,80 @@ export function extractTeraBoxFileId(item = {}) {
 }
 
 /**
+ * Resolve a TeraBox video thumbnail URL for a file (fs_id). The /api/list
+ * response carries `thumbs.{icon,url1,url2,url3}`; pick the largest usable
+ * size (url3 ≈ 850px). Returns '' when no thumbnail is available yet.
+ * @param {string} explicitCookie - optional explicit session cookie
+ * @param {string|number} fsId
+ * @returns {Promise<string>}
+ */
+export async function resolveTeraBoxThumbnail(explicitCookie, fsId) {
+  const target = String(fsId || '');
+  if (!target) return '';
+  let auth;
+  try {
+    auth = await authorizeTeraBox(explicitCookie);
+  } catch (_) {
+    return '';
+  }
+  if (!auth) return '';
+  const entries = await listTeraBoxFolder(auth.cookie, auth.jsToken, '/');
+  for (const entry of entries) {
+    if (entry.isdir === 1) continue;
+    if (String(entry.fs_id) !== target) continue;
+    const thumbs = entry.thumbs && typeof entry.thumbs === 'object' ? entry.thumbs : {};
+    return String(thumbs.url3 || thumbs.url2 || thumbs.url1 || thumbs.icon || '');
+  }
+  return '';
+}
+
+/**
+ * Resolve a fresh, currently-valid TeraBox download link (dlink) for a file.
+ * Stored dlinks carry an 8h expiry, so playback must refresh it at open time
+ * via /api/filemetas (crack dlna mode). Returns '' when unavailable.
+ * @param {string} explicitCookie - optional explicit session cookie
+ * @param {string|number} fsId
+ * @param {string} [fileName] - fallback match by name when fsId lookup misses
+ * @returns {Promise<string>}
+ */
+export async function resolveTeraBoxPlaybackUrl(explicitCookie, fsId, fileName = '') {
+  const target = String(fsId || '');
+  let auth;
+  try {
+    auth = await authorizeTeraBox(explicitCookie);
+  } catch (_) {
+    return '';
+  }
+  if (!auth) return '';
+
+  let path = '';
+  if (target) {
+    const entries = await listTeraBoxFolder(auth.cookie, auth.jsToken, '/');
+    const hit = entries.find((entry) => entry.isdir !== 1 && String(entry.fs_id) === target);
+    path = String(hit?.path || '');
+    if (!path && fileName) {
+      const byName = entries.find((entry) => entry.isdir !== 1 && String(entry.server_filename || '') === String(fileName));
+      path = String(byName?.path || '');
+    }
+  } else if (fileName) {
+    const entries = await listTeraBoxFolder(auth.cookie, auth.jsToken, '/');
+    const byName = entries.find((entry) => entry.isdir !== 1 && String(entry.server_filename || '') === String(fileName));
+    path = String(byName?.path || '');
+  }
+  if (!path) return '';
+
+  const json = await request(auth.cookie, auth.jsToken, '/api/filemetas', {
+    target: JSON.stringify([path]),
+    dlink: '1',
+    origin: 'dlna',
+  });
+  if (!json || json.errno !== 0 || !Array.isArray(json.info) || !json.info[0]?.dlink) {
+    return '';
+  }
+  return String(json.info[0].dlink);
+}
+
+/**
  * Full TeraBox integrity check.
  * @param {Array} items - DB media items (live + vaulted merged)
  * @param {string} cookie
