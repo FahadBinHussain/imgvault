@@ -19,7 +19,7 @@ import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import TimelineScrollbar from '../components/TimelineScrollbar';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig';
-import { IMAGE_UPLOAD_SERVICES, filterUploadServicesByKeys } from '../config/providerCatalog';
+import { IMAGE_UPLOAD_SERVICES, VIDEO_UPLOAD_SERVICES, filterUploadServicesByKeys } from '../config/providerCatalog';
 import { FilemoonUploader, UDropUploader, TeraBoxUploader } from '../utils/uploaders';
 import { encryptBlob, encryptMetadata } from '../utils/vaultCrypto.js';
 import { getVaultMasterKey } from '../utils/vaultSession.js';
@@ -52,6 +52,11 @@ const createVideoUploader = (service) => {
   if (service?.uploaderKey === 'udropUploader') return new UDropUploader();
   if (service?.uploaderKey === 'teraboxUploader') return new TeraBoxUploader();
   return null;
+};
+
+const pickText = (...values) => {
+  const found = values.find((v) => typeof v === 'string' && v.trim().length > 0);
+  return found ? found.trim() : '';
 };
 
 const buildVideoProviderUpdates = (item, providerKey, result) => {
@@ -751,9 +756,29 @@ export default function GalleryPage() {
       getPreferredImageProviderLink(item, defaultGallerySource, 'url')
     );
   };
-  const shouldRenderModalVideoPlayer = (item) => (
-    Boolean(getPreferredVideoProviderLink(item, defaultVideoSource, 'directUrl'))
-  );
+  const isFilemoonHtmlUrl = (url) => typeof url === 'string' && /filemoon\.sx\/(?:d|e)\//i.test(url);
+  const getModalVideoSource = (item) => {
+    // Returns { type: 'video'|'iframe', src } for the modal. Filemoon /e/ URLs
+    // are HTML embeddable players (iframe); other providers give a real file
+    // URL that plays in a <video>. Iterates providers in preference order.
+    const links = getVideoProviderLinks(item);
+    const orderedKeys = [
+      defaultVideoSource,
+      ...VIDEO_UPLOAD_SERVICES.map((service) => service.key).filter((key) => key !== defaultVideoSource),
+    ];
+    for (const key of orderedKeys) {
+      const link = links[key];
+      if (!link) continue;
+      const directUrl = pickText(link.directUrl, link.downloadUrl);
+      const watchUrl = pickText(link.watchUrl, link.displayUrl, link.url);
+      if (isFilemoonHtmlUrl(directUrl)) return { type: 'iframe', src: directUrl };
+      if (directUrl) return { type: 'video', src: directUrl };
+      if (isFilemoonHtmlUrl(watchUrl)) return { type: 'iframe', src: directUrl || watchUrl };
+    }
+    return null;
+  };
+  const shouldRenderModalVideoPlayer = (item) => getModalVideoSource(item)?.type === 'video';
+  const getModalVideoEmbedUrl = (item) => getModalVideoSource(item)?.type === 'iframe' ? getModalVideoSource(item).src : '';
   const getLinkPreviewImage = (item) => (
     item?.linkPreviewImageUrl ||
     getPreferredImageProviderLink(item, defaultGallerySource, 'url') ||
@@ -3004,10 +3029,10 @@ export default function GalleryPage() {
         />
       );
     }
-    if (getPreferredVideoWatchUrl(modalImage)) {
+    if (getModalVideoEmbedUrl(modalImage)) {
       return (
         <iframe
-          src={getPreferredVideoWatchUrl(modalImage)}
+          src={getModalVideoEmbedUrl(modalImage)}
           className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10
                    transition-all duration-700 ease-out
                    ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
