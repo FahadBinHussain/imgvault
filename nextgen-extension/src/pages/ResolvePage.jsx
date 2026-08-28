@@ -151,6 +151,7 @@ export default function ResolvePage() {
   const [teraboxFilter, setTeraBoxFilter] = useState('all');
   const [teraboxKeysConfigured, setTeraBoxKeysConfigured] = useState(false);
   const [fixingTeraBox, setFixingTeraBox] = useState({});
+  const [resolvingAllTeraBox, setResolvingAllTeraBox] = useState(false);
 
   const loadSettings = () => {
     setSettingsLoading(true);
@@ -467,6 +468,57 @@ export default function ResolvePage() {
       runTeraBoxIntegrityCheck();
     }
   }, [activeTab, videoSubTab, teraboxLoading, teraboxError, teraboxIntegrity, runTeraBoxIntegrityCheck]);
+
+  const resolveAllTeraBox = useCallback(async () => {
+    const noUrl = teraboxIntegrity.noUrl || [];
+    const missing = teraboxIntegrity.missing || [];
+    const targets = [...noUrl, ...missing];
+    if (targets.length === 0 || resolvingAllTeraBox) return;
+
+    setResolvingAllTeraBox(true);
+    let completed = 0;
+    let failed = 0;
+    setNotice(null);
+
+    for (const entry of targets) {
+      const item = entry.item;
+      if (!item || !item.id) continue;
+      setFixingTeraBox((prev) => ({ ...prev, [item.id]: true }));
+      setFixProgress((prev) => ({ ...prev, [item.id]: { phase: 'download', message: 'Starting...', percent: null } }));
+      try {
+        const [freshItem, hostSettings] = await Promise.all([
+          sendMessage('getImageById', { id: item.id }),
+          sendMessage('getVideoHostSettings'),
+        ]);
+        const updates = await retryVideoHostPageSide(freshItem, 'terabox', hostSettings, {
+          onProgress: (progress) => setFixProgress((prev) => ({ ...prev, [item.id]: progress })),
+        });
+        await sendMessage('updateImage', { id: item.id, ...updates });
+        completed += 1;
+      } catch (err) {
+        failed += 1;
+      } finally {
+        setFixingTeraBox((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        setFixProgress((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+      }
+    }
+
+    await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
+    await runTeraBoxIntegrityCheck();
+    setResolvingAllTeraBox(false);
+    setNotice({
+      type: failed > 0 ? 'error' : 'success',
+      message: `Resolved ${completed}/${targets.length} to TeraBox. ${failed} failed.`,
+    });
+  }, [teraboxIntegrity, resolvingAllTeraBox, sendMessage, runTeraBoxIntegrityCheck, reloadImages, reloadVaultImages]);
 
   // ---- 3D Scene integrity helpers ----
   const checkSceneKeysConfigured = useCallback(() => {
@@ -1945,6 +1997,15 @@ export default function ResolvePage() {
               </div>
 
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Button
+                  variant="primary"
+                  onClick={resolveAllTeraBox}
+                  className="h-10 gap-2 px-3 text-sm"
+                  disabled={resolvingAllTeraBox || (teraboxIntegrity.noUrl.length + teraboxIntegrity.missing.length) === 0}
+                >
+                  {resolvingAllTeraBox ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                  {resolvingAllTeraBox ? 'Resolving...' : `Resolve all to TeraBox (${teraboxIntegrity.noUrl.length + teraboxIntegrity.missing.length})`}
+                </Button>
                 <Button
                   variant="primary"
                   onClick={runTeraBoxIntegrityCheck}
