@@ -1693,7 +1693,7 @@ class ImgVaultServiceWorker {
 
       case 'getFilemoonThumbnail':
         this.getFilemoonThumbnail(request.filecode)
-          .then(thumbnailUrl => sendResponse({ success: true, thumbnailUrl }))
+          .then(thumbnailUrl => sendResponse({ success: true, data: thumbnailUrl }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 

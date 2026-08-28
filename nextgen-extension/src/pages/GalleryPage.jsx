@@ -8,7 +8,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Trash2, Download, X, FolderOpen,
-  FileText, Cloud, Link2, Tag,
+  FileText, Cloud, Link2, Tag, Video, ExternalLink,
   File, Image as ImageIcon, LockKeyhole,
   Box
 } from 'lucide-react';
@@ -235,9 +235,10 @@ export default function GalleryPage() {
           const filecode = links?.filemoon?.filecode;
           if (!filecode) continue;
           const res = await sendMessage('getFilemoonThumbnail', { filecode });
-          if (res?.success && res.thumbnailUrl) {
-            await sendMessage('updateFilemoonThumbnail', { imageId: img.id, thumbnailUrl: res.thumbnailUrl });
-            setFilemoonThumbs((prev) => ({ ...prev, [img.id]: res.thumbnailUrl }));
+          const thumbUrl = typeof res === 'string' ? res : res?.thumbnailUrl || (res?.success ? res.thumbnailUrl : '');
+          if (thumbUrl) {
+            await sendMessage('updateFilemoonThumbnail', { imageId: img.id, thumbnailUrl: thumbUrl });
+            setFilemoonThumbs((prev) => ({ ...prev, [img.id]: thumbUrl }));
           }
         } catch {}
         await new Promise(r => setTimeout(r, 500));
@@ -3702,7 +3703,9 @@ export default function GalleryPage() {
                     ) : getMediaItemKind(img) === 'video' ? (
                       (() => {
                         const videoDirectUrl = getPreferredVideoDirectUrl(img);
+                        const videoWatchUrl = getPreferredVideoWatchUrl(img);
                         const videoPosterUrl = getVideoPosterUrl(img);
+                        const isFilemoonHtml = videoDirectUrl && /filemoon\.sx\/(?:d|e)\//i.test(videoDirectUrl);
                         return videoPosterUrl ? (
                           <div className="relative w-full overflow-hidden aspect-video bg-base-200">
                             <CachedImg
@@ -3714,8 +3717,20 @@ export default function GalleryPage() {
                               onLoad={() => handleImageLoad(img.id)}
                               onError={() => handleImageLoad(img.id)}
                             />
+                            {videoWatchUrl && (
+                              <a
+                                href={videoWatchUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="absolute bottom-2 right-2 rounded-full bg-black/60 p-2 text-white shadow transition hover:bg-black/80"
+                                onClick={(e) => e.stopPropagation()}
+                                title="Open in new tab"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </a>
+                            )}
                           </div>
-                        ) : videoDirectUrl ? (
+                        ) : videoDirectUrl && !isFilemoonHtml ? (
                           <CachedVideo
                             thumbKey={`poster-${img.id}`}
                             src={videoDirectUrl}
@@ -3730,6 +3745,21 @@ export default function GalleryPage() {
                             onCanPlayThrough={() => handleImageLoad(img.id)}
                             onError={() => handleImageLoad(img.id)}
                           />
+                        ) : videoWatchUrl ? (
+                          <div className="relative w-full overflow-hidden aspect-video bg-base-200 flex items-center justify-center">
+                            <div className="flex flex-col items-center gap-2" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
+                              <Video style={{ width: 32, height: 32 }} />
+                              <a
+                                href={videoWatchUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-base-300 bg-base-100 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-base-200"
+                              >
+                                Open video <ExternalLink className="h-3 w-3" />
+                              </a>
+                            </div>
+                          </div>
                         ) : (
                           <div className="relative w-full overflow-hidden aspect-video bg-base-200 flex items-center justify-center">
                             <FileText style={{ width: 32, height: 32, color: 'oklch(from var(--color-base-content) l c h / 0.3)' }} />
