@@ -382,6 +382,9 @@ export default function ResolvePage() {
       const allVideoItems = [...(freshImages || []), ...(freshVault || [])];
       const videoItems = allVideoItems.filter((item) => {
         if (!item) return false;
+        // Vaulted encrypted blobs are opaque — not real hostable videos and
+        // trashed ones are auto-deleted, so ignore them on host tabs.
+        if (isVaultedEncryptedItem(item)) return false;
         // Link items can be uploaded/fixed like videos, so they must count
         // as referenced when they carry a Filemoon URL.
         if (item.kind === 'scene' || item.spzUrl) return false;
@@ -435,6 +438,9 @@ export default function ResolvePage() {
       const allVideoItems = [...(freshImages || []), ...(freshVault || [])];
       const videoItems = allVideoItems.filter((item) => {
         if (!item) return false;
+        // Vaulted encrypted blobs are opaque — not real hostable videos and
+        // trashed ones are auto-deleted, so ignore them on host tabs.
+        if (isVaultedEncryptedItem(item)) return false;
         if (item.kind === 'scene' || item.spzUrl) return false;
         const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
         const hasTeraBox = Boolean(item.teraboxWatchUrl || item.teraboxDirectUrl || item.teraboxUrl) ||
