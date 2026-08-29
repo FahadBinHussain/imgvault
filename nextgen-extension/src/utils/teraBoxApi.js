@@ -23,10 +23,9 @@ async function resolveCookie(explicitCookie) {
   if (trimmed) return trimmed;
   if (typeof chrome !== 'undefined' && chrome.cookies?.getAll) {
     const all = await chrome.cookies.getAll({ domain: 'terabox.com' });
-    const wanted = new Set(['ndus', 'browserid', 'lang', 'bdstoken', 'PANWEB', 'cuid']);
-    const parts = all
-      .filter((c) => wanted.has(c.name))
-      .map((c) => `${c.name}=${c.value}`);
+    // include ALL terabox cookies — captcha solve may set a verification
+    // cookie that the old wanted-set filter would drop. fixed 2.11.15.
+    const parts = all.map((c) => `${c.name}=${c.value}`);
     if (parts.length > 0) return parts.join('; ');
   }
   return '';
@@ -84,6 +83,41 @@ async function fetchJsTokenViaHiddenTab(timeoutMs = 15000) {
         await new Promise((r) => setTimeout(r, 1000));
       }
     } catch (_) {}
+    // poll for window.jsToken global (the app page sets it there)
+    let token = '';
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => window.jsToken || '',
+      });
+      if (results?.[0]?.result) {
+        token = results[0].result;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    // also grab the tab's full cookie string so any verify cookie is included
+    let tabCookie = '';
+    try {
+      const cookieResults = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => document.cookie,
+      });
+      if (cookieResults?.[0]?.result) tabCookie = cookieResults[0].result;
+    } catch (_) {}
+    if (token) {
+      try {
+        await chrome.storage.local.set({
+          teraboxJsToken: token,
+          teraboxJsTokenAt: Date.now(),
+          teraboxTabCookie: tabCookie,
+          teraboxTabCookieAt: Date.now(),
+        });
+      } catch (_) {}
+      if (tabCookie) return `${token}|${tabCookie}`;
+      return token;
+    }
+    // fallback: HTML regex
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => document.documentElement.outerHTML,
@@ -91,7 +125,15 @@ async function fetchJsTokenViaHiddenTab(timeoutMs = 15000) {
     const html = results?.[0]?.result || '';
     const m = html.match(/function%20fn%28a%29%7Bwindow\.jsToken%20%3D%20a%7D%3Bfn%28%22([^%"]+)%22%29/);
     if (m?.[1]) {
-      try { await chrome.storage.local.set({ teraboxJsToken: m[1], teraboxJsTokenAt: Date.now() }); } catch (_) {}
+      try {
+        await chrome.storage.local.set({
+          teraboxJsToken: m[1],
+          teraboxJsTokenAt: Date.now(),
+          teraboxTabCookie: tabCookie,
+          teraboxTabCookieAt: Date.now(),
+        });
+      } catch (_) {}
+      if (tabCookie) return `${m[1]}|${tabCookie}`;
       return m[1];
     }
     return '';
@@ -109,9 +151,15 @@ async function fetchJsToken(cookie) {
   // always sends Sec-Fetch-Site: cross-site etc. and TeraBox redirects that
   // to /simple-verify (no jsToken). a real navigation via chrome.tabs.create
   // is silent (active:false) and gets the landing page. 2.11.13.
+  // cached token + tab cookie (valid ~hours)
   try {
-    const cached = await chrome.storage.local.get(['teraboxJsToken', 'teraboxJsTokenAt']);
+    const cached = await chrome.storage.local.get([
+      'teraboxJsToken', 'teraboxJsTokenAt', 'teraboxTabCookie', 'teraboxTabCookieAt',
+    ]);
     if (cached?.teraboxJsToken && Date.now() - (cached.teraboxJsTokenAt || 0) < 1000 * 60 * 60 * 12) {
+      if (cached.teraboxTabCookie && Date.now() - (cached.teraboxTabCookieAt || 0) < 1000 * 60 * 60 * 12) {
+        return `${cached.teraboxJsToken}|${cached.teraboxTabCookie}`;
+      }
       return cached.teraboxJsToken;
     }
   } catch (_) {}
@@ -138,12 +186,39 @@ async function fetchJsToken(cookie) {
 
 /**
  * Authorize with TeraBox: resolve the cookie and a fresh jsToken.
+ * fetchJsToken may return "token|cookie" when the hidden tab captured a fresh
+ * session cookie after captcha verify — prefer that cookie for API calls so
+ * any verification cookie is included (fixes errno 4000023 need verify).
  * @returns {Promise<{cookie:string, jsToken:string}|null>} null when no cookie
  */
 export async function authorizeTeraBox(explicitCookie) {
-  const cookie = await resolveCookie(explicitCookie);
-  if (!cookie) return null;
-  const jsToken = await fetchJsToken(cookie);
+  const resolvedCookie = await resolveCookie(explicitCookie);
+  if (!resolvedCookie) return null;
+  const jsTokenOrBoth = await fetchJsToken(resolvedCookie);
+  let jsToken = jsTokenOrBoth;
+  let cookie = resolvedCookie;
+  if (typeof jsTokenOrBoth === 'string' && jsTokenOrBoth.includes('|')) {
+    const idx = jsTokenOrBoth.indexOf('|');
+    jsToken = jsTokenOrBoth.slice(0, idx);
+    const tabCookie = jsTokenOrBoth.slice(idx + 1);
+    if (tabCookie) {
+      // merge tab cookie into resolvedCookie — document.cookie excludes
+      // httpOnly cookies like ndus, so we must not overwrite, only add
+      // extra cookie names the tab picked up (verify cookie, etc.)
+      const map = new Map();
+      resolvedCookie.split(';').filter(Boolean).forEach((s) => {
+        const i = s.indexOf('=');
+        const name = i > 0 ? s.trim().slice(0, i).trim() : '';
+        if (name) map.set(name, i > 0 ? s.trim().slice(i + 1) : '');
+      });
+      tabCookie.split(';').filter(Boolean).forEach((s) => {
+        const i = s.indexOf('=');
+        const name = i > 0 ? s.trim().slice(0, i).trim() : '';
+        if (name && !map.has(name)) map.set(name, i > 0 ? s.trim().slice(i + 1) : '');
+      });
+      cookie = Array.from(map, ([n, v]) => `${n}=${v}`).join('; ');
+    }
+  }
   return { cookie, jsToken };
 }
 
