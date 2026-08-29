@@ -34,11 +34,13 @@ async function resolveCookie(explicitCookie) {
 
 async function fetchJsToken(cookie) {
   // The www homepage serves the jsToken wrapper on the anonymous landing
-  // page; sending the session cookie redirects to a captcha/verify gate that
-  // has no jsToken (both dm and www now gate the homepage for cookie-bearing
-  // requests). Fixed in 2.11.9 — fetch the token anonymously.
+  // page. Sending the session cookie OR a Referer header makes TeraBox
+  // redirect to a captcha/verify gate that has no jsToken (both dm and www
+  // now gate the homepage). Verified 2026-08-28: only a bare UA fetch (no
+  // cookie, no Referer) returns the landing page with jsToken. Fixed in
+  // 2.11.9 — fetch the token anonymously with no Referer.
   const res = await fetch(`${TERABOX_TOKEN_BASE}/`, {
-    headers: { 'User-Agent': userAgent(), 'Referer': `${TERABOX_TOKEN_BASE}/` },
+    headers: { 'User-Agent': userAgent() },
   });
   const html = await res.text();
   const m = html.match(/function%20fn%28a%29%7Bwindow\.jsToken%20%3D%20a%7D%3Bfn%28%22([^%"]+)%22%29/);

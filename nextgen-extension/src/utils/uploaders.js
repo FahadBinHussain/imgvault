@@ -673,13 +673,14 @@ export class TeraBoxUploader extends BaseUploader {
 
   async fetchJsToken() {
     // The www homepage serves the jsToken wrapper on the anonymous landing
-    // page; sending the session cookie redirects to a captcha/verify gate
-    // that has no jsToken (both dm and www now gate the homepage for cookie-
-    // bearing requests). Fixed in 2.11.9 — fetch the token anonymously.
+    // page. Sending the session cookie OR a Referer header makes TeraBox
+    // redirect to a captcha/verify gate that has no jsToken (both dm and www
+    // now gate the homepage). Verified 2026-08-28: only a bare UA fetch (no
+    // cookie, no Referer) returns the landing page with jsToken. Fixed in
+    // 2.11.9 — fetch the token anonymously with no Referer.
     const res = await fetch(`${this.tokenBase}/`, {
       headers: {
         'User-Agent': this.userAgent(),
-        'Referer': `${this.tokenBase}/`,
       },
     });
     const html = await res.text();
