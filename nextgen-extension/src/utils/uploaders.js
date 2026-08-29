@@ -678,15 +678,25 @@ export class TeraBoxUploader extends BaseUploader {
     // now gate the homepage). Verified 2026-08-28: only a bare UA fetch (no
     // cookie, no Referer) returns the landing page with jsToken. Fixed in
     // 2.11.9 — fetch the token anonymously with no Referer.
-    const res = await fetch(`${this.tokenBase}/`, {
-      headers: {
-        'User-Agent': this.userAgent(),
-      },
-    });
+    let res;
+    try {
+      res = await fetch(`${this.tokenBase}/`, {
+        credentials: 'omit',
+        headers: {
+          'User-Agent': this.userAgent(),
+        },
+      });
+    } catch (fetchErr) {
+      throw new Error(`TeraBox jsToken fetch failed (network): ${fetchErr.message || fetchErr}`);
+    }
     const html = await res.text();
     const m = html.match(/function%20fn%28a%29%7Bwindow\.jsToken%20%3D%20a%7D%3Bfn%28%22([^%"]+)%22%29/);
     if (!m?.[1]) {
-      throw new Error('TeraBox jsToken not found (login may have expired). Re-login to TeraBox.');
+      const finalUrl = res.url || '';
+      throw new Error(
+        `TeraBox jsToken not found (HTTP ${res.status}, final ${finalUrl}, ${html.length} bytes). ` +
+        `Re-login to TeraBox.`
+      );
     }
     this.jsToken = m[1];
     return this.jsToken;
