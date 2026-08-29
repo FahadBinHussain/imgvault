@@ -835,7 +835,12 @@ export class TeraBoxUploader extends BaseUploader {
       const path = `/${safeName}`;
 
       await this.resolveCookie(cookie);
-      if (!this.jsToken) await this.fetchJsToken();
+      // No upfront jsToken fetch. TeraBox's homepage is captcha/verify-gated
+      // for browser fetch requests (Sec-Fetch-* headers), so scraping the
+      // token there no longer works. The PCS API accepts requests WITHOUT a
+      // jsToken using just the session cookie; apiRequest retries with a
+      // freshly fetched token only when the server explicitly asks for one
+      // (errno 4000023). Fixed in 2.11.12.
 
       const size = blob.size;
       const chunkSize = this.calculateChunkSize(size);
