@@ -32,25 +32,75 @@ async function resolveCookie(explicitCookie) {
   return '';
 }
 
+async function fetchJsTokenViaHiddenTab(timeoutMs = 15000) {
+  if (typeof chrome === 'undefined' || !chrome.tabs?.create || !chrome.scripting?.executeScript) return '';
+  let tabId = null;
+  try {
+    const tab = await chrome.tabs.create({ url: `${TERABOX_TOKEN_BASE}/`, active: false, pinned: false });
+    tabId = tab.id;
+    await new Promise((resolve) => {
+      const start = Date.now();
+      const check = () => {
+        chrome.tabs.get(tabId, (t) => {
+          if (chrome.runtime.lastError || !t) return resolve();
+          if (t.status === 'complete') return resolve();
+          if (Date.now() - start > timeoutMs) return resolve();
+          setTimeout(check, 300);
+        });
+      };
+      check();
+    });
+    await new Promise((r) => setTimeout(r, 800));
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => document.documentElement.outerHTML,
+    });
+    const html = results?.[0]?.result || '';
+    const m = html.match(/function%20fn%28a%29%7Bwindow\.jsToken%20%3D%20a%7D%3Bfn%28%22([^%"]+)%22%29/);
+    if (m?.[1]) {
+      try { await chrome.storage.local.set({ teraboxJsToken: m[1], teraboxJsTokenAt: Date.now() }); } catch (_) {}
+      return m[1];
+    }
+    return '';
+  } catch (_) {
+    return '';
+  } finally {
+    if (tabId != null) {
+      try { await chrome.tabs.remove(tabId); } catch (_) {}
+    }
+  }
+}
+
 async function fetchJsToken(cookie) {
-  // The www homepage serves the jsToken wrapper on the anonymous landing
-  // page. Sending the session cookie OR a Referer header makes TeraBox
-  // redirect to a captcha/verify gate that has no jsToken (both dm and www
-  // now gate the homepage). Verified 2026-08-28: only a bare UA fetch (no
-  // cookie, no Referer, credentials:'omit') returns the landing page with
-  // jsToken. Fixed in 2.11.10 — fetch the token anonymously.
+  // hidden tab avoids Sec-Fetch-* gate. fetch() from a chrome-extension page
+  // always sends Sec-Fetch-Site: cross-site etc. and TeraBox redirects that
+  // to /simple-verify (no jsToken). a real navigation via chrome.tabs.create
+  // is silent (active:false) and gets the landing page. 2.11.13.
+  try {
+    const cached = await chrome.storage.local.get(['teraboxJsToken', 'teraboxJsTokenAt']);
+    if (cached?.teraboxJsToken && Date.now() - (cached.teraboxJsTokenAt || 0) < 1000 * 60 * 60 * 12) {
+      return cached.teraboxJsToken;
+    }
+  } catch (_) {}
+  let token = await fetchJsTokenViaHiddenTab();
+  if (token) return token;
+  // last resort: bare fetch (may still hit simple-verify, but try)
   let res;
   try {
     res = await fetch(`${TERABOX_TOKEN_BASE}/`, {
       credentials: 'omit',
       headers: { 'User-Agent': userAgent() },
     });
-  } catch (fetchErr) {
+  } catch (_) {
     return '';
   }
   const html = await res.text();
   const m = html.match(/function%20fn%28a%29%7Bwindow\.jsToken%20%3D%20a%7D%3Bfn%28%22([^%"]+)%22%29/);
-  return m?.[1] || '';
+  if (m?.[1]) {
+    try { await chrome.storage.local.set({ teraboxJsToken: m[1], teraboxJsTokenAt: Date.now() }); } catch (_) {}
+    return m[1];
+  }
+  return '';
 }
 
 /**
