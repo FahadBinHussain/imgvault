@@ -788,22 +788,25 @@ export class TeraBoxUploader extends BaseUploader {
     }
   }
 
-  async fetchJsToken() {
+  async fetchJsToken(forceFresh = false) {
     // hidden tab is the only way that avoids Sec-Fetch-* browser gate.
     // fetch() from a chrome-extension page always sends Sec-Fetch-Site:
     // cross-site etc. and TeraBox redirects that to /simple-verify (no
     // jsToken). a real navigation via chrome.tabs.create sends
     // Sec-Fetch-Mode: navigate and gets the landing page. silent — tab
     // is created active:false, closed after extraction. 2.11.13.
-    // first try cached token (valid ~hours)
-    try {
-      const cached = await chrome.storage.local.get(['teraboxJsToken', 'teraboxJsTokenAt']);
-      if (cached?.teraboxJsToken && Date.now() - (cached.teraboxJsTokenAt || 0) < 1000 * 60 * 60 * 12) {
-        this.jsToken = cached.teraboxJsToken;
-        return this.jsToken;
-      }
-    } catch (_) {}
-    // silent hidden tab
+    // first try cached token (valid ~hours) unless forceFresh (e.g. after
+    // a 4000023 need-verify — the cached token may be stale).
+    if (!forceFresh) {
+      try {
+        const cached = await chrome.storage.local.get(['teraboxJsToken', 'teraboxJsTokenAt']);
+        if (cached?.teraboxJsToken && Date.now() - (cached.teraboxJsTokenAt || 0) < 1000 * 60 * 60 * 12) {
+          this.jsToken = cached.teraboxJsToken;
+          return this.jsToken;
+        }
+      } catch (_) {}
+    }
+    // silent hidden tab (always fresh when forceFresh)
     let token = await this.fetchJsTokenViaHiddenTab();
     if (token) {
       this.jsToken = token;
@@ -856,8 +859,10 @@ export class TeraBoxUploader extends BaseUploader {
       throw new Error(`TeraBox ${pathname} returned non-JSON: ${String(res.status)}`);
     }
     if (json.errno === 4000023 && !retried) {
-      // stale jsToken → re-fetch and retry once (driver behaviour)
-      await this.fetchJsToken();
+      // stale/invalid jsToken (or need-verify) → force a fresh token from
+      // the hidden tab and retry once (driver behaviour). must bypass the
+      // cache — the cached token may itself be stale (2.11.16).
+      await this.fetchJsToken(true);
       return this.apiRequest(pathname, params, body, true);
     }
     return json;

@@ -146,23 +146,26 @@ async function fetchJsTokenViaHiddenTab(timeoutMs = 15000) {
   }
 }
 
-async function fetchJsToken(cookie) {
+async function fetchJsToken(cookie, forceFresh = false) {
   // hidden tab avoids Sec-Fetch-* gate. fetch() from a chrome-extension page
   // always sends Sec-Fetch-Site: cross-site etc. and TeraBox redirects that
   // to /simple-verify (no jsToken). a real navigation via chrome.tabs.create
   // is silent (active:false) and gets the landing page. 2.11.13.
-  // cached token + tab cookie (valid ~hours)
-  try {
-    const cached = await chrome.storage.local.get([
-      'teraboxJsToken', 'teraboxJsTokenAt', 'teraboxTabCookie', 'teraboxTabCookieAt',
-    ]);
-    if (cached?.teraboxJsToken && Date.now() - (cached.teraboxJsTokenAt || 0) < 1000 * 60 * 60 * 12) {
-      if (cached.teraboxTabCookie && Date.now() - (cached.teraboxTabCookieAt || 0) < 1000 * 60 * 60 * 12) {
-        return `${cached.teraboxJsToken}|${cached.teraboxTabCookie}`;
+  // cached token + tab cookie (valid ~hours) unless forceFresh (e.g. after a
+  // 4000023 need-verify — the cached token may itself be stale).
+  if (!forceFresh) {
+    try {
+      const cached = await chrome.storage.local.get([
+        'teraboxJsToken', 'teraboxJsTokenAt', 'teraboxTabCookie', 'teraboxTabCookieAt',
+      ]);
+      if (cached?.teraboxJsToken && Date.now() - (cached.teraboxJsTokenAt || 0) < 1000 * 60 * 60 * 12) {
+        if (cached.teraboxTabCookie && Date.now() - (cached.teraboxTabCookieAt || 0) < 1000 * 60 * 60 * 12) {
+          return `${cached.teraboxJsToken}|${cached.teraboxTabCookie}`;
+        }
+        return cached.teraboxJsToken;
       }
-      return cached.teraboxJsToken;
-    }
-  } catch (_) {}
+    } catch (_) {}
+  }
   let token = await fetchJsTokenViaHiddenTab();
   if (token) return token;
   // last resort: bare fetch (may still hit simple-verify, but try)
@@ -248,7 +251,9 @@ async function request(cookie, jsToken, pathname, params = {}, retried = false) 
     return null;
   }
   if (json.errno === 4000023 && !retried) {
-    const fresh = await fetchJsToken(cookie);
+    // stale/invalid jsToken (or need-verify) → force a fresh token from the
+    // hidden tab (bypass cache) and retry once (driver behaviour).
+    const fresh = await fetchJsToken(cookie, true);
     if (fresh) return request(cookie, fresh, pathname, params, true);
   }
   return json;
