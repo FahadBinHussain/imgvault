@@ -677,7 +677,6 @@ export class TeraBoxUploader extends BaseUploader {
     try {
       const tab = await chrome.tabs.create({ url: `${this.tokenBase}/`, active: false, pinned: false });
       tabId = tab.id;
-      // wait for the tab to finish loading (or timeout)
       await new Promise((resolve) => {
         const start = Date.now();
         const check = () => {
@@ -690,8 +689,45 @@ export class TeraBoxUploader extends BaseUploader {
         };
         check();
       });
-      // give the page a moment to render the inline script
       await new Promise((r) => setTimeout(r, 800));
+      // the homepage is now gated behind a canvas captcha (simple-verify).
+      // try to solve it silently: the page's JS has `var code` (global) set
+      // by `refreshCaptcha()`. fill the input and click confirm, then wait
+      // for the reload to the real landing page.
+      try {
+        const hasCaptcha = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: () => !!document.getElementById('canvas') && !!document.getElementById('input'),
+        });
+        if (hasCaptcha?.[0]?.result) {
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => {
+              try {
+                const c = typeof code !== 'undefined' ? code : '';
+                const input = document.getElementById('input');
+                if (input && c) input.value = c;
+                const btn = document.getElementById('confirm');
+                if (btn) btn.click();
+              } catch (_) {}
+            },
+          });
+          // wait for the captcha pass to reload to the real page
+          await new Promise((resolve) => {
+            const start2 = Date.now();
+            const check2 = () => {
+              chrome.tabs.get(tabId, (t) => {
+                if (chrome.runtime.lastError || !t) return resolve();
+                if (t.status === 'complete' && t.url && !t.url.includes('simple-verify')) return resolve();
+                if (Date.now() - start2 > 8000) return resolve();
+                setTimeout(check2, 300);
+              });
+            };
+            setTimeout(check2, 600);
+          });
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      } catch (_) {}
       const results = await chrome.scripting.executeScript({
         target: { tabId },
         func: () => document.documentElement.outerHTML,

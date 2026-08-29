@@ -51,6 +51,39 @@ async function fetchJsTokenViaHiddenTab(timeoutMs = 15000) {
       check();
     });
     await new Promise((r) => setTimeout(r, 800));
+    try {
+      const hasCaptcha = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => !!document.getElementById('canvas') && !!document.getElementById('input'),
+      });
+      if (hasCaptcha?.[0]?.result) {
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          func: () => {
+            try {
+              const c = typeof code !== 'undefined' ? code : '';
+              const input = document.getElementById('input');
+              if (input && c) input.value = c;
+              const btn = document.getElementById('confirm');
+              if (btn) btn.click();
+            } catch (_) {}
+          },
+        });
+        await new Promise((resolve) => {
+          const start2 = Date.now();
+          const check2 = () => {
+            chrome.tabs.get(tabId, (t) => {
+              if (chrome.runtime.lastError || !t) return resolve();
+              if (t.status === 'complete' && t.url && !t.url.includes('simple-verify')) return resolve();
+              if (Date.now() - start2 > 8000) return resolve();
+              setTimeout(check2, 300);
+            });
+          };
+          setTimeout(check2, 600);
+        });
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    } catch (_) {}
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => document.documentElement.outerHTML,
