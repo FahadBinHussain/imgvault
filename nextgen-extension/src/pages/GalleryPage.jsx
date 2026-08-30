@@ -20,7 +20,7 @@ import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import TimelineScrollbar from '../components/TimelineScrollbar';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig';
-import { IMAGE_UPLOAD_SERVICES, filterUploadServicesByKeys } from '../config/providerCatalog';
+import { IMAGE_UPLOAD_SERVICES, filterUploadServicesByKeys, getVaultBlobHostServices, getVaultBlobHostOptions, DEFAULT_VAULT_BLOB_HOST } from '../config/providerCatalog';
 import { FilemoonUploader, UDropUploader, TeraBoxUploader } from '../utils/uploaders';
 import { encryptBlob, encryptMetadata } from '../utils/vaultCrypto.js';
 import { getVaultMasterKey } from '../utils/vaultSession.js';
@@ -365,7 +365,7 @@ export default function GalleryPage() {
   const [uploadHostSettings, setUploadHostSettings] = useState({});
   const [selectedUploadHostKeys, setSelectedUploadHostKeys, selectedKeysLoading] = useChromeStorage('selectedUploadHostKeys', [], 'local');
   const [uploadToVault, setUploadToVault] = useState(false);
-  const [selectedVaultHost, setSelectedVaultHost] = useChromeStorage('selectedVaultHost', 'udrop', 'local');
+  const [selectedVaultHost, setSelectedVaultHost] = useChromeStorage('selectedVaultHost', DEFAULT_VAULT_BLOB_HOST, 'local');
   const [vaultLockedForUpload, setVaultLockedForUpload] = useState(false);
   const [vaultUnlockCode, setVaultUnlockCode] = useState('');
   const [vaultUnlockError, setVaultUnlockError] = useState('');
@@ -1172,19 +1172,21 @@ export default function GalleryPage() {
 
       const settings = await sendMessage('getVideoHostSettings');
       const stored = await chrome.storage.local.get('selectedVaultHost');
-      const vaultHost = String(stored?.selectedVaultHost || 'udrop').toLowerCase();
+      const vaultHost = String(stored?.selectedVaultHost || DEFAULT_VAULT_BLOB_HOST).toLowerCase();
 
-      if (vaultHost === 'terabox') {
-        // TeraBox needs no udrop keys; cookie is read from the session/settings.
-      } else if (!settings.udropKey1 || !settings.udropKey2) {
-        throw new Error('UDrop keys are not configured. Encrypted vault items need a UDrop account.');
+      const vaultService = getVaultBlobHostServices().find((s) => s.key === vaultHost);
+      if (!vaultService) {
+        throw new Error(`Vault blob host "${vaultHost}" is not supported.`);
+      }
+      if (vaultService.isConfigured && !vaultService.isConfigured(settings)) {
+        throw new Error(`${vaultService.label} is not configured. Encrypted vault items need a ${vaultService.label} account.`);
       }
 
       const opaqueName = `${Array.from(crypto.getRandomValues(new Uint8Array(16)))
         .map((b) => b.toString(16).padStart(2, '0')).join('')}.bin`;
 
       // 2) Upload the single encrypted blob with real progress, dispatching to
-      // the selected vault host (udrop or terabox).
+      // the selected vault blob host service.
       let uploadLogBytes = 0;
       const UPLOAD_LOG_STEP = 20 * 1024 * 1024; // log every ~20 MB so slow big uploads show movement
       await appendClientUploadLog(`Uploading ${formatBytes(encryptedBlob.size)} encrypted blob to vault (${vaultHost})...`);
@@ -1201,27 +1203,16 @@ export default function GalleryPage() {
         }
       };
 
+      const uploader = new vaultService.uploaderClass();
       let result;
-      if (vaultHost === 'terabox') {
-        const uploader = new TeraBoxUploader();
-        result = await uploader.uploadWithProgress(
-          encryptedBlob,
-          settings?.teraboxCookie || '',
-          opaqueName,
-          onVaultProgress,
-          uploadController.signal
-        );
-      } else {
-        const uploader = new UDropUploader();
-        result = await uploader.uploadWithProgress(
-          encryptedBlob,
-          settings.udropKey1,
-          settings.udropKey2,
-          opaqueName,
-          onVaultProgress,
-          uploadController.signal
-        );
-      }
+      result = await vaultService.uploadWithProgress({
+        uploader,
+        blob: encryptedBlob,
+        settings,
+        data: { fileName: opaqueName },
+        onProgress: onVaultProgress,
+        signal: uploadController.signal,
+      });
 
       const encrypted = {
         encryptedBlobUrl: result.watchUrl || result.displayUrl || result.url || '',
@@ -4628,15 +4619,12 @@ export default function GalleryPage() {
                             Vault blob host
                           </div>
                           <p className="mt-1 text-xs text-base-content/60">
-                            Where the encrypted .bin blob is stored. UDrop or TeraBox.
+                            Where the encrypted .bin blob is stored.
                           </p>
                         </div>
                       </div>
                       <div className="grid gap-2 sm:grid-cols-2">
-                        {[
-                          { key: 'udrop', label: 'UDrop' },
-                          { key: 'terabox', label: 'TeraBox' },
-                        ].map((host) => {
+                        {getVaultBlobHostOptions().map((host) => {
                           const selected = selectedVaultHost === host.key;
                           return (
                             <button

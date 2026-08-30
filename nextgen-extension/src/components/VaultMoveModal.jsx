@@ -3,12 +3,8 @@ import { Check, Server, ArrowRightLeft } from 'lucide-react';
 import { Modal } from './UI';
 import { getVideoSourceHostOptions } from '../utils/videoProviderLinks';
 import { getImageProviderLinks } from '../utils/imageProviderLinks';
+import { getVaultBlobHostOptions, DEFAULT_VAULT_BLOB_HOST } from '../config/providerCatalog';
 import { useChromeStorage } from '../hooks/useChromeExtension';
-
-const VAULT_TARGETS = [
-  { key: 'udrop', label: 'UDrop' },
-  { key: 'terabox', label: 'TeraBox' },
-];
 
 export default function VaultMoveModal({
   isOpen,
@@ -17,7 +13,7 @@ export default function VaultMoveModal({
   onConfirm,
   confirming = false,
 }) {
-  const [selectedVaultHost, setSelectedVaultHost] = useChromeStorage('selectedVaultHost', 'udrop', 'local');
+  const [selectedVaultHost, setSelectedVaultHost] = useChromeStorage('selectedVaultHost', DEFAULT_VAULT_BLOB_HOST, 'local');
   const [sourceHost, setSourceHost] = useState('');
 
   const sourceOptions = useMemo(() => {
@@ -117,10 +113,10 @@ export default function VaultMoveModal({
             Vault blob host
           </div>
           <p className="mb-3 mt-1 text-xs text-base-content/60">
-            Where the encrypted .bin blob is stored. UDrop or TeraBox.
+            Where the encrypted .bin blob is stored.
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
-            {VAULT_TARGETS.map((host) => {
+            {getVaultBlobHostOptions().map((host) => {
               const selected = selectedVaultHost === host.key;
               return (
                 <button
