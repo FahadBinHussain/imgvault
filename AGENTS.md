@@ -27,3 +27,19 @@ chrome extension (mv3, no build for ext itself; vite build outputs to `dist/`) +
 - vault upload progress-log cadence (2.8.0, 2026-08-26): the in-page `uploadVaultedDirectly` progress callback MUST gate its log line on BYTES (`loaded - lastLoggedBytes >= ~20MB`), never on percent or on a string `pct`. percent-gating silently drops every log line between 0% and 100% for files >~1GB (10% of 1.2GB = 128MB = ~39s of silence at ~3.3MB/s), so the live log looks frozen at "0% (363 KB / 1.2 GB)" while the upload actually runs. a progress callback that builds a display label first is the classic trap (string `pct` -> `pct - uploadLogPct` = NaN -> log never fires). ALSO: udrop accepts large single PUTs fine — verified 50MB=13.5s, 512MB=195s, 1.2GB=387s (~3.3MB/s), all through `POST /api/v2/file/upload` with `upload_file` FormData. there is NO per-upload size cap on the server for a single request; the "stuck upload" symptom is a CLIENT log-timing illusion. udrop `api/v2` has no working `file/list` method (only `file/delete`) — file enumeration isn't available via API, so vault orphan cleanup must use file_ids captured from upload responses.
 - **STRICT provider symmetry — no fallbacks (2.11.x)**: user forbids fallback chains for anything. resolve every provider-derived value (video playback, modal source, poster/thumbnail, images) ONLY through the host selected in settings (`defaultVideoSource` / `defaultGallerySource`) via `getStrictVideoProviderLink` / `getStrictImageProviderLink`. never use the chain-based `getPreferredVideoProviderLink` / `getPreferredImageProviderLink` for UI. empty poster when the selected host has no thumbnail (udrop/terabox have none) — don't backfill from another host.
 - filemoon `/e/` URLs are embeddable player PAGES, not video files — gallery modal plays them in an iframe, never a `<video src>` (2.10.6).
+
+## video hosts — file type support matrix (literal, evidence-backed)
+
+status legend (apply everywhere in this repo): `✓` = proven/works (observed in DB or a real run), `✗` = structurally won't accept (video-only host, etc.), `?` = not tested yet — never assume `?` means yes or no, and mark results back here after a test fills one.
+
+| extension | Filemoon | UDrop | TeraBox |
+|---|---|---|---|
+| `.mp4` | ✓ | ✓ | ✓ |
+| `.mkv` | ✓ | ✓ | ✓ |
+| `.bin` | ✗ | ✓ | ? |
+| `.webm` | ? | ? | ? |
+| `.mov` | ? | ? | ? |
+| `.avi` | ? | ? | ? |
+| `.ts` | ? | ? | ? |
+
+context: `✓` rows come from the actual DB — 82 `.mkv` (video/matroska) + 17 `.mp4` on all three hosts; `.bin` on UDrop is the encrypted vault blob (`encryptAndUploadVaultedBlob` hardcodes UDrop, background.js:1138). filemoon is a video-only host, so non-video = `✗`. every other extension is untested (`?`) — fill them with real uploads, not guesses.
