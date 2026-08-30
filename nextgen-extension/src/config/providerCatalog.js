@@ -181,6 +181,29 @@ export function getVaultBlobHostServices() {
 }
 
 /**
+ * Normalize user-selected vault blob host keys (possibly from legacy single
+ * `selectedVaultHost`) into a valid, non-empty array of selectable hosts.
+ * @param {string|string[]|undefined} selected
+ * @returns {string[]}
+ */
+export function normalizeVaultBlobHostKeys(selected) {
+  const available = getVaultBlobHostServices().map((service) => service.key);
+  if (available.length === 0) return [];
+
+  const raw = Array.isArray(selected)
+    ? selected
+    : selected
+      ? [String(selected).toLowerCase()]
+      : [];
+
+  const keys = raw
+    .map((key) => String(key || '').trim().toLowerCase())
+    .filter((key) => available.includes(key));
+
+  return keys.length > 0 ? keys : [DEFAULT_VAULT_BLOB_HOST];
+}
+
+/**
  * Selectable options (key + label) for the vault blob host picker, derived from
  * the catalog so future vault-capable hosts show up automatically.
  * @returns {Array<{key:string,label:string}>}

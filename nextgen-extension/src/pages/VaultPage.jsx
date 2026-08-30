@@ -128,6 +128,8 @@ export default function VaultPage() {
           fileId: selectedItem.encryptedBlobFileId || '',
           chunks: selectedItem.encryptedBlobChunks || [],
           mimeType: selectedItem.encryptedMimeType || 'application/octet-stream',
+          vaultHost: selectedItem.vaultHost || 'udrop',
+          hostCopies: selectedItem.encryptedBlobHosts || null,
         });
         if (cancelled) return;
         if (!result.success || !result.data?.blob) throw new Error(result.error || 'Decrypt failed');

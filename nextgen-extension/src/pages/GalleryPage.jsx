@@ -10,7 +10,7 @@ import {
   Upload, Trash2, Download, X, FolderOpen,
   FileText, Cloud, Link2, Tag, Video, ExternalLink,
   File, Image as ImageIcon, LockKeyhole,
-  Box, Server, Check
+  Box
 } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
 import UploadHostSelector, { reconcileSelectedHostKeys } from '../components/UploadHostSelector';
@@ -20,7 +20,7 @@ import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import TimelineScrollbar from '../components/TimelineScrollbar';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig';
-import { IMAGE_UPLOAD_SERVICES, filterUploadServicesByKeys, getVaultBlobHostServices, getVaultBlobHostOptions, DEFAULT_VAULT_BLOB_HOST } from '../config/providerCatalog';
+import { IMAGE_UPLOAD_SERVICES, filterUploadServicesByKeys, getVaultBlobHostServices, normalizeVaultBlobHostKeys, DEFAULT_VAULT_BLOB_HOST } from '../config/providerCatalog';
 import { FilemoonUploader, UDropUploader, TeraBoxUploader } from '../utils/uploaders';
 import { encryptBlob, encryptMetadata } from '../utils/vaultCrypto.js';
 import { getVaultMasterKey } from '../utils/vaultSession.js';
@@ -365,7 +365,7 @@ export default function GalleryPage() {
   const [uploadHostSettings, setUploadHostSettings] = useState({});
   const [selectedUploadHostKeys, setSelectedUploadHostKeys, selectedKeysLoading] = useChromeStorage('selectedUploadHostKeys', [], 'local');
   const [uploadToVault, setUploadToVault] = useState(false);
-  const [selectedVaultHost, setSelectedVaultHost] = useChromeStorage('selectedVaultHost', DEFAULT_VAULT_BLOB_HOST, 'local');
+  const [selectedVaultHostKeys, setSelectedVaultHostKeys, vaultHostKeysLoading] = useChromeStorage('selectedVaultHostKeys', [DEFAULT_VAULT_BLOB_HOST], 'local');
   const [vaultLockedForUpload, setVaultLockedForUpload] = useState(false);
   const [vaultUnlockCode, setVaultUnlockCode] = useState('');
   const [vaultUnlockError, setVaultUnlockError] = useState('');
@@ -1171,57 +1171,69 @@ export default function GalleryPage() {
       const encryptedMetadata = await encryptMetadata(masterKey, metadata);
 
       const settings = await sendMessage('getVideoHostSettings');
-      const stored = await chrome.storage.local.get('selectedVaultHost');
-      const vaultHost = String(stored?.selectedVaultHost || DEFAULT_VAULT_BLOB_HOST).toLowerCase();
-
-      const vaultService = getVaultBlobHostServices().find((s) => s.key === vaultHost);
-      if (!vaultService) {
-        throw new Error(`Vault blob host "${vaultHost}" is not supported.`);
-      }
-      if (vaultService.isConfigured && !vaultService.isConfigured(settings)) {
-        throw new Error(`${vaultService.label} is not configured. Encrypted vault items need a ${vaultService.label} account.`);
-      }
+      const stored = await chrome.storage.local.get('selectedVaultHostKeys');
+      const vaultHostKeys = normalizeVaultBlobHostKeys(stored?.selectedVaultHostKeys);
 
       const opaqueName = `${Array.from(crypto.getRandomValues(new Uint8Array(16)))
         .map((b) => b.toString(16).padStart(2, '0')).join('')}.bin`;
 
-      // 2) Upload the single encrypted blob with real progress, dispatching to
-      // the selected vault blob host service.
-      let uploadLogBytes = 0;
-      const UPLOAD_LOG_STEP = 20 * 1024 * 1024; // log every ~20 MB so slow big uploads show movement
-      await appendClientUploadLog(`Uploading ${formatBytes(encryptedBlob.size)} encrypted blob to vault (${vaultHost})...`);
-      const onVaultProgress = async ({ loaded, total, percent }) => {
-        const totalLabel = total ? formatBytes(total) : formatBytes(encryptedBlob.size);
-        const loadedLabel = formatBytes(loaded);
-        const percentLabel = percent !== null
-          ? `${percent}% (${loadedLabel} / ${totalLabel})`
-          : `${loadedLabel} sent`;
-        await chrome.storage.local.set({ uploadStatus: `Uploading to vault: ${percentLabel}` });
-        if (percent === 100 || loaded - uploadLogBytes >= UPLOAD_LOG_STEP) {
-          uploadLogBytes = loaded;
-          appendClientUploadLog(`Uploading to vault: ${percentLabel}`).catch(() => {});
+      // 2) Upload the encrypted blob to every selected vault blob host, so the
+      // item survives a single host losing the file. Each host uploads a copy.
+      const vaultHostCopies = [];
+      for (const vaultHost of vaultHostKeys) {
+        const vaultService = getVaultBlobHostServices().find((s) => s.key === vaultHost);
+        if (!vaultService) {
+          throw new Error(`Vault blob host "${vaultHost}" is not supported.`);
         }
-      };
+        if (vaultService.isConfigured && !vaultService.isConfigured(settings)) {
+          throw new Error(`${vaultService.label} is not configured. Encrypted vault items need a ${vaultService.label} account.`);
+        }
 
-      const uploader = new vaultService.uploaderClass();
-      let result;
-      result = await vaultService.uploadWithProgress({
-        uploader,
-        blob: encryptedBlob,
-        settings,
-        data: { fileName: opaqueName },
-        onProgress: onVaultProgress,
-        signal: uploadController.signal,
-      });
+        let uploadLogBytes = 0;
+        const UPLOAD_LOG_STEP = 20 * 1024 * 1024; // log every ~20 MB so slow big uploads show movement
+        await appendClientUploadLog(`Uploading ${formatBytes(encryptedBlob.size)} encrypted blob to ${vaultService.label}...`);
+        const onVaultProgress = async ({ loaded, total, percent }) => {
+          const totalLabel = total ? formatBytes(total) : formatBytes(encryptedBlob.size);
+          const loadedLabel = formatBytes(loaded);
+          const percentLabel = percent !== null
+            ? `${percent}% (${loadedLabel} / ${totalLabel})`
+            : `${loadedLabel} sent`;
+          await chrome.storage.local.set({ uploadStatus: `Uploading to ${vaultService.label}: ${percentLabel}` });
+          if (percent === 100 || loaded - uploadLogBytes >= UPLOAD_LOG_STEP) {
+            uploadLogBytes = loaded;
+            appendClientUploadLog(`Uploading to ${vaultService.label}: ${percentLabel}`).catch(() => {});
+          }
+        };
 
+        const uploader = new vaultService.uploaderClass();
+        const result = await vaultService.uploadWithProgress({
+          uploader,
+          blob: encryptedBlob,
+          settings,
+          data: { fileName: opaqueName },
+          onProgress: onVaultProgress,
+          signal: uploadController.signal,
+        });
+
+        vaultHostCopies.push({
+          host: vaultHost,
+          encryptedBlobUrl: result.watchUrl || result.displayUrl || result.url || '',
+          encryptedBlobWatchUrl: result.watchUrl || result.displayUrl || result.url || '',
+          encryptedBlobFileId: result.fileId || '',
+        });
+      }
+
+      const primary = vaultHostCopies[0] || {};
       const encrypted = {
-        encryptedBlobUrl: result.watchUrl || result.displayUrl || result.url || '',
-        encryptedBlobWatchUrl: result.watchUrl || result.displayUrl || result.url || '',
-        encryptedBlobFileId: result.fileId || '',
+        encryptedBlobUrl: primary.encryptedBlobUrl || '',
+        encryptedBlobWatchUrl: primary.encryptedBlobWatchUrl || '',
+        encryptedBlobFileId: primary.encryptedBlobFileId || '',
+        encryptedBlobHosts: vaultHostCopies,
         encryptedMetadata,
         encryptedMimeType: blob.type || 'application/octet-stream',
         encryptedFileName: opaqueName,
-        vaultHost,
+        vaultHost: primary.host || DEFAULT_VAULT_BLOB_HOST,
+        vaultHosts: vaultHostCopies.map((c) => c.host),
       };
 
       // 3) Save via the SW
@@ -1305,7 +1317,7 @@ export default function GalleryPage() {
     setVaultMoveOpen(true);
   };
 
-  const handleVaultMoveConfirm = async ({ sourceHost, vaultHost }) => {
+  const handleVaultMoveConfirm = async ({ sourceHost, vaultHostKeys }) => {
     const items = vaultMoveItems;
     if (items.length === 0 || isVaulting) return;
 
@@ -1313,7 +1325,7 @@ export default function GalleryPage() {
     try {
       showToast(`Moving ${items.length} item${items.length !== 1 ? 's' : ''} to Secret Vault...`, 'info', 0);
       await Promise.all(
-        items.map((item) => sendMessage('moveToVault', { id: item.id, sourceHost, vaultHost }))
+        items.map((item) => sendMessage('moveToVault', { id: item.id, sourceHost, vaultHosts: vaultHostKeys }))
       );
       setVaultMoveOpen(false);
       setVaultMoveItems([]);
@@ -4611,52 +4623,16 @@ export default function GalleryPage() {
                   )}
 
                   {uploadToVault && (
-                    <section className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 p-4 shadow-sm">
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <div>
-                          <div className="flex items-center gap-2 text-sm font-semibold text-base-content">
-                            <Server className="h-4 w-4 text-primary" />
-                            Vault blob host
-                          </div>
-                          <p className="mt-1 text-xs text-base-content/60">
-                            Where the encrypted .bin blob is stored.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {getVaultBlobHostOptions().map((host) => {
-                          const selected = selectedVaultHost === host.key;
-                          return (
-                            <button
-                              key={host.key}
-                              type="button"
-                              aria-pressed={selected}
-                              onClick={() => setSelectedVaultHost(host.key)}
-                              disabled={uploading}
-                              className={`flex items-center justify-between gap-3 rounded-[var(--radius-box)] border px-3 py-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-base-100 ${
-                                selected
-                                  ? 'border-primary-500/65 bg-gradient-to-br from-primary-50 via-base-100 to-secondary-400/10 text-base-content shadow-sm ring-1 ring-primary-500/15'
-                                  : 'border-base-300 bg-base-100 text-base-content/75 hover:border-primary-400/50 hover:bg-primary-50/45'
-                              } disabled:cursor-not-allowed`}
-                            >
-                              <span className="min-w-0">
-                                <span className="block truncate text-sm font-semibold">{host.label}</span>
-                              </span>
-                              <span
-                                aria-hidden="true"
-                                className={`flex h-7 w-7 flex-none items-center justify-center rounded-[0.65rem] border transition-all duration-200 ${
-                                  selected
-                                    ? 'border-transparent bg-gradient-to-br from-primary-500 to-secondary-500 text-white shadow-lg shadow-primary-500/25'
-                                    : 'border-base-content/20 bg-base-100 text-transparent'
-                                }`}
-                              >
-                                <Check className="h-4 w-4" strokeWidth={3} />
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </section>
+                    <UploadHostSelector
+                      services={getVaultBlobHostServices()}
+                      selectedKeys={selectedVaultHostKeys}
+                      onChange={setSelectedVaultHostKeys}
+                      disabled={uploading}
+                      title="Vault blob host"
+                      description="Where the encrypted .bin blob is stored. Select one or more."
+                      defaultAll={false}
+                      emptyMessage="No vault blob hosts available."
+                    />
                   )}
                   
                   {/* Secret Vault lock screen: shown when a vaulted upload is started while locked */}

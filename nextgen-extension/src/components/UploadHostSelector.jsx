@@ -1,7 +1,7 @@
 import React from 'react';
 import { Check, Server } from 'lucide-react';
 
-export function reconcileSelectedHostKeys(selectedKeys, services = []) {
+export function reconcileSelectedHostKeys(selectedKeys, services = [], defaultAll = true) {
   const availableKeys = services.map((service) => service.key);
 
   if (availableKeys.length === 0) {
@@ -12,7 +12,10 @@ export function reconcileSelectedHostKeys(selectedKeys, services = []) {
     ? selectedKeys.filter((key) => availableKeys.includes(key))
     : [];
 
-  return selected.length > 0 ? selected : availableKeys;
+  if (selected.length > 0) {
+    return selected;
+  }
+  return defaultAll ? availableKeys : [];
 }
 
 export default function UploadHostSelector({
@@ -21,6 +24,9 @@ export default function UploadHostSelector({
   onChange,
   disabled = false,
   emptyMessage = 'No configured hosts. Add host API keys in Settings.',
+  title = 'Upload hosts',
+  description = 'All configured hosts are selected by default.',
+  defaultAll = true,
 }) {
   const selectedSet = new Set(selectedKeys);
   const allSelected = services.length > 0 && services.every((service) => selectedSet.has(service.key));
@@ -48,11 +54,13 @@ export default function UploadHostSelector({
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold text-base-content">
             <Server className="h-4 w-4 text-primary" />
-            Upload hosts
+            {title}
           </div>
-          <p className="mt-1 text-xs text-base-content/60">
-            All configured hosts are selected by default.
-          </p>
+          {description && (
+            <p className="mt-1 text-xs text-base-content/60">
+              {description}
+            </p>
+          )}
         </div>
 
         {services.length > 1 && (

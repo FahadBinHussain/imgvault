@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Check, Server, ArrowRightLeft } from 'lucide-react';
+import { Check, ArrowRightLeft } from 'lucide-react';
 import { Modal } from './UI';
+import UploadHostSelector from './UploadHostSelector';
 import { getVideoSourceHostOptions } from '../utils/videoProviderLinks';
 import { getImageProviderLinks } from '../utils/imageProviderLinks';
-import { getVaultBlobHostOptions, DEFAULT_VAULT_BLOB_HOST } from '../config/providerCatalog';
+import { getVaultBlobHostServices, DEFAULT_VAULT_BLOB_HOST } from '../config/providerCatalog';
 import { useChromeStorage } from '../hooks/useChromeExtension';
 
 export default function VaultMoveModal({
@@ -13,7 +14,7 @@ export default function VaultMoveModal({
   onConfirm,
   confirming = false,
 }) {
-  const [selectedVaultHost, setSelectedVaultHost] = useChromeStorage('selectedVaultHost', DEFAULT_VAULT_BLOB_HOST, 'local');
+  const [selectedVaultHostKeys, setSelectedVaultHostKeys] = useChromeStorage('selectedVaultHostKeys', [DEFAULT_VAULT_BLOB_HOST], 'local');
   const [sourceHost, setSourceHost] = useState('');
 
   const sourceOptions = useMemo(() => {
@@ -43,7 +44,7 @@ export default function VaultMoveModal({
     return '';
   }, [sourceHost, sourceOptions]);
 
-  const canConfirm = defaultSource && selectedVaultHost;
+  const canConfirm = defaultSource && selectedVaultHostKeys.length > 0;
 
   return (
     <Modal
@@ -107,47 +108,16 @@ export default function VaultMoveModal({
         </section>
 
         {/* Vault blob target */}
-        <section className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 p-4 shadow-sm">
-          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-base-content">
-            <Server className="h-4 w-4 text-primary" />
-            Vault blob host
-          </div>
-          <p className="mb-3 mt-1 text-xs text-base-content/60">
-            Where the encrypted .bin blob is stored.
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {getVaultBlobHostOptions().map((host) => {
-              const selected = selectedVaultHost === host.key;
-              return (
-                <button
-                  key={host.key}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => setSelectedVaultHost(host.key)}
-                  className={`flex items-center justify-between gap-3 rounded-[var(--radius-box)] border px-3 py-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-base-100 ${
-                    selected
-                      ? 'border-primary-500/65 bg-gradient-to-br from-primary-50 via-base-100 to-secondary-400/10 text-base-content shadow-sm ring-1 ring-primary-500/15'
-                      : 'border-base-300 bg-base-100 text-base-content/75 hover:border-primary-400/50 hover:bg-primary-50/45'
-                  }`}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold">{host.label}</span>
-                  </span>
-                  <span
-                    aria-hidden="true"
-                    className={`flex h-7 w-7 flex-none items-center justify-center rounded-[0.65rem] border transition-all duration-200 ${
-                      selected
-                        ? 'border-transparent bg-gradient-to-br from-primary-500 to-secondary-500 text-white shadow-lg shadow-primary-500/25'
-                        : 'border-base-content/20 bg-base-100 text-transparent'
-                    }`}
-                  >
-                    <Check className="h-4 w-4" strokeWidth={3} />
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
+        <UploadHostSelector
+          services={getVaultBlobHostServices()}
+          selectedKeys={selectedVaultHostKeys}
+          onChange={setSelectedVaultHostKeys}
+          disabled={confirming}
+          title="Vault blob host"
+          description="Where the encrypted .bin blob is stored. Select one or more."
+          defaultAll={false}
+          emptyMessage="No vault blob hosts available."
+        />
 
         <div className="flex justify-end gap-2 pt-2">
           <button
@@ -160,7 +130,7 @@ export default function VaultMoveModal({
           </button>
           <button
             type="button"
-            onClick={() => onConfirm({ sourceHost: defaultSource, vaultHost: selectedVaultHost })}
+            onClick={() => onConfirm({ sourceHost: defaultSource, vaultHostKeys: selectedVaultHostKeys })}
             disabled={!canConfirm || confirming}
             className="px-4 py-2 rounded-[var(--radius-box)] bg-gradient-to-r from-primary-500 to-secondary-500 hover:from-primary-600 hover:to-secondary-600 text-primary-content text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
           >
