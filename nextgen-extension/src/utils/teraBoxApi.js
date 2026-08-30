@@ -34,116 +34,129 @@ async function resolveCookie(explicitCookie) {
 async function fetchJsTokenViaHiddenTab(timeoutMs = 15000) {
   if (typeof chrome === 'undefined' || !chrome.tabs?.create || !chrome.scripting?.executeScript) return '';
   let tabId = null;
-  try {
-    const tab = await chrome.tabs.create({ url: `${TERABOX_TOKEN_BASE}/`, active: false, pinned: false });
-    tabId = tab.id;
-    await new Promise((resolve) => {
-      const start = Date.now();
-      const check = () => {
-        chrome.tabs.get(tabId, (t) => {
-          if (chrome.runtime.lastError || !t) return resolve();
-          if (t.status === 'complete') return resolve();
-          if (Date.now() - start > timeoutMs) return resolve();
-          setTimeout(check, 300);
-        });
-      };
-      check();
-    });
-    await new Promise((r) => setTimeout(r, 800));
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const hardCap = new Promise((resolve) => setTimeout(() => resolve(false), timeoutMs + 20000));
+  const work = (async () => {
     try {
-      const hasCaptcha = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => !!document.getElementById('canvas') && !!document.getElementById('input'),
-      });
-      if (hasCaptcha?.[0]?.result) {
-        await chrome.scripting.executeScript({
-          target: { tabId },
-          func: () => {
-            try {
-              const c = typeof code !== 'undefined' ? code : '';
-              const input = document.getElementById('input');
-              if (input && c) input.value = c;
-              const btn = document.getElementById('confirm');
-              if (btn) btn.click();
-            } catch (_) {}
-          },
-        });
-        await new Promise((resolve) => {
-          const start2 = Date.now();
-          const check2 = () => {
+      const tab = await chrome.tabs.create({ url: `${TERABOX_TOKEN_BASE}/`, active: false, pinned: false });
+      tabId = tab.id;
+      const loaded = await new Promise((resolve) => {
+        const start = Date.now();
+        const check = () => {
+          let done = false;
+          try {
             chrome.tabs.get(tabId, (t) => {
-              if (chrome.runtime.lastError || !t) return resolve();
-              if (t.status === 'complete' && t.url && !t.url.includes('simple-verify')) return resolve();
-              if (Date.now() - start2 > 8000) return resolve();
-              setTimeout(check2, 300);
+              done = true;
+              if (chrome.runtime.lastError || !t) return resolve(false);
+              if (t.status === 'complete') return resolve(true);
+              if (Date.now() - start > timeoutMs) return resolve(false);
+              setTimeout(check, 300);
             });
-          };
-          setTimeout(check2, 600);
-        });
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-    } catch (_) {}
-    // poll for window.jsToken global (the app page sets it there)
-    let token = '';
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const results = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => window.jsToken || '',
+          } catch (_) {}
+          if (!done && Date.now() - start > timeoutMs) resolve(false);
+        };
+        check();
       });
-      if (results?.[0]?.result) {
-        token = results[0].result;
-        break;
+      if (!loaded) await sleep(800);
+      try {
+        const hasCaptcha = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: () => !!document.getElementById('canvas') && !!document.getElementById('input'),
+        });
+        if (hasCaptcha?.[0]?.result) {
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => {
+              try {
+                const c = typeof code !== 'undefined' ? code : '';
+                const input = document.getElementById('input');
+                if (input && c) input.value = c;
+                const btn = document.getElementById('confirm');
+                if (btn) btn.click();
+              } catch (_) {}
+            },
+          });
+          await new Promise((resolve) => {
+            const start2 = Date.now();
+            const check2 = () => {
+              let done = false;
+              try {
+                chrome.tabs.get(tabId, (t) => {
+                  done = true;
+                  if (chrome.runtime.lastError || !t) return resolve(false);
+                  if (t.status === 'complete' && t.url && !t.url.includes('simple-verify')) return resolve(true);
+                  if (Date.now() - start2 > 8000) return resolve(false);
+                  setTimeout(check2, 300);
+                });
+              } catch (_) {}
+              if (!done && Date.now() - start2 > 8000) resolve(false);
+            };
+            setTimeout(() => check2(), 600);
+          });
+          await sleep(1000);
+        }
+      } catch (_) {}
+      let token = '';
+      for (let attempt = 0; attempt < 20; attempt++) {
+        try {
+          const results = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => window.jsToken || '',
+          });
+          if (results?.[0]?.result) { token = results[0].result; break; }
+        } catch (_) {}
+        await sleep(500);
       }
-      await new Promise((r) => setTimeout(r, 500));
-    }
-    // also grab the tab's full cookie string so any verify cookie is included
-    let tabCookie = '';
-    try {
-      const cookieResults = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => document.cookie,
-      });
-      if (cookieResults?.[0]?.result) tabCookie = cookieResults[0].result;
-    } catch (_) {}
-    if (token) {
+      let tabCookie = '';
       try {
-        await chrome.storage.local.set({
-          teraboxJsToken: token,
-          teraboxJsTokenAt: Date.now(),
-          teraboxTabCookie: tabCookie,
-          teraboxTabCookieAt: Date.now(),
+        const cookieResults = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: () => document.cookie,
         });
+        if (cookieResults?.[0]?.result) tabCookie = cookieResults[0].result;
       } catch (_) {}
-      if (tabCookie) return `${token}|${tabCookie}`;
-      return token;
-    }
-    // fallback: HTML regex
-    const results = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: () => document.documentElement.outerHTML,
-    });
-    const html = results?.[0]?.result || '';
-    const m = html.match(/function%20fn%28a%29%7Bwindow\.jsToken%20%3D%20a%7D%3Bfn%28%22([^%"]+)%22%29/);
-    if (m?.[1]) {
+      if (token) {
+        try {
+          await chrome.storage.local.set({
+            teraboxJsToken: token, teraboxJsTokenAt: Date.now(),
+            teraboxTabCookie: tabCookie, teraboxTabCookieAt: Date.now(),
+          });
+        } catch (_) {}
+        if (tabCookie) return `${token}|${tabCookie}`;
+        return token;
+      }
       try {
-        await chrome.storage.local.set({
-          teraboxJsToken: m[1],
-          teraboxJsTokenAt: Date.now(),
-          teraboxTabCookie: tabCookie,
-          teraboxTabCookieAt: Date.now(),
+        const results = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: () => document.documentElement.outerHTML,
         });
+        const html = results?.[0]?.result || '';
+        const m = html.match(/function%20fn%28a%29%7Bwindow\.jsToken%20%3D%20a%7D%3Bfn%28%22([^%"]+)%22%29/);
+        if (m?.[1]) {
+          try {
+            await chrome.storage.local.set({
+              teraboxJsToken: m[1], teraboxJsTokenAt: Date.now(),
+              teraboxTabCookie: tabCookie, teraboxTabCookieAt: Date.now(),
+            });
+          } catch (_) {}
+          if (tabCookie) return `${m[1]}|${tabCookie}`;
+          return m[1];
+        }
       } catch (_) {}
-      if (tabCookie) return `${m[1]}|${tabCookie}`;
-      return m[1];
+      return '';
+    } catch (_) {
+      return '';
+    } finally {
+      if (tabId != null) {
+        try { await chrome.tabs.remove(tabId); } catch (_) {}
+      }
     }
-    return '';
-  } catch (_) {
-    return '';
-  } finally {
-    if (tabId != null) {
-      try { await chrome.tabs.remove(tabId); } catch (_) {}
-    }
+  })();
+  const result = await Promise.race([work, hardCap]);
+  if (tabId != null) {
+    try { await chrome.tabs.remove(tabId); } catch (_) {}
   }
+  return result === false ? '' : (result || '');
 }
 
 async function fetchJsToken(cookie, forceFresh = false) {

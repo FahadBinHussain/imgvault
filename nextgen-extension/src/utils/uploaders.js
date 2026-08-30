@@ -673,119 +673,144 @@ export class TeraBoxUploader extends BaseUploader {
   async fetchJsTokenViaHiddenTab(timeoutMs = 15000) {
     if (typeof chrome === 'undefined' || !chrome.tabs?.create || !chrome.scripting?.executeScript) return '';
     let tabId = null;
-    try {
-      const tab = await chrome.tabs.create({ url: `${this.tokenBase}/`, active: false, pinned: false });
-      tabId = tab.id;
-      await new Promise((resolve) => {
-        const start = Date.now();
-        const check = () => {
-          chrome.tabs.get(tabId, (t) => {
-            if (chrome.runtime.lastError || !t) return resolve();
-            if (t.status === 'complete') return resolve();
-            if (Date.now() - start > timeoutMs) return resolve();
-            setTimeout(check, 300);
-          });
-        };
-        check();
-      });
-      await new Promise((r) => setTimeout(r, 800));
-      // try to solve the canvas captcha silently
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    // hard overall cap so the tab is ALWAYS closed even if polls hang
+    const hardCap = new Promise((resolve) => setTimeout(() => resolve(false), timeoutMs + 20000));
+    const work = (async () => {
       try {
-        const hasCaptcha = await chrome.scripting.executeScript({
-          target: { tabId },
-          func: () => !!document.getElementById('canvas') && !!document.getElementById('input'),
-        });
-        if (hasCaptcha?.[0]?.result) {
-          await chrome.scripting.executeScript({
-            target: { tabId },
-            func: () => {
-              try {
-                const c = typeof code !== 'undefined' ? code : '';
-                const input = document.getElementById('input');
-                if (input && c) input.value = c;
-                const btn = document.getElementById('confirm');
-                if (btn) btn.click();
-              } catch (_) {}
-            },
-          });
-          await new Promise((resolve) => {
-            const start2 = Date.now();
-            const check2 = () => {
+        const tab = await chrome.tabs.create({ url: `${this.tokenBase}/`, active: false, pinned: false });
+        tabId = tab.id;
+        const loaded = await new Promise((resolve) => {
+          const start = Date.now();
+          const check = () => {
+            let done = false;
+            try {
               chrome.tabs.get(tabId, (t) => {
-                if (chrome.runtime.lastError || !t) return resolve();
-                if (t.status === 'complete' && t.url && !t.url.includes('simple-verify')) return resolve();
-                if (Date.now() - start2 > 8000) return resolve();
-                setTimeout(check2, 300);
+                done = true;
+                if (chrome.runtime.lastError || !t) return resolve(false);
+                if (t.status === 'complete') return resolve(true);
+                if (Date.now() - start > timeoutMs) return resolve(false);
+                setTimeout(check, 300);
               });
-            };
-            setTimeout(check2, 600);
-          });
-          await new Promise((r) => setTimeout(r, 1000));
-        }
-      } catch (_) {}
-      // poll for window.jsToken global (the app page sets it there)
-      let token = '';
-      for (let attempt = 0; attempt < 20; attempt++) {
-        const results = await chrome.scripting.executeScript({
-          target: { tabId },
-          func: () => window.jsToken || '',
+            } catch (_) { /* fallthrough */ }
+            if (!done && Date.now() - start > timeoutMs) resolve(false);
+          };
+          check();
         });
-        if (results?.[0]?.result) {
-          token = results[0].result;
-          break;
-        }
-        await new Promise((r) => setTimeout(r, 500));
-      }
-      // also grab the tab's document.cookie and merge in any extra cookies
-      // (verify cookie set after captcha). do NOT overwrite — document.cookie
-      // excludes httpOnly cookies like ndus, so we'd lose the session.
-      try {
-        const cookieResults = await chrome.scripting.executeScript({
-          target: { tabId },
-          func: () => document.cookie,
-        });
-        const tabCookie = cookieResults?.[0]?.result || '';
-        if (tabCookie) {
-          const existing = new Map(
-            this.cookie.split(';').map((s) => s.trim()).filter(Boolean).map((s) => {
-              const i = s.indexOf('=');
-              return [i > 0 ? s.slice(0, i) : s, i > 0 ? s.slice(i + 1) : ''];
-            })
-          );
-          tabCookie.split(';').forEach((s) => {
-            const trimmed = s.trim();
-            if (!trimmed) return;
-            const i = trimmed.indexOf('=');
-            if (i <= 0) return;
-            const name = trimmed.slice(0, i);
-            if (!existing.has(name)) existing.set(name, trimmed.slice(i + 1));
+        if (!loaded) await sleep(800);
+        // try to solve the canvas captcha silently
+        try {
+          const hasCaptcha = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => !!document.getElementById('canvas') && !!document.getElementById('input'),
           });
-          this.cookie = Array.from(existing, ([n, v]) => `${n}=${v}`).join('; ');
+          if (hasCaptcha?.[0]?.result) {
+            await chrome.scripting.executeScript({
+              target: { tabId },
+              func: () => {
+                try {
+                  const c = typeof code !== 'undefined' ? code : '';
+                  const input = document.getElementById('input');
+                  if (input && c) input.value = c;
+                  const btn = document.getElementById('confirm');
+                  if (btn) btn.click();
+                } catch (_) {}
+              },
+            });
+            await new Promise((resolve) => {
+              const start2 = Date.now();
+              const check2 = () => {
+                let done = false;
+                try {
+                  chrome.tabs.get(tabId, (t) => {
+                    done = true;
+                    if (chrome.runtime.lastError || !t) return resolve(false);
+                    if (t.status === 'complete' && t.url && !t.url.includes('simple-verify')) return resolve(true);
+                    if (Date.now() - start2 > 8000) return resolve(false);
+                    setTimeout(check2, 300);
+                  });
+                } catch (_) { /* fallthrough */ }
+                if (!done && Date.now() - start2 > 8000) resolve(false);
+              };
+              setTimeout(() => check2(), 600);
+            });
+            await sleep(1000);
+          }
+        } catch (_) {}
+        // poll for window.jsToken global (the app page sets it there)
+        let token = '';
+        for (let attempt = 0; attempt < 20; attempt++) {
+          try {
+            const results = await chrome.scripting.executeScript({
+              target: { tabId },
+              func: () => window.jsToken || '',
+            });
+            if (results?.[0]?.result) {
+              token = results[0].result;
+              break;
+            }
+          } catch (_) {}
+          await sleep(500);
         }
-      } catch (_) {}
-      if (token) {
-        try { await chrome.storage.local.set({ teraboxJsToken: token, teraboxJsTokenAt: Date.now() }); } catch (_) {}
-        return token;
+        // also grab the tab's document.cookie and merge in any extra cookies
+        // (verify cookie set after captcha). do NOT overwrite — document.cookie
+        // excludes httpOnly cookies like ndus, so we'd lose the session.
+        try {
+          const cookieResults = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => document.cookie,
+          });
+          const tabCookie = cookieResults?.[0]?.result || '';
+          if (tabCookie) {
+            const existing = new Map(
+              this.cookie.split(';').map((s) => s.trim()).filter(Boolean).map((s) => {
+                const i = s.indexOf('=');
+                return [i > 0 ? s.slice(0, i) : s, i > 0 ? s.slice(i + 1) : ''];
+              })
+            );
+            tabCookie.split(';').forEach((s) => {
+              const trimmed = s.trim();
+              if (!trimmed) return;
+              const i = trimmed.indexOf('=');
+              if (i <= 0) return;
+              const name = trimmed.slice(0, i);
+              if (!existing.has(name)) existing.set(name, trimmed.slice(i + 1));
+            });
+            this.cookie = Array.from(existing, ([n, v]) => `${n}=${v}`).join('; ');
+          }
+        } catch (_) {}
+        if (token) {
+          try { await chrome.storage.local.set({ teraboxJsToken: token, teraboxJsTokenAt: Date.now() }); } catch (_) {}
+          return token;
+        }
+        // fallback: HTML regex
+        try {
+          const results = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => document.documentElement.outerHTML,
+          });
+          const html = results?.[0]?.result || '';
+          const m = html.match(/function%20fn%28a%29%7Bwindow\.jsToken%20%3D%20a%7D%3Bfn%28%22([^%"]+)%22%29/);
+          if (m?.[1]) {
+            try { await chrome.storage.local.set({ teraboxJsToken: m[1], teraboxJsTokenAt: Date.now() }); } catch (_) {}
+            return m[1];
+          }
+        } catch (_) {}
+        return '';
+      } catch (_) {
+        return '';
+      } finally {
+        if (tabId != null) {
+          try { await chrome.tabs.remove(tabId); } catch (_) {}
+        }
       }
-      // fallback: HTML regex
-      const results = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => document.documentElement.outerHTML,
-      });
-      const html = results?.[0]?.result || '';
-      const m = html.match(/function%20fn%28a%29%7Bwindow\.jsToken%20%3D%20a%7D%3Bfn%28%22([^%"]+)%22%29/);
-      if (m?.[1]) {
-        try { await chrome.storage.local.set({ teraboxJsToken: m[1], teraboxJsTokenAt: Date.now() }); } catch (_) {}
-        return m[1];
-      }
-      return '';
-    } catch (_) {
-      return '';
-    } finally {
-      if (tabId != null) {
-        try { await chrome.tabs.remove(tabId); } catch (_) {}
-      }
+    })();
+    const result = await Promise.race([work, hardCap]);
+    // if hardCap won, make sure the tab is gone
+    if (tabId != null) {
+      try { await chrome.tabs.remove(tabId); } catch (_) {}
     }
+    return result === false ? '' : (result || '');
   }
 
   async fetchJsToken(forceFresh = false) {
@@ -1005,12 +1030,11 @@ export class TeraBoxUploader extends BaseUploader {
       const path = `/${safeName}`;
 
       await this.resolveCookie(cookie);
-      // No upfront jsToken fetch. TeraBox's homepage is captcha/verify-gated
-      // for browser fetch requests (Sec-Fetch-* headers), so scraping the
-      // token there no longer works. The PCS API accepts requests WITHOUT a
-      // jsToken using just the session cookie; apiRequest retries with a
-      // freshly fetched token only when the server explicitly asks for one
-      // (errno 4000023). Fixed in 2.11.12.
+      // fetch a token upfront (cache-first, hidden tab only on miss) so the
+      // first precreate usually succeeds and we don't burn a 4000023 retry +
+      // a hidden tab per item. the 12h storage cache means a whole resolve-all
+      // batch opens at most ONE tab. 2.11.18.
+      if (!this.jsToken) await this.fetchJsToken();
 
       const size = blob.size;
       const chunkSize = this.calculateChunkSize(size);
