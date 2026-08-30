@@ -957,6 +957,40 @@ export class TeraBoxUploader extends BaseUploader {
     return chunkSize;
   }
 
+  // TeraBox rejects emoji, fullwidth punctuation (｜：（）“”), and overly long
+  // names with errno -7. Sanitize the destination filename before precreate —
+  // only the write path uses this; the DB display title stays untouched.
+  sanitizeTeraBoxFileName(filename) {
+    const fallback = 'video.mp4';
+    let name = String(filename || '').split('/').pop().split('?')[0] || fallback;
+    // drop emoji + control chars
+    name = name.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '');
+    // map fullwidth → halfwidth where safe, else replace with underscore
+    name = name
+      .replace(/[／]/g, '/')
+      .replace(/[：]/g, ':')
+      .replace(/[（）]/g, '')
+      .replace(/[｜]/g, '|')
+      .replace(/[“”]/g, '"')
+      .replace(/[，、；]/g, '_');
+    // strip chars terabox forbids outright
+    name = name.replace(/[\\/:*?"<>|]/g, '_');
+    name = name.replace(/[\u0000-\u001F\u007F]/g, '');
+    // collapse runs of spaces / underscores, trim dots+spaces from ends
+    name = name.replace(/\s+/g, ' ').trim().replace(/[._\s]+$/g, '');
+    name = name.replace(/_+/g, '_');
+    // cap length (keep extension)
+    const maxLen = 120;
+    if (name.length > maxLen) {
+      const extMatch = name.match(/(\.[A-Za-z0-9]{1,8})$/);
+      const ext = extMatch ? extMatch[1] : '';
+      const base = ext ? name.slice(0, name.length - ext.length) : name;
+      name = base.slice(0, maxLen - ext.length).replace(/[._\s]+$/g, '') + ext;
+    }
+    if (!name || name === '.' || name === '..') return fallback;
+    return name;
+  }
+
   async upload(blob, cookie, filename, signal) {
     return this._upload(blob, cookie, filename, null, signal);
   }
@@ -967,7 +1001,7 @@ export class TeraBoxUploader extends BaseUploader {
 
   async _upload(blob, cookie, filename, onProgress, signal) {
     try {
-      const safeName = String(filename || 'video.mp4').split('/').pop().split('?')[0] || 'video.mp4';
+      const safeName = this.sanitizeTeraBoxFileName(filename);
       const path = `/${safeName}`;
 
       await this.resolveCookie(cookie);
