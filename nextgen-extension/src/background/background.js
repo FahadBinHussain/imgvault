@@ -1143,8 +1143,8 @@ class ImgVaultServiceWorker {
 
   /**
    * Encrypt a media blob for a vaulted item and upload it to the selected vault
-   * blob host (a vaultBlobHost service) as a flat opaque blob. Requires the
-   * vault to be unlocked (master key in memory).
+   * blob host (any video host service from the catalog) as a flat opaque blob.
+   * Requires the vault to be unlocked (master key in memory).
    * @param {string} [vaultHost=DEFAULT_VAULT_BLOB_HOST] - host that stores the encrypted .bin
    * @returns {Promise<{encryptedBlobUrl:string, encryptedBlobFileId:string, encryptedMetadata:string, encryptedMimeType:string, encryptedFileName:string, vaultHost:string}>}
    */
