@@ -10,10 +10,11 @@ import {
   Upload, Trash2, Download, X, FolderOpen,
   FileText, Cloud, Link2, Tag, Video, ExternalLink,
   File, Image as ImageIcon, LockKeyhole,
-  Box
+  Box, Server, Check
 } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
 import UploadHostSelector, { reconcileSelectedHostKeys } from '../components/UploadHostSelector';
+import VaultMoveModal from '../components/VaultMoveModal';
 import { useImages, useImageUpload, useTrash, useChromeStorage, useCollections, useChromeMessage } from '../hooks/useChromeExtension';
 import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import TimelineScrollbar from '../components/TimelineScrollbar';
@@ -364,10 +365,13 @@ export default function GalleryPage() {
   const [uploadHostSettings, setUploadHostSettings] = useState({});
   const [selectedUploadHostKeys, setSelectedUploadHostKeys, selectedKeysLoading] = useChromeStorage('selectedUploadHostKeys', [], 'local');
   const [uploadToVault, setUploadToVault] = useState(false);
+  const [selectedVaultHost, setSelectedVaultHost] = useChromeStorage('selectedVaultHost', 'udrop', 'local');
   const [vaultLockedForUpload, setVaultLockedForUpload] = useState(false);
   const [vaultUnlockCode, setVaultUnlockCode] = useState('');
   const [vaultUnlockError, setVaultUnlockError] = useState('');
   const [vaultUnlocking, setVaultUnlocking] = useState(false);
+  const [vaultMoveOpen, setVaultMoveOpen] = useState(false);
+  const [vaultMoveItems, setVaultMoveItems] = useState([]);
   const [uploadQueue, setUploadQueue] = useState([]);
   const [uploadQueuePreviewUrls, setUploadQueuePreviewUrls] = useState([]);
   const [activeUploadQueueIndex, setActiveUploadQueueIndex] = useState(0);
@@ -657,22 +661,9 @@ export default function GalleryPage() {
   const handleBulkMoveToVault = async () => {
     if (selectedImages.size === 0 || isVaulting) return;
 
-    setIsVaulting(true);
-    try {
-      showToast(`Moving ${selectedImages.size} item${selectedImages.size !== 1 ? 's' : ''} to Secret Vault...`, 'info', 0);
-      await Promise.all(
-        Array.from(selectedImages).map(id => sendMessage('moveToVault', { id }))
-      );
-      setSelectedImages(new Set());
-      setSelectionMode(false);
-      await Promise.all([reload(), reloadCollections()]);
-      showToast(`Moved ${selectedImages.size} item${selectedImages.size !== 1 ? 's' : ''} to Secret Vault.`, 'success', 3000);
-    } catch (error) {
-      console.error('Bulk vault failed:', error);
-      showToast(`Failed to move items to vault: ${error.message || String(error)}`, 'error', 5000);
-    } finally {
-      setIsVaulting(false);
-    }
+    const items = filteredImages.filter((img) => selectedImages.has(img.id));
+    setVaultMoveItems(items);
+    setVaultMoveOpen(true);
   };
 
   const isHttpUrl = (value) =>
@@ -1180,37 +1171,57 @@ export default function GalleryPage() {
       const encryptedMetadata = await encryptMetadata(masterKey, metadata);
 
       const settings = await sendMessage('getVideoHostSettings');
-      if (!settings.udropKey1 || !settings.udropKey2) {
+      const stored = await chrome.storage.local.get('selectedVaultHost');
+      const vaultHost = String(stored?.selectedVaultHost || 'udrop').toLowerCase();
+
+      if (vaultHost === 'terabox') {
+        // TeraBox needs no udrop keys; cookie is read from the session/settings.
+      } else if (!settings.udropKey1 || !settings.udropKey2) {
         throw new Error('UDrop keys are not configured. Encrypted vault items need a UDrop account.');
       }
 
       const opaqueName = `${Array.from(crypto.getRandomValues(new Uint8Array(16)))
         .map((b) => b.toString(16).padStart(2, '0')).join('')}.bin`;
 
-      // 2) XHR upload the single encrypted blob with real progress
-      const uploader = new UDropUploader();
+      // 2) Upload the single encrypted blob with real progress, dispatching to
+      // the selected vault host (udrop or terabox).
       let uploadLogBytes = 0;
       const UPLOAD_LOG_STEP = 20 * 1024 * 1024; // log every ~20 MB so slow big uploads show movement
-      await appendClientUploadLog(`Uploading ${formatBytes(encryptedBlob.size)} encrypted blob to vault...`);
-      const result = await uploader.uploadWithProgress(
-        encryptedBlob,
-        settings.udropKey1,
-        settings.udropKey2,
-        opaqueName,
-        async ({ loaded, total, percent }) => {
-          const totalLabel = total ? formatBytes(total) : formatBytes(encryptedBlob.size);
-          const loadedLabel = formatBytes(loaded);
-          const percentLabel = percent !== null
-            ? `${percent}% (${loadedLabel} / ${totalLabel})`
-            : `${loadedLabel} sent`;
-          await chrome.storage.local.set({ uploadStatus: `Uploading to vault: ${percentLabel}` });
-          if (percent === 100 || loaded - uploadLogBytes >= UPLOAD_LOG_STEP) {
-            uploadLogBytes = loaded;
-            appendClientUploadLog(`Uploading to vault: ${percentLabel}`).catch(() => {});
-          }
-        },
-        uploadController.signal
-      );
+      await appendClientUploadLog(`Uploading ${formatBytes(encryptedBlob.size)} encrypted blob to vault (${vaultHost})...`);
+      const onVaultProgress = async ({ loaded, total, percent }) => {
+        const totalLabel = total ? formatBytes(total) : formatBytes(encryptedBlob.size);
+        const loadedLabel = formatBytes(loaded);
+        const percentLabel = percent !== null
+          ? `${percent}% (${loadedLabel} / ${totalLabel})`
+          : `${loadedLabel} sent`;
+        await chrome.storage.local.set({ uploadStatus: `Uploading to vault: ${percentLabel}` });
+        if (percent === 100 || loaded - uploadLogBytes >= UPLOAD_LOG_STEP) {
+          uploadLogBytes = loaded;
+          appendClientUploadLog(`Uploading to vault: ${percentLabel}`).catch(() => {});
+        }
+      };
+
+      let result;
+      if (vaultHost === 'terabox') {
+        const uploader = new TeraBoxUploader();
+        result = await uploader.uploadWithProgress(
+          encryptedBlob,
+          settings?.teraboxCookie || '',
+          opaqueName,
+          onVaultProgress,
+          uploadController.signal
+        );
+      } else {
+        const uploader = new UDropUploader();
+        result = await uploader.uploadWithProgress(
+          encryptedBlob,
+          settings.udropKey1,
+          settings.udropKey2,
+          opaqueName,
+          onVaultProgress,
+          uploadController.signal
+        );
+      }
 
       const encrypted = {
         encryptedBlobUrl: result.watchUrl || result.displayUrl || result.url || '',
@@ -1219,6 +1230,7 @@ export default function GalleryPage() {
         encryptedMetadata,
         encryptedMimeType: blob.type || 'application/octet-stream',
         encryptedFileName: opaqueName,
+        vaultHost,
       };
 
       // 3) Save via the SW
@@ -1298,16 +1310,31 @@ export default function GalleryPage() {
 
   const handleMoveSelectedToVault = async () => {
     if (!selectedImage?.id || isVaulting) return;
+    setVaultMoveItems([selectedImage]);
+    setVaultMoveOpen(true);
+  };
+
+  const handleVaultMoveConfirm = async ({ sourceHost, vaultHost }) => {
+    const items = vaultMoveItems;
+    if (items.length === 0 || isVaulting) return;
 
     setIsVaulting(true);
     try {
-      showToast('Moving to Secret Vault...', 'info', 0);
-      await sendMessage('moveToVault', { id: selectedImage.id });
+      showToast(`Moving ${items.length} item${items.length !== 1 ? 's' : ''} to Secret Vault...`, 'info', 0);
+      await Promise.all(
+        items.map((item) => sendMessage('moveToVault', { id: item.id, sourceHost, vaultHost }))
+      );
+      setVaultMoveOpen(false);
+      setVaultMoveItems([]);
+      if (selectedImages.size > 0) {
+        setSelectedImages(new Set());
+        setSelectionMode(false);
+      }
       setSelectedImage(null);
       setFullImageDetails(null);
       setActiveTab('noobs');
       await Promise.all([reload(), reloadCollections()]);
-      showToast('Moved to Secret Vault.', 'success', 3000);
+      showToast(`Moved ${items.length} item${items.length !== 1 ? 's' : ''} to Secret Vault.`, 'success', 3000);
     } catch (error) {
       console.error('Move to vault failed:', error);
       showToast(`Failed to move to vault: ${error.message || String(error)}`, 'error', 5000);
@@ -4035,6 +4062,15 @@ export default function GalleryPage() {
           </div>
         </Modal>
 
+        {/* Move-to-Vault host picker modal */}
+        <VaultMoveModal
+          isOpen={vaultMoveOpen}
+          onClose={() => { if (!isVaulting) { setVaultMoveOpen(false); setVaultMoveItems([]); } }}
+          items={vaultMoveItems}
+          onConfirm={handleVaultMoveConfirm}
+          confirming={isVaulting}
+        />
+
         {/* Floating Action Buttons */}
         {!loading && images.length > 0 && (
           <>
@@ -4581,6 +4617,58 @@ export default function GalleryPage() {
                           : 'No image hosts are configured. Add Pixvid or ImgBB API keys in Settings.'
                       }
                     />
+                  )}
+
+                  {uploadToVault && (
+                    <section className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 p-4 shadow-sm">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 text-sm font-semibold text-base-content">
+                            <Server className="h-4 w-4 text-primary" />
+                            Vault blob host
+                          </div>
+                          <p className="mt-1 text-xs text-base-content/60">
+                            Where the encrypted .bin blob is stored. UDrop or TeraBox.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {[
+                          { key: 'udrop', label: 'UDrop' },
+                          { key: 'terabox', label: 'TeraBox' },
+                        ].map((host) => {
+                          const selected = selectedVaultHost === host.key;
+                          return (
+                            <button
+                              key={host.key}
+                              type="button"
+                              aria-pressed={selected}
+                              onClick={() => setSelectedVaultHost(host.key)}
+                              disabled={uploading}
+                              className={`flex items-center justify-between gap-3 rounded-[var(--radius-box)] border px-3 py-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-base-100 ${
+                                selected
+                                  ? 'border-primary-500/65 bg-gradient-to-br from-primary-50 via-base-100 to-secondary-400/10 text-base-content shadow-sm ring-1 ring-primary-500/15'
+                                  : 'border-base-300 bg-base-100 text-base-content/75 hover:border-primary-400/50 hover:bg-primary-50/45'
+                              } disabled:cursor-not-allowed`}
+                            >
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-semibold">{host.label}</span>
+                              </span>
+                              <span
+                                aria-hidden="true"
+                                className={`flex h-7 w-7 flex-none items-center justify-center rounded-[0.65rem] border transition-all duration-200 ${
+                                  selected
+                                    ? 'border-transparent bg-gradient-to-br from-primary-500 to-secondary-500 text-white shadow-lg shadow-primary-500/25'
+                                    : 'border-base-content/20 bg-base-100 text-transparent'
+                                }`}
+                              >
+                                <Check className="h-4 w-4" strokeWidth={3} />
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
                   )}
                   
                   {/* Secret Vault lock screen: shown when a vaulted upload is started while locked */}

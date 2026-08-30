@@ -7,7 +7,7 @@
 import { StorageManager } from '../utils/storage.js';
 import { DuplicateDetector } from '../utils/duplicate-detector.js';
 import { URLNormalizer } from '../utils/url-normalizer.js';
-import { PixvidUploader, ImgbbUploader, FilemoonUploader, UDropUploader } from '../utils/uploaders.js';
+import { PixvidUploader, ImgbbUploader, FilemoonUploader, UDropUploader, TeraBoxUploader } from '../utils/uploaders.js';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig.js';
 import {
   filterUploadServicesByKeys,
@@ -17,6 +17,7 @@ import {
 import {
   getImageRetrySourceCandidates,
   getImageUploadService,
+  getStrictImageProviderLink,
   mergeImageProviderResult,
 } from '../utils/imageProviderLinks.js';
 import { extractFilemoonFilecode, getFilemoonDirectLink, getFilemoonHlsLink } from '../utils/filemoonApi.js';
@@ -24,6 +25,7 @@ import { getFilemoonStreamSource } from '../utils/filemoonSpa.js';
 import { resolveTeraBoxThumbnail, resolveTeraBoxPlaybackUrl } from '../utils/teraBoxApi.js';
 import {
   getConfiguredVideoUploadServices,
+  getStrictVideoProviderLink,
   getVideoProviderLabel,
   getVideoRetrySourceCandidates,
   getVideoUploadService,
@@ -32,6 +34,8 @@ import {
 import {
   encryptBlob,
   encryptMetadata,
+  decryptBlob,
+  decryptMetadata,
   hashVaultPasscode,
   unwrapMasterKey,
   createVaultConfig,
@@ -92,6 +96,7 @@ class ImgVaultServiceWorker {
     this.imgbbUploader = new ImgbbUploader();
     this.filemoonUploader = new FilemoonUploader();
     this.udropUploader = new UDropUploader();
+    this.teraboxUploader = new TeraBoxUploader();
     this.activeUploadController = null;
     this.activeNativeDownloadPorts = new Map();
     this.vaultMasterKey = null;
@@ -1135,11 +1140,13 @@ class ImgVaultServiceWorker {
   }
 
   /**
-   * Encrypt a media blob for a vaulted item and upload it to udrop as a flat
-   * opaque blob. Requires the vault to be unlocked (master key in memory).
-   * @returns {Promise<{encryptedBlobUrl:string, encryptedBlobFileId:string, encryptedMetadata:string, encryptedMimeType:string, encryptedFileName:string}>}
+   * Encrypt a media blob for a vaulted item and upload it to the selected vault
+   * blob host (udrop or terabox) as a flat opaque blob. Requires the vault to
+   * be unlocked (master key in memory).
+   * @param {string} [vaultHost='udrop'] - host that stores the encrypted .bin
+   * @returns {Promise<{encryptedBlobUrl:string, encryptedBlobFileId:string, encryptedMetadata:string, encryptedMimeType:string, encryptedFileName:string, vaultHost:string}>}
    */
-   async encryptAndUploadVaultedBlob(blob, metadata = {}, onProgress) {
+   async encryptAndUploadVaultedBlob(blob, metadata = {}, onProgress, vaultHost = 'udrop') {
     if (!this.vaultMasterKey) {
       throw new Error('Secret Vault is locked. Unlock it before saving encrypted items.');
     }
@@ -1155,21 +1162,31 @@ class ImgVaultServiceWorker {
     });
     const encryptedMetadata = await encryptMetadata(this.vaultMasterKey, metadata);
 
-    const settings = await chrome.storage.sync.get(['udropKey1', 'udropKey2']);
-    if (!settings.udropKey1 || !settings.udropKey2) {
-      throw new Error('UDrop keys are not configured. Encrypted vault items need a UDrop account.');
-    }
+    const targetHost = String(vaultHost || 'udrop').toLowerCase();
 
     if (typeof onProgress === 'function') {
       onProgress({ loaded: 0, total: 1, percent: 50, stage: 'upload' });
     }
 
-    // NOTE: must use the fetch-based upload() here — XHR is not available in
-    // the MV3 service worker context (uploadWithProgress uses XMLHttpRequest).
-    const uploader = new UDropUploader();
     const opaqueName = `${Array.from(crypto.getRandomValues(new Uint8Array(16)))
       .map((b) => b.toString(16).padStart(2, '0')).join('')}.bin`;
-    const result = await uploader.upload(encryptedBlob, settings.udropKey1, settings.udropKey2, opaqueName);
+
+    let result;
+    if (targetHost === 'terabox') {
+      const settings = await this.getMergedVideoHostSettings();
+      const uploader = new TeraBoxUploader();
+      // TeraBoxUploader.upload is fetch-based (works in the MV3 service worker).
+      result = await uploader.upload(encryptedBlob, settings?.teraboxCookie || '', opaqueName);
+    } else {
+      const settings = await chrome.storage.sync.get(['udropKey1', 'udropKey2']);
+      if (!settings.udropKey1 || !settings.udropKey2) {
+        throw new Error('UDrop keys are not configured. Encrypted vault items need a UDrop account.');
+      }
+      // NOTE: must use the fetch-based upload() here — XHR is not available in
+      // the MV3 service worker context (uploadWithProgress uses XMLHttpRequest).
+      const uploader = new UDropUploader();
+      result = await uploader.upload(encryptedBlob, settings.udropKey1, settings.udropKey2, opaqueName);
+    }
 
     if (typeof onProgress === 'function') {
       onProgress({ loaded: 1, total: 1, percent: 95, stage: 'saving' });
@@ -1185,14 +1202,32 @@ class ImgVaultServiceWorker {
       encryptedMetadata,
       encryptedMimeType: blob.type || 'application/octet-stream',
       encryptedFileName: opaqueName,
+      vaultHost: targetHost,
     };
   }
 
   /**
-   * Resolve a fresh, unexpired udrop download URL for a file id.
-   * Falls back to the stored URL if regeneration fails.
+   * Resolve a fresh, unexpired download URL for a vaulted blob file id,
+   * dispatching to the host the encrypted blob is stored on.
+   * @param {string} url - stored blob URL (fallback if regeneration fails)
+   * @param {string} fileId
+   * @param {string} [vaultHost='udrop'] - host the encrypted blob lives on
+   * @param {string} [fileName=''] - opaque file name (used by terabox lookup)
    */
-  async resolveUdropDownloadUrl(url, fileId) {
+  async resolveVaultDownloadUrl(url, fileId, vaultHost = 'udrop', fileName = '') {
+    const host = String(vaultHost || 'udrop').toLowerCase();
+    if (host === 'terabox') {
+      try {
+        const settings = await this.getMergedVideoHostSettings();
+        const cookie = settings?.teraboxCookie || '';
+        const fresh = await resolveTeraBoxPlaybackUrl(cookie, fileId, fileName);
+        if (fresh) return fresh;
+      } catch (err) {
+        console.warn('[Vault] terabox download URL regeneration failed:', err.message);
+      }
+      return url;
+    }
+
     if (!fileId) return url;
     try {
       const settings = await chrome.storage.sync.get(['udropKey1', 'udropKey2']);
@@ -1220,26 +1255,34 @@ class ImgVaultServiceWorker {
 
   /**
    * Decrypt a vaulted blob (fetched from the encrypted blob URL) and return the
-   * plaintext Blob. Requires unlocked vault. Regenerates the udrop download URL
-   * if the stored one is stale.
+   * plaintext Blob. Requires unlocked vault. Regenerates the host's download URL
+   * (udrop or terabox) if the stored one is stale.
    * @param {string} url - primary encrypted blob URL (first chunk)
    * @param {string} mimeType
    * @param {string} fileId
    * @param {Array<{url:string,fileId:string,size:number}>} [chunks] - optional
    *   full chunk list; when present, fetch all chunks in parallel and join.
+   * @param {string} [vaultHost='udrop'] - host the encrypted blob lives on
+   * @param {string} [fileName=''] - opaque file name (terabox dlink lookup)
+   * @param {Function} [onProgress] - ({loaded,total,stage}) stage: 'download'|'decrypt'
    */
-  async decryptVaultBlob(url, mimeType = 'application/octet-stream', fileId = '', chunks = []) {
+  async decryptVaultBlob(url, mimeType = 'application/octet-stream', fileId = '', chunks = [], vaultHost = 'udrop', fileName = '', onProgress = null) {
     if (!this.vaultMasterKey) {
       throw new Error('Secret Vault is locked. Unlock it before viewing encrypted items.');
     }
     if (!url) {
       throw new Error('Encrypted item has no blob URL.');
     }
-    const { decryptBlob } = await import('../utils/vaultCrypto.js');
 
     const effectiveChunks = Array.isArray(chunks) && chunks.length > 0
       ? chunks
       : [{ url, fileId, size: 0 }];
+
+    const emit = (loaded, total, stage) => {
+      if (typeof onProgress === 'function') {
+        onProgress({ loaded, total, percent: total ? Math.round((loaded / total) * 100) : null, stage });
+      }
+    };
 
     const fetchOne = async (chunk, index) => {
       let fetchUrl = chunk.url;
@@ -1248,13 +1291,35 @@ class ImgVaultServiceWorker {
         resp = await fetch(fetchUrl);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       } catch (_) {
-        const fresh = await this.resolveUdropDownloadUrl(chunk.url, chunk.fileId);
+        const fresh = await this.resolveVaultDownloadUrl(chunk.url, chunk.fileId, vaultHost, fileName);
         if (fresh && fresh !== chunk.url) {
           resp = await fetch(fresh);
           if (!resp.ok) throw new Error(`Failed to fetch regenerated chunk: HTTP ${resp.status}`);
         } else {
           throw new Error(`Failed to fetch encrypted chunk ${index} from ${chunk.url}`);
         }
+      }
+
+      // stream the body so we can report real download progress
+      const expected = Number(chunk.size) || Number(resp.headers?.get('content-length')) || 0;
+      if (resp.body && resp.body.getReader) {
+        const reader = resp.body.getReader();
+        const received = [];
+        let loaded = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          received.push(value);
+          loaded += value.byteLength;
+          emit(loaded, expected, 'download');
+        }
+        const bytes = new Uint8Array(loaded);
+        let off = 0;
+        for (const part of received) {
+          bytes.set(part, off);
+          off += part.byteLength;
+        }
+        return new Blob([bytes], { type: 'application/octet-stream' });
       }
       return resp.blob();
     };
@@ -1269,18 +1334,31 @@ class ImgVaultServiceWorker {
       void total;
     }
 
-    return decryptBlob(this.vaultMasterKey, encryptedBlob, mimeType);
+    emit(encryptedBlob.size, encryptedBlob.size, 'decrypt');
+    const plain = await decryptBlob(this.vaultMasterKey, encryptedBlob, mimeType, (p) => {
+      emit(p.loaded || 0, p.total || encryptedBlob.size, 'decrypt');
+    });
+    emit(plain.size, plain.size, 'decrypt');
+    return plain;
   }
 
   /**
    * Move an item to the Secret Vault.
-   * - Encrypted path (vault unlocked): fetch original blob from its current
-   *   provider, encrypt, re-upload as flat udrop blob, update the row with the
-   *   encrypted fields, and blank the plaintext provider URLs.
+   * - Encrypted path (vault unlocked): fetch original blob from the selected
+   *   source host, encrypt, re-upload as a flat blob on the selected vault host
+   *   (udrop or terabox), update the row with the encrypted fields, and blank
+   *   the plaintext provider URLs.
    * - Legacy path (vault locked / no config): keep the existing flag-only
    *   behavior (hidden but unencrypted) so pre-existing flows keep working.
+   * @param {string} id
+   * @param {Object} [options]
+   * @param {string} [options.sourceHost] - host to pull the original blob from
+   *   (e.g. 'udrop', 'filemoon', 'imgbb'); strict link, no fallback chain.
+   * @param {string} [options.vaultHost] - host that stores the encrypted blob
+   *   ('udrop' | 'terabox'). defaults to 'udrop'.
    */
-  async moveItemToVault(id) {
+  async moveItemToVault(id, options = {}) {
+    const { sourceHost = '', vaultHost = 'udrop' } = options;
     const current = await this.storage.getImageById(id);
     if (!current) {
       throw new Error('Item not found');
@@ -1292,14 +1370,19 @@ class ImgVaultServiceWorker {
     // Encrypted path: vault unlocked.
     if (this.vaultMasterKey) {
       try {
-        const providerLinks = current.imageHosts || current.videoHosts || {};
         const isVideo = current.isVideo || String(current.fileType || '').startsWith('video/');
-        const sourceUrl = isVideo
-          ? (current.udropDirectUrl || current.filemoonDirectUrl || current.udropWatchUrl || '')
-          : (current.imgbbUrl || current.imgbbThumbUrl || current.pixvidUrl || current.sourceImageUrl || '');
-
+        let sourceUrl = '';
+        if (sourceHost) {
+          sourceUrl = isVideo
+            ? (getStrictVideoProviderLink(current, sourceHost, 'directUrl') || getStrictVideoProviderLink(current, sourceHost, 'watchUrl'))
+            : getStrictImageProviderLink(current, sourceHost, 'url');
+        }
         if (!sourceUrl) {
-          throw new Error('No source URL available to encrypt this item.');
+          throw new Error(
+            sourceHost
+              ? `No source URL available for host "${sourceHost}". Pick a host this item has a link on.`
+              : 'No source URL available to encrypt this item.'
+          );
         }
 
         const blob = await this.fetchImage(sourceUrl, AbortSignal.timeout(60000), current.sourcePageUrl);
@@ -1318,7 +1401,7 @@ class ImgVaultServiceWorker {
           width: current.width || null,
           height: current.height || null,
           duration: current.duration || null,
-        });
+        }, undefined, vaultHost);
 
         await this.storage.updateImage(id, {
           isVaulted: true,
@@ -1363,24 +1446,54 @@ class ImgVaultServiceWorker {
    * Restore an item from the Secret Vault.
    * - Encrypted path: decrypt the blob, re-upload through the normal providers,
    *   and un-vault. Falls back to legacy flag-only restore when unencrypted.
+   * @param {Object} [options]
+   * @param {Array<string>} [options.targetHostKeys] - hosts to restore into
+   *   (e.g. ['udrop','terabox']); when omitted, restores into all configured.
    */
-  async restoreFromVault(id) {
+  async restoreFromVault(id, options = {}) {
+    const { targetHostKeys = null } = options;
     const current = await this.storage.getImageById(id);
     if (!current) {
       throw new Error('Vault item not found');
     }
 
-    if (current.encryptedBlobUrl && this.vaultMasterKey) {
-      try {
-        const blob = await this.decryptVaultBlob(current.encryptedBlobUrl, current.encryptedMimeType, current.encryptedBlobFileId, current.encryptedBlobChunks);
-        const { decryptMetadata } = await import('../utils/vaultCrypto.js');
-        const meta = await decryptMetadata(this.vaultMasterKey, current.encryptedMetadata);
-        const isVideo = Boolean(meta.isVideo || current.isVideo || String(meta.fileType || '').startsWith('video/'));
-        const fileName = meta.fileName || current.encryptedFileName || (isVideo ? 'video.mp4' : 'image.jpg');
+    // make the restore show as an active upload in the central logs page
+    await chrome.storage.local.set({ uploadActive: true, uploadStatusLogs: [], uploadStatus: '🔓 Starting vault restore...' });
+    try {
+      if (current.encryptedBlobUrl) {
+        // The blob is encrypted — restoring it requires the master key. If the
+        // key is gone (MV3 SW idle restart), FAIL LOUDLY instead of silently
+        // falling into the legacy flag-only restore, which un-vaults the item
+        // without re-uploading any playable URL (real data-availability bug).
+        if (!this.vaultMasterKey) {
+          throw new Error('Vault is locked. Unlock the vault before restoring this encrypted item.');
+        }
+        try {
+          await this.updateStatusWithLog('🔓 Decrypting vault blob...').catch(() => {});
+          const blob = await this.decryptVaultBlob(
+            current.encryptedBlobUrl,
+            current.encryptedMimeType,
+            current.encryptedBlobFileId,
+            current.encryptedBlobChunks,
+            current.vaultHost || 'udrop',
+            current.encryptedFileName || '',
+            async ({ loaded, total, percent, stage }) => {
+              const totalLabel = total ? this.formatBytes(total) : '';
+              const loadedLabel = this.formatBytes(loaded);
+              const pctLabel = percent !== null ? `${percent}%` : '';
+              const msg = stage === 'download'
+                ? `🔓 Downloading encrypted blob: ${pctLabel} (${loadedLabel}${totalLabel ? ` / ${totalLabel}` : ''})`
+                : `🔓 Decrypting: ${pctLabel} (${loadedLabel}${totalLabel ? ` / ${totalLabel}` : ''})`;
+              chrome.storage.local.set({ uploadStatus: msg }).catch(() => {});
+              await this.appendUploadLog(msg).catch(() => {});
+            }
+          );
+          const meta = await decryptMetadata(this.vaultMasterKey, current.encryptedMetadata);
+          const isVideo = Boolean(meta.isVideo || current.isVideo || String(meta.fileType || '').startsWith('video/'));
+          const fileName = meta.fileName || current.encryptedFileName || (isVideo ? 'video.mp4' : 'image.jpg');
 
         let restored = {
-          pageTitle: meta.pageTitle || '',
-          description: meta.description || '',
+          pageTitle: meta.pageTitle || '',          description: meta.description || '',
           tags: Array.isArray(meta.tags) ? meta.tags : [],
           fileName,
           fileType: meta.fileType || blob.type || '',
@@ -1395,7 +1508,7 @@ class ImgVaultServiceWorker {
         if (isVideo) {
           const settings = await this.getMergedVideoHostSettings();
           const configured = getConfiguredVideoUploadServices(settings);
-          const selected = filterUploadServicesByKeys(configured, current.selectedHostKeys || null);
+          const selected = filterUploadServicesByKeys(configured, targetHostKeys || null);
           const services = selected.length > 0 ? selected : configured;
           if (services.length === 0) {
             throw new Error('No video host configured to restore into.');
@@ -1405,16 +1518,51 @@ class ImgVaultServiceWorker {
           for (const service of services) {
             const uploader = this[service.uploaderKey];
             if (!uploader) continue;
+            await this.updateStatusWithLog(`🔓 Restoring video to ${service.label} (${this.formatBytes(blob.size)})...`)
+              .catch(() => {});
             try {
-              const result = await service.upload({
-                uploader,
-                blob,
-                settings,
-                data: { ...current, fileName },
-              });
+              let result;
+              if (service.uploadWithProgress && service.key === 'terabox') {
+                // terabox uploadWithProgress is fetch-based (works in the MV3
+                // service worker) and reports real per-chunk byte progress.
+                let lastLogBytes = -1;
+                const RESTORE_LOG_STEP = 20 * 1024 * 1024;
+                result = await service.uploadWithProgress({
+                  uploader,
+                  blob,
+                  settings,
+                  data: { ...current, fileName },
+                  onProgress: ({ loaded, total, percent }) => {
+                    const totalLabel = total ? this.formatBytes(total) : this.formatBytes(blob.size);
+                    const loadedLabel = this.formatBytes(loaded);
+                    const pctLabel = percent !== null
+                      ? `${percent}%`
+                      : `${Math.round((loaded / blob.size) * 100)}%`;
+                    chrome.storage.local.set({
+                      uploadStatus: `🔓 Restoring to ${service.label}: ${pctLabel} (${loadedLabel} / ${totalLabel})`,
+                    }).catch(() => {});
+                    if (loaded - lastLogBytes >= RESTORE_LOG_STEP || loaded >= blob.size) {
+                      lastLogBytes = loaded;
+                      this.appendUploadLog(`🔓 Restoring to ${service.label}: ${pctLabel} (${loadedLabel} / ${totalLabel})`)
+                        .catch(() => {});
+                    }
+                  },
+                });
+              } else {
+                result = await service.upload({
+                  uploader,
+                  blob,
+                  settings,
+                  data: { ...current, fileName },
+                });
+              }
               uploadResults[service.key] = result;
+              await this.updateStatusWithLog(`🔓 Restored video to ${service.label}.`, 'success')
+                .catch(() => {});
             } catch (err) {
               errors.push(`${service.label}: ${err.message || String(err)}`);
+              await this.updateStatusWithLog(`🔓 Restore to ${service.label} FAILED: ${err.message || String(err)}`, 'error')
+                .catch(() => {});
             }
           }
           if (Object.keys(uploadResults).length === 0) {
@@ -1427,7 +1575,7 @@ class ImgVaultServiceWorker {
         } else {
           const settings = await chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey']);
           const configured = getConfiguredImageUploadServices(settings);
-          const selected = filterUploadServicesByKeys(configured, current.selectedHostKeys || null);
+          const selected = filterUploadServicesByKeys(configured, targetHostKeys || null);
           const services = selected.length > 0 ? selected : configured;
           if (services.length === 0) {
             throw new Error('No image host configured to restore into.');
@@ -1436,6 +1584,8 @@ class ImgVaultServiceWorker {
           for (const service of services) {
             const uploader = this[service.uploaderKey];
             if (!uploader) continue;
+            await this.updateStatusWithLog(`🔓 Restoring image to ${service.label}...`)
+              .catch(() => {});
             try {
               const result = await service.upload({
                 uploader,
@@ -1444,8 +1594,12 @@ class ImgVaultServiceWorker {
                 data: { ...current, imageUrl: current.sourcePageUrl },
               });
               uploadResults.push({ type: service.key, ...result });
+              await this.updateStatusWithLog(`🔓 Restored image to ${service.label}.`, 'success')
+                .catch(() => {});
             } catch (err) {
               console.warn(`${service.label} restore failed:`, err.message);
+              await this.updateStatusWithLog(`🔓 Restore to ${service.label} failed: ${err.message || String(err)}`, 'error')
+                .catch(() => {});
             }
           }
           const successful = uploadResults.filter((r) => r && !r.error && r.url);
@@ -1458,11 +1612,13 @@ class ImgVaultServiceWorker {
           }
         }
 
+        await this.updateStatusWithLog('🔓 Saving restored item...').catch(() => {});
         await this.storage.updateImage(id, {
           ...restored,
           isVaulted: false,
           vaultMode: '',
           vaultedAt: '',
+          vaultHost: '',
           encryptedBlobUrl: '',
           encryptedBlobWatchUrl: '',
           encryptedBlobFileId: '',
@@ -1471,18 +1627,35 @@ class ImgVaultServiceWorker {
           encryptedMimeType: '',
           encryptedFileName: '',
         });
+        await this.updateStatusWithLog('🔓 Item restored from vault.', 'success').catch(() => {});
 
         if (current.collectionId) {
           await this.storage.incrementCollectionCount(current.collectionId, 1);
         }
+        await chrome.storage.local.set({ uploadActive: false }).catch(() => {});
         return true;
       } catch (error) {
-        console.error('[Vault] Encrypted restore failed, falling back to legacy flag-only:', error.message);
-        // fall through to legacy restore
+        console.error('[Vault] Encrypted restore failed:', error);
+        const errMsg = error?.message || String(error);
+        await this.updateStatusWithLog(`🔓 VAULT RESTORE FAILED: ${errMsg}`, 'error').catch(() => {});
+        throw new Error(`Vault restore failed: ${errMsg}`);
       }
-    }
+      }
 
-    return this.storage.restoreFromVault(id);
+      // legacy flag-only restore — only reaches here for genuinely unencrypted
+      // legacy vault items (no encryptedBlobUrl). Encrypted items always take
+      // the decrypt→re-upload path above and never fall through silently.
+      const result = await this.storage.restoreFromVault(id);
+      await this.updateStatusWithLog('🔓 Legacy flag-only restore applied.', 'success').catch(() => {});
+      return result;
+    } catch (error) {
+      console.error('[Vault] restore failed:', error);
+      const errMsg = error?.message || String(error);
+      await this.updateStatusWithLog(`🔓 VAULT RESTORE FAILED: ${errMsg}`, 'error').catch(() => {});
+      throw new Error(`Vault restore failed: ${errMsg}`);
+    } finally {
+      await chrome.storage.local.set({ uploadActive: false }).catch(() => {});
+    }
   }
 
   /**
@@ -1561,7 +1734,14 @@ class ImgVaultServiceWorker {
         return true;
 
       case 'vaultDecryptBlob':
-        this.decryptVaultBlob(request.data?.url, request.data?.mimeType, request.data?.fileId, request.data?.chunks)
+        this.decryptVaultBlob(
+          request.data?.url,
+          request.data?.mimeType,
+          request.data?.fileId,
+          request.data?.chunks,
+          request.data?.vaultHost || 'udrop',
+          request.data?.fileName || ''
+        )
           .then((blob) => sendResponse({ success: true, data: { blob } }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
@@ -1591,13 +1771,18 @@ class ImgVaultServiceWorker {
         return true;
 
       case 'moveToVault':
-        this.moveItemToVault(request.data?.id || request.id)
+        this.moveItemToVault(request.data?.id || request.id, {
+          sourceHost: request.data?.sourceHost || '',
+          vaultHost: request.data?.vaultHost || 'udrop',
+        })
           .then(() => sendResponse({ success: true, data: null }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
       case 'restoreFromVault':
-        this.restoreFromVault(request.data?.id || request.id)
+        this.restoreFromVault(request.data?.id || request.id, {
+          targetHostKeys: request.data?.targetHostKeys || null,
+        })
           .then(() => sendResponse({ success: true, data: null }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
@@ -2430,18 +2615,21 @@ class ImgVaultServiceWorker {
         duration: kind === 'video' && Number.isFinite(data.duration) ? data.duration : null,
       };
 
+      const storedHost = await chrome.storage.local.get('selectedVaultHost');
+      const vaultHost = String(data.vaultHost || storedHost?.selectedVaultHost || 'udrop').toLowerCase();
+
       const encrypted = await this.encryptAndUploadVaultedBlob(blob, metadata, (progress) => {
         if (progress.stage === 'encrypt') {
           this.updateStatusWithLog(`🔒 Encrypting ${this.formatBytes(blob.size)}... ${progress.percent}%`)
             .catch(() => {});
         } else if (progress.stage === 'upload') {
-          this.updateStatusWithLog(`🔒 Uploading encrypted blob to udrop (${this.formatBytes(blob.size)})...`)
+          this.updateStatusWithLog(`🔒 Uploading encrypted blob to ${vaultHost} (${this.formatBytes(blob.size)})...`)
             .catch(() => {});
         } else if (progress.stage === 'saving') {
           this.updateStatusWithLog('🔒 Saving encrypted item...')
             .catch(() => {});
         }
-      });
+      }, vaultHost);
 
       const mediaMetadata = {
         kind,

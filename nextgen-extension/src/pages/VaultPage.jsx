@@ -22,6 +22,7 @@ import GalleryNavbar from '../components/GalleryNavbar';
 import PremiumBackground from '../components/PremiumBackground';
 import { useChromeMessage, useTrash, useCollections, useChromeStorage } from '../hooks/useChromeExtension';
 import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
+import UploadHostSelector, { reconcileSelectedHostKeys } from '../components/UploadHostSelector';
 import {
   getStrictVideoProviderLink,
 } from '../utils/videoProviderLinks';
@@ -31,6 +32,10 @@ import {
   getOverviewEntries,
   getTechnicalMetadataEntries,
 } from '@shared/mediaFieldRegistry.js';
+import {
+  getConfiguredVideoUploadServices,
+} from '../utils/videoProviderLinks';
+import { getConfiguredImageUploadServices } from '../config/providerCatalog';
 import MediaDetailModal from '../components/MediaDetailModal';
 import {
   createVaultConfig,
@@ -42,6 +47,7 @@ import {
   getVaultMasterKey,
   setVaultMasterKey,
   clearVaultMasterKey,
+  importMasterKeyFromB64,
 } from '../utils/vaultSession.js';
 
 const VAULT_CONFIG_KEY = 'secretVaultConfig';
@@ -101,6 +107,9 @@ export default function VaultPage() {
   const [restoringId, setRestoringId] = useState('');
   const [deletingId, setDeletingId] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showRestorePicker, setShowRestorePicker] = useState(false);
+  const [restoreTargetHostKeys, setRestoreTargetHostKeys, restoreTargetKeysLoading] = useChromeStorage('selectedRestoreHostKeys', [], 'local');
+  const [hostSettings, setHostSettings] = useState(null);
   const [decryptedUrls, setDecryptedUrls] = useState({});
 
   // Decrypt blob on demand when an encrypted item is selected.
@@ -207,7 +216,23 @@ export default function VaultPage() {
       if (config && !cancelled) {
         try {
           const session = JSON.parse(sessionStorage.getItem(VAULT_SESSION_KEY) || '{}');
-          setUnlocked(session?.passHash === config.passHash);
+          const sessionValid = session?.passHash === config.passHash;
+          if (sessionValid) {
+            // Rehydrate the master key so encrypted operations (decrypt preview,
+            // restore, move-to-vault) actually work. The SW and page both lose
+            // their in-memory key on an MV3 idle restart; without this the page
+            // looked "unlocked" but restore silently ran the legacy flag-only
+            // path (no real re-upload) — a real data-availability bug.
+            if (session.keyB64) {
+              try {
+                await importMasterKeyFromB64(session.keyB64);
+                await sendMessage('vaultSetMasterKey', { keyB64: session.keyB64 });
+              } catch (err) {
+                console.warn('[Vault] Could not rehydrate master key from session:', err.message);
+              }
+            }
+          }
+          setUnlocked(sessionValid);
         } catch (_) {
           setUnlocked(false);
         }
@@ -391,7 +416,6 @@ export default function VaultPage() {
     }
     // Push the master key to the SW so encrypted uploads work from this session.
     await unlockWithPasscode(passcode, config);
-    sessionStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ passHash: config.passHash, unlockedAt: Date.now() }));
     setVaultConfig(config);
     setUnlocked(true);
     setPasscode('');
@@ -425,6 +449,14 @@ export default function VaultPage() {
       const raw = new Uint8Array(await crypto.subtle.exportKey('raw', masterKey));
       const keyB64 = btoa(String.fromCharCode(...raw));
       await sendMessage('vaultSetMasterKey', { keyB64 });
+      // Persist the raw key alongside the pass hash so a page reload or MV3
+      // service-worker restart (which wipes both in-memory keys) can rehydrate
+      // them from this tab's sessionStorage on the next visit. tab-scoped,
+      // cleared on tab close.
+      sessionStorage.setItem(
+        VAULT_SESSION_KEY,
+        JSON.stringify({ passHash: effectiveConfig.passHash, unlockedAt: Date.now(), keyB64 })
+      );
       return true;
     } catch (error) {
       console.warn('Vault master key not available for encryption:', error.message);
@@ -444,7 +476,6 @@ export default function VaultPage() {
     }
 
     await unlockWithPasscode(passcode, vaultConfig);
-    sessionStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ passHash, unlockedAt: Date.now() }));
     setUnlocked(true);
     setPasscode('');
   };
@@ -478,7 +509,6 @@ export default function VaultPage() {
       await sendMessage('saveVaultConfig', { config });
       await saveLocalVaultConfig(config);
       await unlockWithPasscode(newPassword, config);
-      sessionStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ passHash: config.passHash, unlockedAt: Date.now() }));
       setVaultConfig(config);
       setShowChangePassword(false);
       setCurrentPassword('');
@@ -506,10 +536,28 @@ export default function VaultPage() {
 
   const restoreItem = async (item) => {
     if (!item?.id || restoringId) return;
-    setRestoringId(item.id);
+    // Load host settings for the picker (video + image keys from merged settings).
     try {
-      await sendMessage('restoreFromVault', { id: item.id });
-      setVaultItems((prev) => prev.filter((entry) => entry.id !== item.id));
+      const video = await sendMessage('getVideoHostSettings');
+      const image = await chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey']);
+      setHostSettings({ ...video, ...image });
+    } catch (_) {
+      // keep previous settings
+    }
+    // Show the host target picker first (like the upload modal), then confirm.
+    setShowRestorePicker(true);
+  };
+
+  const handleRestoreConfirm = async () => {
+    if (!selectedItem?.id || restoringId) return;
+    setRestoringId(selectedItem.id);
+    setShowRestorePicker(false);
+    try {
+      await sendMessage('restoreFromVault', {
+        id: selectedItem.id,
+        targetHostKeys: restoreTargetHostKeys,
+      });
+      setVaultItems((prev) => prev.filter((entry) => entry.id !== selectedItem.id));
       setSelectedItem(null);
       showToast('Restored to Gallery.', 'success', 3000);
     } catch (error) {
@@ -518,6 +566,20 @@ export default function VaultPage() {
       setRestoringId('');
     }
   };
+
+  // Configured restore target services for the selected item kind (video hosts
+  // vs image hosts), reconciled so the picker mirrors the upload modal.
+  const restoreItemIsVideo = Boolean(
+    selectedItem?.isVideo ||
+    selectedItem?._decryptedMeta?.isVideo ||
+    String(selectedItem?.encryptedMimeType || selectedItem?.fileType || '').startsWith('video/')
+  );
+  const restoreConfiguredServices = hostSettings
+    ? (restoreItemIsVideo
+        ? getConfiguredVideoUploadServices(hostSettings)
+        : getConfiguredImageUploadServices(hostSettings))
+    : [];
+  const reconciledRestoreHostKeys = reconcileSelectedHostKeys(restoreTargetHostKeys, restoreConfiguredServices);
 
   const deleteVaultItem = async () => {
     if (!selectedItem?.id || deletingId) return;
@@ -1060,6 +1122,54 @@ export default function VaultPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Restore target host picker (mirrors the upload modal) */}
+      <Modal
+        isOpen={showRestorePicker}
+        onClose={() => !restoringId && setShowRestorePicker(false)}
+        title={`Restore to ${restoreItemIsVideo ? 'Video' : 'Gallery'} hosts`}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-base-content/60">
+            The encrypted blob is decrypted and re-uploaded to the hosts below.
+            Pick where to restore this item.
+          </p>
+          <UploadHostSelector
+            services={restoreConfiguredServices}
+            selectedKeys={reconciledRestoreHostKeys}
+            onChange={setRestoreTargetHostKeys}
+            disabled={!!restoringId}
+            emptyMessage={
+              restoreItemIsVideo
+                ? 'No video hosts are configured. Add Filemoon, UDrop, or TeraBox keys in Settings.'
+                : 'No image hosts are configured. Add Pixvid or ImgBB API keys in Settings.'
+            }
+          />
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={() => setShowRestorePicker(false)} disabled={!!restoringId}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={handleRestoreConfirm}
+              disabled={!!restoringId || restoreConfiguredServices.length === 0 || reconciledRestoreHostKeys.length === 0}
+            >
+              {restoringId ? (
+                <>
+                  <Spinner size="sm" className="mr-2" />
+                  Restoring...
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Restore
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       <Modal

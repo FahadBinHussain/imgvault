@@ -96,10 +96,15 @@ function buildExtraSeed(source, existing) {
   const mergedWithoutExtra = { ...existing, ...source };
   delete mergedWithoutExtra.extraMetadata;
 
+  const mergedKeys = new Set(Object.keys(mergedWithoutExtra));
+  const extraOnly = Object.fromEntries(
+    Object.entries(sourceExtra).filter(([key]) => !mergedKeys.has(key))
+  );
+
   return {
     ...existingExtra,
     ...mergedWithoutExtra,
-    ...sourceExtra,
+    ...extraOnly,
   };
 }
 
