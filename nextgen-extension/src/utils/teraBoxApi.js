@@ -273,21 +273,34 @@ async function request(cookie, jsToken, pathname, params = {}, retried = false) 
 }
 
 /**
- * List the contents of a single TeraBox folder.
+ * List the contents of a single TeraBox folder, paginating past the 100-per-
+ * page cap. The old code only fetched page 1 (`num:100, page:1`) so once the
+ * account passed 100 files every file beyond the first page showed up as
+ * "broken" on the resolve integrity check (same bug class as the byse
+ * file/list 100-cap). Loop pages until a page returns fewer than `num`.
  * @returns {Promise<Array>} files, or [] on error
  */
 async function listTeraBoxFolder(cookie, jsToken, dir = '/') {
-  const json = await request(cookie, jsToken, '/api/list', {
-    dir,
-    order: 'time',
-    desc: '1',
-    showempty: '0',
-    web_tt: '1',
-    num: '100',
-    page: '1',
-  });
-  if (!json || json.errno !== 0 || !Array.isArray(json.list)) return [];
-  return json.list;
+  const num = 100;
+  const all = [];
+  let page = 1;
+  for (;;) {
+    const json = await request(cookie, jsToken, '/api/list', {
+      dir,
+      order: 'time',
+      desc: '1',
+      showempty: '0',
+      web_tt: '1',
+      num: String(num),
+      page: String(page),
+    });
+    if (!json || json.errno !== 0 || !Array.isArray(json.list)) break;
+    all.push(...json.list);
+    if (json.list.length < num) break;
+    page += 1;
+    if (page > 100) break; // safety: never loop forever
+  }
+  return all;
 }
 
 /**
