@@ -1404,29 +1404,51 @@ class ImgVaultServiceWorker {
    * @returns {Promise<Response>}
    */
   async handleVaultStreamRequest(request, itemId) {
+    const url = new URL(request.url);
     console.log('[Vault-stream] request for', itemId, 'range:', request.headers.get('range'));
-    const item = await this.storage.getImageById(itemId);
-    if (!item || !item.encryptedBlobUrl) {
-      return new Response('Vault item not found', { status: 404 });
+
+    // Build the item-ish context straight from the URL query — NO Neon DB read
+    // per Range request (that DB round-trip is what stalled the player forever).
+    let copies = [];
+    try {
+      const parsed = url.searchParams.get('copies');
+      if (parsed) {
+        const arr = JSON.parse(parsed);
+        if (Array.isArray(arr)) {
+          copies = arr.map((c) => ({
+            host: c.host || DEFAULT_VAULT_BLOB_HOST,
+            encryptedBlobUrl: c.encryptedBlobUrl || c.url || '',
+            encryptedBlobFileId: c.encryptedBlobFileId || c.fileId || '',
+          }));
+        }
+      }
+    } catch (_) { /* fall through */ }
+
+    if (copies.length === 0) {
+      // legacy URL without query params → fall back to the DB item
+      const item = await this.storage.getImageById(itemId);
+      if (!item || !item.encryptedBlobUrl) {
+        return new Response('Vault item not found', { status: 404 });
+      }
+      copies = [{
+        host: item.vaultHost || DEFAULT_VAULT_BLOB_HOST,
+        encryptedBlobUrl: item.encryptedBlobUrl,
+        encryptedBlobFileId: item.encryptedBlobFileId || '',
+      }];
     }
+
     if (!this.vaultMasterKey) {
       return new Response('Vault is locked. Unlock the vault to stream this item.', { status: 403 });
     }
 
-    const mimeType = item.encryptedMimeType || 'application/octet-stream';
-    const fileName = item.encryptedFileName || '';
-    const hostCopies = Array.isArray(item.encryptedBlobHosts) && item.encryptedBlobHosts.length > 0
-      ? item.encryptedBlobHosts
-      : [{
-          host: item.vaultHost || DEFAULT_VAULT_BLOB_HOST,
-          encryptedBlobUrl: item.encryptedBlobUrl,
-          encryptedBlobFileId: item.encryptedBlobFileId || '',
-        }];
+    const mimeType = url.searchParams.get('mime') || 'application/octet-stream';
+    const fileName = url.searchParams.get('name') || '';
+    const item = { id: itemId, encryptedBlobUrl: copies[0]?.encryptedBlobUrl || '' };
 
     // 1) read the 16-byte IVG1 header to learn the plaintext size + chunk size
     let headerBuf;
     try {
-      headerBuf = await this.fetchVaultBlobRange(item, hostCopies, fileName, 0, 15);
+      headerBuf = await this.fetchVaultBlobRange(item, copies, fileName, 0, 15);
     } catch (err) {
       console.error('[Vault-stream] header fetch failed:', err.message);
       return new Response('Vault blob unreachable: ' + err.message, { status: 502 });
@@ -1435,11 +1457,11 @@ class ImgVaultServiceWorker {
     if (!layout) {
       // legacy single-shot blob (pre-IVG1): decrypt fully and return as one body
       const blob = await this.decryptVaultBlob(
-        item.encryptedBlobUrl,
-        item.encryptedMimeType,
-        item.encryptedBlobFileId,
-        item.encryptedBlobChunks,
-        item.vaultHost || DEFAULT_VAULT_BLOB_HOST,
+        copies[0]?.encryptedBlobUrl || '',
+        mimeType,
+        copies[0]?.encryptedBlobFileId || '',
+        [],
+        copies[0]?.host || DEFAULT_VAULT_BLOB_HOST,
         fileName
       );
       return new Response(blob, { headers: { 'Content-Type': mimeType } });
@@ -1484,7 +1506,11 @@ class ImgVaultServiceWorker {
             const encLen = rangeLayout.encryptedChunkLength(i);
             let encChunk;
             try {
-              encChunk = await this.fetchVaultBlobRange(item, hostCopies, fileName, encStart, encStart + encLen - 1);
+              const chunkTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error(`chunk ${i} fetch timed out`)), 30000));
+              encChunk = await Promise.race([
+                this.fetchVaultBlobRange(item, copies, fileName, encStart, encStart + encLen - 1),
+                chunkTimeout,
+              ]);
             } catch (err) {
               controller.error(new Error(`Failed to fetch encrypted chunk ${i}: ${err.message}`));
               return;
@@ -4952,12 +4978,16 @@ self.addEventListener('fetch', (event) => {
   const match = url.pathname.match(/^\/vault-stream\/([^/]+)$/);
   if (!match) return;
   console.log('[Vault-stream] fetch intercepted:', url.pathname, 'range:', event.request.headers.get('range'));
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Vault stream timed out after 30s')), 30000));
   event.respondWith(
-    serviceWorker.handleVaultStreamRequest(event.request, decodeURIComponent(match[1]))
-      .catch((err) => {
-        console.error('[Vault-stream] handler error:', err);
-        return new Response('Vault stream error: ' + err.message, { status: 500 });
-      })
+    Promise.race([
+      serviceWorker.handleVaultStreamRequest(event.request, decodeURIComponent(match[1]))
+        .catch((err) => {
+          console.error('[Vault-stream] handler error:', err);
+          return new Response('Vault stream error: ' + err.message, { status: 500 });
+        }),
+      timeout,
+    ])
   );
 });
 

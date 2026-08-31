@@ -116,9 +116,21 @@ export default function VaultPage() {
   // Build the streaming URL for an encrypted item. The SW serves the DECRYPTED
   // media over HTTP Range requests (decrypts only the chunks covering the
   // requested byte range), so playback/seek never needs the full blob.
+  //
+  // Everything the SW needs (host copies, mime, file id) is embedded in the
+  // query string so the stream handler does NOT hit the Neon DB on every video
+  // Range request (a DB round-trip per request is what made it "load forever").
   const getVaultStreamUrl = (item) => {
     if (!item?.encryptedBlobUrl || !item?.id) return '';
-    return chrome.runtime.getURL(`vault-stream/${encodeURIComponent(item.id)}`);
+    const copies = Array.isArray(item.encryptedBlobHosts) && item.encryptedBlobHosts.length > 0
+      ? item.encryptedBlobHosts
+      : [{ host: item.vaultHost || 'udrop', encryptedBlobUrl: item.encryptedBlobUrl, encryptedBlobFileId: item.encryptedBlobFileId || '' }];
+    const q = new URLSearchParams({
+      mime: item.encryptedMimeType || 'application/octet-stream',
+      name: item.encryptedFileName || '',
+      copies: JSON.stringify(copies),
+    });
+    return chrome.runtime.getURL(`vault-stream/${encodeURIComponent(item.id)}?${q.toString()}`);
   };
 
   // Decrypt blob on demand when an encrypted item is selected. Legacy
