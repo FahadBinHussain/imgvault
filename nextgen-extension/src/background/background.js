@@ -1469,6 +1469,7 @@ class ImgVaultServiceWorker {
     }
     const { total, chunkSize } = layout;
     const rangeLayout = getVaultChunkLayout(total, chunkSize);
+    console.log('[Vault-stream] layout ok', { total, chunkSize, hosts: copies.map((c) => c.host), fresh: copies.map((c) => !!c.fresh) });
 
     // 2) parse the Range header
     const rangeHeader = request.headers.get('range');
@@ -1505,6 +1506,7 @@ class ImgVaultServiceWorker {
           for (let i = firstChunk; i <= lastChunk; i++) {
             const encStart = rangeLayout.encryptedChunkOffset(i);
             const encLen = rangeLayout.encryptedChunkLength(i);
+            console.log('[Vault-stream] chunk', i, 'fetch', encStart, encLen);
             let encChunk;
             try {
               const chunkTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error(`chunk ${i} fetch timed out`)), 30000));
