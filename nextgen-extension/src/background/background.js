@@ -1419,6 +1419,7 @@ class ImgVaultServiceWorker {
             host: c.host || DEFAULT_VAULT_BLOB_HOST,
             encryptedBlobUrl: c.encryptedBlobUrl || c.url || '',
             encryptedBlobFileId: c.encryptedBlobFileId || c.fileId || '',
+            fresh: !!c.fresh,
           }));
         }
       }
@@ -1562,6 +1563,9 @@ class ImgVaultServiceWorker {
    *   timeout, which will 403 → the caller gets a loud 502).
    */
   async getFreshVaultStreamUrl(item, copy, fileName) {
+    // Page pre-resolved this copy (vaultResolveStreamUrls) — use it directly,
+    // never re-run the slow host resolve inside the per-range hot path.
+    if (copy.fresh && copy.encryptedBlobUrl) return copy.encryptedBlobUrl;
     const host = copy.host || DEFAULT_VAULT_BLOB_HOST;
     const key = `${item.id}:${host}`;
     const cached = this.vaultStreamUrlCache?.get(key);
@@ -1584,6 +1588,39 @@ class ImgVaultServiceWorker {
       console.warn('[Vault-stream] fresh URL resolve failed for', host, err.message);
     }
     return copy.encryptedBlobUrl || '';
+  }
+
+  /**
+   * Resolve fresh signed download URLs for ALL copies of a vault item, called
+   * by the page BEFORE playback (visible "Resolving stream link…" state). Runs
+   * once, with a generous timeout, and marks every copy `fresh: true` so the
+   * SW stream handler never re-resolves on the per-range hot path (terabox's
+   * resolve — hidden-tab jsToken scrape + full root folder list + filemetas —
+   * can exceed 30s, so it must never run inside a video Range request).
+   * @param {Object} opts
+   * @param {string} opts.id
+   * @param {Array<{host,encryptedBlobUrl,encryptedBlobFileId}>} opts.copies
+   * @param {string} [opts.fileName]
+   * @param {number} [opts.timeoutMs=30000]
+   * @returns {Promise<Array>} copies with fresh URLs + fresh:true
+   */
+  async resolveVaultStreamUrls({ id = '', copies = [], fileName = '', timeoutMs = 30000 } = {}) {
+    if (!id || !Array.isArray(copies) || copies.length === 0) {
+      throw new Error('Vault item has no blob copies to resolve.');
+    }
+    const freshCopies = [];
+    for (const copy of copies) {
+      const host = copy.host || DEFAULT_VAULT_BLOB_HOST;
+      const fresh = await Promise.race([
+        this.resolveVaultDownloadUrl(copy.encryptedBlobUrl || '', copy.encryptedBlobFileId || '', host, fileName),
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`${host} resolve timed out`)), timeoutMs)),
+      ]);
+      const url = (fresh && fresh !== copy.encryptedBlobUrl) ? fresh : (copy.encryptedBlobUrl || '');
+      // cache it for the stream handler too, so legacy URL query paths hit it
+      (this.vaultStreamUrlCache ||= new Map()).set(`${id}:${host}`, url);
+      freshCopies.push({ ...copy, encryptedBlobUrl: url, fresh: true });
+    }
+    return freshCopies;
   }
 
   /**
@@ -2069,6 +2106,12 @@ class ImgVaultServiceWorker {
       case 'vaultProbeBlobFormat':
         this.probeVaultBlobFormat(request.data)
           .then((result) => sendResponse({ success: true, data: result }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'vaultResolveStreamUrls':
+        this.resolveVaultStreamUrls(request.data)
+          .then((copies) => sendResponse({ success: true, data: { copies } }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 

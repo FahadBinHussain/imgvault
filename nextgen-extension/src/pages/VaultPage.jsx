@@ -16,6 +16,8 @@ import {
   Image as ImageIcon,
   Video,
   Trash2,
+  Loader2,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button, Spinner, Toast, Modal } from '../components/UI';
 import GalleryNavbar from '../components/GalleryNavbar';
@@ -112,6 +114,41 @@ export default function VaultPage() {
   const [hostSettings, setHostSettings] = useState(null);
   const [decryptedUrls, setDecryptedUrls] = useState({});
   const [streamFormat, setStreamFormat] = useState({}); // itemId -> { chunked, error? }
+  const [streamResolving, setStreamResolving] = useState({}); // itemId -> bool (pre-resolving fresh dlinks)
+  const [freshStreamCopies, setFreshStreamCopies] = useState({}); // itemId -> fresh copies with fresh:true
+
+  // Pre-resolve fresh signed download URLs for a chunked item BEFORE the video
+  // element mounts. TeraBox's dlink resolve (hidden-tab jsToken + full root
+  // folder list + filemetas) can take 30s+ — it must NEVER run inside the SW's
+  // per-Range hot path (8s budget → "fresh URL resolve timed out" → 502 →
+  // MEDIA_ELEMENT_ERROR). Runs once here with a visible state, and the fresh
+  // URLs ride along in the stream query so the SW skips resolving entirely.
+  const ensureStreamResolved = async (item) => {
+    if (!item?.encryptedBlobUrl || !item?.id) return null;
+    if (streamResolving[item.id] || freshStreamCopies[item.id]) return freshStreamCopies[item.id] || null;
+    setStreamResolving((prev) => ({ ...prev, [item.id]: true }));
+    try {
+      const copies = Array.isArray(item.encryptedBlobHosts) && item.encryptedBlobHosts.length > 0
+        ? item.encryptedBlobHosts
+        : [{ host: item.vaultHost || 'udrop', encryptedBlobUrl: item.encryptedBlobUrl, encryptedBlobFileId: item.encryptedBlobFileId || '' }];
+      const res = await sendMessage('vaultResolveStreamUrls', {
+        id: item.id,
+        copies,
+        fileName: item.encryptedFileName || '',
+      });
+      if (!res?.success || !Array.isArray(res.data?.copies) || res.data.copies.length === 0) {
+        throw new Error(res?.error || 'Failed to resolve stream link');
+      }
+      setFreshStreamCopies((prev) => ({ ...prev, [item.id]: res.data.copies }));
+      return res.data.copies;
+    } catch (e) {
+      console.warn('[Vault] stream resolve failed:', e.message);
+      setStreamFormat((prev) => ({ ...prev, [item.id]: { chunked: true, error: e.message } }));
+      return null;
+    } finally {
+      setStreamResolving((prev) => ({ ...prev, [item.id]: false }));
+    }
+  };
 
   // Build the streaming URL for an encrypted item. The SW serves the DECRYPTED
   // media over HTTP Range requests (decrypts only the chunks covering the
@@ -122,9 +159,12 @@ export default function VaultPage() {
   // Range request (a DB round-trip per request is what made it "load forever").
   const getVaultStreamUrl = (item) => {
     if (!item?.encryptedBlobUrl || !item?.id) return '';
-    const copies = Array.isArray(item.encryptedBlobHosts) && item.encryptedBlobHosts.length > 0
-      ? item.encryptedBlobHosts
-      : [{ host: item.vaultHost || 'udrop', encryptedBlobUrl: item.encryptedBlobUrl, encryptedBlobFileId: item.encryptedBlobFileId || '' }];
+    const fresh = freshStreamCopies[item.id];
+    const copies = Array.isArray(fresh) && fresh.length > 0
+      ? fresh
+      : (Array.isArray(item.encryptedBlobHosts) && item.encryptedBlobHosts.length > 0
+        ? item.encryptedBlobHosts
+        : [{ host: item.vaultHost || 'udrop', encryptedBlobUrl: item.encryptedBlobUrl, encryptedBlobFileId: item.encryptedBlobFileId || '' }]);
     const q = new URLSearchParams({
       mime: item.encryptedMimeType || 'application/octet-stream',
       name: item.encryptedFileName || '',
@@ -144,15 +184,23 @@ export default function VaultPage() {
     let cancelled = false;
     (async () => {
       try {
+        // Pre-resolve fresh signed dlinks FIRST so both the blob-format probe
+        // and every stream Range read use a valid URL. terabox's resolve is slow
+        // (hidden-tab jsToken + full root folder list + filemetas, up to 30s+)
+        // — it must run here once with a visible state, never in the SW hot path.
+        setStreamFormat((prev) => ({ ...prev, [selectedItem.id]: { chunked: true } }));
+        const freshCopies = await ensureStreamResolved(selectedItem);
+        if (cancelled) return;
         // Chunked (IVG1) blobs stream via the SW endpoint — no full decrypt
         // needed here. Only legacy single-shot blobs require full decryption.
+        const probeCopies = Array.isArray(freshCopies) && freshCopies.length > 0 ? freshCopies : null;
         const probe = await sendMessage('vaultProbeBlobFormat', {
           id: selectedItem.id,
-          url: selectedItem.encryptedBlobUrl,
-          fileId: selectedItem.encryptedBlobFileId || '',
+          url: (freshCopies?.[0]?.encryptedBlobUrl) || selectedItem.encryptedBlobUrl,
+          fileId: (freshCopies?.[0]?.encryptedBlobFileId) || selectedItem.encryptedBlobFileId || '',
           chunks: selectedItem.encryptedBlobChunks || [],
-          vaultHost: selectedItem.vaultHost || 'udrop',
-          hostCopies: selectedItem.encryptedBlobHosts || null,
+          vaultHost: (freshCopies?.[0]?.host) || selectedItem.vaultHost || 'udrop',
+          hostCopies: probeCopies,
         });
         if (cancelled) return;
         if (probe?.chunked) {
@@ -162,12 +210,12 @@ export default function VaultPage() {
         }
         setStreamFormat((prev) => ({ ...prev, [selectedItem.id]: { chunked: false } }));
         const result = await sendMessage('vaultDecryptBlob', {
-          url: selectedItem.encryptedBlobUrl,
-          fileId: selectedItem.encryptedBlobFileId || '',
+          url: (freshCopies?.[0]?.encryptedBlobUrl) || selectedItem.encryptedBlobUrl,
+          fileId: (freshCopies?.[0]?.encryptedBlobFileId) || selectedItem.encryptedBlobFileId || '',
           chunks: selectedItem.encryptedBlobChunks || [],
           mimeType: selectedItem.encryptedMimeType || 'application/octet-stream',
-          vaultHost: selectedItem.vaultHost || 'udrop',
-          hostCopies: selectedItem.encryptedBlobHosts || null,
+          vaultHost: (freshCopies?.[0]?.host) || selectedItem.vaultHost || 'udrop',
+          hostCopies: probeCopies,
         });
         if (cancelled) return;
         if (!result.success || !result.data?.blob) throw new Error(result.error || 'Decrypt failed');
@@ -742,8 +790,32 @@ export default function VaultPage() {
       // Chunked (IVG1) blobs stream through the SW endpoint; legacy
       // single-shot blobs use the fully-decrypted object URL.
       const fmt = streamFormat[item.id];
+      // Pre-resolving fresh signed dlinks (terabox can take 30s+) — show a
+      // visible state instead of mounting the video on a dead/expired URL.
+      const resolving = Boolean(fmt?.chunked && streamResolving[item.id] && !freshStreamCopies[item.id]);
       const streamUrl = fmt?.chunked ? getVaultStreamUrl(item) : '';
       const mediaUrl = streamUrl || encryptedUrl;
+      if (resolving) {
+        return (
+          <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 flex items-center justify-center bg-base-200 transition-all duration-700 ease-out ${animCls}`}>
+            <div className="text-center text-base-content/50">
+              <Loader2 className="mx-auto mb-3 h-12 w-12 animate-spin" />
+              <p className="text-sm">Resolving stream link...</p>
+            </div>
+          </div>
+        );
+      }
+      if (fmt?.error) {
+        return (
+          <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 flex items-center justify-center bg-base-200 transition-all duration-700 ease-out ${animCls}`}>
+            <div className="text-center text-base-content/70 max-w-sm px-4">
+              <AlertTriangle className="mx-auto mb-3 h-12 w-12 text-warning" />
+              <p className="text-sm font-medium mb-1">Stream unavailable</p>
+              <p className="text-xs break-words">{fmt.error}</p>
+            </div>
+          </div>
+        );
+      }
       if (mediaUrl) {
         return isVideo ? (
           <video
