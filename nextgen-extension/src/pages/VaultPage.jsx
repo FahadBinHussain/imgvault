@@ -136,10 +136,10 @@ export default function VaultPage() {
         copies,
         fileName: item.encryptedFileName || '',
       });
-      if (!res?.success || !Array.isArray(res.data?.copies) || res.data.copies.length === 0) {
-        throw new Error(res?.error || 'Failed to resolve stream link');
+      if (!res?.copies || !Array.isArray(res.copies) || res.copies.length === 0) {
+        throw new Error('Failed to resolve stream link');
       }
-      setFreshStreamCopies((prev) => ({ ...prev, [item.id]: res.data.copies }));
+      setFreshStreamCopies((prev) => ({ ...prev, [item.id]: res.copies }));
       return res.data.copies;
     } catch (e) {
       console.warn('[Vault] stream resolve failed:', e.message);
