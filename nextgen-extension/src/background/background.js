@@ -1552,10 +1552,14 @@ class ImgVaultServiceWorker {
    * Resolve + cache a fresh signed download URL for a vault blob host copy.
    * The stored `encryptedBlobUrl` is the durable watch URL (serves HTML), so the
    * signed download URL must be regenerated from fileId before byte-range reads.
+   * Bound with a hard timeout so a slow/hanging host resolve can't stall the
+   * player (the outer fetch-listener 30s race fires, but the video may retry
+   * indefinitely — a faster per-resolve ledge is safer).
    * @param {Object} item
    * @param {{host:string,encryptedBlobUrl:string,encryptedBlobFileId:string}} copy
    * @param {string} fileName
-   * @returns {Promise<string>} fresh URL (falls back to the stored URL)
+   * @returns {Promise<string>} fresh URL (falls back to the stored URL after
+   *   timeout, which will 403 → the caller gets a loud 502).
    */
   async getFreshVaultStreamUrl(item, copy, fileName) {
     const host = copy.host || DEFAULT_VAULT_BLOB_HOST;
@@ -1563,12 +1567,15 @@ class ImgVaultServiceWorker {
     const cached = this.vaultStreamUrlCache?.get(key);
     if (cached && cached !== copy.encryptedBlobUrl) return cached;
     try {
-      const fresh = await this.resolveVaultDownloadUrl(
-        copy.encryptedBlobUrl || '',
-        copy.encryptedBlobFileId || '',
-        host,
-        fileName
-      );
+      const fresh = await Promise.race([
+        this.resolveVaultDownloadUrl(
+          copy.encryptedBlobUrl || '',
+          copy.encryptedBlobFileId || '',
+          host,
+          fileName
+        ),
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`fresh URL resolve timed out for ${host}`)), 8000)),
+      ]);
       if (fresh && fresh !== copy.encryptedBlobUrl) {
         (this.vaultStreamUrlCache ||= new Map()).set(key, fresh);
         return fresh;
@@ -1580,8 +1587,34 @@ class ImgVaultServiceWorker {
   }
 
   /**
+   * TeraBox dlinks (dm-d.terabox.com) require the session cookie — a bare
+   * SW fetch sends none, so range reads 403. Resolve + cache the cookie string
+   * (explicit settings override, else live chrome.cookies). Returns '' when
+   * unavailable so callers skip cookie-based hosts.
+   * @returns {Promise<string>}
+   */
+  async getTeraBoxRangeCookie() {
+    if (this._teraBoxRangeCookie && Date.now() - this._teraBoxRangeCookieAt < 1000 * 60 * 10) {
+      return this._teraBoxRangeCookie;
+    }
+    try {
+      const settings = await this.getMergedVideoHostSettings();
+      if (settings?.teraboxCookie) {
+        this._teraBoxRangeCookie = settings.teraboxCookie;
+      } else if (typeof chrome !== 'undefined' && chrome.cookies?.getAll) {
+        const all = await chrome.cookies.getAll({ domain: 'terabox.com' });
+        const parts = all.map((c) => `${c.name}=${c.value}`);
+        if (parts.length > 0) this._teraBoxRangeCookie = parts.join('; ');
+      }
+    } catch (_) { /* keep previous or '' */ }
+    this._teraBoxRangeCookieAt = Date.now();
+    return this._teraBoxRangeCookie || '';
+  }
+
+  /**
    * Fetch a byte range of the ENCRYPTED vault blob. Always reads from a freshly
    * resolved signed download URL (the stored watch URL serves HTML, not bytes).
+   * TeraBox copies send the session Cookie + Referer — without them dm-d 403s.
    * @param {Object} item
    * @param {Array<{host:string,encryptedBlobUrl:string,encryptedBlobFileId:string}>} hostCopies
    * @param {string} fileName
@@ -1592,16 +1625,24 @@ class ImgVaultServiceWorker {
   async fetchVaultBlobRange(item, hostCopies, fileName, start, end) {
     let lastError = null;
     for (const copy of hostCopies) {
+      const host = (copy.host || DEFAULT_VAULT_BLOB_HOST).toLowerCase();
       try {
         let url = await this.getFreshVaultStreamUrl(item, copy, fileName);
         if (!url) continue;
-        let resp = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } });
+        const headers = { Range: `bytes=${start}-${end}` };
+        if (host === 'terabox') {
+          const cookie = await this.getTeraBoxRangeCookie();
+          if (cookie) headers['Cookie'] = cookie;
+          headers['Referer'] = 'https://www.terabox.com/';
+          headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+        }
+        let resp = await fetch(url, { headers });
         // signed URL expired mid-session → regenerate once and retry
         if (!resp.ok && resp.status !== 206 && resp.status !== 200) {
-          const key = `${item.id}:${copy.host || DEFAULT_VAULT_BLOB_HOST}`;
+          const key = `${item.id}:${host}`;
           this.vaultStreamUrlCache?.delete(key);
           url = await this.getFreshVaultStreamUrl(item, copy, fileName);
-          resp = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } });
+          resp = await fetch(url, { headers });
         }
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const arr = new Uint8Array(await resp.arrayBuffer());
@@ -4978,7 +5019,7 @@ self.addEventListener('fetch', (event) => {
   const match = url.pathname.match(/^\/vault-stream\/([^/]+)$/);
   if (!match) return;
   console.log('[Vault-stream] fetch intercepted:', url.pathname, 'range:', event.request.headers.get('range'));
-  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Vault stream timed out after 30s')), 30000));
+  const timeout = new Promise((resolve) => setTimeout(() => resolve(new Response('Vault stream timed out after 30s', { status: 504 })), 30000));
   event.respondWith(
     Promise.race([
       serviceWorker.handleVaultStreamRequest(event.request, decodeURIComponent(match[1]))
