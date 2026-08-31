@@ -106,6 +106,7 @@ class ImgVaultServiceWorker {
     this.activeUploadController = null;
     this.activeNativeDownloadPorts = new Map();
     this.vaultMasterKey = null;
+    this.vaultStreamUrlCache = new Map();
     this.initialized = false;
     this.defaultActionIcon = {
       16: 'icons/1-16.png',
@@ -1367,15 +1368,16 @@ class ImgVaultServiceWorker {
    * single-shot (needs full decrypt).
    * @returns {Promise<{chunked:boolean,total?:number,chunkSize?:number}>}
    */
-  async probeVaultBlobFormat({ url, fileId = '', chunks = [], vaultHost = DEFAULT_VAULT_BLOB_HOST, hostCopies = null, fileName = '' } = {}) {
+  async probeVaultBlobFormat({ id = '', url, fileId = '', chunks = [], vaultHost = DEFAULT_VAULT_BLOB_HOST, hostCopies = null, fileName = '' } = {}) {
     if (!this.vaultMasterKey) {
       throw new Error('Vault is locked. Unlock the vault first.');
     }
     const copies = Array.isArray(hostCopies) && hostCopies.length > 0
       ? hostCopies
       : [{ host: vaultHost, encryptedBlobUrl: url, encryptedBlobFileId: fileId || '' }];
+    const item = { id, encryptedBlobUrl: url };
     try {
-      const headerBuf = await this.fetchVaultBlobRange(copies, fileName, 0, 15);
+      const headerBuf = await this.fetchVaultBlobRange(item, copies, fileName, 0, 15);
       const layout = parseVaultBlobHeader(headerBuf);
       if (!layout) return { chunked: false };
       return { chunked: true, total: layout.total, chunkSize: layout.chunkSize };
@@ -1402,6 +1404,7 @@ class ImgVaultServiceWorker {
    * @returns {Promise<Response>}
    */
   async handleVaultStreamRequest(request, itemId) {
+    console.log('[Vault-stream] request for', itemId, 'range:', request.headers.get('range'));
     const item = await this.storage.getImageById(itemId);
     if (!item || !item.encryptedBlobUrl) {
       return new Response('Vault item not found', { status: 404 });
@@ -1423,7 +1426,7 @@ class ImgVaultServiceWorker {
     // 1) read the 16-byte IVG1 header to learn the plaintext size + chunk size
     let headerBuf;
     try {
-      headerBuf = await this.fetchVaultBlobRange(hostCopies, fileName, 0, 15);
+      headerBuf = await this.fetchVaultBlobRange(item, hostCopies, fileName, 0, 15);
     } catch (err) {
       console.error('[Vault-stream] header fetch failed:', err.message);
       return new Response('Vault blob unreachable: ' + err.message, { status: 502 });
@@ -1481,7 +1484,7 @@ class ImgVaultServiceWorker {
             const encLen = rangeLayout.encryptedChunkLength(i);
             let encChunk;
             try {
-              encChunk = await this.fetchVaultBlobRange(hostCopies, fileName, encStart, encStart + encLen - 1);
+              encChunk = await this.fetchVaultBlobRange(item, hostCopies, fileName, encStart, encStart + encLen - 1);
             } catch (err) {
               controller.error(new Error(`Failed to fetch encrypted chunk ${i}: ${err.message}`));
               return;
@@ -1520,32 +1523,64 @@ class ImgVaultServiceWorker {
   }
 
   /**
-   * Fetch a byte range of the ENCRYPTED vault blob, trying each host copy (with
-   * fresh download-URL regeneration when the stored URL 404s).
+   * Resolve + cache a fresh signed download URL for a vault blob host copy.
+   * The stored `encryptedBlobUrl` is the durable watch URL (serves HTML), so the
+   * signed download URL must be regenerated from fileId before byte-range reads.
+   * @param {Object} item
+   * @param {{host:string,encryptedBlobUrl:string,encryptedBlobFileId:string}} copy
+   * @param {string} fileName
+   * @returns {Promise<string>} fresh URL (falls back to the stored URL)
+   */
+  async getFreshVaultStreamUrl(item, copy, fileName) {
+    const host = copy.host || DEFAULT_VAULT_BLOB_HOST;
+    const key = `${item.id}:${host}`;
+    const cached = this.vaultStreamUrlCache?.get(key);
+    if (cached && cached !== copy.encryptedBlobUrl) return cached;
+    try {
+      const fresh = await this.resolveVaultDownloadUrl(
+        copy.encryptedBlobUrl || '',
+        copy.encryptedBlobFileId || '',
+        host,
+        fileName
+      );
+      if (fresh && fresh !== copy.encryptedBlobUrl) {
+        (this.vaultStreamUrlCache ||= new Map()).set(key, fresh);
+        return fresh;
+      }
+    } catch (err) {
+      console.warn('[Vault-stream] fresh URL resolve failed for', host, err.message);
+    }
+    return copy.encryptedBlobUrl || '';
+  }
+
+  /**
+   * Fetch a byte range of the ENCRYPTED vault blob. Always reads from a freshly
+   * resolved signed download URL (the stored watch URL serves HTML, not bytes).
+   * @param {Object} item
    * @param {Array<{host:string,encryptedBlobUrl:string,encryptedBlobFileId:string}>} hostCopies
    * @param {string} fileName
    * @param {number} start
    * @param {number} end
    * @returns {Promise<Uint8Array>}
    */
-  async fetchVaultBlobRange(hostCopies, fileName, start, end) {
+  async fetchVaultBlobRange(item, hostCopies, fileName, start, end) {
     let lastError = null;
     for (const copy of hostCopies) {
       try {
-        let url = copy.encryptedBlobUrl || '';
+        let url = await this.getFreshVaultStreamUrl(item, copy, fileName);
+        if (!url) continue;
         let resp = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } });
-        if (!resp.ok) {
-          // stored URL stale/expired → regenerate from fileId
-          const fresh = await this.resolveVaultDownloadUrl(url, copy.encryptedBlobFileId, copy.host, fileName);
-          if (fresh && fresh !== url) {
-            url = fresh;
-            resp = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } });
-          }
+        // signed URL expired mid-session → regenerate once and retry
+        if (!resp.ok && resp.status !== 206 && resp.status !== 200) {
+          const key = `${item.id}:${copy.host || DEFAULT_VAULT_BLOB_HOST}`;
+          this.vaultStreamUrlCache?.delete(key);
+          url = await this.getFreshVaultStreamUrl(item, copy, fileName);
+          resp = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } });
         }
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const arr = new Uint8Array(await resp.arrayBuffer());
-        // 206 = host honored the Range and returned exactly [start,end]; 200 =
-        // host ignored Range and returned the full blob → slice the range out.
+        // 206 = host honored Range and returned exactly [start,end]; 200 = host
+        // ignored Range and returned the full blob → slice the range out.
         if (resp.status === 206) return arr;
         return arr.slice(start, end + 1);
       } catch (err) {
@@ -4912,10 +4947,18 @@ chrome.action.onClicked.addListener(async (tab) => {
 // style). URL: chrome-extension://<id>/vault-stream/<itemId>
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) return; // only our own extension origin
+  const extensionOrigin = chrome.runtime.getURL('').replace(/\/$/, '');
+  if (url.origin !== extensionOrigin) return; // only our own extension origin
   const match = url.pathname.match(/^\/vault-stream\/([^/]+)$/);
   if (!match) return;
-  event.respondWith(serviceWorker.handleVaultStreamRequest(event.request, decodeURIComponent(match[1])));
+  console.log('[Vault-stream] fetch intercepted:', url.pathname, 'range:', event.request.headers.get('range'));
+  event.respondWith(
+    serviceWorker.handleVaultStreamRequest(event.request, decodeURIComponent(match[1]))
+      .catch((err) => {
+        console.error('[Vault-stream] handler error:', err);
+        return new Response('Vault stream error: ' + err.message, { status: 500 });
+      })
+  );
 });
 
 // Export for testing

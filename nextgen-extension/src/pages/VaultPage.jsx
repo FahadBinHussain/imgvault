@@ -111,6 +111,7 @@ export default function VaultPage() {
   const [restoreTargetHostKeys, setRestoreTargetHostKeys, restoreTargetKeysLoading] = useChromeStorage('selectedRestoreHostKeys', [], 'local');
   const [hostSettings, setHostSettings] = useState(null);
   const [decryptedUrls, setDecryptedUrls] = useState({});
+  const [streamFormat, setStreamFormat] = useState({}); // itemId -> { chunked, error? }
 
   // Build the streaming URL for an encrypted item. The SW serves the DECRYPTED
   // media over HTTP Range requests (decrypts only the chunks covering the
@@ -134,6 +135,7 @@ export default function VaultPage() {
         // Chunked (IVG1) blobs stream via the SW endpoint — no full decrypt
         // needed here. Only legacy single-shot blobs require full decryption.
         const probe = await sendMessage('vaultProbeBlobFormat', {
+          id: selectedItem.id,
           url: selectedItem.encryptedBlobUrl,
           fileId: selectedItem.encryptedBlobFileId || '',
           chunks: selectedItem.encryptedBlobChunks || [],
@@ -141,7 +143,12 @@ export default function VaultPage() {
           hostCopies: selectedItem.encryptedBlobHosts || null,
         });
         if (cancelled) return;
-        if (probe?.chunked) return; // streamed via chrome-extension://vault-stream URL
+        if (probe?.chunked) {
+          // streamed via chrome-extension://vault-stream URL — no full decrypt
+          setStreamFormat((prev) => ({ ...prev, [selectedItem.id]: { chunked: true } }));
+          return;
+        }
+        setStreamFormat((prev) => ({ ...prev, [selectedItem.id]: { chunked: false } }));
         const result = await sendMessage('vaultDecryptBlob', {
           url: selectedItem.encryptedBlobUrl,
           fileId: selectedItem.encryptedBlobFileId || '',
@@ -722,7 +729,8 @@ export default function VaultPage() {
       const isVideo = Boolean(item.isVideo || item._decryptedMeta?.isVideo || String(item.encryptedMimeType || '').startsWith('video/'));
       // Chunked (IVG1) blobs stream through the SW endpoint; legacy
       // single-shot blobs use the fully-decrypted object URL.
-      const streamUrl = getVaultStreamUrl(item);
+      const fmt = streamFormat[item.id];
+      const streamUrl = fmt?.chunked ? getVaultStreamUrl(item) : '';
       const mediaUrl = streamUrl || encryptedUrl;
       if (mediaUrl) {
         return isVideo ? (
@@ -732,12 +740,14 @@ export default function VaultPage() {
             controls
             preload="metadata"
             playsInline
+            onError={(e) => console.warn('[Vault] video error:', e.target?.error?.message)}
           />
         ) : (
           <img
             src={mediaUrl}
             alt={item._decryptedMeta?.pageTitle || item.fileName || 'Vault item'}
             className={`max-w-full max-h-full object-contain rounded-[var(--radius-box)] shadow-2xl relative z-10 transition-all duration-700 ease-out hover:scale-[1.02] hover:shadow-primary/30 ${animCls}`}
+            onError={() => console.warn('[Vault] image error:', mediaUrl)}
           />
         );
       }
