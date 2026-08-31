@@ -309,6 +309,76 @@ export async function decryptMetadata(masterKey, b64) {
   return JSON.parse(dec.decode(bytes));
 }
 
+// ---------------------------------------------------------------------------
+// Streaming / random-access decrypt support
+//
+// The encrypted blob layout (see encryptBlob):
+//   [16-byte header]  "IVG1" + uint64le(totalPlaintext) + uint32le(chunkSize)
+//   [chunk 0]  iv(12) || aes-gcm(plain0)            ; plain0 = min(chunkSize, total)
+//   [chunk 1]  iv(12) || aes-gcm(plain1)
+//   ...
+// Every chunk is independently encrypted with its own random IV, so a plaintext
+// byte range can be served by decrypting only the chunks that cover it — same
+// seek model as rclone crypt. This powers the vault-stream HTTP endpoint.
+// ---------------------------------------------------------------------------
+
+export const VAULT_HEADER_SIZE = 16;
+export const VAULT_IV_SIZE = 12;
+export const VAULT_TAG_SIZE = 16;
+
+/**
+ * Parse the 16-byte IVG1 header.
+ * @param {Uint8Array} headerBytes - at least 16 bytes
+ * @returns {{total:number, chunkSize:number}|null} null when not an IVG1 blob
+ */
+export function parseVaultBlobHeader(headerBytes) {
+  const view = new DataView(headerBytes.buffer, headerBytes.byteOffset, headerBytes.byteLength);
+  let magic = '';
+  for (let i = 0; i < 4; i++) magic += String.fromCharCode(headerBytes[i]);
+  if (magic !== 'IVG1') return null;
+  const total = Number(view.getBigUint64(4, true));
+  const chunkSize = view.getUint32(12, true);
+  return { total, chunkSize };
+}
+
+/**
+ * Layout helpers for a chunked IVG1 blob. Encrypted chunk i lives at
+ * `16 + i*(ivSize + chunkSize + tagSize)` and holds `ivSize + plainLen(i) + tagSize`
+ * bytes, where plainLen(i) = min(chunkSize, total - i*chunkSize).
+ * @param {number} total - plaintext size
+ * @param {number} chunkSize
+ */
+export function getVaultChunkLayout(total, chunkSize) {
+  const chunkCount = Math.max(1, Math.ceil(total / chunkSize));
+  const stride = VAULT_IV_SIZE + chunkSize + VAULT_TAG_SIZE; // bytes per full chunk
+  return {
+    total,
+    chunkSize,
+    chunkCount,
+    encryptedSize: VAULT_HEADER_SIZE + (chunkCount - 1) * stride + (VAULT_IV_SIZE + (total - (chunkCount - 1) * chunkSize) + VAULT_TAG_SIZE),
+    encryptedChunkOffset: (i) => VAULT_HEADER_SIZE + i * stride,
+    encryptedChunkLength: (i) => {
+      const plainLen = Math.min(chunkSize, total - i * chunkSize);
+      return VAULT_IV_SIZE + plainLen + VAULT_TAG_SIZE;
+    },
+    plainChunkStart: (i) => i * chunkSize,
+    plainChunkLength: (i) => Math.min(chunkSize, total - i * chunkSize),
+  };
+}
+
+/**
+ * Decrypt a single encrypted chunk (`iv(12) || ciphertext`).
+ * @param {CryptoKey} masterKey
+ * @param {Uint8Array} encryptedChunk
+ * @returns {Promise<Uint8Array>} plaintext
+ */
+export async function decryptEncryptedChunk(masterKey, encryptedChunk) {
+  const iv = encryptedChunk.slice(0, VAULT_IV_SIZE);
+  const ciphertext = encryptedChunk.slice(VAULT_IV_SIZE);
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, masterKey, ciphertext);
+  return new Uint8Array(plain);
+}
+
 /**
  * Generate an opaque udrop filename for an encrypted blob.
  */
@@ -322,6 +392,9 @@ export const vaultCrypto = {
   rewrapMasterKey,
   encryptBlob,
   decryptBlob,
+  decryptEncryptedChunk,
+  parseVaultBlobHeader,
+  getVaultChunkLayout,
   encryptMetadata,
   decryptMetadata,
   hashVaultPasscode,

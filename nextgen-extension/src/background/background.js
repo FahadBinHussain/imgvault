@@ -39,6 +39,9 @@ import {
   encryptMetadata,
   decryptBlob,
   decryptMetadata,
+  decryptEncryptedChunk,
+  parseVaultBlobHeader,
+  getVaultChunkLayout,
   hashVaultPasscode,
   unwrapMasterKey,
   createVaultConfig,
@@ -1360,6 +1363,199 @@ class ImgVaultServiceWorker {
   }
 
   /**
+   * Probe whether a vaulted blob is chunked (IVG1) — streamable — or legacy
+   * single-shot (needs full decrypt).
+   * @returns {Promise<{chunked:boolean,total?:number,chunkSize?:number}>}
+   */
+  async probeVaultBlobFormat({ url, fileId = '', chunks = [], vaultHost = DEFAULT_VAULT_BLOB_HOST, hostCopies = null, fileName = '' } = {}) {
+    if (!this.vaultMasterKey) {
+      throw new Error('Vault is locked. Unlock the vault first.');
+    }
+    const copies = Array.isArray(hostCopies) && hostCopies.length > 0
+      ? hostCopies
+      : [{ host: vaultHost, encryptedBlobUrl: url, encryptedBlobFileId: fileId || '' }];
+    try {
+      const headerBuf = await this.fetchVaultBlobRange(copies, fileName, 0, 15);
+      const layout = parseVaultBlobHeader(headerBuf);
+      if (!layout) return { chunked: false };
+      return { chunked: true, total: layout.total, chunkSize: layout.chunkSize };
+    } catch (err) {
+      console.warn('[Vault] blob format probe failed:', err.message);
+      // Unknown — treat as legacy so the caller falls back to full decrypt.
+      return { chunked: false };
+    }
+  }
+
+  /**
+   * HTTP streaming endpoint for vaulted items.
+   *
+   * Serves the DECRYPTED media over HTTP Range requests by decrypting only the
+   * encrypted chunks that cover the requested plaintext byte range — same seek
+   * model as rclone crypt. The video/audio element plays as it downloads and
+   * can seek without ever downloading the full encrypted blob.
+   *
+   * URL shape: `chrome-extension://<id>/vault-stream/<itemId>`
+   * Returns 206 Partial Content with Content-Range when a Range header is sent.
+   *
+   * @param {Request} request
+   * @param {string} itemId
+   * @returns {Promise<Response>}
+   */
+  async handleVaultStreamRequest(request, itemId) {
+    const item = await this.storage.getImageById(itemId);
+    if (!item || !item.encryptedBlobUrl) {
+      return new Response('Vault item not found', { status: 404 });
+    }
+    if (!this.vaultMasterKey) {
+      return new Response('Vault is locked. Unlock the vault to stream this item.', { status: 403 });
+    }
+
+    const mimeType = item.encryptedMimeType || 'application/octet-stream';
+    const fileName = item.encryptedFileName || '';
+    const hostCopies = Array.isArray(item.encryptedBlobHosts) && item.encryptedBlobHosts.length > 0
+      ? item.encryptedBlobHosts
+      : [{
+          host: item.vaultHost || DEFAULT_VAULT_BLOB_HOST,
+          encryptedBlobUrl: item.encryptedBlobUrl,
+          encryptedBlobFileId: item.encryptedBlobFileId || '',
+        }];
+
+    // 1) read the 16-byte IVG1 header to learn the plaintext size + chunk size
+    let headerBuf;
+    try {
+      headerBuf = await this.fetchVaultBlobRange(hostCopies, fileName, 0, 15);
+    } catch (err) {
+      console.error('[Vault-stream] header fetch failed:', err.message);
+      return new Response('Vault blob unreachable: ' + err.message, { status: 502 });
+    }
+    const layout = parseVaultBlobHeader(headerBuf);
+    if (!layout) {
+      // legacy single-shot blob (pre-IVG1): decrypt fully and return as one body
+      const blob = await this.decryptVaultBlob(
+        item.encryptedBlobUrl,
+        item.encryptedMimeType,
+        item.encryptedBlobFileId,
+        item.encryptedBlobChunks,
+        item.vaultHost || DEFAULT_VAULT_BLOB_HOST,
+        fileName
+      );
+      return new Response(blob, { headers: { 'Content-Type': mimeType } });
+    }
+    const { total, chunkSize } = layout;
+    const rangeLayout = getVaultChunkLayout(total, chunkSize);
+
+    // 2) parse the Range header
+    const rangeHeader = request.headers.get('range');
+    let start = 0;
+    let end = total - 1;
+    let partial = false;
+    if (rangeHeader) {
+      const m = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+      if (m && (m[1] !== '' || m[2] !== '')) {
+        partial = true;
+        if (m[1] !== '') start = parseInt(m[1], 10);
+        if (m[2] !== '') end = parseInt(m[2], 10);
+        if (m[1] === '' && m[2] !== '') {
+          // suffix range: last N bytes
+          const suffix = parseInt(m[2], 10);
+          start = Math.max(0, total - suffix);
+        }
+        if (start >= total || start > end) {
+          return new Response(null, {
+            status: 416,
+            headers: { 'Content-Range': `bytes */${total}` },
+          });
+        }
+        end = Math.min(end, total - 1);
+      }
+    }
+
+    // 3) stream the decrypted range, chunk by chunk
+    const stream = new ReadableStream({
+      start: async (controller) => {
+        try {
+          const firstChunk = Math.floor(start / chunkSize);
+          const lastChunk = Math.floor(end / chunkSize);
+          for (let i = firstChunk; i <= lastChunk; i++) {
+            const encStart = rangeLayout.encryptedChunkOffset(i);
+            const encLen = rangeLayout.encryptedChunkLength(i);
+            let encChunk;
+            try {
+              encChunk = await this.fetchVaultBlobRange(hostCopies, fileName, encStart, encStart + encLen - 1);
+            } catch (err) {
+              controller.error(new Error(`Failed to fetch encrypted chunk ${i}: ${err.message}`));
+              return;
+            }
+            const plain = await decryptEncryptedChunk(this.vaultMasterKey, encChunk);
+            const chunkStart = rangeLayout.plainChunkStart(i);
+            const chunkLen = rangeLayout.plainChunkLength(i);
+            const sliceStart = Math.max(0, start - chunkStart);
+            const sliceEnd = Math.min(chunkLen, end - chunkStart + 1);
+            if (sliceEnd > sliceStart) {
+              controller.enqueue(plain.slice(sliceStart, sliceEnd));
+            }
+          }
+          controller.close();
+        } catch (err) {
+          console.error('[Vault-stream] stream error:', err);
+          controller.error(err);
+        }
+      },
+      cancel() {},
+    });
+
+    const headers = {
+      'Content-Type': mimeType,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': String(end - start + 1),
+      'Cache-Control': 'no-store',
+    };
+    if (partial) {
+      headers['Content-Range'] = `bytes ${start}-${end}/${total}`;
+    }
+    return new Response(stream, {
+      status: partial ? 206 : 200,
+      headers,
+    });
+  }
+
+  /**
+   * Fetch a byte range of the ENCRYPTED vault blob, trying each host copy (with
+   * fresh download-URL regeneration when the stored URL 404s).
+   * @param {Array<{host:string,encryptedBlobUrl:string,encryptedBlobFileId:string}>} hostCopies
+   * @param {string} fileName
+   * @param {number} start
+   * @param {number} end
+   * @returns {Promise<Uint8Array>}
+   */
+  async fetchVaultBlobRange(hostCopies, fileName, start, end) {
+    let lastError = null;
+    for (const copy of hostCopies) {
+      try {
+        let url = copy.encryptedBlobUrl || '';
+        let resp = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } });
+        if (!resp.ok) {
+          // stored URL stale/expired → regenerate from fileId
+          const fresh = await this.resolveVaultDownloadUrl(url, copy.encryptedBlobFileId, copy.host, fileName);
+          if (fresh && fresh !== url) {
+            url = fresh;
+            resp = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } });
+          }
+        }
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const arr = new Uint8Array(await resp.arrayBuffer());
+        // 206 = host honored the Range and returned exactly [start,end]; 200 =
+        // host ignored Range and returned the full blob → slice the range out.
+        if (resp.status === 206) return arr;
+        return arr.slice(start, end + 1);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw new Error(`All vault blob hosts failed for range ${start}-${end}${lastError ? ` (${lastError.message})` : ''}`);
+  }
+
+  /**
    * Move an item to the Secret Vault.
    * - Encrypted path (vault unlocked): fetch original blob from the selected
    *   source host, encrypt, re-upload as a flat blob on the selected vault host
@@ -1765,6 +1961,12 @@ class ImgVaultServiceWorker {
           request.data?.hostCopies || null
         )
           .then((blob) => sendResponse({ success: true, data: { blob } }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'vaultProbeBlobFormat':
+        this.probeVaultBlobFormat(request.data)
+          .then((result) => sendResponse({ success: true, data: result }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
@@ -4703,6 +4905,17 @@ chrome.action.onClicked.addListener(async (tab) => {
   }
 
   await serviceWorker.openOrFocusApp('/gallery', { reload: true });
+});
+
+// Vault streaming endpoint: serve DECRYPTED media with HTTP Range support by
+// decrypting only the chunks covering the requested byte range (rclone-crypt
+// style). URL: chrome-extension://<id>/vault-stream/<itemId>
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return; // only our own extension origin
+  const match = url.pathname.match(/^\/vault-stream\/([^/]+)$/);
+  if (!match) return;
+  event.respondWith(serviceWorker.handleVaultStreamRequest(event.request, decodeURIComponent(match[1])));
 });
 
 // Export for testing

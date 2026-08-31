@@ -112,7 +112,17 @@ export default function VaultPage() {
   const [hostSettings, setHostSettings] = useState(null);
   const [decryptedUrls, setDecryptedUrls] = useState({});
 
-  // Decrypt blob on demand when an encrypted item is selected.
+  // Build the streaming URL for an encrypted item. The SW serves the DECRYPTED
+  // media over HTTP Range requests (decrypts only the chunks covering the
+  // requested byte range), so playback/seek never needs the full blob.
+  const getVaultStreamUrl = (item) => {
+    if (!item?.encryptedBlobUrl || !item?.id) return '';
+    return chrome.runtime.getURL(`vault-stream/${encodeURIComponent(item.id)}`);
+  };
+
+  // Decrypt blob on demand when an encrypted item is selected. Legacy
+  // single-shot (non-IVG1) blobs need a full decrypt; chunked IVG1 blobs are
+  // streamed by the SW endpoint instead.
   useEffect(() => {
     setDecryptedUrls((prev) => { Object.values(prev).forEach(URL.revokeObjectURL); return {}; });
     if (!selectedItem?.encryptedBlobUrl || !selectedItem?.id) return;
@@ -121,8 +131,17 @@ export default function VaultPage() {
     let cancelled = false;
     (async () => {
       try {
-        // Route through SW message so the SW can regenerate a stale udrop
-        // download URL from the stored fileId (the SW has the udrop API keys).
+        // Chunked (IVG1) blobs stream via the SW endpoint — no full decrypt
+        // needed here. Only legacy single-shot blobs require full decryption.
+        const probe = await sendMessage('vaultProbeBlobFormat', {
+          url: selectedItem.encryptedBlobUrl,
+          fileId: selectedItem.encryptedBlobFileId || '',
+          chunks: selectedItem.encryptedBlobChunks || [],
+          vaultHost: selectedItem.vaultHost || 'udrop',
+          hostCopies: selectedItem.encryptedBlobHosts || null,
+        });
+        if (cancelled) return;
+        if (probe?.chunked) return; // streamed via chrome-extension://vault-stream URL
         const result = await sendMessage('vaultDecryptBlob', {
           url: selectedItem.encryptedBlobUrl,
           fileId: selectedItem.encryptedBlobFileId || '',
@@ -701,10 +720,14 @@ export default function VaultPage() {
     const isEncrypted = Boolean(item?.encryptedBlobUrl);
     if (isEncrypted) {
       const isVideo = Boolean(item.isVideo || item._decryptedMeta?.isVideo || String(item.encryptedMimeType || '').startsWith('video/'));
-      if (encryptedUrl) {
+      // Chunked (IVG1) blobs stream through the SW endpoint; legacy
+      // single-shot blobs use the fully-decrypted object URL.
+      const streamUrl = getVaultStreamUrl(item);
+      const mediaUrl = streamUrl || encryptedUrl;
+      if (mediaUrl) {
         return isVideo ? (
           <video
-            src={encryptedUrl}
+            src={mediaUrl}
             className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain transition-all duration-700 ease-out ${animCls}`}
             controls
             preload="metadata"
@@ -712,7 +735,7 @@ export default function VaultPage() {
           />
         ) : (
           <img
-            src={encryptedUrl}
+            src={mediaUrl}
             alt={item._decryptedMeta?.pageTitle || item.fileName || 'Vault item'}
             className={`max-w-full max-h-full object-contain rounded-[var(--radius-box)] shadow-2xl relative z-10 transition-all duration-700 ease-out hover:scale-[1.02] hover:shadow-primary/30 ${animCls}`}
           />
