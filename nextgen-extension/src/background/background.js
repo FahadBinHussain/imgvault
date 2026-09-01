@@ -1471,6 +1471,12 @@ class ImgVaultServiceWorker {
     const rangeLayout = getVaultChunkLayout(total, chunkSize);
     console.log('[Vault-stream] layout ok', { total, chunkSize, hosts: copies.map((c) => c.host), fresh: copies.map((c) => !!c.fresh) });
 
+    // terabox dm-d dlinks are CDN-throttled ~30KB/s, so an 8MiB encrypted chunk
+    // takes ~280s. the per-chunk timeout must be generous for terabox to avoid
+    // killing a working-but-slow stream. udrop is fast (~3MB/s) so 30s is fine.
+    const isTeraBox = copies.some((c) => (c.host || '').toLowerCase() === 'terabox');
+    const chunkTimeoutMs = isTeraBox ? 15 * 60 * 1000 : 30000;
+
     // 2) parse the Range header
     const rangeHeader = request.headers.get('range');
     let start = 0;
@@ -1509,7 +1515,7 @@ class ImgVaultServiceWorker {
             console.log('[Vault-stream] chunk', i, 'fetch', encStart, encLen);
             let encChunk;
             try {
-              const chunkTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error(`chunk ${i} fetch timed out`)), 30000));
+              const chunkTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error(`chunk ${i} fetch timed out`)), chunkTimeoutMs));
               encChunk = await Promise.race([
                 this.fetchVaultBlobRange(item, copies, fileName, encStart, encStart + encLen - 1),
                 chunkTimeout,
@@ -1556,22 +1562,32 @@ class ImgVaultServiceWorker {
    * The stored `encryptedBlobUrl` is the durable watch URL (serves HTML), so the
    * signed download URL must be regenerated from fileId before byte-range reads.
    * Bound with a hard timeout so a slow/hanging host resolve can't stall the
-   * player (the outer fetch-listener 30s race fires, but the video may retry
+   * player (the outer fetch-listener race fires, but the video may retry
    * indefinitely — a faster per-resolve ledge is safer).
+   *
+   * terabox dm-d dlinks are SINGLE-USE: a signed dlna URL is consumed by the
+   * first byte-range read (the header read eats copy[0]'s dlink), so every
+   * subsequent chunk read of the SAME URL 403s. the vault-stream handler
+   * therefore calls this with `forceResolve: true` for terabox copies so each
+   * range read gets a genuinely fresh signed URL from /api/filemetas.
    * @param {Object} item
    * @param {{host:string,encryptedBlobUrl:string,encryptedBlobFileId:string}} copy
    * @param {string} fileName
+   * @param {{forceResolve?:boolean,timeoutMs?:number}} [opts]
    * @returns {Promise<string>} fresh URL (falls back to the stored URL after
    *   timeout, which will 403 → the caller gets a loud 502).
    */
-  async getFreshVaultStreamUrl(item, copy, fileName) {
+  async getFreshVaultStreamUrl(item, copy, fileName, { forceResolve = false, timeoutMs = 0 } = {}) {
     // Page pre-resolved this copy (vaultResolveStreamUrls) — use it directly,
     // never re-run the slow host resolve inside the per-range hot path.
-    if (copy.fresh && copy.encryptedBlobUrl) return copy.encryptedBlobUrl;
+    // EXCEPT forceResolve (terabox): the pre-resolved URL was consumed by an
+    // earlier range read, so reuse would just re-403.
+    if (!forceResolve && copy.fresh && copy.encryptedBlobUrl) return copy.encryptedBlobUrl;
     const host = copy.host || DEFAULT_VAULT_BLOB_HOST;
     const key = `${item.id}:${host}`;
     const cached = this.vaultStreamUrlCache?.get(key);
-    if (cached && cached !== copy.encryptedBlobUrl) return cached;
+    if (!forceResolve && cached && cached !== copy.encryptedBlobUrl) return cached;
+    const budget = timeoutMs || (forceResolve ? 30000 : 8000);
     try {
       const fresh = await Promise.race([
         this.resolveVaultDownloadUrl(
@@ -1580,7 +1596,7 @@ class ImgVaultServiceWorker {
           host,
           fileName
         ),
-        new Promise((_, reject) => setTimeout(() => reject(new Error(`fresh URL resolve timed out for ${host}`)), 8000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`fresh URL resolve timed out for ${host}`)), budget)),
       ]);
       if (fresh && fresh !== copy.encryptedBlobUrl) {
         (this.vaultStreamUrlCache ||= new Map()).set(key, fresh);
@@ -1666,7 +1682,11 @@ class ImgVaultServiceWorker {
     for (const copy of hostCopies) {
       const host = (copy.host || DEFAULT_VAULT_BLOB_HOST).toLowerCase();
       try {
-        let url = await this.getFreshVaultStreamUrl(item, copy, fileName);
+        // terabox dm-d dlinks are single-use — every byte-range read MUST get
+        // its own fresh signed URL (the header read already consumed the page
+        // pre-resolved URL, so reusing it re-403s). udrop/other hosts can reuse.
+        const forceResolve = host === 'terabox';
+        let url = await this.getFreshVaultStreamUrl(item, copy, fileName, { forceResolve });
         if (!url) continue;
         const headers = { Range: `bytes=${start}-${end}` };
         if (host === 'terabox') {
@@ -1676,12 +1696,14 @@ class ImgVaultServiceWorker {
           headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
         }
         let resp = await fetch(url, { headers });
-        // signed URL expired mid-session → regenerate once and retry
+        // signed URL expired/consumed mid-session → regenerate a NEW one and
+        // retry once. for terabox (forceResolve) this genuinely resolves a new
+        // dlink instead of re-fetching the consumed URL.
         if (!resp.ok && resp.status !== 206 && resp.status !== 200) {
           const key = `${item.id}:${host}`;
           this.vaultStreamUrlCache?.delete(key);
-          url = await this.getFreshVaultStreamUrl(item, copy, fileName);
-          resp = await fetch(url, { headers });
+          url = await this.getFreshVaultStreamUrl(item, copy, fileName, { forceResolve });
+          if (url) resp = await fetch(url, { headers });
         }
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const arr = new Uint8Array(await resp.arrayBuffer());
@@ -5064,7 +5086,20 @@ self.addEventListener('fetch', (event) => {
   const match = url.pathname.match(/^\/vault-stream\/([^/]+)$/);
   if (!match) return;
   console.log('[Vault-stream] fetch intercepted:', url.pathname, 'range:', event.request.headers.get('range'));
-  const timeout = new Promise((resolve) => setTimeout(() => resolve(new Response('Vault stream timed out after 30s', { status: 504 })), 30000));
+  // terabox dm-d dlinks are CDN-throttled ~30KB/s — an 8MiB encrypted chunk
+  // takes ~280s, so the outer safety race must be generous when terabox copies
+  // are involved (the per-chunk timeout inside the handler still fails loudly
+  // on a truly stalled host). udrop stays fast.
+  let isTeraBox = false;
+  try {
+    const parsed = url.searchParams.get('copies');
+    if (parsed) {
+      const arr = JSON.parse(parsed);
+      if (Array.isArray(arr)) isTeraBox = arr.some((c) => String(c.host || '').toLowerCase() === 'terabox');
+    }
+  } catch (_) { /* fall through */ }
+  const outerTimeoutMs = isTeraBox ? 20 * 60 * 1000 : 300000; // 20min terabox, 5min default
+  const timeout = new Promise((resolve) => setTimeout(() => resolve(new Response(`Vault stream timed out after ${Math.round(outerTimeoutMs / 1000)}s`, { status: 504 })), outerTimeoutMs));
   event.respondWith(
     Promise.race([
       serviceWorker.handleVaultStreamRequest(event.request, decodeURIComponent(match[1]))

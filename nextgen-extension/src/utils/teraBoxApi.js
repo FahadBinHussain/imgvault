@@ -18,6 +18,15 @@ const hasText = (value) => typeof value === 'string' && value.trim().length > 0;
 const userAgent = () =>
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
+// fs_id -> path cache for dlna dlink resolution. `resolveTeraBoxPlaybackUrl`
+// paginates the ENTIRE root folder to find the target file's path before
+// /api/filemetas; vault streaming needs a fresh dlink per 8MiB range read and
+// re-paginating the folder every time would make each chunk fetch take seconds
+// of API churn. the vault blob file doesn't move, so the path is stable for the
+// life of the SW. cleared never (session-scoped) — a file move is rare and the
+// fallback re-paginates when the dlink comes back empty.
+const _teraBoxFsPathCache = new Map();
+
 async function resolveCookie(explicitCookie) {
   const trimmed = String(explicitCookie || '').trim();
   if (trimmed) return trimmed;
@@ -406,12 +415,17 @@ export async function resolveTeraBoxPlaybackUrl(explicitCookie, fsId, fileName =
 
   let path = '';
   if (target) {
-    const entries = await listTeraBoxFolder(auth.cookie, auth.jsToken, '/');
-    const hit = entries.find((entry) => entry.isdir !== 1 && String(entry.fs_id) === target);
-    path = String(hit?.path || '');
-    if (!path && fileName) {
-      const byName = entries.find((entry) => entry.isdir !== 1 && String(entry.server_filename || '') === String(fileName));
-      path = String(byName?.path || '');
+    if (_teraBoxFsPathCache.has(target)) {
+      path = _teraBoxFsPathCache.get(target);
+    } else {
+      const entries = await listTeraBoxFolder(auth.cookie, auth.jsToken, '/');
+      const hit = entries.find((entry) => entry.isdir !== 1 && String(entry.fs_id) === target);
+      path = String(hit?.path || '');
+      if (!path && fileName) {
+        const byName = entries.find((entry) => entry.isdir !== 1 && String(entry.server_filename || '') === String(fileName));
+        path = String(byName?.path || '');
+      }
+      if (path) _teraBoxFsPathCache.set(target, path);
     }
   } else if (fileName) {
     const entries = await listTeraBoxFolder(auth.cookie, auth.jsToken, '/');
