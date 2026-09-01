@@ -1642,34 +1642,11 @@ class ImgVaultServiceWorker {
   }
 
   /**
-   * TeraBox dlinks (dm-d.terabox.com) require the session cookie — a bare
-   * SW fetch sends none, so range reads 403. Resolve + cache the cookie string
-   * (explicit settings override, else live chrome.cookies). Returns '' when
-   * unavailable so callers skip cookie-based hosts.
-   * @returns {Promise<string>}
-   */
-  async getTeraBoxRangeCookie() {
-    if (this._teraBoxRangeCookie && Date.now() - this._teraBoxRangeCookieAt < 1000 * 60 * 10) {
-      return this._teraBoxRangeCookie;
-    }
-    try {
-      const settings = await this.getMergedVideoHostSettings();
-      if (settings?.teraboxCookie) {
-        this._teraBoxRangeCookie = settings.teraboxCookie;
-      } else if (typeof chrome !== 'undefined' && chrome.cookies?.getAll) {
-        const all = await chrome.cookies.getAll({ domain: 'terabox.com' });
-        const parts = all.map((c) => `${c.name}=${c.value}`);
-        if (parts.length > 0) this._teraBoxRangeCookie = parts.join('; ');
-      }
-    } catch (_) { /* keep previous or '' */ }
-    this._teraBoxRangeCookieAt = Date.now();
-    return this._teraBoxRangeCookie || '';
-  }
-
-  /**
    * Fetch a byte range of the ENCRYPTED vault blob. Always reads from a freshly
    * resolved signed download URL (the stored watch URL serves HTML, not bytes).
-   * TeraBox copies send the session Cookie + Referer — without them dm-d 403s.
+   * TeraBox copies send Referer + UA (NOT the session cookie — the cookie makes
+   * the CDN apply the tsl=30 throttle; without it the same dlink serves at
+   * tsl=2000 full speed, verified 2026-09-01).
    * @param {Object} item
    * @param {Array<{host:string,encryptedBlobUrl:string,encryptedBlobFileId:string}>} hostCopies
    * @param {string} fileName
@@ -1690,8 +1667,14 @@ class ImgVaultServiceWorker {
         if (!url) continue;
         const headers = { Range: `bytes=${start}-${end}` };
         if (host === 'terabox') {
-          const cookie = await this.getTeraBoxRangeCookie();
-          if (cookie) headers['Cookie'] = cookie;
+          // IMPORTANT: do NOT send the terabox session cookie on the dlink CDN
+          // read. the CDN decides the speed cap from the cookie: WITH cookie →
+          // tsl=30 (~30KB/s, throttled to a crawl), WITHOUT cookie → tsl=2000
+          // (~2MB/s, full speed). the gallery plays fast for exactly this reason
+          // (the browser's <video> in the extension page is cross-origin to
+          // terabox.com so SameSite/Lax drops the cookie → tsl=2000). measured
+          // 2026-09-01 on the 1.3GB vault blob: with cookie 0.01MB/s, without
+          // 0.68MB/s sustained on the same dlink. sending UA + Referer is enough.
           headers['Referer'] = 'https://www.terabox.com/';
           headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
         }
