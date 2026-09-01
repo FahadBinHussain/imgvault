@@ -1677,8 +1677,16 @@ class ImgVaultServiceWorker {
           // 0.68MB/s sustained on the same dlink. sending UA + Referer is enough.
           headers['Referer'] = 'https://www.terabox.com/';
           headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+          console.log('[Vault-stream] terabox dlink fetch:', url.slice(0, 80), { start, end, cookie: !!headers['Cookie'] });
         }
-        let resp = await fetch(url, { headers });
+        // credentials:'omit' is REQUIRED for terabox: the SW has <all_urls> +
+        // cookies permission, so Chrome auto-attaches the terabox session cookie
+        // to this fetch even without an explicit Cookie header. the CDN decides
+        // the speed cap from the cookie: with it → tsl=30 (~30KB/s), without →
+        // tsl=2000 (~2MB/s). measured 2026-09-01. 'omit' stops the browser from
+        // sending any credentials.
+        let resp = await fetch(url, { headers, credentials: 'omit' });
+        if (host === 'terabox') console.log('[Vault-stream] terabox fetch done:', resp.status, resp.headers.get('content-range'));
         // signed URL expired/consumed mid-session → regenerate a NEW one and
         // retry once. for terabox (forceResolve) this genuinely resolves a new
         // dlink instead of re-fetching the consumed URL.
@@ -1686,7 +1694,7 @@ class ImgVaultServiceWorker {
           const key = `${item.id}:${host}`;
           this.vaultStreamUrlCache?.delete(key);
           url = await this.getFreshVaultStreamUrl(item, copy, fileName, { forceResolve });
-          if (url) resp = await fetch(url, { headers });
+          if (url) resp = await fetch(url, { headers, credentials: 'omit' });
         }
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const arr = new Uint8Array(await resp.arrayBuffer());

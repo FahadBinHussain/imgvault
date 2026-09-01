@@ -140,7 +140,7 @@ export default function VaultPage() {
         throw new Error('Failed to resolve stream link');
       }
       setFreshStreamCopies((prev) => ({ ...prev, [item.id]: res.copies }));
-      return res.data.copies;
+      return res.copies;
     } catch (e) {
       console.warn('[Vault] stream resolve failed:', e.message);
       setStreamFormat((prev) => ({ ...prev, [item.id]: { chunked: true, error: e.message } }));
