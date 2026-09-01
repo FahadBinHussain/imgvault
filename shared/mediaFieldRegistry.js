@@ -366,6 +366,10 @@ export function getOverviewEntries(item = {}, options = {}) {
 
   for (const key of baseKeys) {
     if (Object.prototype.hasOwnProperty.call(itemObj, key)) {
+      // skip the raw nested host blobs (imageHosts, videoHosts) — the
+      // getNestedHosts loop below expands them into individual provider.field
+      // rows (pixvid.url, imgbb.url, etc.). the raw blob is redundant noise.
+      if (key === 'imageHosts' || key === 'videoHosts') continue;
       entries.push({ key, value: itemObj[key] });
       seen.add(key);
     }
