@@ -819,9 +819,11 @@ export default function VaultPage() {
       if (mediaUrl) {
         return isVideo ? (
           <video
+            key={item.id}
             src={mediaUrl}
             className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain transition-all duration-700 ease-out ${animCls}`}
             controls
+            autoPlay
             preload="metadata"
             playsInline
             onError={(e) => console.warn('[Vault] video error:', e.target?.error?.message)}
@@ -885,9 +887,11 @@ export default function VaultPage() {
     if (getKind(item) === 'Video' && getVideoDirectUrl(item)) {
       return (
         <video
+          key={item.id}
           src={getVideoDirectUrl(item)}
           className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain transition-all duration-700 ease-out ${animCls}`}
           controls
+          autoPlay
           preload="metadata"
           playsInline
         />
