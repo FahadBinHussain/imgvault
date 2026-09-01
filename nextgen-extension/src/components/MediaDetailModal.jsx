@@ -209,7 +209,7 @@ export default function MediaDetailModal({
                   <div className="space-y-3 pr-2">
                     <div>
                       <div className="text-[11px] font-semibold mb-1 flex items-center gap-2" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
-                        <span className="font-mono">firestoreDocumentId</span>
+                        <span className="font-mono">ID</span>
                       </div>
                       <div className="g-field">{documentIdRenderer(item)}</div>
                     </div>
