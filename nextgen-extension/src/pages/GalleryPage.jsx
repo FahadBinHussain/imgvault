@@ -2201,7 +2201,7 @@ export default function GalleryPage() {
       fileLastModified: mediaData?.file?.lastModified || null,
       collectionId: selectedCollectionId || null,
       isVideo: Boolean(mediaData?.isVideo),
-      is3D: Boolean(is3DMode || mediaData?.is3D || is3DUploadFile(mediaData?.file)),
+      is3D: Boolean(mediaData?.is3D || is3DUploadFile(mediaData?.file)),
       fileType: mediaData?.fileType || mediaData?.file?.type || null,
       duration: metadata?.duration ?? null,
       width: metadata?.width ?? null,
@@ -2229,30 +2229,35 @@ export default function GalleryPage() {
   const uploadPreparedMedia = async (uploadData) => {
     assertSerializableUploadData(uploadData);
 
-    // 64MiB guard: large blobs must NEVER go via runtime.sendMessage (limit 64MiB).
-    // vault/video/3D already do page-side XHR; for large images or any 3D blob, force direct path.
-    const blobSize = uploadData.fileBlob?.size || uploadData.fileSize || 0;
-    const isLargeForMessage = blobSize > 60 * 1024 * 1024 || blobSize > 64 * 1024 * 1024 * 0.9;
-    if (uploadData.is3D || isLargeForMessage) {
-      if (isLargeForMessage && !uploadData.isVideo && !uploadData.is3D && !uploadData.isVaulted) {
-        await appendClientUploadLog(`Large payload (${formatBytes(blobSize)}) — using direct page upload to avoid 64MiB message limit.`, 'warning');
-      }
-      if (uploadData.is3D) return upload3DDirectly(uploadData);
-      if (uploadData.fileBlob) {
-        // fallback: treat as video/3D direct (udrop/terabox handle generic files)
-        const fallbackData = { ...uploadData, is3D: true };
-        if (!fallbackData.selectedHostKeys || fallbackData.selectedHostKeys.length === 0) fallbackData.selectedHostKeys = ['udrop'];
-        return upload3DDirectly(fallbackData);
-      }
-    }
-
-    // Vaulted uploads encrypt + XHR-upload in the page for real progress.
+    // Vault must win first: encrypted upload does page-side XHR regardless of size
     if (uploadData.isVaulted) {
       return uploadVaultedDirectly(uploadData);
     }
 
+    // Explicit 3D path (file extension / model/* mime)
+    if (uploadData.is3D) {
+      return upload3DDirectly(uploadData);
+    }
+
+    // Video direct: already does page-side XHR and supports >60MB via XHR (no 64MiB limit)
     if (uploadData.isVideo && uploadData.fileBlob) {
       return uploadVideoDirectly(uploadData);
+    }
+
+    // 64MiB guard: large blobs must NEVER go via runtime.sendMessage (limit 64MiB).
+    // Only for images/other generic files - videos/vault/3D already handled via XHR above.
+    const blobSize = uploadData.fileBlob?.size || uploadData.fileSize || 0;
+    const isLargeForMessage = blobSize > 60 * 1024 * 1024 || blobSize > 64 * 1024 * 1024 * 0.9;
+    if (isLargeForMessage) {
+      if (!uploadData.isVideo && !uploadData.is3D && !uploadData.isVaulted) {
+        await appendClientUploadLog(`Large payload (${formatBytes(blobSize)}) — using direct page upload to avoid 64MiB message limit.`, 'warning');
+      }
+      if (uploadData.fileBlob) {
+        // fallback: large image -> upload via UDrop/TeraBox direct XHR (generic file host)
+        const fallbackData = { ...uploadData, is3D: true };
+        if (!fallbackData.selectedHostKeys || fallbackData.selectedHostKeys.length === 0) fallbackData.selectedHostKeys = ['udrop'];
+        return upload3DDirectly(fallbackData);
+      }
     }
 
     return uploadImage(uploadData);
