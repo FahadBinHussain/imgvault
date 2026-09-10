@@ -4078,11 +4078,23 @@ export default function GalleryPage() {
                     
                     {/* Media */}
                     {getMediaItemKind(img) === 'scene' ? (
-                      <div className="relative w-full aspect-video" style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)' }}>
-                        <div className="w-full h-full flex flex-col items-center justify-center gap-2" style={{ color: 'rgba(255,255,255,0.7)' }}>
-                          <Box style={{ width: 48, height: 48 }} className="text-cyan-400" />
-                          <span className="text-xs font-medium">3D Scene</span>
-                        </div>
+                      <div className="relative w-full aspect-video overflow-hidden" style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)' }}>
+                        {img.textureUrl ? (
+                          <CachedImg
+                            thumbKey={`scene-${img.id}`}
+                            src={img.textureUrl}
+                            alt={img.pageTitle || '3D Scene'}
+                            className={`w-full h-full object-cover transition-all duration-500 ease-out ${loadedImages.has(img.id) ? 'opacity-100' : 'opacity-0'}`}
+                            loading="lazy"
+                            onLoad={() => handleImageLoad(img.id)}
+                            onError={() => handleImageLoad(img.id, true)}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center gap-2" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                            <Box style={{ width: 48, height: 48 }} className="text-cyan-400" />
+                            <span className="text-xs font-medium">3D Scene</span>
+                          </div>
+                        )}
                         <div className="absolute top-2 left-2">
                           <span className="px-2 py-1 text-[10px] font-bold rounded-md bg-cyan-500/90 text-white">3D</span>
                         </div>
