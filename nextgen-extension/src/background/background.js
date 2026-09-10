@@ -26,6 +26,7 @@ import {
 import { extractFilemoonFilecode, getFilemoonDirectLink, getFilemoonHlsLink } from '../utils/filemoonApi.js';
 import { getFilemoonStreamSource } from '../utils/filemoonSpa.js';
 import { resolveTeraBoxThumbnail, resolveTeraBoxPlaybackUrl } from '../utils/teraBoxApi.js';
+import { flattenSceneConfig } from '../utils/sceneConfig.js';
 import {
   getConfiguredVideoUploadServices,
   getStrictVideoProviderLink,
@@ -5094,7 +5095,7 @@ class ImgVaultServiceWorker {
         spzFileSize: data.spzFileSize || spzBlob.size,
         textureUrl: textureResult.url,
         textureFileSize: data.textureFileSize || textureBlob.size,
-        configJson: data.sceneConfig ? JSON.stringify(data.sceneConfig) : null,
+        configJson: data.sceneConfig ? JSON.stringify(flattenSceneConfig(data.sceneConfig)) : null,
         extraMetadata: {
           sceneSpzFileId: spzResult.fileId || '',
           sceneSpzWatchUrl: spzResult.watchUrl || '',
