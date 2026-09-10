@@ -187,6 +187,7 @@ export default function GalleryPage() {
   const [failedImages, setFailedImages] = useState(new Set()); // Track images that failed to load
   const [navbarHeight, setNavbarHeight] = useState(0);
   const [filemoonThumbs, setFilemoonThumbs] = useState({}); // { imageId: thumbnailUrl } live-updated from lazy fetch
+  const [sceneTexThumbs, setSceneTexThumbs] = useState({}); // { sceneId: fresh textureUrl } for terabox scenes
   const [modalPlaybackUrl, setModalPlaybackUrl] = useState(''); // fresh playback URL for terabox (dlinks expire in 8h)
   const [modalContainerType, setModalContainerType] = useState(''); // 'ts' | 'mp4' | 'webm' | '' after probing
   
@@ -278,6 +279,38 @@ export default function GalleryPage() {
     })();
     return () => { cancelled = true; };
   }, [loading, images, defaultVideoSource, sendMessage]);
+
+  // Scene texture thumbs: TeraBox dlinks are single-use / 8h-expiring, so any
+  // scene whose textureUrl is a dm-d.terabox.com dlink shows a broken thumb
+  // after expiry. Refresh via the same SW resolve the video modal uses, then
+  // persist the fresh dlink (2.12.66).
+  useEffect(() => {
+    const sceneNeedsRefresh = (images || []).filter(img => {
+      if (getMediaItemKind(img) !== 'scene' || !img.textureUrl) return false;
+      return /terabox\.com/i.test(img.textureUrl);
+    });
+    if (sceneNeedsRefresh.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const img of sceneNeedsRefresh) {
+        if (cancelled) break;
+        try {
+          const fidMatch = String(img.textureUrl).match(/[?&]fid=([^&#]+)/);
+          const fsId = fidMatch ? String(fidMatch[1]).split('-').pop() : '';
+          if (!fsId) continue;
+          const texName = decodeURIComponent(String(img.textureUrl).split('/').pop().split('?')[0] || '');
+          const res = await sendMessage('getVideoPlaybackUrl', { providerKey: 'terabox', filecode: fsId, fileName: texName });
+          const fresh = typeof res === 'string' ? res : res?.data || '';
+          if (cancelled) break;
+          if (fresh && fresh !== img.textureUrl) {
+            setSceneTexThumbs((prev) => ({ ...prev, [img.id]: fresh }));
+            await sendMessage('updateImage', { id: img.id, textureUrl: fresh });
+          }
+        } catch {}
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [images, sendMessage]);
 
   // Refresh the playback URL when the modal opens for a video whose provider
   // has expiring direct links (terabox dlinks last 8h; stored link is stale).
@@ -4079,10 +4112,10 @@ export default function GalleryPage() {
                     {/* Media */}
                     {getMediaItemKind(img) === 'scene' ? (
                       <div className="relative w-full aspect-video overflow-hidden" style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)' }}>
-                        {img.textureUrl ? (
+                        {(sceneTexThumbs[img.id] || img.textureUrl) ? (
                           <CachedImg
-                            thumbKey={`scene-${img.id}`}
-                            src={img.textureUrl}
+                            thumbKey={`scene-${img.id}-${(sceneTexThumbs[img.id] || img.textureUrl || '').slice(-24)}`}
+                            src={sceneTexThumbs[img.id] || img.textureUrl}
                             alt={img.pageTitle || '3D Scene'}
                             className={`w-full h-full object-cover transition-all duration-500 ease-out ${loadedImages.has(img.id) ? 'opacity-100' : 'opacity-0'}`}
                             loading="lazy"
