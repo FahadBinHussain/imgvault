@@ -4966,14 +4966,62 @@ class ImgVaultServiceWorker {
       } catch {}
     }
     if (!fetchUrl) throw new Error('No URL and no cached data available');
-    if (fetchUrl.includes('udrop.com/file/')) {
+    if (fetchUrl.includes('udrop.com')) {
       try {
-        const pageResp = await fetch(fetchUrl);
-        const html = await pageResp.text();
-        const match = html.match(/url='([^']+)'/i) || html.match(/url="([^"]+)"/i);
-        if (match && match[1]) fetchUrl = match[1];
+        const code = (() => { const m = String(fetchUrl).match(/udrop\.com(?:\/file)?\/([^\/\?#]+)/i); return m ? m[1] : null; })();
+        let fresh = null;
+        if (mediaId) {
+          try {
+            const it = await this.storage.getImageById(mediaId);
+            const fid = it?.extraMetadata?.sceneSpzFileId || it?.extraMetadata?.sceneFiles?.udrop?.spz?.fileId || '';
+            if (fid && /^\d+$/.test(String(fid))) {
+              const settings = await this.getMergedVideoHostSettings().catch(() => ({}));
+              if (settings?.udropKey1 && settings?.udropKey2) {
+                const uploader = new UDropUploader();
+                const auth = await uploader.authorize(settings.udropKey1, settings.udropKey2);
+                const fd = new FormData();
+                fd.append('access_token', auth.access_token);
+                fd.append('account_id', auth.account_id);
+                fd.append('file_id', String(fid));
+                const r = await fetch('https://www.udrop.com/api/v2/file/download', { method: 'POST', body: fd });
+                if (r.ok) {
+                  const j = await r.json();
+                  if (j?._status === 'success' && j?.data?.download_url) fresh = j.data.download_url;
+                }
+              }
+            }
+          } catch {}
+        }
+        if (!fresh && code) {
+          try {
+            const settings = await this.getMergedVideoHostSettings().catch(() => ({}));
+            if (settings?.udropKey1 && settings?.udropKey2) {
+              const uploader = new UDropUploader();
+              const auth = await uploader.authorize(settings.udropKey1, settings.udropKey2);
+              const fd = new FormData();
+              fd.append('access_token', auth.access_token);
+              fd.append('account_id', auth.account_id);
+              fd.append('short_url', code);
+              const r = await fetch('https://www.udrop.com/api/v2/file/download', { method: 'POST', body: fd });
+              if (r.ok) {
+                const j = await r.json();
+                if (j?._status === 'success' && j?.data?.download_url) fresh = j.data.download_url;
+              }
+            }
+          } catch {}
+        }
+        if (!fresh && fetchUrl.includes('udrop.com/file/')) {
+          const pageResp = await fetch(fetchUrl);
+          const html = await pageResp.text();
+          const match = html.match(/url='([^']+)'/i) || html.match(/url="([^"]+)"/i);
+          if (match && match[1]) fresh = match[1];
+        }
+        if (fresh && fresh !== fetchUrl) {
+          console.log('[getSceneDirectUrl] Refreshed UDrop URL for', mediaId);
+          fetchUrl = fresh;
+        }
       } catch (e) {
-        console.warn('[getSceneDirectUrl] UDrop page parse failed:', e.message);
+        console.warn('[getSceneDirectUrl] UDrop refresh failed:', e.message);
       }
     }
     // Terabox dlinks expire in 8h (sign in URL) - try to refresh via API if this is a Terabox file
