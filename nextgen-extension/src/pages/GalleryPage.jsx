@@ -43,6 +43,7 @@ import {
   getTechnicalMetadataEntries,
 } from '@shared/mediaFieldRegistry.js';
 import SceneUploadDialog from '../components/SceneUploadDialog';
+import { flattenSceneConfig } from '../utils/sceneConfig';
 import { useThumbUrl } from '../hooks/useThumbUrl';
 import MpegtsPlayer from '../components/MpegtsPlayer';
 import { CachedImg, CachedVideo } from '../components/CachedThumb';
@@ -1410,7 +1411,7 @@ export default function GalleryPage() {
       if (selected.length===0) throw new Error('Select at least one scene host (UDrop/TeraBox).');
       let sceneConfig = null;
       if (configFile) {
-        try { sceneConfig = JSON.parse(await configFile.text()); } catch { sceneConfig = null; }
+        try { sceneConfig = flattenSceneConfig(JSON.parse(await configFile.text())); } catch { sceneConfig = null; }
         // Loud guard: the viewer only understands view-transform configs —
         // flat {position, rotation, cameraRadius} or nested {scene, controls}.
         // A raw Marble API world dump (id/display_name/generation_output/…)
@@ -1464,8 +1465,7 @@ export default function GalleryPage() {
           spz: { fileId: spzRes.fileId || spzRes.filecode || '', filename: spzFile.name },
           texture: { fileId: texRes.fileId || texRes.filecode || '', filename: texRes.filename || textureFile.name },
         };
-        try { await sendMessage('updateImage', { id, spzUrl, textureUrl, configJson: sceneConfig ? JSON.stringify(sceneConfig) : null, kind: 'scene', fileType: 'model/spz', spzFileSize: spzFile.size, textureFileSize: textureFile.size, extraMetadata: { sceneFiles } }); } catch {}
-        return { id, spzUrl, textureUrl };
+        try { await sendMessage('updateImage', { id, spzUrl, textureUrl, configJson: sceneConfig ? JSON.stringify(sceneConfig) : null, kind: 'scene', fileType: 'model/spz', spzFileSize: spzFile.size, textureFileSize: textureFile.size, extraMetadata: { sceneFiles } }); } catch {}        return { id, spzUrl, textureUrl };
       });
       await appendClientUploadLog(`Scene saved ${saved.id||''}`, 'success');
       return saved;

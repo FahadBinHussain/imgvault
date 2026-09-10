@@ -49,6 +49,7 @@ import {
 } from '../utils/teraBoxApi';
 import { retryVideoHostPageSide } from '../utils/videoRetryPageSide';
 import { getVideoSourceHostOptions } from '../utils/videoProviderLinks';
+import { flattenSceneConfig } from '../utils/sceneConfig';
 import { UDropUploader, TeraBoxUploader } from '../utils/uploaders';
 
 const IMAGE_SETTING_KEYS = Array.from(
@@ -629,7 +630,7 @@ export default function ResolvePage() {
 
       let sceneConfig = null;
       if (configFile) {
-        try { sceneConfig = JSON.parse(await configFile.text()); } catch { throw new Error(`"${configFile.name}" is not valid JSON.`); }
+        try { sceneConfig = flattenSceneConfig(JSON.parse(await configFile.text())); } catch { throw new Error(`"${configFile.name}" is not valid JSON.`); }
         const hasViewFields = Boolean(sceneConfig && (sceneConfig.position || sceneConfig.rotation || sceneConfig.cameraRadius || sceneConfig.scene || sceneConfig.controls));
         if (!hasViewFields) {
           setNotice({ type: 'warning', message: `Config "${configFile.name}" has no camera fields — viewer will use default framing.` });
@@ -803,7 +804,7 @@ export default function ResolvePage() {
           setNotice({ type: 'warning', message: `SPZ downloaded, but texture missing — uploading SPZ only to ${hostLabel}.` });
         }
       }
-      const sceneConfig = (() => { try { return freshItem.configJson ? JSON.parse(freshItem.configJson) : null; } catch { return null; }})();
+      const sceneConfig = (() => { try { return freshItem.configJson ? flattenSceneConfig(JSON.parse(freshItem.configJson)) : null; } catch { return null; }})();
       const onProgress = async ({ loaded, total, percent }) => {
         const msg = percent !== null ? `${hostLabel} scene upload: ${percent}% (${loaded}/${total} bytes)` : `${hostLabel} scene upload: ${loaded} bytes`;
         setFixProgress((prev) => ({ ...prev, [freshItem.id]: { phase: 'upload', message: msg, percent } }));
