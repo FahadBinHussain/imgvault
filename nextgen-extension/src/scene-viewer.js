@@ -154,14 +154,40 @@ try {
     tx.oncomplete = () => db.close();
   }
 
+  async function clearViewerCache(id) {
+    const db = await openViewerCache();
+    if (!db) return;
+    const tx = db.transaction('blobs', 'readwrite');
+    if (id) tx.objectStore('blobs').delete(id);
+    else tx.objectStore('blobs').clear();
+    await new Promise((res) => { tx.oncomplete = () => { db.close(); res(); }; tx.onerror = () => { db.close(); res(); }; });
+  }
+
+  // Clear-cache button — one click unsticks old scenes (2.12.62)
+  document.getElementById('clearCacheBtn')?.addEventListener('click', async () => {
+    if (!confirm('Clear cached scene file and reload? Fixes stuck Loading.')) return;
+    try { await clearViewerCache(sceneId); } catch {}
+    location.reload();
+  });
+
   let spzBytes, configJson;
 
   const cached = await getCachedBlob(sceneId);
+  let useCache = false;
   if (cached) {
-    console.log('[Viewer] Cache hit —', cached.spzBuffer.byteLength, 'bytes');
-    setProgress(25, 'Loaded from cache');
-    spzBytes = cached.spzBuffer;
-    configJson = cached.configJson;
+    const tooSmall = !cached.spzBuffer || cached.spzBuffer.byteLength < 1024;
+    if (tooSmall) {
+      console.warn('[Viewer] Cached blob too small — clearing', cached.spzBuffer?.byteLength);
+      await clearViewerCache(sceneId);
+    } else {
+      console.log('[Viewer] Cache hit —', cached.spzBuffer.byteLength, 'bytes');
+      setProgress(25, 'Loaded from cache');
+      spzBytes = cached.spzBuffer;
+      configJson = cached.configJson;
+      useCache = true;
+    }
+  }
+  if (useCache) {
     // A null config cached from an earlier open (uploaded before config saved,
     // or a failed fetch) must not stick forever — always refetch fresh config
     // and prefer it when present.
