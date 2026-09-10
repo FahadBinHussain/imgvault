@@ -172,12 +172,19 @@ try {
 
   let spzBytes, configJson;
 
+  const isHtmlBuffer = (buf) => {
+    try {
+      const head = new TextDecoder().decode(new Uint8Array(buf).slice(0, 200)).trimStart();
+      return head.startsWith('<!DOCTYPE') || head.startsWith('<html') || head.startsWith('<');
+    } catch { return false; }
+  };
   const cached = await getCachedBlob(sceneId);
   let useCache = false;
   if (cached) {
     const tooSmall = !cached.spzBuffer || cached.spzBuffer.byteLength < 1024;
-    if (tooSmall) {
-      console.warn('[Viewer] Cached blob too small — clearing', cached.spzBuffer?.byteLength);
+    const isHtml = cached.spzBuffer && isHtmlBuffer(cached.spzBuffer);
+    if (tooSmall || isHtml) {
+      console.warn('[Viewer] Cached blob invalid — clearing', cached.spzBuffer?.byteLength, isHtml ? 'HTML' : 'small');
       await clearViewerCache(sceneId);
     } else {
       console.log('[Viewer] Cache hit —', cached.spzBuffer.byteLength, 'bytes');
@@ -210,7 +217,9 @@ try {
       if (directUrl) {
         const resp = await fetch(directUrl);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        spzBytes = await resp.arrayBuffer();
+        const buf = await resp.arrayBuffer();
+        if (isHtmlBuffer(buf)) throw new Error('Direct fetch returned HTML (stale token)');
+        spzBytes = buf;
         fetchedViaDirect = true;
         try {
           const cfgResp = await chrome.runtime.sendMessage({ action: 'getSceneConfig', mediaId: sceneId });
@@ -240,6 +249,10 @@ try {
         spzBytes = new Uint8Array(fileResponse.data.spzBuffer).buffer;
       } else {
         spzBytes = new Uint8Array(fileResponse.data.buffer).buffer;
+      }
+      if (isHtmlBuffer(spzBytes)) {
+        await clearViewerCache(sceneId);
+        throw new Error('Background fetch returned HTML (stale token) — cache cleared, reload to retry with fresh URL.');
       }
       configJson = fileResponse.data.configJson || null;
     } else {
@@ -329,10 +342,11 @@ try {
         document.getElementById('hint').classList.remove('hidden');
       }, 400);
     },
-    onError: (err) => {
+    onError: async (err) => {
       clearInterval(progressTimer);
       console.error('[Viewer] SplatMesh error:', err);
-      showError('Failed to load splat: ' + (err?.message || err));
+      try { await clearViewerCache(sceneId); } catch {}
+      showError('Failed to load splat: ' + (err?.message || err) + ' — cache cleared, close and reopen to retry with fresh URL.');
     }
   });
   splatGroup.add(splat);

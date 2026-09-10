@@ -5024,14 +5024,16 @@ class ImgVaultServiceWorker {
         console.warn('[getSceneDirectUrl] UDrop refresh failed:', e.message);
       }
     }
-    // Terabox dlinks expire in 8h (sign in URL) - try to refresh via API if this is a Terabox file
+    // Terabox dlinks expire in 8h / single-use - refresh via fileId (covers Fix'd scenes where fileId lives in sceneFiles, not videoHosts) (2.12.68)
     if (fetchUrl.includes('terabox.com') && mediaId) {
       try {
         const fetchedItem = await this.storage.getImageById(mediaId);
         const vHosts = fetchedItem?.extraMetadata?.videoHosts || fetchedItem?.videoHosts || {};
         const tb = vHosts?.terabox || {};
-        const fileId = tb.fileId || tb.filecode || '';
-        const filename = tb.filename || fetchedItem?.fileName || '';
+        const sceneFiles = fetchedItem?.extraMetadata?.sceneFiles || {};
+        const tbScene = sceneFiles?.terabox?.spz || {};
+        const fileId = tb.fileId || tb.filecode || tbScene.fileId || fetchedItem?.teraboxFileId || fetchedItem?.extraMetadata?.sceneSpzFileId || '';
+        const filename = tb.filename || tbScene.filename || fetchedItem?.fileName || '';
         if (fileId) {
           const settings = await this.getMergedVideoHostSettings().catch(() => ({}));
           const cookie = settings?.teraboxCookie || '';
