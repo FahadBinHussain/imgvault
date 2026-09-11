@@ -23,7 +23,7 @@ import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } fro
 import { IMAGE_UPLOAD_SERVICES, filterUploadServicesByKeys, getVaultBlobHostServices, normalizeVaultBlobHostKeys, DEFAULT_VAULT_BLOB_HOST } from '../config/providerCatalog';
 import { FilemoonUploader, UDropUploader, TeraBoxUploader } from '../utils/uploaders';
 import { encryptBlob, encryptMetadata } from '../utils/vaultCrypto.js';
-import { getVaultMasterKey } from '../utils/vaultSession.js';
+import { getVaultMasterKey, importMasterKeyFromB64 } from '../utils/vaultSession.js';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 import {
   getConfiguredVideoUploadServices,
@@ -1174,6 +1174,25 @@ export default function GalleryPage() {
 
   // Vaulted upload: encrypt in the page (where crypto.subtle works) and
   // XHR-upload to udrop with real progress, then save via the SW.
+  // The page-side master key (vaultSession.js) is per-document: the Vault page
+  // and the Gallery page each hold their own copy, while the service worker is
+  // the single shared source of truth. When only the Vault page was unlocked,
+  // the Gallery page's local copy is empty even though the SW is unlocked, so
+  // hydrate it from the SW before encrypting (one unlock covers every page).
+  const ensureVaultKeyHydrated = async () => {
+    if (getVaultMasterKey()) return true;
+    try {
+      const res = await sendMessage('vaultGetMasterKey');
+      if (res?.keyB64) {
+        await importMasterKeyFromB64(res.keyB64);
+        return true;
+      }
+    } catch (_) {
+      // SW can't give a key (locked or restarted) — caller decides what to show.
+    }
+    return Boolean(getVaultMasterKey());
+  };
+
   const uploadVaultedDirectly = async (uploadData) => {
     const uploadController = new AbortController();
     activeVideoUploadControllerRef.current = uploadController;
@@ -1186,6 +1205,7 @@ export default function GalleryPage() {
     await appendClientUploadLog('Preparing encrypted vault upload from the extension page...');
 
     try {
+      await ensureVaultKeyHydrated();
       const masterKey = getVaultMasterKey();
       if (!masterKey) {
         throw new Error('Secret Vault is locked. Unlock it before saving encrypted items.');

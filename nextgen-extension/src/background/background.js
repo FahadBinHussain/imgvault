@@ -1092,6 +1092,19 @@ class ImgVaultServiceWorker {
   }
 
   /**
+   * Export the raw master key bytes (base64) so any extension page can hydrate
+   * its own in-memory session. The key only lives here while the vault is
+   * unlocked, so this is a no-op (null) when locked.
+   */
+  async getVaultMasterKeyB64() {
+    if (!this.vaultMasterKey) return null;
+    const raw = new Uint8Array(await crypto.subtle.exportKey('raw', this.vaultMasterKey));
+    let binary = '';
+    for (let i = 0; i < raw.length; i += 1) binary += String.fromCharCode(raw[i]);
+    return btoa(binary);
+  }
+
+  /**
    * Vault status for the UI: configured? currently unlocked?
    */
   async getVaultStatus() {
@@ -2085,6 +2098,12 @@ class ImgVaultServiceWorker {
       case 'vaultSetMasterKey':
         this.setVaultMasterKey(request.data?.keyB64)
           .then(() => sendResponse({ success: true, data: null }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'vaultGetMasterKey':
+        this.getVaultMasterKeyB64()
+          .then((keyB64) => sendResponse({ success: true, data: { keyB64: keyB64 || null } }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
