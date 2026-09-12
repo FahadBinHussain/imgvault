@@ -206,6 +206,48 @@ fn truncate_for_native_message(text: &str, max_bytes: usize) -> String {
     )
 }
 
+fn looks_like_downloaded_path(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty()
+        || trimmed.starts_with('[')
+        || trimmed.starts_with("WARNING:")
+        || trimmed.starts_with("ERROR:")
+    {
+        return false;
+    }
+    // Must be an absolute-ish filesystem path: `C:\` / `C:/`, a `\\UNC\` share,
+    // or a leading `/` (nix). This rejects ffmpeg log lines like
+    // `Input #0, ... from 'C:\...'` and bare URLs (`https://...`).
+    let drive_absolute = trimmed.len() >= 3
+        && trimmed.as_bytes()[1] == b':'
+        && (trimmed.as_bytes()[2] == b'\\' || trimmed.as_bytes()[2] == b'/');
+    let absolute = drive_absolute
+        || trimmed.starts_with("\\\\")
+        || trimmed.starts_with('/');
+    if !absolute {
+        return false;
+    }
+    // The final path segment must carry a real extension.
+    let name = trimmed.rsplit(['\\', '/']).next().unwrap_or("");
+    name.contains('.') && !name.ends_with('.')
+}
+
+/// Pull the final output file path that `--print after_move:filepath` emitted.
+/// The path is the last clean line yt-dlp writes, so scan `stdout` first (that
+/// is where `--print` writes), then fall back to `stderr` in case it landed on
+/// the progress stream. Callers MUST run this on the FULL, untruncated streams:
+/// head-truncating the payload (Chrome's 1 MB native-message cap) cuts off the
+/// tail where the path lives, which used to surface as a false
+/// "yt-dlp did not return a file path" after the download had actually finished.
+fn extract_downloaded_path(stdout_text: &str, stderr_text: &str) -> Option<String> {
+    stdout_text
+        .lines()
+        .rev()
+        .find(|line| looks_like_downloaded_path(line))
+        .or_else(|| stderr_text.lines().rev().find(|line| looks_like_downloaded_path(line)))
+        .map(|line| line.trim().to_string())
+}
+
 // Completion journal: the single-threaded host keeps downloading even if the
 // extension's port dies (extension reload / service worker restart), so the
 // extension can't receive the final result. The host records the outcome to a
@@ -685,11 +727,7 @@ fn download_video(url: &str, output_path: &str, cookies_data: Option<&[BrowserCo
     
     let stdout_text = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr_text = String::from_utf8_lossy(&output.stderr).to_string();
-    let file_path = stdout_text
-        .lines()
-        .rev()
-        .find(|line| !line.trim().is_empty())
-        .map(|line| line.trim().to_string());
+    let file_path = extract_downloaded_path(&stdout_text, &stderr_text);
 
     if output.status.success() {
         if let Some(file_path) = file_path {
@@ -1047,22 +1085,18 @@ fn download_video_with_progress(
         });
     }
 
+    // Extract the final path from the FULL streams BEFORE truncating. The
+    // `--print after_move:filepath` line is the last thing yt-dlp writes, so a
+    // head-truncate to 40 KB (needed for Chrome's 1 MB native-message cap) cuts
+    // it off and produced a false "did not return a file path" after the
+    // download had already finished.
+    let file_path = extract_downloaded_path(&stdout_text, &stderr_text);
+
     // Truncate final payloads to stay safely under Chrome's 1 MB native
     // message cap (JSON envelope + both streams). 40 KB each is plenty for
     // diagnostics and avoids the silent disconnect.
     stdout_text = truncate_for_native_message(&stdout_text, 40_000);
     stderr_text = truncate_for_native_message(&stderr_text, 40_000);
-    let file_path = stdout_text
-        .lines()
-        .rev()
-        .find(|line| {
-            let trimmed = line.trim();
-            !trimmed.is_empty() &&
-                !trimmed.starts_with('[') &&
-                !trimmed.starts_with("WARNING:") &&
-                !trimmed.starts_with("ERROR:")
-        })
-        .map(|line| line.trim().to_string());
 
     if status.success() {
         if let Some(file_path) = file_path {
