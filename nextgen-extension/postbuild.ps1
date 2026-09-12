@@ -22,6 +22,14 @@ Copy-Item -Path "rajce-fix.css" -Destination "dist/rajce-fix.css" -Force
 Write-Host "Copying contextmenu-unlock.js..." -ForegroundColor Yellow
 Copy-Item -Path "src/content/contextmenu-unlock.js" -Destination "dist/contextmenu-unlock.js" -Force
 
+# Copy scene-viewer.js: declared as a concrete web_accessible_resources entry in
+# the manifest, but it is a plain (non-bundled) file under src/. vite only emits
+# the hashed sceneViewer-*.js for the scene-viewer.html entry, so without this
+# copy the built folder is missing a declared resource and Chromium flags the
+# extension CORRUPTED (enable flips back off on refresh).
+Write-Host "Copying scene-viewer.js..." -ForegroundColor Yellow
+Copy-Item -Path "src/scene-viewer.js" -Destination "dist/scene-viewer.js" -Force
+
 # Copy icons folder
 Write-Host "Copying icons..." -ForegroundColor Yellow
 if (Test-Path "dist/icons") {
