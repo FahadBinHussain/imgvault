@@ -17,7 +17,7 @@ function openDb() {
   });
 }
 
-export async function getCachedThumb(key) {
+export async function getCachedThumb(key, maxAgeMs = MAX_AGE_MS) {
   try {
     const db = await openDb();
     const result = await new Promise((resolve, reject) => {
@@ -28,7 +28,7 @@ export async function getCachedThumb(key) {
     });
     db.close();
     if (!result) return null;
-    if (Date.now() - result.cachedAt > MAX_AGE_MS) return null;
+    if (Date.now() - result.cachedAt > maxAgeMs) return null;
     return result.blob;
   } catch {
     return null;

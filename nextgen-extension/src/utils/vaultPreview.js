@@ -30,21 +30,50 @@ const MIN_LUMA_SD = 8;
 const THUMB_WIDTH = 480;
 const THUMB_QUALITY = 0.75;
 
-const HOST_CONCURRENCY = { terabox: 1, udrop: 3 };
+// terabox is ~0.68MB/s PER dlink connection (tsl=2000 is a per-URL cap,
+// verified with rclone multistream), so a few previews may run side by side;
+// udrop is fast enough for 3. (2.12.76: terabox was 1 — whole-library warm
+// crawled at one-video-at-a-time.)
+const HOST_CONCURRENCY = { terabox: 3, udrop: 3 };
 const HOST_TIMEOUTS = {
   // terabox: header resolve + 8MiB chunk at ~0.68MB/s ≈ 15-30s per read.
   terabox: { metadata: 180000, seek: 150000 },
   udrop: { metadata: 40000, seek: 30000 },
 };
 const DEFAULT_HOST_TIMEOUTS = { metadata: 60000, seek: 45000 };
+// Vault blobs are immutable once uploaded, so a derived preview NEVER goes
+// stale the way a remote gallery thumbnail can — outlive the shared 7-day
+// thumb TTL (2.12.76: re-deriving terabox previews weekly on terabox is
+// minutes of chunk fetches for a frame that cannot change).
+const PREVIEW_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 
 function previewKey(item) {
   return `vault-preview-${item.id}`;
 }
 
+/**
+ * The copies a preview should actually READ (2.12.76 speed-up): vault items
+ * can live on several hosts; every host holds the same IVG1 bytes, so when a
+ * fast host (udrop) has a copy we resolve and read ONLY that one — a udrop
+ * derivation is seconds instead of minutes, and we never pay terabox's
+ * slow per-copy dlink resolve for reads we won't do. No fallback: if the
+ * chosen fast copy fails, that preview fails loudly (never silently
+ * re-routes through the slow host).
+ */
+export function preferredPreviewCopies(item) {
+  const copies = Array.isArray(item?.encryptedBlobHosts) && item.encryptedBlobHosts.length > 0
+    ? item.encryptedBlobHosts
+    : [{
+      host: item?.vaultHost || 'udrop',
+      encryptedBlobUrl: item?.encryptedBlobUrl || '',
+      encryptedBlobFileId: item?.encryptedBlobFileId || '',
+    }];
+  const fast = copies.filter((c) => String(c.host || 'udrop').toLowerCase() !== 'terabox');
+  return fast.length > 0 ? fast : copies;
+}
+
 function primaryHost(item) {
-  const copies = Array.isArray(item?.encryptedBlobHosts) ? item.encryptedBlobHosts : [];
-  const host = (copies[0]?.host || item?.vaultHost || 'udrop').toLowerCase();
+  const host = (preferredPreviewCopies(item)[0]?.host || 'udrop').toLowerCase();
   return host;
 }
 
@@ -165,7 +194,7 @@ async function runExtraction(item, getStreamUrl) {
   const host = primaryHost(item);
   const timeouts = HOST_TIMEOUTS[host] || DEFAULT_HOST_TIMEOUTS;
 
-  const cached = await getCachedThumb(key);
+  const cached = await getCachedThumb(key, PREVIEW_MAX_AGE_MS);
   if (cached) {
     const url = URL.createObjectURL(cached);
     objectUrlMap.set(key, url);
@@ -257,7 +286,7 @@ export function requestVaultPreview(item, { getStreamUrl }) {
 export async function getCachedVaultPreview(item) {
   const key = previewKey(item);
   if (objectUrlMap.has(key)) return objectUrlMap.get(key);
-  const blob = await getCachedThumb(key);
+  const blob = await getCachedThumb(key, PREVIEW_MAX_AGE_MS);
   if (!blob) return null;
   const url = URL.createObjectURL(blob);
   objectUrlMap.set(key, url);

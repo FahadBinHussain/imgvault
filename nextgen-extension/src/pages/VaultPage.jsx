@@ -52,7 +52,7 @@ import {
   clearVaultMasterKey,
   importMasterKeyFromB64,
 } from '../utils/vaultSession.js';
-import { requestVaultPreview, getCachedVaultPreview, setVaultPreviewPaused } from '../utils/vaultPreview.js';
+import { requestVaultPreview, getCachedVaultPreview, setVaultPreviewPaused, preferredPreviewCopies } from '../utils/vaultPreview.js';
 
 const VAULT_CONFIG_KEY = 'secretVaultConfig';
 const VAULT_SESSION_KEY = 'imgvault-vault-unlocked';
@@ -272,11 +272,18 @@ export default function VaultPage() {
   // (background.js legacy branch) — that memory blow-up kills the worker,
   // wipes vaultMasterKey, and 403s every vault stream (2.12.75 fix).
   const getPreviewStreamUrl = async (item) => {
-    let copies = freshStreamCopies[item.id];
-    if (!Array.isArray(copies) || copies.length === 0) {
-      copies = await ensureStreamResolved(item);
-    }
-    if (!Array.isArray(copies) || copies.length === 0) return '';
+    // Resolve ONLY the copies the preview will read (udrop when present —
+    // seconds not minutes). Deliberately NOT ensureStreamResolved: that
+    // resolves every copy (slow terabox dlink for reads we skip) and caches
+    // consumed dlinks into the modal's state.
+    const baseCopies = preferredPreviewCopies(item);
+    const res = await sendMessage('vaultResolveStreamUrls', {
+      id: item.id,
+      copies: baseCopies,
+      fileName: item.encryptedFileName || '',
+    });
+    const copies = Array.isArray(res?.copies) && res.copies.length > 0 ? res.copies : null;
+    if (!copies) return '';
     const probe = await sendMessage('vaultProbeBlobFormat', {
       id: item.id,
       url: copies[0]?.encryptedBlobUrl || item.encryptedBlobUrl,
