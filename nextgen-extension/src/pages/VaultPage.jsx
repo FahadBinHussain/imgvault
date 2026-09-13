@@ -3,7 +3,7 @@
  * @version 2.0.0
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -15,6 +15,7 @@ import {
   Link2,
   Image as ImageIcon,
   Video,
+  Film,
   Trash2,
   Loader2,
   AlertTriangle,
@@ -51,6 +52,7 @@ import {
   clearVaultMasterKey,
   importMasterKeyFromB64,
 } from '../utils/vaultSession.js';
+import { requestVaultPreview, getCachedVaultPreview } from '../utils/vaultPreview.js';
 
 const VAULT_CONFIG_KEY = 'secretVaultConfig';
 const VAULT_SESSION_KEY = 'imgvault-vault-unlocked';
@@ -79,6 +81,89 @@ const getLocalVaultConfig = () => new Promise((resolve) => {
 });
 
 const saveLocalVaultConfig = (config) => chrome.storage.local.set({ [VAULT_CONFIG_KEY]: config });
+
+// Encrypted vault videos have no stored thumbnail — this card derives one via
+// the vaultPreview util (streams the decrypted head through vault-range,
+// middle-seek + black-frame retry) the first time it scrolls into view after
+// unlock, then serves it from the IndexedDB thumb cache forever. Failed or
+// still-deriving previews show the spinner / lock tile — never a fake frame.
+function VaultEncryptedVideoThumb({ item, getStreamUrl }) {
+  const holderRef = useRef(null);
+  const [visible, setVisible] = useState(false);
+  const [url, setUrl] = useState(null);
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const el = holderRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setVisible(true);
+      return undefined;
+    }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setVisible(true);
+        io.disconnect();
+      }
+    }, { rootMargin: '200px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return undefined;
+    let cancelled = false;
+    (async () => {
+      const cached = await getCachedVaultPreview(item);
+      if (cancelled) return;
+      if (cached) { setUrl(cached); return; }
+      setPending(true);
+      try {
+        const next = await requestVaultPreview(item, { getStreamUrl });
+        if (!cancelled) setUrl(next);
+      } catch {
+        if (!cancelled) setFailed(true);
+      } finally {
+        if (!cancelled) setPending(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [visible, item.id]);
+
+  if (url) {
+    return (
+      <div ref={holderRef} className="relative w-full aspect-video overflow-hidden" style={{ background: 'var(--color-base-200)' }}>
+        <img src={url} alt={item.fileName || 'Vault video preview'} className="absolute inset-0 w-full h-full object-cover" />
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div style={{ background: 'oklch(from var(--color-base-100) l c h / 0.7)', backdropFilter: 'blur(8px)', borderRadius: '50%', padding: 12 }}>
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="oklch(from var(--color-base-content) l c h / 0.7)"><path d="M8 5v14l11-7z"/></svg>
+          </div>
+        </div>
+        <LockKeyhole className="absolute top-2 right-2 h-4 w-4 opacity-80" style={{ color: 'var(--color-base-100)', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.6))' }} />
+      </div>
+    );
+  }
+
+  if (pending) {
+    return (
+      <div ref={holderRef} className="w-full aspect-video flex flex-col items-center justify-center gap-2" style={{ background: 'var(--color-base-200)', color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <span className="text-[9px] uppercase tracking-wide">deriving preview</span>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={holderRef} className="relative w-full aspect-video flex items-center justify-center" style={{ background: 'var(--color-base-200)', color: 'oklch(from var(--color-base-content) l c h / 0.4)' }}>
+      <LockKeyhole className="h-10 w-10" />
+      {failed && (
+        <span className="absolute bottom-1.5 left-0 right-0 text-center text-[9px] uppercase tracking-wide opacity-60" title="Preview failed — see console for the exact reason">
+          preview unavailable
+        </span>
+      )}
+    </div>
+  );
+}
 
 export default function VaultPage() {
   const navigate = useNavigate();
@@ -157,9 +242,9 @@ export default function VaultPage() {
   // Everything the SW needs (host copies, mime, file id) is embedded in the
   // query string so the stream handler does NOT hit the Neon DB on every video
   // Range request (a DB round-trip per request is what made it "load forever").
-  const getVaultStreamUrl = (item) => {
+  const getVaultStreamUrl = (item, copiesOverride) => {
     if (!item?.encryptedBlobUrl || !item?.id) return '';
-    const fresh = freshStreamCopies[item.id];
+    const fresh = Array.isArray(copiesOverride) && copiesOverride.length > 0 ? copiesOverride : freshStreamCopies[item.id];
     const copies = Array.isArray(fresh) && fresh.length > 0
       ? fresh
       : (Array.isArray(item.encryptedBlobHosts) && item.encryptedBlobHosts.length > 0
@@ -171,6 +256,53 @@ export default function VaultPage() {
       copies: JSON.stringify(copies),
     });
     return chrome.runtime.getURL(`vault-stream/${encodeURIComponent(item.id)}?${q.toString()}`);
+  };
+
+  const isEncryptedVideoItem = (item) => Boolean(item?.encryptedBlobUrl) && getMediaItemKind(item) === 'video';
+
+  // Stream URL for grid previews: resolve fresh host URLs first (terabox
+  // resolve is slow — page-side, once per item), then build the same
+  // vault-stream URL the detail player uses. State lags, so the resolve's
+  // return value is passed straight through instead of reading state.
+  const getPreviewStreamUrl = async (item) => {
+    let copies = freshStreamCopies[item.id];
+    if (!Array.isArray(copies) || copies.length === 0) {
+      copies = await ensureStreamResolved(item);
+    }
+    if (!Array.isArray(copies) || copies.length === 0) return '';
+    return getVaultStreamUrl(item, copies);
+  };
+
+  const [warmProgress, setWarmProgress] = useState(null); // { done, total, failed } | null
+  const warmAbortRef = useRef(false);
+
+  const warmAllPreviews = async () => {
+    if (warmProgress) {
+      warmAbortRef.current = true;
+      return;
+    }
+    const targets = filteredItems.filter(isEncryptedVideoItem);
+    const uncached = [];
+    for (const item of targets) {
+      if (!(await getCachedVaultPreview(item))) uncached.push(item);
+    }
+    if (uncached.length === 0) {
+      showToast('All video previews are already cached.', 'info');
+      return;
+    }
+    setWarmProgress({ done: 0, total: uncached.length, failed: 0 });
+    let failed = 0;
+    for (const item of uncached) {
+      if (warmAbortRef.current) break;
+      try {
+        await requestVaultPreview(item, { getStreamUrl: getPreviewStreamUrl });
+      } catch {
+        failed += 1;
+      }
+      setWarmProgress((prev) => (prev ? { ...prev, done: prev.done + 1, failed } : prev));
+    }
+    warmAbortRef.current = false;
+    setWarmProgress(null);
   };
 
   // Decrypt blob on demand when an encrypted item is selected. Legacy
@@ -982,6 +1114,21 @@ export default function VaultPage() {
         renderLockedState()
       ) : (
         <main className="relative z-10 px-4 sm:px-6 pb-24">
+          {filteredItems.some(isEncryptedVideoItem) && (
+            <div className="flex items-center justify-end gap-3 mb-4">
+              {warmProgress && (
+                <span className="text-xs" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.6)' }}>
+                  previews {warmProgress.done}/{warmProgress.total}{warmProgress.failed > 0 ? ` · ${warmProgress.failed} failed` : ''}
+                </span>
+              )}
+              <button type="button" onClick={warmAllPreviews} className="g-action" style={{ height: 34, padding: '0 12px', fontSize: 12 }}>
+                {warmProgress
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Film className="h-3.5 w-3.5 transition-transform duration-300 hover:rotate-6 hover:scale-110" />}
+                {warmProgress ? 'Stop warming' : 'Warm previews'}
+              </button>
+            </div>
+          )}
           {loading ? (
             <div className="flex min-h-[40vh] items-center justify-center">
               <Spinner size="lg" />
@@ -1031,9 +1178,13 @@ export default function VaultPage() {
 
                         <div className="g-card">
                           {item.encryptedBlobUrl ? (
-                            <div className="relative w-full aspect-video flex items-center justify-center" style={{ background: 'var(--color-base-200)', color: 'oklch(from var(--color-base-content) l c h / 0.4)' }}>
-                              <LockKeyhole className="h-10 w-10" />
-                            </div>
+                            kind === 'Video' ? (
+                              <VaultEncryptedVideoThumb item={item} getStreamUrl={getPreviewStreamUrl} />
+                            ) : (
+                              <div className="relative w-full aspect-video flex items-center justify-center" style={{ background: 'var(--color-base-200)', color: 'oklch(from var(--color-base-content) l c h / 0.4)' }}>
+                                <LockKeyhole className="h-10 w-10" />
+                              </div>
+                            )
                           ) : (
                           <>
                           {!loadedImages.has(item.id) && kind === 'Image' && (

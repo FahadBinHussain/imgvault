@@ -249,7 +249,9 @@ export function getMediaItemKind(item = {}) {
   if (fileType.startsWith('image/') && !hasVideoLinks) return MEDIA_KIND_IMAGE;
   if (
     isTruthyFlag(item?.isVideo) ||
+    isTruthyFlag(item?._decryptedMeta?.isVideo) ||
     fileType.startsWith('video/') ||
+    String(item?.encryptedMimeType || '').toLowerCase().startsWith('video/') ||
     item?.duration ||
     hasVideoLinks
   ) {
