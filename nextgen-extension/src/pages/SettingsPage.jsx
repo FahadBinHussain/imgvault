@@ -345,7 +345,7 @@ export default function SettingsPage() {
       setDownloadFolder(f.dlFolder); setNeonDatabaseUrl(nUrl);
       try {
         const fc = await new Promise(r => chrome.storage.sync.get(['firebaseConfig'], r)).then(r => r.firebaseConfig);
-        if ((nUrl || fc) && (f.pixvid || f.imgbb || f.filemoon || f.udrop1 || f.udrop2 || f.terabox)) {
+        if ((nUrl || fc) && (f.pixvid || f.imgbb || f.filemoon || f.udrop1 || f.udrop2 || f.terabox || f.gallerySrc || f.videoSrc || f.threeDSrc)) {
           setCloudStatus('Syncing...');
           const { StorageManager } = await import('../utils/storage.js');
           const sm = new StorageManager(); await sm.init();
