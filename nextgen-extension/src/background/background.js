@@ -2234,7 +2234,12 @@ class ImgVaultServiceWorker {
 
       case 'restoreFromTrash':
         this.storage.restoreFromTrash(request.data.id)
-          .then(() => sendResponse({ success: true }))
+          // restoreFromTrash returns FALSE (not throw) when the id is not in
+          // the trash — report it loudly instead of a fake success (2.12.77:
+          // the trash card vanished while the row stayed deleted).
+          .then((restored) => sendResponse(restored === false
+            ? { success: false, error: 'Restore failed: item was not found in the trash' }
+            : { success: true }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 

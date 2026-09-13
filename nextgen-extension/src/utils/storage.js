@@ -1374,6 +1374,17 @@ export class StorageManager {
       
       // Store collectionId before restoring (for count increment)
       const collectionId = imageData.collectionId;
+
+      // Vault items are un-vaulted before entering the trash, so restore must
+      // re-vault anything that still carries an encrypted blob — otherwise it
+      // lands as an encrypted .bin with no provider URLs, invisible in both
+      // gallery and vault (2.12.77).
+      const wasVaultItem = Boolean(imageData.encryptedBlobUrl);
+      if (wasVaultItem) {
+        imageData.isVaulted = true;
+        imageData.vaultMode = 'hidden';
+        imageData.vaultedAt = new Date().toISOString();
+      }
       
       // Convert internalAddedTimestamp back to Date object if it's a string
       if (imageData.internalAddedTimestamp && typeof imageData.internalAddedTimestamp === 'string') {
@@ -2554,7 +2565,20 @@ export class StorageManager {
     if (!current) return false;
     const sql = this.ensureNeonReady();
     await sql`update public.media_items set deleted_at = null, updated_at = now() where id = ${id}`;
-    if (current.collectionId) {
+    // Vault items are un-vaulted before entering the trash (deleteVaultItemNeon),
+    // so a plain restore leaves an encrypted .bin with NO provider URLs —
+    // invisible in both gallery and vault ("item vanished" bug, 2.12.77).
+    // Re-vault it so restore puts it back where it came from.
+    const wasVaultItem = Boolean(current.encryptedBlobUrl);
+    if (wasVaultItem) {
+      await this.updateImageNeon(id, {
+        isVaulted: true,
+        vaultMode: 'hidden',
+        vaultedAt: new Date().toISOString(),
+      });
+    }
+    // Vaulted items are excluded from collection counts, same as the delete side.
+    if (current.collectionId && !wasVaultItem) {
       await this.incrementCollectionCountNeon(current.collectionId, 1);
     }
     return true;
