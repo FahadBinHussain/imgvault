@@ -40,6 +40,7 @@ import {
 } from '../utils/udropApi';
 import {
   checkFilemoonIntegrity,
+  deleteFilemoonFile,
 } from '../utils/filemoonApi';
 import {
   checkTeraBoxIntegrity,
@@ -2219,6 +2220,34 @@ export default function ResolvePage() {
                                     {linkingExtra[linkKey] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
                                     {linkingExtra[linkKey] ? 'Linking...' : 'Link to item'}
                                   </Button>
+                                  <Button
+                                    variant="outline"
+                                    className="h-9 justify-center gap-2 border-error/30 text-sm text-error hover:bg-error/10"
+                                    disabled={Boolean(deletingOrphans[`fm:${fc}`])}
+                                    onClick={async () => {
+                                      if (!confirm(`Delete "${fc}" from Filemoon? This is permanent.`)) return;
+                                      setDeletingOrphans((prev) => ({ ...prev, [`fm:${fc}`]: true }));
+                                      try {
+                                        await deleteFilemoonFile(settings.filemoonApiKey, fc);
+                                        setFilemoonIntegrity((prev) => ({
+                                          ...prev,
+                                          extra: prev.extra.filter((e) => String(e.file?.file_code || e.file?.filecode) !== fc),
+                                        }));
+                                        setNotice({ type: 'success', message: `Deleted orphan file "${fc}" from Filemoon.` });
+                                      } catch (err) {
+                                        setNotice({ type: 'error', message: `Failed to delete: ${err.message || err}` });
+                                      } finally {
+                                        setDeletingOrphans((prev) => {
+                                          const next = { ...prev };
+                                          delete next[`fm:${fc}`];
+                                          return next;
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    {deletingOrphans[`fm:${fc}`] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                    {deletingOrphans[`fm:${fc}`] ? 'Deleting...' : 'Delete'}
+                                  </Button>
                                 </>
                               );
                             })()}
@@ -2611,6 +2640,42 @@ export default function ResolvePage() {
                                     {linkingExtra[linkKey] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
                                     {linkingExtra[linkKey] ? 'Linking...' : 'Link to item'}
                                   </Button>
+                                  {file.path && (
+                                    <Button
+                                      variant="outline"
+                                      className="h-9 justify-center gap-2 border-error/30 text-sm text-error hover:bg-error/10"
+                                      disabled={Boolean(deletingOrphans[String(file.fs_id || file.path)])}
+                                      onClick={async () => {
+                                        const delKey = String(file.fs_id || file.path);
+                                        if (!confirm(`Move "${title}" to the TeraBox recycle bin?`)) return;
+                                        setDeletingOrphans((prev) => ({ ...prev, [delKey]: true }));
+                                        try {
+                                          await deleteTeraBoxFiles(settings.teraboxCookie, [file.path]);
+                                          setTeraBoxIntegrity((prev) => ({
+                                            ...prev,
+                                            extra: prev.extra.filter((e) => String(e.file?.fs_id || e.file?.path) !== delKey),
+                                          }));
+                                          setNotice({ type: 'success', message: `Moved orphan "${title}" to the TeraBox recycle bin (recoverable there).` });
+                                        } catch (err) {
+                                          setNotice({ type: 'error', message: `Delete failed: ${err.message || err}` });
+                                        } finally {
+                                          setDeletingOrphans((prev) => {
+                                            const next = { ...prev };
+                                            delete next[delKey];
+                                            return next;
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      {deletingOrphans[String(file.fs_id || file.path)] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                      {deletingOrphans[String(file.fs_id || file.path)] ? 'Deleting...' : 'Delete'}
+                                    </Button>
+                                  )}
+                                  {!file.path && (
+                                    <div className="rounded-[var(--radius-box)] border border-error/25 bg-error/10 px-3 py-2 text-xs text-error">
+                                      No exact path in the listing — refusing to delete by name alone. Re-run Check TeraBox.
+                                    </div>
+                                  )}
                                 </>
                               );
                             })()}
