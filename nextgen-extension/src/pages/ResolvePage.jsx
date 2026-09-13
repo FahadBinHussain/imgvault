@@ -386,6 +386,13 @@ export default function ResolvePage() {
     }
   }, [activeTab, videoSubTab, udropLoading, udropHasChecked, runUdropIntegrityCheck]);
 
+  // Notices are scoped to the check that set them — carrying a stale "3D
+  // check" toast onto the video tab (or a video toast onto scenes) made two
+  // different results look like contradictory numbers for the same check.
+  useEffect(() => {
+    setNotice(null);
+  }, [activeTab, videoSubTab, sceneSubTab]);
+
   // ---- Filemoon integrity helpers ----
   const checkFilemoonKeysConfigured = useCallback(() => {
     const configured = hasText(settings?.filemoonApiKey);
@@ -1589,7 +1596,11 @@ export default function ResolvePage() {
             )}
 
             {notice && activeTab === 'videos' && videoSubTab === 'udrop' && (
-              <div className="rounded-[var(--radius-box)] border border-error/25 bg-error/10 px-4 py-3 text-sm font-medium text-error">
+              <div className={`rounded-[var(--radius-box)] border px-4 py-3 text-sm font-medium ${
+                notice.type === 'success'
+                  ? 'border-success/25 bg-success/10 text-success'
+                  : 'border-error/25 bg-error/10 text-error'
+              }`}>
                 {notice.message}
               </div>
             )}
