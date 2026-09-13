@@ -228,6 +228,16 @@ function udropUrlsOfItem(item) {
   ].filter(Boolean);
 }
 
+// 3D scene files (.spz + companion textures) are integrity-tracked ONLY on the
+// 3D Scene Hosts tab. Without this the video tabs double-count every scene
+// file as "extra" (2.12.79).
+export const MODEL_EXT_RE = /\.(spz|glb|gltf|obj|fbx|stl|3mf|usdz|usd|blend|dae|ply|abc|bvh)$/i;
+export const SCENE_TEXTURE_EXT_RE = /\.(webp|png|jpg|jpeg|gif|bmp|tiff|tga|exr|hdr)$/i;
+export function is3DSceneFamilyFile(fileName) {
+  const name = String(fileName || '');
+  return MODEL_EXT_RE.test(name) || SCENE_TEXTURE_EXT_RE.test(name);
+}
+
 /**
  * Full UDrop integrity check.
  * Uses /folder/listing to get ALL files, then compares against DB items.
@@ -289,6 +299,8 @@ export async function checkUdropIntegrity(items, allItems, accessToken, accountI
     udropUrlsOfItem(item).map(extractUdropCode).filter(Boolean).forEach((c) => referencedCodes.add(c));
   }
   for (const file of udropFiles) {
+    const name = String(file.name || file.filename || '');
+    if (is3DSceneFamilyFile(name)) continue;
     const code = file.short_url || file.shortUrl || '';
     const fileId = String(file.file_id || file.id || '');
     const isReferenced = referencedCodes.has(code) || referencedCodes.has(fileId);
@@ -370,7 +382,6 @@ export async function checkSceneIntegrity(items, allItems, accessToken, accountI
     }
   }
 
-  const TEXTURE_EXT_RE = /\.(webp|png|jpg|jpeg|gif|bmp|tiff|tga|exr|hdr)$/i;
   const stemOf = (name) => String(name || '').split('/').pop().replace(/\.[^.]+$/, '').toLowerCase();
   const coreOf = (stem) => String(stem || '').split('_').pop().split('-').pop();
   const isOrphanFile = (file) => {
@@ -385,8 +396,8 @@ export async function checkSceneIntegrity(items, allItems, accessToken, accountI
   for (const file of udropFiles) {
     if (!isOrphanFile(file)) continue;
     const name = String(file.name || file.filename || '');
-    if (name.toLowerCase().endsWith('.spz')) spzOrphans.push(file);
-    else if (TEXTURE_EXT_RE.test(name)) textureOrphans.push(file);
+    if (MODEL_EXT_RE.test(name)) spzOrphans.push(file);
+    else if (SCENE_TEXTURE_EXT_RE.test(name)) textureOrphans.push(file);
   }
   const usedTextureIdx = new Set();
   for (const spzFile of spzOrphans) {

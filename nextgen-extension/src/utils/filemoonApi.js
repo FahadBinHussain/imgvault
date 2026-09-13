@@ -144,6 +144,9 @@ export async function deleteFilemoonFile(apiKey, filecode) {
 
 /**
  * Full Filemoon integrity check.
+ * Listing failures THROW — a partial/empty listing flips every healthy video
+ * to "broken" (the 2.12.78 udrop failure mode); per-file probing is NOT a
+ * fallback, the check either has the full account list or reports nothing.
  * @param {Array} items - DB media items with filemoonUrl/filemoonWatchUrl/filemoonDirectUrl
  * @param {string} apiKey
  * @returns {Promise<{found:[],missing:[],noUrl:[],extra:[]}>}
@@ -154,21 +157,13 @@ export async function checkFilemoonIntegrity(items, apiKey) {
   const noUrl = [];
   const extra = [];
 
-  let filemoonFiles = [];
-  let filemoonMap = new Map();
-  let listingSucceeded = false;
-
-  try {
-    filemoonFiles = await listAllFilemoonFiles(apiKey);
-    for (const f of filemoonFiles) {
-      const code = f.file_code || f.filecode || '';
-      if (code) filemoonMap.set(code, f);
-    }
-    listingSucceeded = true;
-    console.log(`[filemoonApi] Listed ${filemoonFiles.length} Filemoon files.`);
-  } catch (err) {
-    console.warn('[filemoonApi] /file/list failed, falling back to per-file checks:', err.message);
+  const filemoonFiles = await listAllFilemoonFiles(apiKey);
+  const filemoonMap = new Map();
+  for (const f of filemoonFiles) {
+    const code = f.file_code || f.filecode || '';
+    if (code) filemoonMap.set(code, f);
   }
+  console.log(`[filemoonApi] Listed ${filemoonFiles.length} Filemoon files.`);
 
   const dbCodes = new Set();
 
@@ -199,20 +194,7 @@ export async function checkFilemoonIntegrity(items, apiKey) {
 
     uniqueCodes.forEach((c) => dbCodes.add(c));
 
-    let matchedFile = null;
-    if (listingSucceeded) {
-      matchedFile = uniqueCodes.map((code) => filemoonMap.get(code)).find(Boolean) || null;
-    }
-
-    if (!matchedFile && !listingSucceeded) {
-      for (const code of uniqueCodes) {
-        const info = await getFilemoonFileInfo(apiKey, code);
-        if (info) {
-          matchedFile = { file_code: code, ...info };
-          break;
-        }
-      }
-    }
+    const matchedFile = uniqueCodes.map((code) => filemoonMap.get(code)).find(Boolean) || null;
 
     if (matchedFile) {
       found.push({ item, codes: uniqueCodes, matchedFile });
@@ -221,12 +203,10 @@ export async function checkFilemoonIntegrity(items, apiKey) {
     }
   }
 
-  if (listingSucceeded) {
-    for (const file of filemoonFiles) {
-      const code = file.file_code || file.filecode || '';
-      if (code && !dbCodes.has(code)) {
-        extra.push({ file });
-      }
+  for (const file of filemoonFiles) {
+    const code = file.file_code || file.filecode || '';
+    if (code && !dbCodes.has(code)) {
+      extra.push({ file });
     }
   }
 

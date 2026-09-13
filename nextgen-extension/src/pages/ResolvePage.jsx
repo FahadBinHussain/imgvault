@@ -373,6 +373,8 @@ export default function ResolvePage() {
       });
     } catch (err) {
       setUdropError(err.message || String(err));
+      // never show stale counts alongside a fresh loud error
+      setUdropIntegrity({ found: [], missing: [], noUrl: [], extra: [] });
     } finally {
       setUdropLoading(false);
       setUdropHasChecked(true);
@@ -441,6 +443,7 @@ export default function ResolvePage() {
       });
     } catch (err) {
       setFilemoonError(err.message || String(err));
+      setFilemoonIntegrity({ found: [], missing: [], noUrl: [], extra: [] });
     } finally {
       setFilemoonLoading(false);
       setFilemoonHasChecked(true);
@@ -490,7 +493,7 @@ export default function ResolvePage() {
         return isVideo || hasTeraBox;
       });
 
-      const result = await checkTeraBoxIntegrity(videoItems, settings.teraboxCookie, (p) => {
+      const result = await checkTeraBoxIntegrity(videoItems, allVideoItems, settings.teraboxCookie, (p) => {
         setTeraBoxLoadingMessage(p.phase === 'token' ? 'Resolving TeraBox session…' : `Listing ${p.folder || '/'}… ${p.files} files so far`);
       });
       setTeraBoxLoadingMessage(null);
@@ -502,6 +505,7 @@ export default function ResolvePage() {
     } catch (err) {
       setTeraBoxLoadingMessage(null);
       setTeraBoxError(err.message || String(err));
+      setTeraBoxIntegrity({ found: [], missing: [], noUrl: [], extra: [] });
     } finally {
       setTeraBoxLoading(false);
       setTeraboxHasChecked(true);
@@ -956,6 +960,7 @@ export default function ResolvePage() {
       if (seq !== sceneCheckSeqRef.current) return;
       setSceneLoadingMessage(null);
       setSceneError(err.message || String(err));
+      setSceneIntegrity({ found: [], missing: [], noUrl: [], extra: [] });
     } finally {
       if (seq === sceneCheckSeqRef.current) {
         setSceneLoading(false);

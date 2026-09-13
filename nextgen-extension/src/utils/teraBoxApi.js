@@ -8,6 +8,7 @@
  */
 
 import { getVideoProviderLinks } from './videoProviderLinks.js';
+import { MODEL_EXT_RE, SCENE_TEXTURE_EXT_RE } from './udropApi.js';
 
 const TERABOX_API_BASE = 'https://dm.terabox.com';
 // Only the dm homepage moved to a captcha gate (breaks jsToken scraping), so
@@ -372,14 +373,36 @@ async function listTeraBoxFolder(cookie, jsToken, dir = '/', onPage) {
       num: String(num),
       page: String(page),
     });
-    if (!json || json.errno !== 0 || !Array.isArray(json.list)) break;
+    // Partial/failed listings are never usable for integrity counts — every
+    // file beyond the failure point would flip healthy items to "broken"
+    // (same failure mode as the 2.12.78 udrop storm). Fail loud instead.
+    if (!json) throw new Error(`TeraBox /api/list returned no response for ${dir} page ${page}.`);
+    if (json.errno !== 0 || !Array.isArray(json.list)) {
+      throw new Error(`TeraBox /api/list failed for ${dir} page ${page}: errno=${json.errno}${json.errmsg ? ` (${String(json.errmsg).slice(0, 80)})` : ''}`);
+    }
     all.push(...json.list);
     try { onPage?.({ dir, page, pageCount: all.length }); } catch (_) {}
     if (json.list.length < num) break;
     page += 1;
-    if (page > 100) break; // safety: never loop forever
+    if (page > 100) throw new Error(`TeraBox /api/list exceeded 100 pages for ${dir} — aborting with no counts rather than a truncated listing.`);
   }
   return all;
+}
+
+/**
+ * Root-folder list for the RESOLVER helpers (thumbnail/playback URL refresh).
+ * These run in the vault-stream hot path where the established contract is
+ * "return '' when unavailable" and the failure surfaces loudly upstream, so
+ * a listing error here must not throw — integrity checks use
+ * listAllTeraBoxFiles, which propagates failures on purpose.
+ */
+async function listTeraBoxFolderSafe(auth) {
+  try {
+    return await listTeraBoxFolder(auth.cookie, auth.jsToken, '/');
+  } catch (err) {
+    console.warn(`[teraBoxApi] root listing failed in resolver: ${err.message}`);
+    return [];
+  }
 }
 
 /**
@@ -463,7 +486,7 @@ export async function resolveTeraBoxThumbnail(explicitCookie, fsId) {
     return '';
   }
   if (!auth) return '';
-  const entries = await listTeraBoxFolder(auth.cookie, auth.jsToken, '/');
+  const entries = await listTeraBoxFolderSafe(auth);
   for (const entry of entries) {
     if (entry.isdir === 1) continue;
     if (String(entry.fs_id) !== target) continue;
@@ -497,7 +520,7 @@ export async function resolveTeraBoxPlaybackUrl(explicitCookie, fsId, fileName =
     if (_teraBoxFsPathCache.has(target)) {
       path = _teraBoxFsPathCache.get(target);
     } else {
-      const entries = await listTeraBoxFolder(auth.cookie, auth.jsToken, '/');
+      const entries = await listTeraBoxFolderSafe(auth);
       const hit = entries.find((entry) => entry.isdir !== 1 && String(entry.fs_id) === target);
       path = String(hit?.path || '');
       if (!path && fileName) {
@@ -507,7 +530,7 @@ export async function resolveTeraBoxPlaybackUrl(explicitCookie, fsId, fileName =
       if (path) _teraBoxFsPathCache.set(target, path);
     }
   } else if (fileName) {
-    const entries = await listTeraBoxFolder(auth.cookie, auth.jsToken, '/');
+    const entries = await listTeraBoxFolderSafe(auth);
     const byName = entries.find((entry) => entry.isdir !== 1 && String(entry.server_filename || '') === String(fileName));
     path = String(byName?.path || '');
   }
@@ -525,26 +548,81 @@ export async function resolveTeraBoxPlaybackUrl(explicitCookie, fsId, fileName =
 }
 
 /**
- * Full TeraBox integrity check.
- * @param {Array} items - DB media items (live + vaulted merged)
+ * Every way an item can point at a TeraBox file: provider links (incl. the
+ * nested extraMetadata copy), legacy columns, dlink ?fid= segments, scene
+ * spz/texture refs, sceneFiles records, and the vault encrypted blob.
+ * Shared by both integrity passes so a file counts as referenced in the
+ * video tab exactly when the scene/vault tab considers it linked.
+ */
+export const baseNameOfTeraBoxUrl = (u) => {
+  try {
+    const s = String(u || '').split('?')[0];
+    const b = s.split('/').pop();
+    return b ? decodeURIComponent(b) : '';
+  } catch (_) { return ''; }
+};
+// TeraBox dlinks embed the file id: ?fid=<vuk>-<app>-<fs_id> — the trailing
+// numeric segment IS the fs_id (verified against the DB 2026-09-09). Exact,
+// unlike basename matching on opaque /file/<hash> dlink paths.
+export const teraBoxFsIdFromUrl = (u) => {
+  try {
+    const m = String(u || '').match(/[?&]fid=([^&#]+)/);
+    if (!m) return '';
+    const parts = decodeURIComponent(m[1]).split('-');
+    const last = parts[parts.length - 1];
+    return /^\d+$/.test(last || '') ? last : '';
+  } catch (_) { return ''; }
+};
+export function collectTeraBoxRefs(item, idSet, nameSet) {
+  if (!item) return;
+  let links = {};
+  try {
+    links = getVideoProviderLinks(item)?.terabox || {};
+  } catch (_) {}
+  if (item?.videoHosts?.terabox) links = { ...links, ...item.videoHosts.terabox };
+  const extraLinks = item?.extraMetadata?.videoHosts?.terabox || {};
+  const addId = (v) => { if (v) idSet.add(String(v)); };
+  const addName = (v) => { if (v) nameSet.add(String(v)); };
+  addId(links.fileId || links.fs_id || extraLinks.fileId || extraLinks.fs_id || item.teraboxFileId || item.textureFileId || item.encryptedBlobFileId);
+  addName(links.filename || extraLinks.filename || item.teraboxFileName || item.fileName);
+  for (const u of [
+    links.watchUrl, links.directUrl, links.url,
+    extraLinks.watchUrl, extraLinks.directUrl, extraLinks.url,
+    item.teraboxWatchUrl, item.teraboxDirectUrl, item.teraboxUrl,
+    item.spzUrl, item.textureUrl,
+    item.encryptedBlobUrl, item.extraMetadata?.encryptedBlobUrl,
+  ]) {
+    addId(teraBoxFsIdFromUrl(u));
+    addName(baseNameOfTeraBoxUrl(u));
+  }
+  const sf = item?.extraMetadata?.sceneFiles || {};
+  for (const part of [sf.spz, sf.texture]) {
+    if (!part) continue;
+    addId(part.fileId);
+    addName(part.filename);
+  }
+}
+
+/**
+ * Full TeraBox integrity check (video tab).
+ * Listing failures THROW — a partial/empty listing flips every healthy video
+ * to "broken" (the 2.12.78 udrop failure mode). 3D scene files (.spz +
+ * textures) and every file referenced by any DB item (videos, scenes, link
+ * items, vault blobs) are excluded from the extra list — 3D items are
+ * integrity-tracked on the 3D Scene Hosts tab only (2.12.79).
+ * @param {Array} items - video DB items (live + vaulted merged, scenes excluded by caller)
+ * @param {Array} allItems - every DB item, for the referenced set
  * @param {string} cookie
  * @returns {Promise<{found:[],missing:[],noUrl:[],extra:[]}>}
  */
-export async function checkTeraBoxIntegrity(items, cookie, onProgress) {
+export async function checkTeraBoxIntegrity(items, allItems, cookie, onProgress) {
   const found = [];
   const missing = [];
   const noUrl = [];
   const extra = [];
 
-  let files = [];
-  let listingSucceeded = false;
-  try {
-    files = await listAllTeraBoxFiles(cookie, onProgress);
-    listingSucceeded = true;
-    console.log(`[teraBoxApi] Listed ${files.length} TeraBox files.`);
-  } catch (err) {
-    console.warn('[teraBoxApi] list failed:', err.message);
-  }
+  const files = await listAllTeraBoxFiles(cookie, onProgress);
+  console.log(`[teraBoxApi] Listed ${files.length} TeraBox files.`);
 
   const fileMap = new Map();
   for (const f of files) {
@@ -572,31 +650,34 @@ export async function checkTeraBoxIntegrity(items, cookie, onProgress) {
     const fileName = String(links.filename || extraLinks.filename || item.teraboxFileName || item.fileName || '').trim();
 
     if (!hasLink && !fileId) {
-      noUrl.push({ item });
+      noUrl.push({ item, codes: [] });
       continue;
     }
 
-    let matchedFile = null;
-    if (listingSucceeded) {
-      matchedFile = (fileId && fileMap.get(fileId)) || (fileName && fileMap.get(fileName)) || null;
-    }
+    const matchedFile = (fileId && fileMap.get(String(fileId))) || (fileName && fileMap.get(fileName)) || null;
 
-    if (fileId) dbIds.add(fileId);
+    if (fileId) dbIds.add(String(fileId));
     if (fileName) dbNames.add(fileName);
 
     if (matchedFile) {
-      found.push({ item, matchedFile });
+      found.push({ item, codes: [], matchedFile });
     } else {
-      missing.push({ item });
+      missing.push({ item, codes: [] });
     }
   }
 
-  if (listingSucceeded) {
-    for (const file of files) {
-      if (file.fs_id && dbIds.has(file.fs_id)) continue;
-      if (file.server_filename && dbNames.has(file.server_filename)) continue;
-      extra.push({ file });
-    }
+  const referencedIds = new Set();
+  const referencedNames = new Set();
+  for (const item of allItems || []) collectTeraBoxRefs(item, referencedIds, referencedNames);
+  dbIds.forEach((id) => referencedIds.add(id));
+  dbNames.forEach((nm) => referencedNames.add(nm));
+
+  for (const file of files) {
+    const name = String(file.server_filename || '');
+    if (MODEL_EXT_RE.test(name) || SCENE_TEXTURE_EXT_RE.test(name)) continue;
+    if (file.fs_id && referencedIds.has(String(file.fs_id))) continue;
+    if (name && referencedNames.has(name)) continue;
+    extra.push({ file });
   }
 
   return { found, missing, noUrl, extra };
@@ -692,6 +773,7 @@ export async function deleteTeraBoxFiles(explicitCookie, paths) {
 /**
  * TeraBox 3D scene integrity check — symmetric to UDrop checkSceneIntegrity.
  * Scenes are .spz files; video files must never show as scene orphans.
+ * Listing failures THROW — never report health from a partial/empty listing.
  * @param {Array} items – scene DB items (filtered)
  * @param {Array} allItems – every DB item; their terabox ids/names are excluded
  *                           from the extra list so videos don't show as scene orphans
@@ -704,15 +786,8 @@ export async function checkTeraBoxSceneIntegrity(items, allItems, cookie, onProg
   const noUrl = [];
   const extra = [];
 
-  let files = [];
-  let listingSucceeded = false;
-  try {
-    files = await listAllTeraBoxFiles(cookie, onProgress);
-    listingSucceeded = true;
-    console.log(`[teraBoxApi] Scene check: listed ${files.length} TeraBox files.`);
-  } catch (err) {
-    console.warn('[teraBoxApi] scene listing failed:', err.message);
-  }
+  const files = await listAllTeraBoxFiles(cookie, onProgress);
+  console.log(`[teraBoxApi] Scene check: listed ${files.length} TeraBox files.`);
 
   const fileMap = new Map();
   for (const f of files) {
@@ -720,63 +795,12 @@ export async function checkTeraBoxSceneIntegrity(items, allItems, cookie, onProg
     if (f.server_filename) fileMap.set(String(f.server_filename), f);
   }
 
-  // Ids/names referenced by ANY item (videos included) never count as scene orphans.
-  // Scene uploads store the companion texture ONLY as textureUrl (+ sizes), so
-  // its basename + saved sceneFiles refs must count too — otherwise every
-  // scene thumbnail shows up as a standalone "extra" (2.12.53).
-  const baseNameOf = (u) => {
-    try {
-      const s = String(u || '').split('?')[0];
-      const b = s.split('/').pop();
-      return b ? decodeURIComponent(b) : '';
-    } catch (_) { return ''; }
-  };
-  // TeraBox dlinks embed the file id: ?fid=<vuk>-<app>-<fs_id> — the trailing
-  // numeric segment IS the fs_id (verified against the DB 2026-09-09: the
-  // scene texture dlink ends in the thumbnail's fs_id). This is exact, unlike
-  // basename matching on opaque /file/<hash> dlink paths.
-  const teraBoxFsIdFromUrl = (u) => {
-    try {
-      const m = String(u || '').match(/[?&]fid=([^&#]+)/);
-      if (!m) return '';
-      const parts = decodeURIComponent(m[1]).split('-');
-      const last = parts[parts.length - 1];
-      return /^\d+$/.test(last || '') ? last : '';
-    } catch (_) { return ''; }
-  };
-  const collectTextureRefs = (item, idSet, nameSet) => {
-    if (!item) return;
-    const texNm = baseNameOf(item.textureUrl);
-    if (texNm) nameSet.add(texNm);
-    const texFid = teraBoxFsIdFromUrl(item.textureUrl);
-    if (texFid) idSet.add(texFid);
-    if (item.textureFileId) idSet.add(String(item.textureFileId));
-    const sf = item?.extraMetadata?.sceneFiles || {};
-    for (const part of [sf.spz, sf.texture]) {
-      if (!part) continue;
-      if (part.fileId) idSet.add(String(part.fileId));
-      if (part.filename) nameSet.add(String(part.filename));
-    }
-  };
+  // Ids/names referenced by ANY item (videos and vault blobs included) never
+  // count as scene orphans. Scene uploads store the companion texture ONLY as
+  // textureUrl (+ sizes) or sceneFiles refs, so those must count too (2.12.53).
   const referencedIds = new Set();
   const referencedNames = new Set();
-  for (const item of allItems || []) {
-    if (!item) continue;
-    const fid = extractTeraBoxFileId(item);
-    if (fid) referencedIds.add(String(fid));
-    let mergedLinks = {};
-    try {
-      mergedLinks = getVideoProviderLinks(item || {})?.terabox || {};
-    } catch (_) {}
-    const extraLinks = item?.extraMetadata?.videoHosts?.terabox || {};
-    const nm = String(mergedLinks.filename || extraLinks.filename || item.teraboxFileName || item.fileName || '').trim();
-    if (nm) referencedNames.add(nm);
-    for (const u of [mergedLinks.watchUrl, mergedLinks.directUrl, mergedLinks.url, extraLinks.watchUrl, extraLinks.directUrl, extraLinks.url, item.teraboxWatchUrl, item.teraboxDirectUrl, item.teraboxUrl, item.spzUrl]) {
-      const f = teraBoxFsIdFromUrl(u);
-      if (f) referencedIds.add(f);
-    }
-    collectTextureRefs(item, referencedIds, referencedNames);
-  }
+  for (const item of allItems || []) collectTeraBoxRefs(item, referencedIds, referencedNames);
 
   const dbIds = new Set();
   const dbNames = new Set();
@@ -790,17 +814,17 @@ export async function checkTeraBoxSceneIntegrity(items, allItems, cookie, onProg
     } catch (_) {}
     const extraLinks = item?.extraMetadata?.videoHosts?.terabox || {};
     // Both files are part of 1 scene — treat spz + texture as a pair (2.12.58)
-    const spzFid = extractTeraBoxFileId(item) || teraBoxFsIdFromUrl(item.spzUrl) || '';
+    const spzFid = extractTeraBoxFileId(item) || teraBoxFsIdFromUrl(item.spzUrl) || String(item.extraMetadata?.sceneFiles?.terabox?.spz?.fileId || '').trim();
     const texFid = teraBoxFsIdFromUrl(item.textureUrl) || String(item.textureFileId || item.extraMetadata?.sceneFiles?.texture?.fileId || '').trim();
     const spzName = String(links.filename || extraLinks.filename || item.teraboxFileName || item.fileName || '').trim();
-    const texName = baseNameOf(item.textureUrl);
+    const texName = baseNameOfTeraBoxUrl(item.textureUrl);
     // Also consider sceneFiles for texture names
     const sceneTexName = String(item.extraMetadata?.sceneFiles?.texture?.filename || '').trim();
     const effectiveTexName = texName || sceneTexName;
     // Keep legacy single-file vars for dbSets
     const fileId = spzFid;
     const fileName = spzName;
-    collectTextureRefs(item, dbIds, dbNames);
+    collectTeraBoxRefs(item, dbIds, dbNames);
     if (texFid) dbIds.add(String(texFid));
     if (effectiveTexName) dbNames.add(effectiveTexName);
     if (spzFid) dbIds.add(String(spzFid));
@@ -828,19 +852,17 @@ export async function checkTeraBoxSceneIntegrity(items, allItems, cookie, onProg
 
     let spzMatched = null;
     let texMatched = null;
-    if (listingSucceeded) {
-      if (spzFid) spzMatched = fileMap.get(String(spzFid)) || null;
-      if (!spzMatched && spzName) spzMatched = fileMap.get(spzName) || null;
-      if (!spzMatched && item.spzUrl) {
-        const fidFromSpzUrl = teraBoxFsIdFromUrl(item.spzUrl);
-        if (fidFromSpzUrl) spzMatched = fileMap.get(String(fidFromSpzUrl)) || spzMatched;
-      }
-      if (texFid) texMatched = fileMap.get(String(texFid)) || null;
-      if (!texMatched && effectiveTexName) texMatched = fileMap.get(effectiveTexName) || null;
-      if (!texMatched && item.textureUrl) {
-        const fidFromTexUrl = teraBoxFsIdFromUrl(item.textureUrl);
-        if (fidFromTexUrl) texMatched = fileMap.get(String(fidFromTexUrl)) || texMatched;
-      }
+    if (spzFid) spzMatched = fileMap.get(String(spzFid)) || null;
+    if (!spzMatched && spzName) spzMatched = fileMap.get(spzName) || null;
+    if (!spzMatched && item.spzUrl) {
+      const fidFromSpzUrl = teraBoxFsIdFromUrl(item.spzUrl);
+      if (fidFromSpzUrl) spzMatched = fileMap.get(String(fidFromSpzUrl)) || spzMatched;
+    }
+    if (texFid) texMatched = fileMap.get(String(texFid)) || null;
+    if (!texMatched && effectiveTexName) texMatched = fileMap.get(effectiveTexName) || null;
+    if (!texMatched && item.textureUrl) {
+      const fidFromTexUrl = teraBoxFsIdFromUrl(item.textureUrl);
+      if (fidFromTexUrl) texMatched = fileMap.get(String(fidFromTexUrl)) || texMatched;
     }
 
     const needsSpz = Boolean(spzFid || spzName || item.spzUrl);
@@ -853,8 +875,6 @@ export async function checkTeraBoxSceneIntegrity(items, allItems, cookie, onProg
 
     if (allOk && anyOk) {
       found.push({ item, matchedFile, codes: [], spzFid: spzFid || null, texFid: texFid || null, spzMatched, texMatched });
-    } else if (!listingSucceeded) {
-      found.push({ item, matchedFile: null, codes: [], spzFid: spzFid || null, texFid: texFid || null, spzMatched, texMatched });
     } else if (hasTeraboxRef) {
       missing.push({ item, codes: [], spzFid: spzFid || null, texFid: texFid || null, spzMatched, texMatched });
     } else {
@@ -862,44 +882,41 @@ export async function checkTeraBoxSceneIntegrity(items, allItems, cookie, onProg
     }
   }
 
-  if (listingSucceeded) {
-    const TEXTURE_EXT_RE = /\.(webp|png|jpg|jpeg|gif|bmp|tiff|tga|exr|hdr)$/i;
-    const stemOf = (name) => String(name || '').split('/').pop().replace(/\.[^.]+$/, '').toLowerCase();
-    const coreOf = (stem) => String(stem || '').split('_').pop().split('-').pop();
-    const isOrphanFile = (file) => {
-      const fid = String(file.fs_id || '');
-      const name = String(file.server_filename || file.name || '');
-      if ((fid && (dbIds.has(fid) || referencedIds.has(fid))) || (name && (dbNames.has(name) || referencedNames.has(name)))) return false;
-      return true;
-    };
-    const spzOrphans = [];
-    const textureOrphans = [];
-    for (const file of files) {
-      if (!isOrphanFile(file)) continue;
-      const name = String(file.server_filename || file.name || '');
-      if (name.toLowerCase().endsWith('.spz')) spzOrphans.push(file);
-      else if (TEXTURE_EXT_RE.test(name)) textureOrphans.push(file);
-    }
-    const usedTextureIdx = new Set();
-    for (const spzFile of spzOrphans) {
-      const spzStem = stemOf(spzFile.server_filename || spzFile.name || '');
-      const spzCore = coreOf(spzStem);
-      const mates = [];
-      textureOrphans.forEach((texFile, idx) => {
-        if (usedTextureIdx.has(idx)) return;
-        const texStem = stemOf(texFile.server_filename || texFile.name || '');
-        if (texStem === spzStem || texStem === spzCore || spzStem.endsWith(`_${texStem}`) || spzStem.endsWith(`-${texStem}`) || texStem.endsWith(`_${spzCore}`)) {
-          mates.push(texFile);
-          usedTextureIdx.add(idx);
-        }
-      });
-      extra.push({ file: spzFile, textureFiles: mates });
-    }
+  const stemOf = (name) => String(name || '').split('/').pop().replace(/\.[^.]+$/, '').toLowerCase();
+  const coreOf = (stem) => String(stem || '').split('_').pop().split('-').pop();
+  const isOrphanFile = (file) => {
+    const fid = String(file.fs_id || '');
+    const name = String(file.server_filename || file.name || '');
+    if ((fid && (dbIds.has(fid) || referencedIds.has(fid))) || (name && (dbNames.has(name) || referencedNames.has(name)))) return false;
+    return true;
+  };
+  const spzOrphans = [];
+  const textureOrphans = [];
+  for (const file of files) {
+    if (!isOrphanFile(file)) continue;
+    const name = String(file.server_filename || file.name || '');
+    if (MODEL_EXT_RE.test(name)) spzOrphans.push(file);
+    else if (SCENE_TEXTURE_EXT_RE.test(name)) textureOrphans.push(file);
+  }
+  const usedTextureIdx = new Set();
+  for (const spzFile of spzOrphans) {
+    const spzStem = stemOf(spzFile.server_filename || spzFile.name || '');
+    const spzCore = coreOf(spzStem);
+    const mates = [];
     textureOrphans.forEach((texFile, idx) => {
       if (usedTextureIdx.has(idx)) return;
-      extra.push({ file: texFile, textureFiles: [], standaloneTexture: true });
+      const texStem = stemOf(texFile.server_filename || texFile.name || '');
+      if (texStem === spzStem || texStem === spzCore || spzStem.endsWith(`_${texStem}`) || spzStem.endsWith(`-${texStem}`) || texStem.endsWith(`_${spzCore}`)) {
+        mates.push(texFile);
+        usedTextureIdx.add(idx);
+      }
     });
+    extra.push({ file: spzFile, textureFiles: mates });
   }
+  textureOrphans.forEach((texFile, idx) => {
+    if (usedTextureIdx.has(idx)) return;
+    extra.push({ file: texFile, textureFiles: [], standaloneTexture: true });
+  });
 
   return { found, missing, noUrl, extra };
 }
