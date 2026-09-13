@@ -51,10 +51,19 @@ function primaryHost(item) {
 const objectUrlMap = new Map();
 const inflight = new Map();
 const hostState = new Map();
+// Global suspend switch (2.12.75): while the vault detail modal is open, no
+// NEW job may start — its range reads would race the player for terabox's
+// single-use dlink resolves. pumpHost checks this on every drain.
+let paused = false;
+
+export function setVaultPreviewPaused(next) {
+  paused = Boolean(next);
+  if (!paused) hostState.forEach((_state, host) => pumpHost(host));
+}
 
 function pumpHost(host) {
   const st = hostState.get(host);
-  if (!st) return;
+  if (!st || paused) return;
   const limit = HOST_CONCURRENCY[host] ?? 2;
   while (st.running < limit && st.queue.length > 0) {
     const job = st.queue.shift();

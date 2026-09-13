@@ -52,7 +52,7 @@ import {
   clearVaultMasterKey,
   importMasterKeyFromB64,
 } from '../utils/vaultSession.js';
-import { requestVaultPreview, getCachedVaultPreview } from '../utils/vaultPreview.js';
+import { requestVaultPreview, getCachedVaultPreview, setVaultPreviewPaused } from '../utils/vaultPreview.js';
 
 const VAULT_CONFIG_KEY = 'secretVaultConfig';
 const VAULT_SESSION_KEY = 'imgvault-vault-unlocked';
@@ -87,7 +87,10 @@ const saveLocalVaultConfig = (config) => chrome.storage.local.set({ [VAULT_CONFI
 // middle-seek + black-frame retry) the first time it scrolls into view after
 // unlock, then serves it from the IndexedDB thumb cache forever. Failed or
 // still-deriving previews show the spinner / lock tile — never a fake frame.
-function VaultEncryptedVideoThumb({ item, getStreamUrl }) {
+// `paused` must be true while the detail modal is open: a derivation hammering
+// vault-stream ranges competes with the player for terabox's fragile
+// single-use dlink resolves and starves playback (2.12.75 regression fix).
+function VaultEncryptedVideoThumb({ item, getStreamUrl, paused }) {
   const holderRef = useRef(null);
   const [visible, setVisible] = useState(false);
   const [url, setUrl] = useState(null);
@@ -111,7 +114,7 @@ function VaultEncryptedVideoThumb({ item, getStreamUrl }) {
   }, []);
 
   useEffect(() => {
-    if (!visible) return undefined;
+    if (!visible || paused) return undefined;
     let cancelled = false;
     (async () => {
       const cached = await getCachedVaultPreview(item);
@@ -128,7 +131,7 @@ function VaultEncryptedVideoThumb({ item, getStreamUrl }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [visible, item.id]);
+  }, [visible, paused, item.id]);
 
   if (url) {
     return (
@@ -264,17 +267,39 @@ export default function VaultPage() {
   // resolve is slow — page-side, once per item), then build the same
   // vault-stream URL the detail player uses. State lags, so the resolve's
   // return value is passed straight through instead of reading state.
+  // The IVG1 chunked layout is PROBED first: a legacy single-shot blob served
+  // through vault-stream triggers a FULL decrypt of the whole blob in the SW
+  // (background.js legacy branch) — that memory blow-up kills the worker,
+  // wipes vaultMasterKey, and 403s every vault stream (2.12.75 fix).
   const getPreviewStreamUrl = async (item) => {
     let copies = freshStreamCopies[item.id];
     if (!Array.isArray(copies) || copies.length === 0) {
       copies = await ensureStreamResolved(item);
     }
     if (!Array.isArray(copies) || copies.length === 0) return '';
+    const probe = await sendMessage('vaultProbeBlobFormat', {
+      id: item.id,
+      url: copies[0]?.encryptedBlobUrl || item.encryptedBlobUrl,
+      fileId: copies[0]?.encryptedBlobFileId || item.encryptedBlobFileId || '',
+      chunks: item.encryptedBlobChunks || [],
+      vaultHost: copies[0]?.host || item.vaultHost || 'udrop',
+      hostCopies: copies,
+    });
+    if (!probe?.chunked) {
+      throw new Error('legacy (non-chunked) blob — grid preview skipped to avoid full-blob decrypt');
+    }
     return getVaultStreamUrl(item, copies);
   };
 
   const [warmProgress, setWarmProgress] = useState(null); // { done, total, failed } | null
   const warmAbortRef = useRef(false);
+  // Warm loop must yield while the detail modal plays a video (2.12.75): the
+  // loop closure can't see fresh state, so mirror selectedItem in a ref.
+  const modalOpenRef = useRef(false);
+  useEffect(() => {
+    modalOpenRef.current = Boolean(selectedItem);
+    setVaultPreviewPaused(Boolean(selectedItem));
+  }, [selectedItem]);
 
   const warmAllPreviews = async () => {
     if (warmProgress) {
@@ -293,6 +318,10 @@ export default function VaultPage() {
     setWarmProgress({ done: 0, total: uncached.length, failed: 0 });
     let failed = 0;
     for (const item of uncached) {
+      if (warmAbortRef.current) break;
+      while (modalOpenRef.current && !warmAbortRef.current) {
+        await new Promise((r) => setTimeout(r, 500));
+      }
       if (warmAbortRef.current) break;
       try {
         await requestVaultPreview(item, { getStreamUrl: getPreviewStreamUrl });
@@ -1179,7 +1208,7 @@ export default function VaultPage() {
                         <div className="g-card">
                           {item.encryptedBlobUrl ? (
                             kind === 'Video' ? (
-                              <VaultEncryptedVideoThumb item={item} getStreamUrl={getPreviewStreamUrl} />
+                              <VaultEncryptedVideoThumb item={item} getStreamUrl={getPreviewStreamUrl} paused={Boolean(selectedItem)} />
                             ) : (
                               <div className="relative w-full aspect-video flex items-center justify-center" style={{ background: 'var(--color-base-200)', color: 'oklch(from var(--color-base-content) l c h / 0.4)' }}>
                                 <LockKeyhole className="h-10 w-10" />

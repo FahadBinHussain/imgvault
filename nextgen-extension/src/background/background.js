@@ -1592,6 +1592,21 @@ class ImgVaultServiceWorker {
    * @returns {Promise<string>} fresh URL (falls back to the stored URL after
    *   timeout, which will 403 → the caller gets a loud 502).
    */
+  /**
+   * Serialize terabox dlink resolves through a single promise chain.
+   * resolveTeraBoxPlaybackUrl scrapes a jsToken from a hidden tab and hits
+   * /api/filemetas; concurrent runs trip the token/captcha gate and every
+   * caller then falls back to the consumed single-use dlink → 403 cascade.
+   * @param {() => Promise<*>} task
+   * @returns {Promise<*>}
+   */
+  _enqueueTeraBoxResolve(task) {
+    const run = (this._teraboxResolveChain || Promise.resolve())
+      .then(() => task(), () => task());
+    this._teraboxResolveChain = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
   async getFreshVaultStreamUrl(item, copy, fileName, { forceResolve = false, timeoutMs = 0 } = {}) {
     // Page pre-resolved this copy (vaultResolveStreamUrls) — use it directly,
     // never re-run the slow host resolve inside the per-range hot path.
@@ -1602,15 +1617,21 @@ class ImgVaultServiceWorker {
     const key = `${item.id}:${host}`;
     const cached = this.vaultStreamUrlCache?.get(key);
     if (!forceResolve && cached && cached !== copy.encryptedBlobUrl) return cached;
-    const budget = timeoutMs || (forceResolve ? 30000 : 8000);
+    // terabox pays for the resolve-mutex queue wait too, so it gets a bigger budget
+    const budget = timeoutMs || (forceResolve ? (host.toLowerCase() === 'terabox' ? 60000 : 30000) : 8000);
+    const resolveTask = () => this.resolveVaultDownloadUrl(
+      copy.encryptedBlobUrl || '',
+      copy.encryptedBlobFileId || '',
+      host,
+      fileName
+    );
     try {
       const fresh = await Promise.race([
-        this.resolveVaultDownloadUrl(
-          copy.encryptedBlobUrl || '',
-          copy.encryptedBlobFileId || '',
-          host,
-          fileName
-        ),
+        // terabox resolves (hidden-tab jsToken scrape + filemetas) MUST never
+        // run concurrently — two consumers (a grid preview + the detail player,
+        // or two players) racing the token scrape get gated/403'd and the
+        // fallback then reuses the CONSUMED single-use dlink (2.12.75).
+        host.toLowerCase() === 'terabox' ? this._enqueueTeraBoxResolve(resolveTask) : resolveTask(),
         new Promise((_, reject) => setTimeout(() => reject(new Error(`fresh URL resolve timed out for ${host}`)), budget)),
       ]);
       if (fresh && fresh !== copy.encryptedBlobUrl) {
@@ -1644,8 +1665,9 @@ class ImgVaultServiceWorker {
     const freshCopies = [];
     for (const copy of copies) {
       const host = copy.host || DEFAULT_VAULT_BLOB_HOST;
+      const resolveTask = () => this.resolveVaultDownloadUrl(copy.encryptedBlobUrl || '', copy.encryptedBlobFileId || '', host, fileName);
       const fresh = await Promise.race([
-        this.resolveVaultDownloadUrl(copy.encryptedBlobUrl || '', copy.encryptedBlobFileId || '', host, fileName),
+        host.toLowerCase() === 'terabox' ? this._enqueueTeraBoxResolve(resolveTask) : resolveTask(),
         new Promise((_, reject) => setTimeout(() => reject(new Error(`${host} resolve timed out`)), timeoutMs)),
       ]);
       const url = (fresh && fresh !== copy.encryptedBlobUrl) ? fresh : (copy.encryptedBlobUrl || '');
