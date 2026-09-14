@@ -1809,6 +1809,7 @@ class ImgVaultServiceWorker {
 
         await this.storage.updateImage(id, {
           isVaulted: true,
+          wasVaulted: false,
           vaultMode: 'hidden',
           vaultedAt: new Date().toISOString(),
           ...encrypted,
@@ -2021,6 +2022,7 @@ class ImgVaultServiceWorker {
         await this.storage.updateImage(id, {
           ...restored,
           isVaulted: false,
+          wasVaulted: false,
           vaultMode: '',
           vaultedAt: '',
           vaultHost: '',
@@ -2078,8 +2080,11 @@ class ImgVaultServiceWorker {
     switch (action) {
       case 'uploadImage':
         this.handleImageUpload(request.data)
-          .then(result => sendResponse({ success: true, data: result }))
-          .catch(error => sendResponse({ 
+          .then(async result => {
+            if (result?.isVaulted) await this.notifyVaultMembershipChanged();
+            sendResponse({ success: true, data: result });
+          })
+          .catch(error => sendResponse({
             success: false, 
             error: error.message,
             duplicate: error.duplicate || null,
@@ -2202,6 +2207,7 @@ class ImgVaultServiceWorker {
           sourceHost: request.data?.sourceHost || '',
           vaultHosts: request.data?.vaultHosts ?? request.data?.vaultHost ?? DEFAULT_VAULT_BLOB_HOST,
         })
+          .then(() => this.notifyVaultMembershipChanged())
           .then(() => sendResponse({ success: true, data: null }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
@@ -2210,12 +2216,14 @@ class ImgVaultServiceWorker {
         this.restoreFromVault(request.data?.id || request.id, {
           targetHostKeys: request.data?.targetHostKeys || null,
         })
+          .then(() => this.notifyVaultMembershipChanged())
           .then(() => sendResponse({ success: true, data: null }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
       case 'deleteFromVault':
         this.storage.deleteVaultItem(request.data?.id || request.id)
+          .then(() => this.notifyVaultMembershipChanged())
           .then(() => sendResponse({ success: true, data: null }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
@@ -2237,9 +2245,13 @@ class ImgVaultServiceWorker {
           // restoreFromTrash returns FALSE (not throw) when the id is not in
           // the trash — report it loudly instead of a fake success (2.12.77:
           // the trash card vanished while the row stayed deleted).
-          .then((restored) => sendResponse(restored === false
-            ? { success: false, error: 'Restore failed: item was not found in the trash' }
-            : { success: true }))
+          .then(async (restored) => {
+            if (restored === false) {
+              return sendResponse({ success: false, error: 'Restore failed: item was not found in the trash' });
+            }
+            await this.notifyVaultMembershipChanged();
+            sendResponse({ success: true });
+          })
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
@@ -2397,7 +2409,7 @@ class ImgVaultServiceWorker {
 
       case 'saveVaultedUpload':
         this.saveVaultedUpload(request.data)
-          .then(result => sendResponse({ success: true, data: result }))
+          .then(result => this.notifyVaultMembershipChanged().then(() => sendResponse({ success: true, data: result })))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
@@ -3001,6 +3013,12 @@ class ImgVaultServiceWorker {
     }
   }
 
+  async notifyVaultMembershipChanged() {
+    await chrome.storage.session.set({
+      imgvaultVaultMembershipChangedAt: new Date().toISOString(),
+    });
+  }
+
   async notifyTabFocusedResuming() {
     if (!chrome.notifications?.create) return;
     try {
@@ -3132,6 +3150,7 @@ class ImgVaultServiceWorker {
         creationDateSource: data.fileLastModified ? 'OS lastModified' : 'Current timestamp',
         internalAddedTimestamp: new Date().toISOString(),
         isVaulted: true,
+        wasVaulted: false,
         vaultMode: 'hidden',
         vaultedAt: new Date().toISOString(),
         ...encrypted,
@@ -3180,6 +3199,7 @@ class ImgVaultServiceWorker {
       creationDateSource: uploadData.fileLastModified ? 'OS lastModified' : 'Current timestamp',
       internalAddedTimestamp: new Date().toISOString(),
       isVaulted: true,
+      wasVaulted: false,
       vaultMode: 'hidden',
       vaultedAt: new Date().toISOString(),
       ...encrypted,

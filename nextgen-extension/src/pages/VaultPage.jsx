@@ -506,8 +506,27 @@ export default function VaultPage() {
     };
   }, [sendMessage]);
 
+  const loadVaultItemsRef = useRef(loadVaultItems);
+
+  useEffect(() => {
+    loadVaultItemsRef.current = loadVaultItems;
+  }, [loadVaultItems]);
+
   useEffect(() => {
     loadVaultItems();
+  }, [unlocked]);
+
+  useEffect(() => {
+    if (!unlocked || !chrome.storage.session) return undefined;
+
+    const handler = (changes, areaName) => {
+      if (areaName === 'session' && changes.imgvaultVaultMembershipChangedAt) {
+        loadVaultItemsRef.current();
+      }
+    };
+
+    chrome.storage.session.onChanged.addListener(handler);
+    return () => chrome.storage.session.onChanged.removeListener(handler);
   }, [unlocked]);
 
   const filteredItems = useMemo(() => {
@@ -518,7 +537,7 @@ export default function VaultPage() {
       return (
         (item.pageTitle || meta.pageTitle || '').toLowerCase().includes(query) ||
         (item.description || meta.description || '').toLowerCase().includes(query) ||
-        (item.fileName || '').toLowerCase().includes(query) ||
+        (item.fileName || meta.fileName || item.encryptedFileName || '').toLowerCase().includes(query) ||
         (item.sourcePageUrl || meta.sourcePageUrl || '').toLowerCase().includes(query) ||
         item.linkUrl?.toLowerCase().includes(query) ||
         (item.tags || meta.tags || []).some((tag) => String(tag).toLowerCase().includes(query))

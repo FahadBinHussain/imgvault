@@ -106,6 +106,7 @@ const SYSTEM_FIELD_KEYS = [
   'linkUrlCanonical',
   'extraMetadata',
   'isVaulted',
+  'wasVaulted',
   'vaultMode',
   'vaultedAt',
   '_isTrash',
@@ -421,6 +422,7 @@ export function stripKnownTopLevelMediaFields(value = {}) {
 
   const extraManagedSystemFields = new Set([
     'isVaulted',
+    'wasVaulted',
     'vaultMode',
     'vaultedAt',
     'systemType',

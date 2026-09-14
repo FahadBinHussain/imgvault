@@ -763,6 +763,7 @@ export class StorageManager {
         'isVideo',
         'isLink',
         'isVaulted',
+        'wasVaulted',
         'vaultMode',
         'internalAddedTimestamp',
         'deletedAt'
@@ -865,6 +866,7 @@ export class StorageManager {
         'isVideo',
         'isLink',
         'isVaulted',
+        'wasVaulted',
         'vaultMode',
         'vaultedAt'
       ];
@@ -953,6 +955,7 @@ export class StorageManager {
 
     await this.updateImage(id, {
       isVaulted: true,
+      wasVaulted: false,
       vaultMode: 'hidden',
       vaultedAt: new Date().toISOString(),
     });
@@ -973,6 +976,7 @@ export class StorageManager {
 
     await this.updateImage(id, {
       isVaulted: false,
+      wasVaulted: false,
       vaultMode: '',
       vaultedAt: '',
     });
@@ -998,11 +1002,13 @@ export class StorageManager {
         throw new Error('Vault item not found');
       }
 
-      // Un-vault first so the item surfaces in the trash page and can be restored there.
+      // Un-vault the visibility flag only — vaultMode/vaultedAt stay as the
+      // provenance marker so restore-from-trash can put the item back in the
+      // vault. wasVaulted is the explicit marker for flag-only vault items
+      // that have no encryptedBlobUrl for the restore gate to detect (2.12.82).
       await this.updateImage(id, {
         isVaulted: false,
-        vaultMode: '',
-        vaultedAt: '',
+        wasVaulted: true,
       });
 
       // Skip the collection-count decrement: vaulted items were already
@@ -1145,6 +1151,7 @@ export class StorageManager {
         'udropWatchUrl',
         'udropDirectUrl',
         'isVaulted',
+        'wasVaulted',
         'vaultMode',
         'deletedAt'
       ];
@@ -1376,14 +1383,24 @@ export class StorageManager {
       const collectionId = imageData.collectionId;
 
       // Vault items are un-vaulted before entering the trash, so restore must
-      // re-vault anything that still carries an encrypted blob — otherwise it
-      // lands as an encrypted .bin with no provider URLs, invisible in both
-      // gallery and vault (2.12.77).
-      const wasVaultItem = Boolean(imageData.encryptedBlobUrl);
+      // re-vault anything with vault provenance — encrypted blob OR the
+      // wasVaulted/vaultMode/vaultedAt markers left by flag-only moves (2.12.82).
+      const vaultExtra = imageData.extraMetadata && typeof imageData.extraMetadata === 'object'
+        ? imageData.extraMetadata
+        : {};
+      const wasVaultItem = Boolean(
+        imageData.encryptedBlobUrl ||
+        this.isTruthyFlag(imageData.wasVaulted ?? vaultExtra.wasVaulted) ||
+        (imageData.vaultMode || vaultExtra.vaultMode) === 'hidden' ||
+        imageData.vaultedAt || vaultExtra.vaultedAt
+      );
       if (wasVaultItem) {
         imageData.isVaulted = true;
+        imageData.wasVaulted = false;
         imageData.vaultMode = 'hidden';
         imageData.vaultedAt = new Date().toISOString();
+      } else {
+        imageData.wasVaulted = false;
       }
       
       // Convert internalAddedTimestamp back to Date object if it's a string
@@ -1415,8 +1432,9 @@ export class StorageManager {
         console.warn('⚠️ [RESTORE] Failed to remove from trash collection');
       }
       
-      // Increment collection count if image had a collectionId
-      if (collectionId) {
+      // Increment collection count if image had a collectionId (vaulted items
+      // are excluded from counts — symmetric with the delete side, 2.12.82).
+      if (collectionId && !wasVaultItem) {
         try {
           await this.incrementCollectionCount(collectionId, 1);
         } catch (error) {
@@ -2568,14 +2586,25 @@ export class StorageManager {
     // Vault items are un-vaulted before entering the trash (deleteVaultItemNeon),
     // so a plain restore leaves an encrypted .bin with NO provider URLs —
     // invisible in both gallery and vault ("item vanished" bug, 2.12.77).
-    // Re-vault it so restore puts it back where it came from.
-    const wasVaultItem = Boolean(current.encryptedBlobUrl);
+    // Re-vault anything that shows vault provenance: an encrypted blob (2.12.77)
+    // OR the wasVaulted/vaultMode/vaultedAt markers that flag-only vault moves
+    // leave behind (they have no encryptedBlobUrl — 2.12.82).
+    const wasVaultItem = Boolean(
+      current.encryptedBlobUrl ||
+      this.isTruthyFlag(current.wasVaulted) ||
+      current.vaultMode === 'hidden' ||
+      current.vaultedAt
+    );
     if (wasVaultItem) {
       await this.updateImageNeon(id, {
         isVaulted: true,
+        wasVaulted: false,
         vaultMode: 'hidden',
         vaultedAt: new Date().toISOString(),
       });
+    } else if (this.isTruthyFlag(current.wasVaulted) || current.vaultMode === 'hidden') {
+      // Plain gallery item that only carries a stale vault marker — clear it.
+      await this.updateImageNeon(id, { wasVaulted: false, vaultMode: '', vaultedAt: '' });
     }
     // Vaulted items are excluded from collection counts, same as the delete side.
     if (current.collectionId && !wasVaultItem) {
@@ -2634,11 +2663,12 @@ export class StorageManager {
     if (!current) {
       throw new Error('Vault item not found');
     }
-    // Un-vault first so the item surfaces in the trash page and can be restored there.
+    // Un-vault the visibility flag only — vaultMode/vaultedAt stay as the
+    // provenance marker, plus explicit wasVaulted, so restore-from-trash can
+    // put flag-only vault items (no encryptedBlobUrl) back in the vault (2.12.82).
     await this.updateImageNeon(id, {
       isVaulted: false,
-      vaultMode: '',
-      vaultedAt: '',
+      wasVaulted: true,
     });
     // Skip the collection-count decrement: vaulted items were already
     // excluded from their collection count when they entered the vault.
