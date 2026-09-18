@@ -118,7 +118,7 @@ function VaultEncryptedVideoThumb({ item, getStreamUrl, sendMessage, paused }) {
     if (!visible || paused) return undefined;
     let cancelled = false;
     (async () => {
-      const cached = await getCachedVaultPreview(item);
+      const cached = await getCachedVaultPreview(item, sendMessage);
       if (cancelled) return;
       if (cached) { setUrl(cached); return; }
       setPending(true);
@@ -317,7 +317,7 @@ export default function VaultPage() {
     const targets = filteredItems.filter(isEncryptedVideoItem);
     const uncached = [];
     for (const item of targets) {
-      if (!(await getCachedVaultPreview(item))) uncached.push(item);
+      if (!(await getCachedVaultPreview(item, sendMessage))) uncached.push(item);
     }
     if (uncached.length === 0) {
       showToast('All video previews are already cached.', 'info');

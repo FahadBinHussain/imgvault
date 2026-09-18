@@ -140,6 +140,12 @@ function primaryHost(item) {
 const objectUrlMap = new Map();
 const inflight = new Map();
 const hostState = new Map();
+// One remote backfill check per item per session (2.12.84): a warm local cache
+// means no derivation runs, so the persist inside runExtraction never fires and
+// the server-side tier would stay empty on existing installs until the 365-day
+// local TTL expired. A local hit therefore checks the remote store once and
+// writes the preview up if it is missing.
+const remoteBackfilled = new Set();
 // Global suspend switch (2.12.75): while the vault detail modal is open, no
 // NEW job may start — its range reads would race the player for terabox's
 // single-use dlink resolves. pumpHost checks this on every drain.
@@ -356,12 +362,31 @@ export function requestVaultPreview(item, { getStreamUrl, sendMessage }) {
 }
 
 /** Cheap check for an already-cached preview (no decryption, no fetch). */
-export async function getCachedVaultPreview(item) {
+export async function getCachedVaultPreview(item, sendMessage) {
   const key = previewKey(item);
   if (objectUrlMap.has(key)) return objectUrlMap.get(key);
   const blob = await getCachedThumb(key, PREVIEW_MAX_AGE_MS);
   if (!blob) return null;
   const url = URL.createObjectURL(blob);
   objectUrlMap.set(key, url);
+  // Backfill the server-side tier from the local copy (2.12.84): without a
+  // derivation there is no persist, so a warm IndexedDB would leave the remote
+  // store empty for a year. One check per item per session, fire-and-forget —
+  // the card already has its URL, this only feeds the OTHER machines.
+  if (typeof sendMessage === 'function' && !remoteBackfilled.has(key)) {
+    remoteBackfilled.add(key);
+    (async () => {
+      try {
+        const existing = await sendMessage('getVaultPreview', { id: item.id });
+        if (existing) return;
+        await persistRemoteVaultPreview(item, blob, sendMessage);
+      } catch (err) {
+        // Do not poison the session flag on a transient failure — retry next
+        // session. Say it, never silence it.
+        remoteBackfilled.delete(key);
+        console.warn(`[VaultPreview] remote backfill failed for ${item.id}: ${err.message || err}`);
+      }
+    })().catch((err) => console.warn(`[VaultPreview] backfill error for ${item.id}: ${err.message || err}`));
+  }
   return url;
 }
