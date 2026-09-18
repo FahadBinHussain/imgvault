@@ -256,6 +256,20 @@ function releaseVideo(video) {
   } catch { /* detached element, nothing to clean */ }
 }
 
+/**
+ * Identify the container from the first bytes of the plaintext. The locator
+ * below only speaks ISO-BMFF; Matroska/WebM is EBML and has no moov at all, so
+ * detecting it up front avoids a pointless head+tail search.
+ */
+function detectContainer(bytes) {
+  if (!bytes || bytes.length < 8) return 'unknown';
+  const type = String.fromCharCode(bytes[4], bytes[5], bytes[6], bytes[7]);
+  if (type === 'ftyp') return 'iso-bmff';
+  // EBML header magic — Matroska (.mkv) and WebM share it.
+  if (bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) return 'matroska';
+  return 'unknown';
+}
+
 async function runExtraction(item, getStreamUrl, sendMessage) {
   const key = previewKey(item);
   const host = primaryHost(item);
@@ -304,6 +318,42 @@ async function runExtraction(item, getStreamUrl, sendMessage) {
   }
   const { total, chunkSize } = probe;
   console.log(`[VaultPreview] ${item.id}: layout total=${total} chunkSize=${chunkSize} (faststart=${total > 0 ? 'checking' : '?'})`);
+
+  const MOOV_MAX_WINDOW = 32 * 1024 * 1024;
+
+  // Matroska (MKV/WebM) is EBML, not ISO-BMFF — there is no moov at all. Its
+  // header is tiny and sits at the very start, and the seek index (Cues) may
+  // live at the far end, so the moov search below reads head AND tail and
+  // finds nothing (observed on 1327ea6b, video/matroska). Identify the
+  // container from one head chunk and branch before paying for that.
+  const headFirst = await fetchPlain(0, Math.min(chunkSize, total) - 1);
+  const container = detectContainer(headFirst);
+  console.log(`[VaultPreview] ${item.id}: container=${container}`);
+  if (container === 'matroska') {
+    let head = headFirst;
+    for (let n = 1; n * chunkSize <= MOOV_MAX_WINDOW;) {
+      const res = await decodeMatroskaHead(head, total, timeouts);
+      if (res) {
+        if (!res.usable) {
+          console.warn(`[VaultPreview] ${item.id}: matroska candidates looked black/fade (mean ${res.mean.toFixed(1)}, sd ${res.sd.toFixed(1)}) — using the most detailed one`);
+        }
+        await setCachedThumb(key, res.blob);
+        persistRemoteVaultPreview(item, res.blob, sendMessage);
+        const url = URL.createObjectURL(res.blob);
+        objectUrlMap.set(key, url);
+        return url;
+      }
+      const next = n * 2;
+      if (next * chunkSize > MOOV_MAX_WINDOW) break;
+      console.log(`[VaultPreview] ${item.id}: matroska head (${head.length}B) did not decode — growing to ${next} chunks`);
+      head = await fetchPlain(0, Math.min(next * chunkSize, total) - 1);
+      n = next;
+    }
+    throw new Error('matroska: head window did not decode (unsupported variants?)');
+  }
+  if (container !== 'iso-bmff') {
+    throw new Error(`unsupported container "${container}" — cannot locate a frame`);
+  }
 
   // moov sits near the start for faststart files, at the end otherwise. Its
   // size is not bounded by the chunk size: a long video's sample tables (stsz/
@@ -369,7 +419,6 @@ async function runExtraction(item, getStreamUrl, sendMessage) {
 
   // 32MiB is generous (a 2-hour 30fps video's moov is ~1-2MiB) while still
   // bounded — a file whose moov is bigger than this is not a normal video.
-  const MOOV_MAX_WINDOW = 32 * 1024 * 1024;
   let moovBytes = null;
   let moovWhere = '';
 
@@ -519,6 +568,56 @@ async function decodeFragmentedHead(headBytes, timeouts) {
     releaseVideo(video);
     URL.revokeObjectURL(url);
   }
+}
+
+/**
+ * Matroska/WebM: the head window is a valid truncated prefix (EBML header +
+ * SegmentInfo + Tracks + first clusters). The element reports the FULL
+ * duration even though only the first seconds are present, so duration-based
+ * seeking stalls past the available data — probe early seconds instead and
+ * keep the most detailed frame (the first frame of a fade-in is often black).
+ */
+async function decodeMatroskaHead(headBytes, totalBytes, timeouts) {
+  const video = document.createElement('video');
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  const url = URL.createObjectURL(new Blob([headBytes], { type: 'video/webm' }));
+  let best = null;
+  try {
+    video.src = url;
+    await waitForEvent(video, 'loadeddata', timeouts.seek, 'matroska head');
+    const dur = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+    const est = totalBytes > 0 ? dur * (headBytes.length / totalBytes) : 0;
+    const times = [0];
+    if (est > 1) times.push(Math.min(est * 0.5, 60), Math.min(est * 0.9, 120));
+    else times.push(2, 5);
+    for (const t of times) {
+      if (t > 0) {
+        if (dur > 0 && t >= dur) continue;
+        try {
+          video.currentTime = dur > 0 ? Math.min(t, dur - 0.1) : t;
+          await waitForEvent(video, 'seeked', 3000, `matroska seek ${t.toFixed(1)}s`);
+        } catch (err) {
+          console.log(`[VaultPreview] matroska seek ${t.toFixed(1)}s unavailable (${err.message}) — stopping probe`);
+          break;
+        }
+      }
+      const { mean, sd } = scoreFrame(video);
+      const blob = await drawFrame(video);
+      if (!blob) continue;
+      const usable = mean >= MIN_MEAN_LUMA && sd >= MIN_LUMA_SD;
+      if (!best || sd > best.sd) best = { mean, sd, usable, blob };
+      if (usable) break;
+    }
+  } catch (err) {
+    console.warn(`[VaultPreview] matroska head decode error: ${err.message || err}`);
+    return null;
+  } finally {
+    releaseVideo(video);
+    URL.revokeObjectURL(url);
+  }
+  return best;
 }
 
 /**
