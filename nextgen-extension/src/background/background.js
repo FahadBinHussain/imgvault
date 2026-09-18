@@ -1445,6 +1445,7 @@ class ImgVaultServiceWorker {
     }
     const firstChunk = Math.floor(s / chunkSize);
     const lastChunk = Math.floor(e / chunkSize);
+    console.log(`[Vault] fetchPlaintextRange ${id} ${s}-${e} (${e - s + 1}B) chunks ${firstChunk}..${lastChunk} total=${total} chunkSize=${chunkSize}`);
     const out = new Uint8Array(e - s + 1);
     let writeAt = 0;
     for (let i = firstChunk; i <= lastChunk; i++) {
@@ -1452,22 +1453,30 @@ class ImgVaultServiceWorker {
       // and the frame can too. Serve a repeat chunk from the granule cache
       // instead of paying another dlink resolve + 8MiB fetch for it.
       let plain = this._getCachedChunk(id, i, total, chunkSize);
+      const fromCache = !!plain;
       if (!plain) {
         const encStart = rangeLayout.encryptedChunkOffset(i);
         const encLen = rangeLayout.encryptedChunkLength(i);
+        console.log(`[Vault] fetchPlaintextRange ${id} chunk ${i} enc ${encStart}-${encStart + encLen - 1} (${encLen}B)`);
         const encChunk = await this.fetchVaultBlobRange(item, copies, fileName, encStart, encStart + encLen - 1);
+        console.log(`[Vault] fetchPlaintextRange ${id} chunk ${i} fetched ${encChunk?.length || 0}B, decrypting`);
         plain = await decryptEncryptedChunk(this.vaultMasterKey, encChunk);
+        console.log(`[Vault] fetchPlaintextRange ${id} chunk ${i} decrypted ${plain?.length || 0}B`);
         this._setCachedChunk(id, i, plain, total, chunkSize);
+      } else {
+        console.log(`[Vault] fetchPlaintextRange ${id} chunk ${i} cache hit ${plain.length}B`);
       }
       const chunkStart = rangeLayout.plainChunkStart(i);
       const chunkLen = rangeLayout.plainChunkLength(i);
       const sliceStart = Math.max(0, s - chunkStart);
       const sliceEnd = Math.min(chunkLen, e - chunkStart + 1);
+      console.log(`[Vault] fetchPlaintextRange ${id} chunk ${i} slice ${sliceStart}-${sliceEnd} (${sliceEnd - sliceStart}B) plainLen=${plain?.length || 0}`);
       if (sliceEnd > sliceStart) {
         out.set(plain.subarray(sliceStart, sliceEnd), writeAt);
         writeAt += sliceEnd - sliceStart;
       }
     }
+    console.log(`[Vault] fetchPlaintextRange ${id} returning ${writeAt}B for ${s}-${e}`);
     return out.subarray(0, writeAt);
   }
 
