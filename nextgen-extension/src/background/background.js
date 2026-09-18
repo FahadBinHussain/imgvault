@@ -25,7 +25,7 @@ import {
 } from '../utils/imageProviderLinks.js';
 import { extractFilemoonFilecode, getFilemoonDirectLink, getFilemoonHlsLink } from '../utils/filemoonApi.js';
 import { getFilemoonStreamSource } from '../utils/filemoonSpa.js';
-import { resolveTeraBoxThumbnail, resolveTeraBoxPlaybackUrl, resolveTeraBoxFilePath, deleteTeraBoxFiles, teraBoxFsIdFromUrl } from '../utils/teraBoxApi.js';
+import { resolveTeraBoxThumbnail, resolveTeraBoxPlaybackUrl, resolveTeraBoxFilePath, deleteTeraBoxFiles, listAllTeraBoxFiles, teraBoxFsIdFromUrl } from '../utils/teraBoxApi.js';
 import { deleteUdropFile } from '../utils/udropApi.js';
 import { flattenSceneConfig } from '../utils/sceneConfig.js';
 import {
@@ -2413,9 +2413,31 @@ class ImgVaultServiceWorker {
           // deleteTeraBoxFiles throws the right remediation message itself.
           const fsId = fileId || teraBoxFsIdFromUrl(url);
           if (!fsId) throw new Error('no fs_id (encryptedBlobFileId or ?fid= in the dlink) to resolve the path');
-          const path = await resolveTeraBoxFilePath(settings?.teraboxCookie || '', fsId, fileName);
-          if (!path) throw new Error(`could not resolve a TeraBox path for fs_id ${fsId} (file no longer listed?)`);
-          await deleteTeraBoxFiles(settings?.teraboxCookie || '', [path]);
+          const cookie = settings?.teraboxCookie || '';
+          // Fast path: the vault upload puts blobs in the root folder, so the
+          // root-only resolver (shared with the streaming hot path) usually hits.
+          let path = await resolveTeraBoxFilePath(cookie, fsId, fileName);
+          if (!path) {
+            // Root miss: the file may sit in a subfolder (the fast resolver
+            // only walks '/'). Fall back to the RECURSIVE listing — it throws
+            // on a real listing failure instead of silently returning [], so a
+            // broken listing can never masquerade as "file already gone".
+            console.log(`[VAULT DELETE] terabox fs_id ${fsId} not in root — searching all folders`);
+            const all = await listAllTeraBoxFiles(cookie);
+            const hit = all.find((f) => String(f.fs_id) === String(fsId))
+              || (fileName ? all.find((f) => f.server_filename === fileName) : null);
+            path = String(hit?.path || '');
+          }
+          if (!path) {
+            // The listing succeeded and is complete, but the file is nowhere on
+            // the account: it was already deleted (recycle bin cleared, manual
+            // delete, or an upload that never finished). The host has nothing
+            // left to remove — say so loudly and release the row instead of
+            // blocking trash forever on a file that no longer exists.
+            console.warn(`[VAULT DELETE] terabox fs_id ${fsId} (${fileName || 'unnamed'}) absent from the account listing — already deleted, no host cleanup needed`);
+            continue;
+          }
+          await deleteTeraBoxFiles(cookie, [path]);
           console.log(`[VAULT DELETE] terabox blob ${path} deleted (moved to recycle bin)`);
         } else {
           throw new Error(`unsupported vault blob host "${host}" — cannot delete the blob`);
