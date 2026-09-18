@@ -2408,12 +2408,14 @@ class ImgVaultServiceWorker {
           await deleteUdropFile(auth.access_token, auth.account_id, fileId);
           console.log(`[VAULT DELETE] udrop blob ${fileId} deleted`);
         } else if (host === 'terabox') {
-          if (!settings?.teraboxCookie) throw new Error('TeraBox cookie not configured (Settings)');
+          // Empty cookie is fine — authorizeTeraBox falls back to the live
+          // browser session (chrome.cookies). If there is no session at all,
+          // deleteTeraBoxFiles throws the right remediation message itself.
           const fsId = fileId || teraBoxFsIdFromUrl(url);
           if (!fsId) throw new Error('no fs_id (encryptedBlobFileId or ?fid= in the dlink) to resolve the path');
-          const path = await resolveTeraBoxFilePath(settings.teraboxCookie, fsId, fileName);
+          const path = await resolveTeraBoxFilePath(settings?.teraboxCookie || '', fsId, fileName);
           if (!path) throw new Error(`could not resolve a TeraBox path for fs_id ${fsId} (file no longer listed?)`);
-          await deleteTeraBoxFiles(settings.teraboxCookie, [path]);
+          await deleteTeraBoxFiles(settings?.teraboxCookie || '', [path]);
           console.log(`[VAULT DELETE] terabox blob ${path} deleted (moved to recycle bin)`);
         } else {
           throw new Error(`unsupported vault blob host "${host}" — cannot delete the blob`);
