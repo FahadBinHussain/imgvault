@@ -996,35 +996,42 @@ class ImgVaultServiceWorker {
               const host = window.location.hostname;
               const isYouTubeMusic = host.includes('music.youtube.com');
 
-              const active = document.activeElement;
-              const fromActive =
-                active?.tagName === 'VIDEO'
-                  ? active
-                  : typeof active?.closest === 'function'
-                    ? active.closest('video')
-                    : null;
-              const video = fromActive || document.querySelector('video');
+              // Prefer a video that is actually decoded; YouTube can list an
+              // empty ad/preview <video> ahead of the real player in DOM order,
+              // and querySelector('video') used to grab that dead one.
+              const usable = Array.from(document.querySelectorAll('video'))
+                .filter((v) => v && v.readyState >= 2 && v.videoWidth && v.videoHeight)
+                .sort((a, b) => (b.videoWidth * b.videoHeight) - (a.videoWidth * a.videoHeight));
+              const video = usable[0] || null;
 
               if (video) {
-                if (video.readyState >= 2) {
-                  const width = video.videoWidth;
-                  const height = video.videoHeight;
+                const width = video.videoWidth;
+                const height = video.videoHeight;
 
-                  if (width && height) {
-                    try {
-                      const canvas = document.createElement('canvas');
-                      canvas.width = width;
-                      canvas.height = height;
-                      const ctx = canvas.getContext('2d');
-                      if (ctx) {
-                        ctx.drawImage(video, 0, 0, width, height);
-                        return { imageUrl: canvas.toDataURL('image/png') };
-                      }
-                    } catch (error) {
-                      // console.log('YouTube frame draw failed, trying artwork fallback:', error?.message);
+                if (width && height) {
+                  try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    if (ctx) {
+                      ctx.drawImage(video, 0, 0, width, height);
+                      return { imageUrl: canvas.toDataURL('image/png') };
                     }
+                    return { imageUrl: null, error: 'canvas 2D context unavailable' };
+                  } catch (error) {
+                    return {
+                      imageUrl: null,
+                      error: `canvas blocked (${error?.name || 'Error'}: ${error?.message || 'unknown'})`,
+                    };
                   }
                 }
+                return { imageUrl: null, error: `video has no dimensions (readyState ${video.readyState})` };
+              }
+
+              const anyVideo = document.querySelector('video');
+              if (anyVideo) {
+                return { imageUrl: null, error: `video not ready (readyState ${anyVideo.readyState})` };
               }
 
               if (isYouTubeMusic) {
@@ -1051,8 +1058,53 @@ class ImgVaultServiceWorker {
         }
 
         if (!response?.imageUrl) {
-          // console.log('❌ No paused YouTube frame available:', response?.error || 'Unknown reason');
+          // The in-page capture failed (no video, video not decoded yet, or the
+          // canvas was tainted by cross-origin media — YouTube toggles this per
+          // surface). The frame the user wants is PAUSED and on screen, so a
+          // compositor-level visible-tab capture gets it regardless. This is a
+          // genuinely different capture engine, so label it loudly below.
+          try {
+            const visibleDataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+            if (visibleDataUrl) {
+              console.warn(
+                '[ImgVault][YouTubeFrame] In-page canvas capture failed (' +
+                  (response?.error || 'unknown') +
+                  ') — used visible-tab capture instead.'
+              );
+              response = { imageUrl: visibleDataUrl, viaVisibleTab: true, error: response?.error || null };
+            }
+          } catch (capError) {
+            console.error('[ImgVault][YouTubeFrame] Visible-tab capture also failed:', capError?.message || capError);
+          }
+        }
+
+        if (!response?.imageUrl) {
+          // Never a silent no-op: tell the user exactly why the frame was not saved.
+          const reason = response?.error || 'unknown reason';
+          console.error('[ImgVault][YouTubeFrame] Frame capture failed:', reason);
+          try {
+            await chrome.notifications.create({
+              type: 'basic',
+              iconUrl: chrome.runtime.getURL('icons/1.png'),
+              title: 'ImgVault — YouTube frame not saved',
+              message: `Could not capture the frame: ${reason}. Pause the video and try again.`,
+              priority: 2,
+            });
+          } catch (_) {}
           return;
+        }
+
+        if (response.viaVisibleTab) {
+          // Loud label for the second capture method (no-fallback rule).
+          try {
+            await chrome.notifications.create({
+              type: 'basic',
+              iconUrl: chrome.runtime.getURL('icons/1.png'),
+              title: 'ImgVault — frame saved via visible-tab capture',
+              message: 'The in-page canvas was unavailable, so the frame was captured from the visible tab instead.',
+              priority: 1,
+            });
+          } catch (_) {}
         }
 
         const pageUrl = info.pageUrl || tab.url;

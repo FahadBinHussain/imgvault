@@ -312,9 +312,27 @@ const messageHandlers = {
     };
 
     const clickedVideo = getVideoFromElement(lastRightClickElement);
-    const activeVideo = clickedVideo || document.querySelector('video');
 
-    if (activeVideo && activeVideo.readyState >= 2) {
+    // YouTube can list more than one <video> in DOM order (an empty ad/preview
+    // slot ahead of the real player). document.querySelector('video') used to
+    // grab whichever came first — if that one had no dimensions the capture
+    // silently produced nothing and the whole save did nothing. Pick a video
+    // that is actually decoded, largest frame wins; the clicked one wins ties.
+    const pickBestVideo = () => {
+      if (clickedVideo && clickedVideo.readyState >= 2 && clickedVideo.videoWidth && clickedVideo.videoHeight) {
+        return clickedVideo;
+      }
+      const all = Array.from(document.querySelectorAll('video'));
+      const usable = all
+        .filter((v) => v && v.readyState >= 2 && v.videoWidth && v.videoHeight)
+        .sort((a, b) => (b.videoWidth * b.videoHeight) - (a.videoWidth * a.videoHeight));
+      return usable[0] || null;
+    };
+
+    const activeVideo = pickBestVideo();
+    let captureError = null;
+
+    if (activeVideo) {
       const width = activeVideo.videoWidth;
       const height = activeVideo.videoHeight;
 
@@ -330,12 +348,22 @@ const messageHandlers = {
             const imageUrl = canvas.toDataURL('image/png');
             return { imageUrl };
           }
+          captureError = 'canvas 2D context unavailable';
         } catch (error) {
-          // On some YouTube surfaces (notably music.youtube.com), canvas extraction can fail.
-          // Fall back to artwork URLs.
-          console.log('⚠️ Video frame capture failed, trying artwork fallback:', error?.message);
+          // Canvas extraction can fail when the media is cross-origin without a
+          // matching CORS policy (SecurityError / tainted canvas). Report it
+          // precisely; the background falls back to a visible-tab capture.
+          captureError = `canvas blocked (${error?.name || 'Error'}: ${error?.message || 'unknown'})`;
+          console.warn('⚠️ Video frame capture failed:', captureError);
         }
+      } else {
+        captureError = `video has no dimensions (readyState ${activeVideo.readyState})`;
       }
+    } else {
+      const anyVideo = document.querySelector('video');
+      captureError = anyVideo
+        ? `video not ready (readyState ${anyVideo.readyState})`
+        : 'no <video> element on the page';
     }
 
     if (isYouTubeMusic) {
@@ -384,7 +412,7 @@ const messageHandlers = {
       }
     }
 
-    return { imageUrl: null, error: 'Failed to capture YouTube media image' };
+    return { imageUrl: null, error: captureError || 'Failed to capture YouTube media image' };
   },
 
   // Backward-compatible alias (if any caller still uses old action)
