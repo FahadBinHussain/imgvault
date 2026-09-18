@@ -967,6 +967,19 @@ class ImgVaultServiceWorker {
         // console.log('❌ No background image found');
       }
     } else if (info.menuItemId === 'saveYouTubeFrameToImgVault') {
+      // Diagnostic marker: if this notification does NOT appear on click, the
+      // running build is stale (reload didn't take) or the SW is dead — not a
+      // capture bug. Appears before anything else so it can't be swallowed.
+      try {
+        await chrome.notifications.create({
+          type: 'basic',
+          iconUrl: chrome.runtime.getURL('icons/1.png'),
+          title: 'ImgVault — YouTube frame',
+          message: 'Capture started…',
+          priority: 0,
+        });
+      } catch (_) {}
+
       // console.log('🎬 YouTube frame context menu clicked!');
 
       try {
