@@ -269,22 +269,24 @@ export function locateVideoFrame(moovBytes, ratio = 0.5) {
     ? u32(moovBytes, mvhd.dataOff + 16)
     : u64(moovBytes, mvhd.dataOff + 24);
 
+  let videoTrakSeen = false;
   for (const trak of traks) {
     const mdia = findBox(moovBytes, 'mdia', trak.dataOff, trak.dataEnd);
-    if (!mdia) continue;
+    if (!mdia) { console.warn('[mp4MinFrame] trak: no mdia'); continue; }
     const hdlr = findBox(moovBytes, 'hdlr', mdia.dataOff, mdia.dataEnd);
-    if (!hdlr) continue;
+    if (!hdlr) { console.warn('[mp4MinFrame] trak: no hdlr'); continue; }
     const handler = String.fromCharCode(
       moovBytes[hdlr.dataOff + 8], moovBytes[hdlr.dataOff + 9],
       moovBytes[hdlr.dataOff + 10], moovBytes[hdlr.dataOff + 11],
     );
-    if (handler !== 'vide') continue;
+    if (handler !== 'vide') { console.log(`[mp4MinFrame] trak handler=${handler} — skipping non-video`); continue; }
+    videoTrakSeen = true;
 
     const mdhd = findBox(moovBytes, 'mdhd', mdia.dataOff, mdia.dataEnd);
     const minf = findBox(moovBytes, 'minf', mdia.dataOff, mdia.dataEnd);
-    if (!mdhd || !minf) continue;
+    if (!mdhd || !minf) { console.warn(`[mp4MinFrame] vide trak: missing ${!mdhd ? 'mdhd' : ''} ${!minf ? 'minf' : ''}`); continue; }
     const stbl = findBox(moovBytes, 'stbl', minf.dataOff, minf.dataEnd);
-    if (!stbl) continue;
+    if (!stbl) { console.warn('[mp4MinFrame] vide trak: no stbl'); continue; }
 
     const stsd = findBox(moovBytes, 'stsd', stbl.dataOff, stbl.dataEnd);
     const stts = findBox(moovBytes, 'stts', stbl.dataOff, stbl.dataEnd);
@@ -292,7 +294,10 @@ export function locateVideoFrame(moovBytes, ratio = 0.5) {
     const stsz = findBox(moovBytes, 'stsz', stbl.dataOff, stbl.dataEnd);
     const stco = findBox(moovBytes, 'stco', stbl.dataOff, stbl.dataEnd)
       || findBox(moovBytes, 'co64', stbl.dataOff, stbl.dataEnd);
-    if (!stsd || !stts || !stsc || !stsz || !stco) continue;
+    if (!stsd || !stts || !stsc || !stsz || !stco) {
+      console.warn(`[mp4MinFrame] vide trak missing tables: ${[!stsd && 'stsd', !stts && 'stts', !stsc && 'stsc', !stsz && 'stsz', !stco && 'stco/co64'].filter(Boolean).join(',')}`);
+      continue;
+    }
 
     const mdhdVer = moovBytes[mdhd.dataOff];
     const ts = u32(moovBytes, mdhd.dataOff + (mdhdVer === 0 ? 12 : 20)) || timescale;
@@ -319,14 +324,14 @@ export function locateVideoFrame(moovBytes, ratio = 0.5) {
     }
 
     const stszParsed = parseStsz(moovBytes, stsz);
-    if (!stszParsed.count) continue;
+    if (!stszParsed.count) { console.warn(`[mp4MinFrame] stsz count 0`); continue; }
     const range = sampleByteRange(
       parseStsc(moovBytes, stsc),
       parseStco(moovBytes, stco),
       stszParsed,
       idx,
     );
-    if (!range || range.size <= 0) continue;
+    if (!range || range.size <= 0) { console.warn(`[mp4MinFrame] sampleByteRange null/size0 for idx=${idx} (trackDur=${trackDur} targetTick=${targetTick} stszCount=${stszParsed.count})`); continue; }
     if (range.size > MAX_SAMPLE_BYTES) {
       // A "sample" this big means the moov parse is garbage (false positive in
       // video data, or a moov truncated by the read window whose tables ran
@@ -343,10 +348,10 @@ export function locateVideoFrame(moovBytes, ratio = 0.5) {
     // first sample entry verbatim; it carries avcC (SPS/PPS). The visual sample
     // entry puts width/height at +32/+34 within the entry.
     const stsdCount = u32(moovBytes, stsd.dataOff + 4);
-    if (stsdCount < 1) continue;
+    if (stsdCount < 1) { console.warn('[mp4MinFrame] stsd count 0'); continue; }
     const entryOff = stsd.dataOff + 8;
     const entrySize = u32(moovBytes, entryOff);
-    if (entrySize < 16 || entryOff + entrySize > stsd.dataEnd) continue;
+    if (entrySize < 16 || entryOff + entrySize > stsd.dataEnd) { console.warn(`[mp4MinFrame] stsd entry bad size=${entrySize} off=${entryOff} dataEnd=${stsd.dataEnd}`); continue; }
     const stsdBytes = moovBytes.subarray(entryOff, entryOff + entrySize);
     const width = u16(moovBytes, entryOff + 32);
     const height = u16(moovBytes, entryOff + 34);
@@ -356,6 +361,8 @@ export function locateVideoFrame(moovBytes, ratio = 0.5) {
 
     return { offset: range.offset, size: range.size, timescale: ts, sampleDuration, stsdBytes, width, height };
   }
+  if (!videoTrakSeen) console.warn('[mp4MinFrame] no video trak found at all');
+  else console.warn(`[mp4MinFrame] video trak seen but no usable sample for ratio=${ratio} (trackDur=${trackDur} traks=${traks.length})`);
   return null;
 }
 
