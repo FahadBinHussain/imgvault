@@ -109,6 +109,14 @@ class ImgVaultServiceWorker {
     this.cancellingNativeDownloads = new Set();
     this.vaultMasterKey = null;
     this.vaultStreamUrlCache = new Map();
+    // Small-blob plaintext cache (2.12.85). The media engine probes for the
+    // MP4 moov atom by opening range requests and aborting them; every new
+    // vault-stream request on a terabox-only item re-pays the serialized dlink
+    // resolves (60s budget each), so the probe churn starves before
+    // loadedmetadata ever fires. For blobs under the cap we decrypt the whole
+    // thing ONCE and serve every range from memory — probes then cost nothing.
+    // LRU-bounded; cleared on vault lock (plaintext must not outlive the key).
+    this.vaultPlaintextCache = new Map();
     this.initialized = false;
     this.defaultActionIcon = {
       16: 'icons/1-16.png',
@@ -1079,6 +1087,8 @@ class ImgVaultServiceWorker {
   async setVaultMasterKey(keyB64) {
     if (!keyB64) {
       this.vaultMasterKey = null;
+      // Cached plaintext must never outlive the key (2.12.85).
+      this.clearPlaintextCache();
       return;
     }
     const raw = Uint8Array.from(atob(keyB64), (c) => c.charCodeAt(0));
@@ -1404,6 +1414,74 @@ class ImgVaultServiceWorker {
   }
 
   /**
+   * Small-blob plaintext cache (2.12.85). Terabox-only items die on the media
+   * engine's moov-atom probe churn: each aborted probe starts a new
+   * vault-stream request and re-pays the serialized dlink resolves (60s budget
+   * each, one mutex), so loadedmetadata times out. Blobs under the cap are
+   * decrypted once and served whole from memory, so probing is free.
+   * Multi-GB blobs keep the chunk-streaming path — a full decrypt of those
+   * killed the worker before (2.12.75).
+   */
+  static PLAINTEXT_CACHE_MAX_BYTES = 64 * 1024 * 1024; // only cache small blobs
+  static PLAINTEXT_CACHE_MAX_ITEMS = 3; // LRU cap; ~192MiB worst case
+
+  _getPlaintextCache(itemId) {
+    const entry = this.vaultPlaintextCache.get(itemId);
+    if (!entry) return null;
+    // refresh LRU order (Map preserves insertion order)
+    this.vaultPlaintextCache.delete(itemId);
+    this.vaultPlaintextCache.set(itemId, entry);
+    return entry;
+  }
+
+  _setPlaintextCache(itemId, entry) {
+    if (this.vaultPlaintextCache.has(itemId)) this.vaultPlaintextCache.delete(itemId);
+    this.vaultPlaintextCache.set(itemId, entry);
+    while (this.vaultPlaintextCache.size > ImgVaultServiceWorker.PLAINTEXT_CACHE_MAX_ITEMS) {
+      const oldest = this.vaultPlaintextCache.keys().next().value;
+      this.vaultPlaintextCache.delete(oldest);
+    }
+  }
+
+  clearPlaintextCache() {
+    this.vaultPlaintextCache.clear();
+  }
+
+  /**
+   * Decrypt an entire small IVG1 blob into one plaintext buffer. Reads the
+   * full encrypted span in ONE range fetch, then walks the chunk layout.
+   * @returns {Promise<Uint8Array|null>} plaintext, or null on failure
+   */
+  async _decryptFullVaultBlob(item, copies, fileName, layout, rangeLayout) {
+    const { total } = layout;
+    const last = rangeLayout.chunkCount - 1;
+    const encStart = rangeLayout.encryptedChunkOffset(0);
+    const encEnd = rangeLayout.encryptedChunkOffset(last) + rangeLayout.encryptedChunkLength(last) - 1;
+    let enc;
+    try {
+      enc = await this.fetchVaultBlobRange(item, copies, fileName, encStart, encEnd);
+    } catch (err) {
+      console.error('[Vault-stream] full-blob fetch failed:', err.message);
+      return null;
+    }
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (let i = 0; i < rangeLayout.chunkCount; i++) {
+      const len = rangeLayout.encryptedChunkLength(i);
+      const encChunk = enc.subarray(off, off + len);
+      try {
+        const plain = await decryptEncryptedChunk(this.vaultMasterKey, encChunk);
+        out.set(plain.subarray(0, rangeLayout.plainChunkLength(i)), rangeLayout.plainChunkStart(i));
+      } catch (err) {
+        console.error(`[Vault-stream] chunk ${i} decrypt failed:`, err.message);
+        return null;
+      }
+      off += len;
+    }
+    return out;
+  }
+
+  /**
    * HTTP streaming endpoint for vaulted items.
    *
    * Serves the DECRYPTED media over HTTP Range requests by decrypting only the
@@ -1484,6 +1562,22 @@ class ImgVaultServiceWorker {
     }
     const { total, chunkSize } = layout;
     const rangeLayout = getVaultChunkLayout(total, chunkSize);
+
+    // Small-blob fast path (2.12.85): decrypt once, serve every range from
+    // memory. The media engine aborts range requests while probing for the
+    // moov atom; on a terabox-only item each probe re-pays the serialized
+    // dlink resolves and loadedmetadata times out. Cached plaintext makes the
+    // probe churn free. Large blobs stream chunk-by-chunk as before.
+    let plainAll = null;
+    if (total <= ImgVaultServiceWorker.PLAINTEXT_CACHE_MAX_BYTES) {
+      const cached = this._getPlaintextCache(itemId);
+      if (cached && cached.total === total) {
+        plainAll = cached.plain;
+      } else {
+        plainAll = await this._decryptFullVaultBlob(item, copies, fileName, layout, rangeLayout);
+        if (plainAll) this._setPlaintextCache(itemId, { plain: plainAll, total });
+      }
+    }
     console.log('[Vault-stream] layout ok', { total, chunkSize, hosts: copies.map((c) => c.host), fresh: copies.map((c) => !!c.fresh) });
 
     // terabox dm-d dlinks are CDN-throttled ~30KB/s, so an 8MiB encrypted chunk
@@ -1521,10 +1615,19 @@ class ImgVaultServiceWorker {
     // 3) stream the decrypted range, chunk by chunk
     const stream = new ReadableStream({
       start: async (controller) => {
+        const alive = () => controller.desiredSize !== null;
         try {
+          if (plainAll) {
+            // whole plaintext already in memory — slice and done, no host reads
+            console.log('[Vault-stream] serving from plaintext cache', { total, start, end });
+            if (alive()) controller.enqueue(plainAll.subarray(start, end + 1));
+            if (alive()) controller.close();
+            return;
+          }
           const firstChunk = Math.floor(start / chunkSize);
           const lastChunk = Math.floor(end / chunkSize);
           for (let i = firstChunk; i <= lastChunk; i++) {
+            if (!alive()) return; // client aborted (probe churn) — stop cleanly
             const encStart = rangeLayout.encryptedChunkOffset(i);
             const encLen = rangeLayout.encryptedChunkLength(i);
             console.log('[Vault-stream] chunk', i, 'fetch', encStart, encLen);
@@ -1536,7 +1639,7 @@ class ImgVaultServiceWorker {
                 chunkTimeout,
               ]);
             } catch (err) {
-              controller.error(new Error(`Failed to fetch encrypted chunk ${i}: ${err.message}`));
+              if (alive()) controller.error(new Error(`Failed to fetch encrypted chunk ${i}: ${err.message}`));
               return;
             }
             const plain = await decryptEncryptedChunk(this.vaultMasterKey, encChunk);
@@ -1545,13 +1648,18 @@ class ImgVaultServiceWorker {
             const sliceStart = Math.max(0, start - chunkStart);
             const sliceEnd = Math.min(chunkLen, end - chunkStart + 1);
             if (sliceEnd > sliceStart) {
-              controller.enqueue(plain.slice(sliceStart, sliceEnd));
+              // the client may have aborted this response mid-flight (the media
+              // engine closes the stream when it moves on to another probe
+              // range); enqueueing into a closed controller THREW and left a
+              // broken response behind (2.12.85). desiredSize === null once the
+              // stream is closed/errored — drop the chunk and stop cleanly.
+              if (alive()) controller.enqueue(plain.slice(sliceStart, sliceEnd));
             }
           }
-          controller.close();
+          if (alive()) controller.close();
         } catch (err) {
           console.error('[Vault-stream] stream error:', err);
-          controller.error(err);
+          if (alive()) controller.error(err);
         }
       },
       cancel() {},
@@ -2136,6 +2244,8 @@ class ImgVaultServiceWorker {
 
       case 'vaultClearMasterKey':
         this.vaultMasterKey = null;
+        // Cached plaintext must never outlive the key (2.12.85).
+        this.clearPlaintextCache();
         sendResponse({ success: true, data: null });
         return false;
 
