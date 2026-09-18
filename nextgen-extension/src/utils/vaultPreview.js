@@ -81,7 +81,7 @@ async function persistRemoteVaultPreview(item, blob, sendMessage) {
 import { getCachedThumb, setCachedThumb } from './thumbCache.js';
 import { encryptPreviewBytes, decryptPreviewBytes } from './vaultCrypto.js';
 import { getVaultMasterKey } from './vaultSession.js';
-import { locateVideoFrame, buildSingleFrameMp4, findMoov } from './mp4MinFrame.js';
+import { locateVideoFrame, buildSingleFrameMp4, findMoov, findBox } from './mp4MinFrame.js';
 
 const CANDIDATE_RATIOS = [0.5, 0.25, 0.75];
 // frame passes the "usable" test when it is neither black (mean luma) nor a
@@ -406,6 +406,30 @@ async function runExtraction(item, getStreamUrl, sendMessage) {
   }
   console.log(`[VaultPreview] ${item.id}: moov found in ${moovWhere}`);
 
+  // Fragmented MP4 (dash) stores samples in moof boxes, not in moov's stbl.
+  // locateVideoFrame correctly rejects it (mvex). For a preview we don't need
+  // the middle — the first fragment's first frame is a keyframe and the head
+  // window (8MiB) already contains moov + sidx + first moof/mdat. The browser
+  // decodes a truncated fMP4 prefix fine, so try that directly.
+  const moovBox = findMoov(moovBytes);
+  const isFragmented = moovBox && (() => {
+    try { return !!findBox(moovBytes, 'mvex', moovBox.dataOff, moovBox.dataEnd); } catch { return false; }
+  })();
+  if (isFragmented) {
+    console.log(`[VaultPreview] ${item.id}: fragmented MP4 (mvex) — trying direct decode of head window (${moovBytes.length}B)`);
+    const frag = await decodeFragmentedHead(moovBytes, timeouts);
+    if (frag) {
+      console.log(`[VaultPreview] ${item.id}: fragmented head decoded (mean ${frag.mean.toFixed(1)}, sd ${frag.sd.toFixed(1)})`);
+      await setCachedThumb(key, frag.blob);
+      persistRemoteVaultPreview(item, frag.blob, sendMessage);
+      const url = URL.createObjectURL(frag.blob);
+      objectUrlMap.set(key, url);
+      return url;
+    }
+    console.warn(`[VaultPreview] ${item.id}: fragmented head decode failed — no preview`);
+    throw new Error('fragmented MP4: head window did not decode (unsupported fragmentation?)');
+  }
+
   let best = null;
   for (const ratio of CANDIDATE_RATIOS) {
     const info = locateVideoFrame(moovBytes, ratio);
@@ -464,6 +488,33 @@ async function decodeSingleFrameMp4(mp4Bytes, timeouts, label) {
     const blob = await drawFrame(video);
     if (!blob) return null;
     return { mean, sd, blob };
+  } finally {
+    releaseVideo(video);
+    URL.revokeObjectURL(url);
+  }
+}
+
+/**
+ * Fragmented MP4: the head window (moov + sidx + first moof/mdat) is itself a
+ * valid truncated fMP4. The browser decodes its first fragment's first frame
+ * without needing a rebuilt stbl — just feed the window as-is.
+ */
+async function decodeFragmentedHead(headBytes, timeouts) {
+  const video = document.createElement('video');
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  const url = URL.createObjectURL(new Blob([headBytes], { type: 'video/mp4' }));
+  try {
+    video.src = url;
+    await waitForEvent(video, 'loadeddata', timeouts.seek, 'fragmented head');
+    const { mean, sd } = scoreFrame(video);
+    const blob = await drawFrame(video);
+    if (!blob) return null;
+    return { mean, sd, blob };
+  } catch (err) {
+    console.warn(`[VaultPreview] fragmented head decode error: ${err.message || err}`);
+    return null;
   } finally {
     releaseVideo(video);
     URL.revokeObjectURL(url);
