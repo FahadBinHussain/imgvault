@@ -249,11 +249,14 @@ function sampleByteRange(stsc, stco, stsz, sampleIdx) {
  */
 export function locateVideoFrame(moovBytes, ratio = 0.5) {
   const moov = findMoov(moovBytes);
-  if (!moov) return null;
+  if (!moov) { console.warn('[mp4MinFrame] no moov in window'); return null; }
 
   // Fragmented MP4 keeps its sample tables in moof, not moov — the moov tables
   // are empty and this locator cannot work. Say so, don't guess.
-  if (findBox(moovBytes, 'mvex', moov.dataOff, moov.dataEnd)) return null;
+  if (findBox(moovBytes, 'mvex', moov.dataOff, moov.dataEnd)) {
+    console.warn('[mp4MinFrame] fragmented MP4 (mvex) — sample tables are in moof, not moov; single-frame rebuild unavailable');
+    return null;
+  }
 
   let mvhd = null;
   const traks = [];
@@ -261,7 +264,7 @@ export function locateVideoFrame(moovBytes, ratio = 0.5) {
     if (b.type === 'mvhd') mvhd = b;
     else if (b.type === 'trak') traks.push(b);
   }
-  if (!mvhd) return null;
+  if (!mvhd) { console.warn('[mp4MinFrame] no mvhd in moov'); return null; }
 
   const mvhdVer = moovBytes[mvhd.dataOff];
   const timescale = u32(moovBytes, mvhd.dataOff + (mvhdVer === 0 ? 12 : 20));
