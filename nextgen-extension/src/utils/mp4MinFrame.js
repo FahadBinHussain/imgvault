@@ -75,8 +75,18 @@ export function findBox(bytes, type, start, end) {
  * effectively impossible.
  */
 export function findMoov(bytes, start = 0, end = bytes.length) {
+  // A moov whose declared size runs past the end of the window is TRUNCATED:
+  // its sample tables (stsz/stsc/stco) were cut off and a box walk past the
+  // real data reads unrelated bytes, yielding plausible-looking but garbage
+  // sample sizes (observed: a "sample" of 67MiB on a 143MiB file, which blew
+  // the 64MiB message cap). Prefer a COMPLETE moov; accept a truncated one
+  // only when nothing better exists, and say so.
+  // The scan compares the 4 type bytes directly (not String.fromCharCode) —
+  // windows can be 32MiB and this is the hot loop.
+  let truncated = null;
   for (let off = start; off + 8 <= end; off += 1) {
-    if (typeAt(bytes, off) !== 'moov') continue;
+    if (bytes[off + 4] !== 0x6d || bytes[off + 5] !== 0x6f
+      || bytes[off + 6] !== 0x6f || bytes[off + 7] !== 0x76) continue; // 'moov'
     let size = u32(bytes, off);
     let hdr = 8;
     if (size === 1) {
@@ -96,11 +106,22 @@ export function findMoov(bytes, start = 0, end = bytes.length) {
       if (b.type === 'mvhd') hasMvhd = true;
       else if (b.type === 'trak') hasTrak = true;
     }
-    if (hasMvhd && hasTrak) {
-      return { type: 'moov', off, size, hdr, dataOff, dataEnd };
+    if (!hasMvhd || !hasTrak) continue;
+    if (off + size > end) {
+      // truncated — remember it but keep looking for a complete one
+      if (!truncated) truncated = { type: 'moov', off, size, hdr, dataOff, dataEnd };
+      continue;
     }
+    return { type: 'moov', off, size, hdr, dataOff, dataEnd };
   }
-  return null;
+  if (truncated) {
+    console.warn(
+      `[mp4MinFrame] moov at ${truncated.off} declares ${truncated.size}B but only ` +
+      `${truncated.dataEnd - truncated.dataOff}B fit in the read window — the sample tables ` +
+      'are cut off; parse results from it are unreliable'
+    );
+  }
+  return truncated;
 }
 
 function parseStts(bytes, box) {
@@ -172,6 +193,15 @@ function sampleSize(stsz, sampleNo) {
   if (stsz.sizes && sampleNo >= 1 && sampleNo <= stsz.sizes.length) return stsz.sizes[sampleNo - 1];
   return 0;
 }
+
+// A single compressed video sample is never anywhere near this big (a 4K
+// I-frame tops out around 1-2MiB). If the locator computes a "sample" bigger
+// than this, the moov it parsed is garbage — a false positive in random video
+// data, or a real moov TRUNCATED by the head/tail window whose sample tables
+// ran off into unrelated bytes. Returning that range would make the caller
+// fetch tens of MiB for a "frame" and blow the 64MiB message cap. Reject it
+// loudly instead of guessing.
+const MAX_SAMPLE_BYTES = 4 * 1024 * 1024;
 
 /** Map a tick (track timescale) to a 1-based sample index via stts. */
 function sampleIndexAtTick(stts, tick) {
@@ -297,6 +327,17 @@ export function locateVideoFrame(moovBytes, ratio = 0.5) {
       idx,
     );
     if (!range || range.size <= 0) continue;
+    if (range.size > MAX_SAMPLE_BYTES) {
+      // A "sample" this big means the moov parse is garbage (false positive in
+      // video data, or a moov truncated by the read window whose tables ran
+      // into unrelated bytes). Say it — never hand back a range that would
+      // make the caller fetch tens of MiB and blow the message cap.
+      console.warn(
+        `[mp4MinFrame] located "sample" of ${range.size}B at ${range.offset} — implausible, ` +
+        'the moov being parsed is corrupt or a false positive; rejecting this track'
+      );
+      continue;
+    }
 
     // stsd payload: [version/flags 4][entry_count 4][entries...] — copy the
     // first sample entry verbatim; it carries avcC (SPS/PPS). The visual sample

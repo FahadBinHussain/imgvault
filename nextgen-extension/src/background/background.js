@@ -1431,6 +1431,18 @@ class ImgVaultServiceWorker {
     const rangeLayout = getVaultChunkLayout(total, chunkSize);
     const s = Math.max(0, Math.min(start, total - 1));
     const e = Math.max(s, Math.min(end, total - 1));
+    // chrome.runtime.sendMessage caps a response at 64MiB. A legit preview read
+    // is at most a 32MiB moov window (the growth loop), a head/tail chunk
+    // (8MiB), or one frame (well under 4MiB); a request for more means the
+    // locator computed a bogus range. Fail loudly here rather than blowing the
+    // channel with a 67MiB allocation.
+    const MAX_RANGE_BYTES = 40 * 1024 * 1024;
+    if (e - s + 1 > MAX_RANGE_BYTES) {
+      throw new Error(
+        `plaintext range ${s}-${e} is ${Math.round((e - s + 1) / 1048576)}MiB — exceeds the ` +
+        `${MAX_RANGE_BYTES / 1048576}MiB message cap; the frame locator returned a bogus range`
+      );
+    }
     const firstChunk = Math.floor(s / chunkSize);
     const lastChunk = Math.floor(e / chunkSize);
     const out = new Uint8Array(e - s + 1);

@@ -305,34 +305,57 @@ async function runExtraction(item, getStreamUrl, sendMessage) {
   const { total, chunkSize } = probe;
   console.log(`[VaultPreview] ${item.id}: layout total=${total} chunkSize=${chunkSize} (faststart=${total > 0 ? 'checking' : '?'})`);
 
-  const headLen = Math.min(chunkSize, total);
-  const head = await sendMessage('vaultFetchPlaintextRange', {
+  // moov sits near the start for faststart files, at the end otherwise. Its
+  // size is not bounded by the chunk size: a long video's sample tables (stsz/
+  // stsc/stss/stco, one entry per frame) can run to tens of MiB. A window that
+  // cuts moov in half makes the box walk read past the real tables into
+  // unrelated bytes and yields a plausible-looking but GARBAGE sample size —
+  // observed on this very item as a "67MiB frame" that blew the 64MiB message
+  // cap. So the window GROWS until moov fits completely: read a chunk, look
+  // for a complete moov, read another chunk if it is truncated. Bounded, and
+  // loud if it never fits.
+  const fetchPlain = async (start, end) => sendMessage('vaultFetchPlaintextRange', {
     id: item.id, copies, fileName: item.encryptedFileName || '',
-    start: 0, end: headLen - 1,
+    start, end,
   });
-  if (!head || !head.length) throw new Error('plaintext head range returned no bytes');
-  console.log(`[VaultPreview] ${item.id}: head read ${head.length}B`);
 
+  // 32MiB is generous (a 2-hour 30fps video's moov is ~1-2MiB) while still
+  // bounded — a file whose moov is bigger than this is not a normal video.
+  const MOOV_MAX_WINDOW = 32 * 1024 * 1024;
   let moovBytes = null;
   let moovWhere = '';
-  if (findMoov(head)) {
-    moovBytes = head;
-    moovWhere = 'head';
-  } else {
-    // moov at the end: fetch the tail. Cheap on the common case and still
-    // bounded to one chunk.
-    const tailStart = Math.max(0, total - chunkSize);
-    console.log(`[VaultPreview] ${item.id}: no moov in head — reading tail at ${tailStart}`);
-    const tail = await sendMessage('vaultFetchPlaintextRange', {
-      id: item.id, copies, fileName: item.encryptedFileName || '',
-      start: tailStart, end: total - 1,
-    });
-    if (tail && tail.length) {
-      if (findMoov(tail)) { moovBytes = tail; moovWhere = 'tail'; }
-      else console.warn(`[VaultPreview] ${item.id}: moov absent from BOTH head and tail (${tail.length}B tail read)`);
+
+  // head first (faststart), then tail (moov-at-end)
+  for (const side of ['head', 'tail']) {
+    let windowChunks = 1;
+    while (windowChunks * chunkSize <= MOOV_MAX_WINDOW) {
+      const winLen = Math.min(windowChunks * chunkSize, total);
+      const start = side === 'head' ? 0 : Math.max(0, total - winLen);
+      const end = side === 'head' ? winLen - 1 : total - 1;
+      const win = await fetchPlain(start, end);
+      if (!win || !win.length) throw new Error(`plaintext ${side} range returned no bytes`);
+      const moov = findMoov(win);
+      if (moov && moov.off + moov.size <= win.length) {
+        // complete moov — its tables are fully inside the window
+        moovBytes = win;
+        moovWhere = `${side} (${windowChunks} chunk${windowChunks > 1 ? 's' : ''}, moov ${moov.size}B)`;
+        break;
+      }
+      if (moov) {
+        // truncated: moov is real but bigger than the window so far. Grow.
+        console.log(`[VaultPreview] ${item.id}: moov in ${side} needs ${moov.size}B, window is ${win.length}B — growing`);
+        windowChunks += 1;
+        continue;
+      }
+      // no moov at all in this window: for the head that means moov-at-end
+      // (fall through to the tail side); for the tail it means it is absent.
+      break;
     }
+    if (moovBytes) break;
   }
-  if (!moovBytes) throw new Error('moov not found in head or tail — cannot locate a frame');
+  if (!moovBytes) {
+    throw new Error('moov not found or did not fit in a 32MiB head/tail window — cannot locate a frame');
+  }
   console.log(`[VaultPreview] ${item.id}: moov found in ${moovWhere}`);
 
   let best = null;
