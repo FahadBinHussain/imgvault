@@ -322,15 +322,27 @@ async function runExtraction(item, getStreamUrl, sendMessage) {
   // 8MiB encrypted chunk is fetched once and the slices are served from
   // memory.
   const PLAIN_FETCH_CHUNK = 1 * 1024 * 1024;
+  const normalizeBytes = (part) => {
+    if (part instanceof Uint8Array) return part;
+    if (part instanceof ArrayBuffer) return new Uint8Array(part);
+    if (Array.isArray(part)) return new Uint8Array(part);
+    if (part && typeof part === 'object') {
+      // structured-clone may deliver a plain object with numeric keys
+      const vals = Object.values(part);
+      if (vals.length && typeof vals[0] === 'number') return new Uint8Array(vals);
+    }
+    return part;
+  };
   const fetchPlain = async (start, end) => {
     const len = end - start + 1;
     if (len <= PLAIN_FETCH_CHUNK) {
       console.log(`[VaultPreview] ${item.id}: fetching range ${start}-${end} (${len}B)`);
-      const one = await sendMessage('vaultFetchPlaintextRange', {
+      const oneRaw = await sendMessage('vaultFetchPlaintextRange', {
         id: item.id, copies, fileName: item.encryptedFileName || '',
         start, end,
       });
-      console.log(`[VaultPreview] ${item.id}: received ${one?.length || 0}B for ${start}-${end}`);
+      const one = normalizeBytes(oneRaw);
+      console.log(`[VaultPreview] ${item.id}: received ${one?.length || 0}B for ${start}-${end} (raw type ${Object.prototype.toString.call(oneRaw)})`);
       return one;
     }
     console.log(`[VaultPreview] ${item.id}: chunked fetch ${start}-${end} (${len}B) in ${Math.ceil(len / PLAIN_FETCH_CHUNK)} parts`);
@@ -342,9 +354,17 @@ async function runExtraction(item, getStreamUrl, sendMessage) {
         id: item.id, copies, fileName: item.encryptedFileName || '',
         start: s, end: e,
       });
-      if (!part || !part.length) throw new Error(`chunk ${s}-${e} returned no bytes (expected ${e - s + 1})`);
-      out.set(part, off);
-      off += part.length;
+      console.log(`[VaultPreview] ${item.id}: chunk ${s}-${e} raw response type=${Object.prototype.toString.call(part)} len=${part?.length} byteLen=${part?.byteLength} isView=${ArrayBuffer.isView(part)}`);
+      if (!part || !part.length) {
+        console.error(`[VaultPreview] ${item.id}: chunk ${s}-${e} returned no bytes — raw:`, part);
+        throw new Error(`chunk ${s}-${e} returned no bytes (expected ${e - s + 1}) — got ${Object.prototype.toString.call(part)} len=${part?.length}`);
+      }
+      // Chrome's structured clone may deliver an ArrayBuffer or plain object
+      // instead of Uint8Array — normalize
+      const bytes = part instanceof Uint8Array ? part : (part instanceof ArrayBuffer ? new Uint8Array(part) : (Array.isArray(part) ? new Uint8Array(part) : new Uint8Array(Object.values(part))));
+      console.log(`[VaultPreview] ${item.id}: chunk ${s}-${e} normalized ${bytes.length}B`);
+      out.set(bytes, off);
+      off += bytes.length;
     }
     return out;
   };
