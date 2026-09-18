@@ -1402,6 +1402,50 @@ class ImgVaultServiceWorker {
    * single-shot (needs full decrypt).
    * @returns {Promise<{chunked:boolean,total?:number,chunkSize?:number}>}
    */
+  /**
+   * Fetch a PLAINTEXT byte range of a vault blob, downloading and decrypting
+   * only the encrypted chunks that cover it (2.12.88). A preview needs moov +
+   * one frame, not the movie — this is the "spec of a moment" path: ~16MiB of
+   * host reads for a 143MiB file instead of the whole blob.
+   * @returns {Promise<Uint8Array>} plaintext bytes for [start, end]
+   */
+  async fetchVaultPlaintextRange({ id = '', copies = [], fileName = '', start = 0, end = 0 } = {}) {
+    if (!this.vaultMasterKey) {
+      throw new Error('Vault is locked. Unlock the vault first.');
+    }
+    if (!id || !Array.isArray(copies) || copies.length === 0) {
+      throw new Error('fetchVaultPlaintextRange: id and copies are required');
+    }
+    const item = { id, encryptedBlobUrl: copies[0]?.encryptedBlobUrl || '' };
+    const headerBuf = await this.fetchVaultBlobRange(item, copies, fileName, 0, 15);
+    const layout = parseVaultBlobHeader(headerBuf);
+    if (!layout) {
+      throw new Error('Legacy (non-chunked) vault blob — plaintext ranges are unavailable');
+    }
+    const rangeLayout = getVaultChunkLayout(layout.total, layout.chunkSize);
+    const s = Math.max(0, Math.min(start, layout.total - 1));
+    const e = Math.max(s, Math.min(end, layout.total - 1));
+    const firstChunk = Math.floor(s / layout.chunkSize);
+    const lastChunk = Math.floor(e / layout.chunkSize);
+    const out = new Uint8Array(e - s + 1);
+    let writeAt = 0;
+    for (let i = firstChunk; i <= lastChunk; i++) {
+      const encStart = rangeLayout.encryptedChunkOffset(i);
+      const encLen = rangeLayout.encryptedChunkLength(i);
+      const encChunk = await this.fetchVaultBlobRange(item, copies, fileName, encStart, encStart + encLen - 1);
+      const plain = await decryptEncryptedChunk(this.vaultMasterKey, encChunk);
+      const chunkStart = rangeLayout.plainChunkStart(i);
+      const chunkLen = rangeLayout.plainChunkLength(i);
+      const sliceStart = Math.max(0, s - chunkStart);
+      const sliceEnd = Math.min(chunkLen, e - chunkStart + 1);
+      if (sliceEnd > sliceStart) {
+        out.set(plain.subarray(sliceStart, sliceEnd), writeAt);
+        writeAt += sliceEnd - sliceStart;
+      }
+    }
+    return out.subarray(0, writeAt);
+  }
+
   async probeVaultBlobFormat({ id = '', url, fileId = '', chunks = [], vaultHost = DEFAULT_VAULT_BLOB_HOST, hostCopies = null, fileName = '' } = {}) {
     if (!this.vaultMasterKey) {
       throw new Error('Vault is locked. Unlock the vault first.');
@@ -2356,6 +2400,15 @@ class ImgVaultServiceWorker {
       case 'vaultProbeBlobFormat':
         this.probeVaultBlobFormat(request.data)
           .then((result) => sendResponse({ success: true, data: result }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      // Plaintext range fetch for preview derivation (2.12.88): downloads and
+      // decrypts ONLY the chunks covering [start, end]. A preview is moov +
+      // one frame — never the whole movie.
+      case 'vaultFetchPlaintextRange':
+        this.fetchVaultPlaintextRange(request.data)
+          .then((bytes) => sendResponse({ success: true, data: bytes }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 

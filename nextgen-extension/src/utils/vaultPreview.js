@@ -81,6 +81,7 @@ async function persistRemoteVaultPreview(item, blob, sendMessage) {
 import { getCachedThumb, setCachedThumb } from './thumbCache.js';
 import { encryptPreviewBytes, decryptPreviewBytes } from './vaultCrypto.js';
 import { getVaultMasterKey } from './vaultSession.js';
+import { locateVideoFrame, buildSingleFrameMp4, findMoov } from './mp4MinFrame.js';
 
 const CANDIDATE_RATIOS = [0.5, 0.25, 0.75];
 // frame passes the "usable" test when it is neither black (mean luma) nor a
@@ -281,62 +282,127 @@ async function runExtraction(item, getStreamUrl, sendMessage) {
   const src = await getStreamUrl(item);
   if (!src) throw new Error('no stream URL (resolve failed or vault locked)');
 
+  // ONE FRAME ONLY (2.12.88): a preview is a spec of a moment. Parse moov,
+  // locate the sync frame nearest the middle, range-fetch just that frame's
+  // bytes, and decode it from a tiny synthetic MP4. Never mounts a <video> on
+  // the streaming endpoint, so there is no moov-probe churn and no 8MiB+
+  // chunk cascade — the whole derivation costs ~16MiB on a 143MiB file.
+  const copies = await resolveCopiesForPreview(item, src, sendMessage);
+
+  // moov sits near the start for faststart files, at the end otherwise.
+  // Read the head first; only if moov is absent there read the tail.
+  const probe = await sendMessage('vaultProbeBlobFormat', {
+    id: item.id,
+    url: copies[0]?.encryptedBlobUrl || item.encryptedBlobUrl,
+    fileId: copies[0]?.encryptedBlobFileId || item.encryptedBlobFileId || '',
+    chunks: item.encryptedBlobChunks || [],
+    vaultHost: copies[0]?.host || item.vaultHost || 'udrop',
+    hostCopies: copies,
+  });
+  if (!probe?.chunked) {
+    throw new Error('legacy (non-chunked) blob — single-frame preview unavailable');
+  }
+  const { total, chunkSize } = probe;
+
+  const headLen = Math.min(chunkSize, total);
+  const head = await sendMessage('vaultFetchPlaintextRange', {
+    id: item.id, copies, fileName: item.encryptedFileName || '',
+    start: 0, end: headLen - 1,
+  });
+  if (!head || !head.length) throw new Error('plaintext head range returned no bytes');
+
+  let moovBytes = null;
+  if (findMoov(head)) {
+    moovBytes = head;
+  } else {
+    // moov at the end: fetch the tail. Cheap on the common case and still
+    // bounded to one chunk.
+    const tailStart = Math.max(0, total - chunkSize);
+    const tail = await sendMessage('vaultFetchPlaintextRange', {
+      id: item.id, copies, fileName: item.encryptedFileName || '',
+      start: tailStart, end: total - 1,
+    });
+    if (tail && tail.length) moovBytes = tail;
+  }
+  if (!moovBytes) throw new Error('moov not found in head or tail — cannot locate a frame');
+
+  let best = null;
+  for (const ratio of CANDIDATE_RATIOS) {
+    const info = locateVideoFrame(moovBytes, ratio);
+    if (!info) {
+      console.warn(`[VaultPreview] ${item.id}: frame at ratio ${ratio} could not be located (unsupported container?)`);
+      continue;
+    }
+    const frameBytes = await sendMessage('vaultFetchPlaintextRange', {
+      id: item.id, copies, fileName: item.encryptedFileName || '',
+      start: info.offset, end: info.offset + info.size - 1,
+    });
+    if (!frameBytes || frameBytes.length !== info.size) {
+      console.warn(`[VaultPreview] ${item.id}: frame range at ratio ${ratio} returned ${frameBytes?.length || 0}B, expected ${info.size}`);
+      continue;
+    }
+    const mp4 = buildSingleFrameMp4(info, frameBytes);
+    const decoded = await decodeSingleFrameMp4(mp4, timeouts, `frame@${ratio}`);
+    if (!decoded) continue;
+    const { mean, sd, blob } = decoded;
+    const usable = mean >= MIN_MEAN_LUMA && sd >= MIN_LUMA_SD;
+    if (usable || !best || sd > best.sd) best = { mean, sd, usable, blob };
+    if (usable) break;
+  }
+
+  if (!best) throw new Error('no decodable frame at any candidate position');
+  if (!best.usable) {
+    console.warn(
+      `[VaultPreview] ${item.id}: all ${CANDIDATE_RATIOS.length} candidates looked black/fade ` +
+      `(mean ${best.mean.toFixed(1)}, sd ${best.sd.toFixed(1)}) — using the most detailed one`
+    );
+  }
+
+  await setCachedThumb(key, best.blob);
+  persistRemoteVaultPreview(item, best.blob, sendMessage);
+  const url = URL.createObjectURL(best.blob);
+  objectUrlMap.set(key, url);
+  return url;
+}
+
+/**
+ * Decode the tiny single-frame MP4 and rasterize it to a scored JPEG. The
+ * synthetic file holds exactly one sample, so there is nothing to seek —
+ * 'loadeddata' means the frame is on screen.
+ */
+async function decodeSingleFrameMp4(mp4Bytes, timeouts, label) {
   const video = document.createElement('video');
   video.muted = true;
   video.playsInline = true;
-  video.preload = 'metadata';
-
+  video.preload = 'auto';
+  const url = URL.createObjectURL(new Blob([mp4Bytes], { type: 'video/mp4' }));
   try {
-    video.src = src;
-    await waitForEvent(video, 'loadedmetadata', timeouts.metadata, `preview metadata (${host})`);
-    const duration = Number(video.duration);
-    if (!Number.isFinite(duration) || duration <= 0) {
-      throw new Error(`unseekable duration (${video.duration})`);
-    }
-
-    let best = null;
-    for (const ratio of CANDIDATE_RATIOS) {
-      const t = duration <= 1 ? 0 : Math.min(Math.max(duration * ratio, 0.05), duration - 0.05);
-      const seeked = new Promise((resolve, reject) => {
-        const onSeeked = () => { video.removeEventListener('seeked', onSeeked); resolve(); };
-        video.addEventListener('seeked', onSeeked, { once: true });
-        setTimeout(() => {
-          video.removeEventListener('seeked', onSeeked);
-          reject(new Error(`seek to ${(duration * ratio).toFixed(1)}s timed out after ${Math.round(timeouts.seek / 1000)}s`));
-        }, timeouts.seek);
-      });
-      video.currentTime = t;
-      try {
-        await seeked;
-      } catch (err) {
-        if (!best) throw err;
-        break;
-      }
-      const { mean, sd } = scoreFrame(video);
-      const usable = mean >= MIN_MEAN_LUMA && sd >= MIN_LUMA_SD;
-      if (usable || !best || sd > best.sd) {
-        const blob = await drawFrame(video);
-        if (blob) best = { mean, sd, usable, blob };
-      }
-      if (usable) break;
-    }
-
-    if (!best) throw new Error('no decodable frame at any candidate position');
-    if (!best.usable) {
-      console.warn(
-        `[VaultPreview] ${item.id}: all ${CANDIDATE_RATIOS.length} candidates looked black/fade ` +
-        `(mean ${best.mean.toFixed(1)}, sd ${best.sd.toFixed(1)}) — using the most detailed one`
-      );
-    }
-
-    await setCachedThumb(key, best.blob);
-    persistRemoteVaultPreview(item, best.blob, sendMessage);
-    const url = URL.createObjectURL(best.blob);
-    objectUrlMap.set(key, url);
-    return url;
+    video.src = url;
+    await waitForEvent(video, 'loadeddata', timeouts.seek, `preview decode (${label})`);
+    const { mean, sd } = scoreFrame(video);
+    const blob = await drawFrame(video);
+    if (!blob) return null;
+    return { mean, sd, blob };
   } finally {
     releaseVideo(video);
+    URL.revokeObjectURL(url);
   }
+}
+
+/**
+ * The stream URL carries resolved copies in its query string (the SW serves
+ * ranges from them without a DB read). Reuse those same copies for the
+ * plaintext-range messages so no second resolve round-trip is paid.
+ */
+async function resolveCopiesForPreview(item, streamUrl, sendMessage) {
+  try {
+    const q = new URL(streamUrl).searchParams.get('copies');
+    if (q) {
+      const arr = JSON.parse(q);
+      if (Array.isArray(arr) && arr.length) return arr;
+    }
+  } catch { /* fall through to the item's own copies */ }
+  return preferredPreviewCopies(item);
 }
 
 /**
