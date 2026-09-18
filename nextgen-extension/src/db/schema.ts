@@ -116,6 +116,21 @@ export const mediaItems = pgTable(
   }),
 );
 
+// Encrypted vault video previews (2.12.83). Derived client-side from the
+// decrypted media after unlock, stored as base64 `iv || ciphertext || tag`
+// (single-shot AES-GCM, same master key as the vault blob) so Neon only ever
+// holds ciphertext. Fetched lazily per visible card — getVaultImages never
+// joins this table, so vault-page payloads stay unchanged. The FK cascade
+// drops the row when a media_items row is hard-deleted (permanentlyDelete);
+// soft paths (restore to gallery) delete it explicitly.
+export const mediaItemPreviews = pgTable('media_item_previews', {
+  itemId: text('item_id')
+    .primaryKey()
+    .references(() => mediaItems.id, { onDelete: 'cascade' }),
+  previewEncrypted: text('preview_encrypted').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const settings = pgTable('settings', {
   id: text('id').primaryKey().default('config'),
   pixvidApiKey: text('pixvid_api_key').notNull().default(''),

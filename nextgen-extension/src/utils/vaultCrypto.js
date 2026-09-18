@@ -293,6 +293,30 @@ export async function decryptBlob(masterKey, blob, mimeType = 'application/octet
 }
 
 /**
+ * Encrypt a derived vault preview (a small JPEG, ~60KB) for server-side
+ * storage. Single-shot AES-GCM — no IVG1 chunking needed at this size —
+ * returning base64 `iv || ciphertext || tag`. Neon only ever holds ciphertext;
+ * the master key never leaves the client. (2.12.83)
+ * @param {CryptoKey} masterKey
+ * @param {Uint8Array} bytes preview pixels
+ * @returns {Promise<string>} base64 ciphertext
+ */
+export async function encryptPreviewBytes(masterKey, bytes) {
+  return gcmEncryptRaw(masterKey, bytes);
+}
+
+/**
+ * Decrypt a stored vault preview. Returns raw JPEG bytes, or throws loudly on
+ * a wrong key / corrupted row — callers must not swallow that into a fake frame.
+ * @param {CryptoKey} masterKey
+ * @param {string} b64
+ * @returns {Promise<Uint8Array>} JPEG bytes
+ */
+export async function decryptPreviewBytes(masterKey, b64) {
+  return gcmDecryptRaw(masterKey, b64);
+}
+
+/**
  * Encrypt a JSON metadata payload with the master key.
  * @returns {Promise<string>} base64 `iv || ciphertext || tag`
  */

@@ -2606,6 +2606,14 @@ export class StorageManager {
       // Plain gallery item that only carries a stale vault marker — clear it.
       await this.updateImageNeon(id, { wasVaulted: false, vaultMode: '', vaultedAt: '' });
     }
+    // A restore that does NOT re-vault returns the item to the gallery — its
+    // encrypted preview is no longer meaningful. Soft-delete to trash kept it
+    // (the blob survives a re-vault), but this path exits the vault for good.
+    if (!wasVaultItem) {
+      this.deleteVaultPreviewNeon(id).catch((err) => {
+        console.warn(`[VAULT PREVIEW] cleanup after trash restore failed for ${id}: ${err.message || err}`);
+      });
+    }
     // Vaulted items are excluded from collection counts, same as the delete side.
     if (current.collectionId && !wasVaultItem) {
       await this.incrementCollectionCountNeon(current.collectionId, 1);
@@ -2673,6 +2681,94 @@ export class StorageManager {
     // Skip the collection-count decrement: vaulted items were already
     // excluded from their collection count when they entered the vault.
     return this.moveToTrashNeon(id, { skipCollectionCount: true });
+  }
+
+  /**
+   * Persist an encrypted vault video preview (2.12.83). The payload is
+   * client-side-encrypted base64 ciphertext — this layer never sees plaintext
+   * or the key. Separate table: getVaultImages does NOT read it, so vault-page
+   * payloads stay byte-identical to pre-2.12.83; the card fetches its own row
+   * lazily through the SW message.
+   */
+  async saveVaultPreview(id, encryptedPreviewB64) {
+    await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.saveVaultPreviewNeon(id, encryptedPreviewB64);
+    }
+    const url = this.buildUrl(`userSettings/${id}`, {
+      'updateMask.fieldPaths': ['encryptedPreview'],
+    });
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(this.toFirestoreDoc({ encryptedPreview: encryptedPreviewB64 })),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to save vault preview: ${await response.text()}`);
+    }
+    return true;
+  }
+
+  async saveVaultPreviewNeon(id, encryptedPreviewB64) {
+    const sql = this.ensureNeonReady();
+    await sql`
+      insert into public.media_item_previews (item_id, preview_encrypted)
+      values (${id}, ${encryptedPreviewB64})
+      on conflict (item_id) do update set preview_encrypted = excluded.preview_encrypted, created_at = now()
+    `;
+    return true;
+  }
+
+  /**
+   * Fetch the stored ciphertext for one item. Returns '' when no preview is
+   * stored (cache miss — the caller derives). Never returns plaintext.
+   */
+  async getVaultPreview(id) {
+    await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.getVaultPreviewNeon(id);
+    }
+    const response = await fetch(this.buildUrl(`userSettings/${id}`));
+    if (!response.ok) return '';
+    const doc = await response.json();
+    return this.fromFirestoreDoc(doc)?.encryptedPreview || '';
+  }
+
+  async getVaultPreviewNeon(id) {
+    const sql = this.ensureNeonReady();
+    const rows = await sql`select preview_encrypted from public.media_item_previews where item_id = ${id} limit 1`;
+    return rows[0]?.preview_encrypted || '';
+  }
+
+  /**
+   * Drop the stored preview. Called when an item leaves the vault permanently
+   * (restore to gallery). Soft-delete to trash KEEPS it — the blob still
+   * exists, so a trash restore that re-vaults finds the preview still valid.
+   * Hard delete (permanentlyDeleteNeon) is covered by the FK on-delete cascade.
+   */
+  async deleteVaultPreview(id) {
+    await this.ensureInitialized();
+    if (this.backend === 'neon') {
+      return this.deleteVaultPreviewNeon(id);
+    }
+    const url = this.buildUrl(`userSettings/${id}`, {
+      'updateMask.fieldPaths': ['encryptedPreview'],
+    });
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(this.toFirestoreDoc({ encryptedPreview: '' })),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to delete vault preview: ${await response.text()}`);
+    }
+    return true;
+  }
+
+  async deleteVaultPreviewNeon(id) {
+    const sql = this.ensureNeonReady();
+    await sql`delete from public.media_item_previews where item_id = ${id}`;
+    return true;
   }
 
   async updateTrashedImageNeon(id, updates) {

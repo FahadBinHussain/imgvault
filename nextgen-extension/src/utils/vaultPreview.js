@@ -18,9 +18,69 @@
  * previews run ONE video at a time there; UDrop gets 3. Every unique byte
  * range a video element pulls costs a fresh TeraBox dlink + chunk fetch, so
  * timeouts are generous and results are cached permanently (per machine).
+ *
+ * Remote tier (2.12.83): after a local miss the card also checks the
+ * server-side store `media_item_previews`, which holds the SAME preview
+ * encrypted with the vault key (Neon only ever sees ciphertext). It is fetched
+ * lazily per visible card — getVaultImages never joins that table, so vault
+ * payloads stay byte-identical to before. A clean install now restores a
+ * preview with one ~60KB round-trip instead of an 8MiB chunk through a
+ * throttled CDN. A decrypt failure is LOUD (warn + re-derive); the preview is
+ * also (re)written after every successful derivation so the store self-heals.
  */
 
+/**
+ * Read a preview from the server-side encrypted store. Returns an object URL
+ * or null when nothing usable is stored. Loud on a bad row — never returns a
+ * fake frame and never silently masks a wrong-key condition.
+ */
+async function getRemoteVaultPreview(item, sendMessage) {
+  if (typeof sendMessage !== 'function') return null;
+  const masterKey = getVaultMasterKey();
+  if (!masterKey) return null;
+  let b64 = '';
+  try {
+    b64 = await sendMessage('getVaultPreview', { id: item.id });
+  } catch (err) {
+    console.warn(`[VaultPreview] remote fetch failed for ${item.id}: ${err.message || err}`);
+    return null;
+  }
+  if (!b64) return null;
+  try {
+    const bytes = await decryptPreviewBytes(masterKey, b64);
+    const blob = new Blob([bytes], { type: 'image/jpeg' });
+    if (blob.size < 64) throw new Error(`implausibly small payload (${blob.size}B)`);
+    return blob;
+  } catch (err) {
+    // Ciphertext that won't decrypt means a stale row from another vault key
+    // (passcode change) or a corrupt write. Re-deriving is the correct primary
+    // path, and the derivation below overwrites the bad row — but say it.
+    console.warn(`[VaultPreview] stored preview unusable for ${item.id}: ${err.message || err} — re-deriving`);
+    return null;
+  }
+}
+
+/**
+ * Persist a freshly derived preview to the server-side store. Best-effort by
+ * design: the card already holds the local copy, so a failed write is a loud
+ * warning, never a broken tile.
+ */
+async function persistRemoteVaultPreview(item, blob, sendMessage) {
+  if (typeof sendMessage !== 'function') return;
+  const masterKey = getVaultMasterKey();
+  if (!masterKey) return;
+  try {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const b64 = await encryptPreviewBytes(masterKey, bytes);
+    await sendMessage('saveVaultPreview', { id: item.id, data: b64 });
+  } catch (err) {
+    console.warn(`[VaultPreview] remote persist failed for ${item.id}: ${err.message || err}`);
+  }
+}
+
 import { getCachedThumb, setCachedThumb } from './thumbCache.js';
+import { encryptPreviewBytes, decryptPreviewBytes } from './vaultCrypto.js';
+import { getVaultMasterKey } from './vaultSession.js';
 
 const CANDIDATE_RATIOS = [0.5, 0.25, 0.75];
 // frame passes the "usable" test when it is neither black (mean luma) nor a
@@ -189,7 +249,7 @@ function releaseVideo(video) {
   } catch { /* detached element, nothing to clean */ }
 }
 
-async function runExtraction(item, getStreamUrl) {
+async function runExtraction(item, getStreamUrl, sendMessage) {
   const key = previewKey(item);
   const host = primaryHost(item);
   const timeouts = HOST_TIMEOUTS[host] || DEFAULT_HOST_TIMEOUTS;
@@ -197,6 +257,17 @@ async function runExtraction(item, getStreamUrl) {
   const cached = await getCachedThumb(key, PREVIEW_MAX_AGE_MS);
   if (cached) {
     const url = URL.createObjectURL(cached);
+    objectUrlMap.set(key, url);
+    return url;
+  }
+
+  // Remote tier: a clean install (or a cleared site-data IndexedDB) still has
+  // the preview server-side, encrypted with the vault key. ~60KB instead of an
+  // 8MiB chunk fetch. Backfills the local cache so later views stay free.
+  const remote = await getRemoteVaultPreview(item, sendMessage);
+  if (remote) {
+    await setCachedThumb(key, remote);
+    const url = URL.createObjectURL(remote);
     objectUrlMap.set(key, url);
     return url;
   }
@@ -253,6 +324,7 @@ async function runExtraction(item, getStreamUrl) {
     }
 
     await setCachedThumb(key, best.blob);
+    persistRemoteVaultPreview(item, best.blob, sendMessage);
     const url = URL.createObjectURL(best.blob);
     objectUrlMap.set(key, url);
     return url;
@@ -265,14 +337,15 @@ async function runExtraction(item, getStreamUrl) {
  * Extract (or reuse) a thumbnail for an encrypted vault video.
  * Deduped per item, serialized through a per-host concurrency queue.
  * @param {object} item vault item with encryptedBlobUrl
- * @param {{ getStreamUrl: (item) => Promise<string> }} opts page-supplied
- *   stream-URL builder (it must pre-resolve fresh host URLs first).
+ * @param {{ getStreamUrl: (item) => Promise<string>, sendMessage?: (action: string, data?: object) => Promise<any> }} opts
+ *   page-supplied stream-URL builder (it must pre-resolve fresh host URLs
+ *   first) and the SW message bridge used by the remote preview tier.
  * @returns {Promise<string>} object URL of a JPEG preview
  */
-export function requestVaultPreview(item, { getStreamUrl }) {
+export function requestVaultPreview(item, { getStreamUrl, sendMessage }) {
   const key = previewKey(item);
   if (inflight.has(key)) return inflight.get(key);
-  const task = enqueueForHost(primaryHost(item), () => runExtraction(item, getStreamUrl))
+  const task = enqueueForHost(primaryHost(item), () => runExtraction(item, getStreamUrl, sendMessage))
     .catch((err) => {
       console.warn(`[VaultPreview] preview failed for ${item.id}: ${err.message || String(err)}`);
       throw err;

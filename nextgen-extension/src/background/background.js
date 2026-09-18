@@ -2216,8 +2216,38 @@ class ImgVaultServiceWorker {
         this.restoreFromVault(request.data?.id || request.id, {
           targetHostKeys: request.data?.targetHostKeys || null,
         })
-          .then(() => this.notifyVaultMembershipChanged())
-          .then(() => sendResponse({ success: true, data: null }))
+          .then(async () => {
+            await this.notifyVaultMembershipChanged();
+            // The item left the vault for the gallery — its encrypted preview
+            // is no longer meaningful. Loud on failure, never blocks the
+            // restore itself (2.12.83).
+            await this.storage
+              .deleteVaultPreview(request.data?.id || request.id)
+              .catch((err) => console.warn(`[VAULT PREVIEW] cleanup after restore failed: ${err.message || err}`));
+            sendResponse({ success: true, data: null });
+          })
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      // Vault preview persistence (2.12.83). The page derives a preview from
+      // the decrypted media after unlock, encrypts it with the vault key, and
+      // stores the base64 ciphertext here. getVaultImages never reads this
+      // table — the card fetches its own row lazily through getVaultPreview.
+      case 'getVaultPreview':
+        this.storage.getVaultPreview(request.data?.id || request.id)
+          .then((b64) => sendResponse({ success: true, data: b64 || '' }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'saveVaultPreview':
+        this.storage.saveVaultPreview(request.data?.id || request.id, request.data?.data || '')
+          .then(() => sendResponse({ success: true }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'deleteVaultPreview':
+        this.storage.deleteVaultPreview(request.data?.id || request.id)
+          .then(() => sendResponse({ success: true }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 

@@ -53,6 +53,7 @@ import {
   importMasterKeyFromB64,
 } from '../utils/vaultSession.js';
 import { requestVaultPreview, getCachedVaultPreview, setVaultPreviewPaused, preferredPreviewCopies } from '../utils/vaultPreview.js';
+import { deleteCachedThumb } from '../utils/thumbCache.js';
 
 const VAULT_CONFIG_KEY = 'secretVaultConfig';
 const VAULT_SESSION_KEY = 'imgvault-vault-unlocked';
@@ -90,7 +91,7 @@ const saveLocalVaultConfig = (config) => chrome.storage.local.set({ [VAULT_CONFI
 // `paused` must be true while the detail modal is open: a derivation hammering
 // vault-stream ranges competes with the player for terabox's fragile
 // single-use dlink resolves and starves playback (2.12.75 regression fix).
-function VaultEncryptedVideoThumb({ item, getStreamUrl, paused }) {
+function VaultEncryptedVideoThumb({ item, getStreamUrl, sendMessage, paused }) {
   const holderRef = useRef(null);
   const [visible, setVisible] = useState(false);
   const [url, setUrl] = useState(null);
@@ -122,7 +123,7 @@ function VaultEncryptedVideoThumb({ item, getStreamUrl, paused }) {
       if (cached) { setUrl(cached); return; }
       setPending(true);
       try {
-        const next = await requestVaultPreview(item, { getStreamUrl });
+        const next = await requestVaultPreview(item, { getStreamUrl, sendMessage });
         if (!cancelled) setUrl(next);
       } catch {
         if (!cancelled) setFailed(true);
@@ -331,7 +332,7 @@ export default function VaultPage() {
       }
       if (warmAbortRef.current) break;
       try {
-        await requestVaultPreview(item, { getStreamUrl: getPreviewStreamUrl });
+        await requestVaultPreview(item, { getStreamUrl: getPreviewStreamUrl, sendMessage });
       } catch {
         failed += 1;
       }
@@ -832,6 +833,10 @@ export default function VaultPage() {
         id: selectedItem.id,
         targetHostKeys: restoreTargetHostKeys,
       });
+      // The item left the vault — its derived preview belongs to the vault
+      // view, and the restored gallery card has its own provider thumbnail.
+      // The server-side copy is dropped by the SW; clear the local one too.
+      deleteCachedThumb(`vault-preview-${selectedItem.id}`).catch(() => {});
       setVaultItems((prev) => prev.filter((entry) => entry.id !== selectedItem.id));
       setSelectedItem(null);
       showToast('Restored to Gallery.', 'success', 3000);
@@ -1234,7 +1239,7 @@ export default function VaultPage() {
                         <div className="g-card">
                           {item.encryptedBlobUrl ? (
                             kind === 'Video' ? (
-                              <VaultEncryptedVideoThumb item={item} getStreamUrl={getPreviewStreamUrl} paused={Boolean(selectedItem)} />
+                              <VaultEncryptedVideoThumb item={item} getStreamUrl={getPreviewStreamUrl} sendMessage={sendMessage} paused={Boolean(selectedItem)} />
                             ) : (
                               <div className="relative w-full aspect-video flex items-center justify-center" style={{ background: 'var(--color-base-200)', color: 'oklch(from var(--color-base-content) l c h / 0.4)' }}>
                                 <LockKeyhole className="h-10 w-10" />
