@@ -117,6 +117,7 @@ class ImgVaultServiceWorker {
     // thing ONCE and serve every range from memory — probes then cost nothing.
     // LRU-bounded; cleared on vault lock (plaintext must not outlive the key).
     this.vaultPlaintextCache = new Map();
+    this.vaultPlaintextCacheBytes = 0;
     // Per-item DECRYPTED chunk cache for the streaming path (2.12.86). The
     // whole-blob cache only covers blobs <= 64MiB; a 143MiB blob still streams
     // chunk-by-chunk and dies on moov-probe churn like before. Caching each
@@ -1430,8 +1431,12 @@ class ImgVaultServiceWorker {
    * Multi-GB blobs keep the chunk-streaming path — a full decrypt of those
    * killed the worker before (2.12.75).
    */
-  static PLAINTEXT_CACHE_MAX_BYTES = 64 * 1024 * 1024; // only cache small blobs
-  static PLAINTEXT_CACHE_MAX_ITEMS = 3; // LRU cap; ~192MiB worst case
+  static PLAINTEXT_CACHE_MAX_ENTRY = 192 * 1024 * 1024; // biggest blob worth caching whole
+  // Total-byte budget (2.12.87): a fixed item count let a 64MiB cap exclude a
+  // 143MiB video entirely. Byte-aware eviction keeps at most one large entry
+  // (or several small ones) and never lets the worker hold more than this.
+  static PLAINTEXT_CACHE_MAX_BYTES = 192 * 1024 * 1024;
+  static CHUNK_CACHE_MAX_BYTES = 128 * 1024 * 1024;
   // Chunk-granule cache cap for the streaming path (2.12.86). ~16 decrypted
   // 8MiB chunks — enough to cover a moov probe's working set (chunk 0 + tail
   // + a mid-file probe) without letting a huge blob's chunks accumulate.
@@ -1447,11 +1452,24 @@ class ImgVaultServiceWorker {
   }
 
   _setPlaintextCache(itemId, entry) {
-    if (this.vaultPlaintextCache.has(itemId)) this.vaultPlaintextCache.delete(itemId);
+    const size = entry?.plain?.byteLength || 0;
+    if (this.vaultPlaintextCache.has(itemId)) {
+      const old = this.vaultPlaintextCache.get(itemId);
+      this.vaultPlaintextCache.delete(itemId);
+      this.vaultPlaintextCacheBytes -= old?.plain?.byteLength || 0;
+    }
     this.vaultPlaintextCache.set(itemId, entry);
-    while (this.vaultPlaintextCache.size > ImgVaultServiceWorker.PLAINTEXT_CACHE_MAX_ITEMS) {
+    this.vaultPlaintextCacheBytes += size;
+    // Evict oldest until under the byte budget, but never evict the entry just
+    // added (a single big entry is exactly the case the budget permits).
+    while (
+      this.vaultPlaintextCacheBytes > ImgVaultServiceWorker.PLAINTEXT_CACHE_MAX_BYTES
+      && this.vaultPlaintextCache.size > 1
+    ) {
       const oldest = this.vaultPlaintextCache.keys().next().value;
+      const evicted = this.vaultPlaintextCache.get(oldest);
       this.vaultPlaintextCache.delete(oldest);
+      this.vaultPlaintextCacheBytes -= evicted?.plain?.byteLength || 0;
     }
   }
 
@@ -1497,35 +1515,36 @@ class ImgVaultServiceWorker {
   }
 
   /**
-   * Decrypt an entire small IVG1 blob into one plaintext buffer. Reads the
-   * full encrypted span in ONE range fetch, then walks the chunk layout.
-   * @returns {Promise<Uint8Array|null>} plaintext, or null on failure
+   * Decrypt an entire small IVG1 blob into one plaintext buffer. Chunks are
+   * fetched in PARALLEL batches: terabox throttles each dlink to ~0.68MB/s but
+   * the cap is PER CONNECTION (2.12.76), so 3 concurrent chunk reads give ~3x
+   * the aggregate rate. A 143MiB blob costs ~210s on one link — over the 180s
+   * metadata budget — but ~70s batched, overlapping each resolve with the
+   * previous batch's transfer. @returns {Promise<Uint8Array|null>}
    */
   async _decryptFullVaultBlob(item, copies, fileName, layout, rangeLayout) {
     const { total } = layout;
-    const last = rangeLayout.chunkCount - 1;
-    const encStart = rangeLayout.encryptedChunkOffset(0);
-    const encEnd = rangeLayout.encryptedChunkOffset(last) + rangeLayout.encryptedChunkLength(last) - 1;
-    let enc;
-    try {
-      enc = await this.fetchVaultBlobRange(item, copies, fileName, encStart, encEnd);
-    } catch (err) {
-      console.error('[Vault-stream] full-blob fetch failed:', err.message);
-      return null;
-    }
+    const n = rangeLayout.chunkCount;
+    const host = String(copies[0]?.host || '').toLowerCase();
+    const batchSize = host === 'terabox' ? 3 : 6;
     const out = new Uint8Array(total);
-    let off = 0;
-    for (let i = 0; i < rangeLayout.chunkCount; i++) {
-      const len = rangeLayout.encryptedChunkLength(i);
-      const encChunk = enc.subarray(off, off + len);
-      try {
-        const plain = await decryptEncryptedChunk(this.vaultMasterKey, encChunk);
-        out.set(plain.subarray(0, rangeLayout.plainChunkLength(i)), rangeLayout.plainChunkStart(i));
-      } catch (err) {
-        console.error(`[Vault-stream] chunk ${i} decrypt failed:`, err.message);
+    for (let b = 0; b < n; b += batchSize) {
+      const jobs = [];
+      for (let i = b; i < Math.min(b + batchSize, n); i++) {
+        jobs.push((async () => {
+          const encStart = rangeLayout.encryptedChunkOffset(i);
+          const encLen = rangeLayout.encryptedChunkLength(i);
+          const enc = await this.fetchVaultBlobRange(item, copies, fileName, encStart, encStart + encLen - 1);
+          const plain = await decryptEncryptedChunk(this.vaultMasterKey, enc);
+          out.set(plain.subarray(0, rangeLayout.plainChunkLength(i)), rangeLayout.plainChunkStart(i));
+        })());
+      }
+      const results = await Promise.allSettled(jobs);
+      const failed = results.find((r) => r.status === 'rejected');
+      if (failed) {
+        console.error('[Vault-stream] full-blob chunk decrypt failed:', failed.reason?.message || failed.reason);
         return null;
       }
-      off += len;
     }
     return out;
   }
@@ -1618,7 +1637,7 @@ class ImgVaultServiceWorker {
     // dlink resolves and loadedmetadata times out. Cached plaintext makes the
     // probe churn free. Large blobs stream chunk-by-chunk as before.
     let plainAll = null;
-    if (total <= ImgVaultServiceWorker.PLAINTEXT_CACHE_MAX_BYTES) {
+    if (total <= ImgVaultServiceWorker.PLAINTEXT_CACHE_MAX_ENTRY) {
       const cached = this._getPlaintextCache(itemId);
       if (cached && cached.total === total) {
         plainAll = cached.plain;
