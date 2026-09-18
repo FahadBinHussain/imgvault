@@ -117,6 +117,14 @@ class ImgVaultServiceWorker {
     // thing ONCE and serve every range from memory — probes then cost nothing.
     // LRU-bounded; cleared on vault lock (plaintext must not outlive the key).
     this.vaultPlaintextCache = new Map();
+    // Per-item DECRYPTED chunk cache for the streaming path (2.12.86). The
+    // whole-blob cache only covers blobs <= 64MiB; a 143MiB blob still streams
+    // chunk-by-chunk and dies on moov-probe churn like before. Caching each
+    // decrypted 8MiB chunk granule (byte-capped, LRU) makes repeated probe
+    // reads of the same chunks free for ANY blob size — the probe re-reads
+    // chunk 0 and the tail, they land in memory, later probes cost nothing.
+    this.vaultChunkCache = new Map(); // `${itemId}:${i}` -> plain Uint8Array
+    this.vaultChunkCacheBytes = 0;
     this.initialized = false;
     this.defaultActionIcon = {
       16: 'icons/1-16.png',
@@ -1424,6 +1432,10 @@ class ImgVaultServiceWorker {
    */
   static PLAINTEXT_CACHE_MAX_BYTES = 64 * 1024 * 1024; // only cache small blobs
   static PLAINTEXT_CACHE_MAX_ITEMS = 3; // LRU cap; ~192MiB worst case
+  // Chunk-granule cache cap for the streaming path (2.12.86). ~16 decrypted
+  // 8MiB chunks — enough to cover a moov probe's working set (chunk 0 + tail
+  // + a mid-file probe) without letting a huge blob's chunks accumulate.
+  static CHUNK_CACHE_MAX_BYTES = 128 * 1024 * 1024;
 
   _getPlaintextCache(itemId) {
     const entry = this.vaultPlaintextCache.get(itemId);
@@ -1445,6 +1457,43 @@ class ImgVaultServiceWorker {
 
   clearPlaintextCache() {
     this.vaultPlaintextCache.clear();
+    this.vaultChunkCache.clear();
+    this.vaultChunkCacheBytes = 0;
+  }
+
+  /**
+   * Decrypted-chunk granule cache for the streaming path (2.12.86). Probes
+   * re-read the same chunks (chunk 0, the tail for moov); serving them from
+   * memory removes the terabox resolve cost from the churn. LRU by insertion
+   * order with a global byte cap. Entries carry the blob layout (total +
+   * chunkSize): re-vaulting an item replaces its blob under the SAME id, and a
+   * stale chunk would serve wrong plaintext — the signature must match.
+   */
+  _getCachedChunk(itemId, chunkIndex, total, chunkSize) {
+    const key = `${itemId}:${chunkIndex}`;
+    const entry = this.vaultChunkCache.get(key);
+    if (!entry || entry.total !== total || entry.chunkSize !== chunkSize) return null;
+    this.vaultChunkCache.delete(key);
+    this.vaultChunkCache.set(key, entry); // refresh LRU order
+    return entry.plain;
+  }
+
+  _setCachedChunk(itemId, chunkIndex, plain, total, chunkSize) {
+    const key = `${itemId}:${chunkIndex}`;
+    const existing = this.vaultChunkCache.get(key);
+    if (existing) {
+      this.vaultChunkCache.delete(key);
+      this.vaultChunkCacheBytes -= existing.plain?.byteLength || 0;
+    }
+    this.vaultChunkCache.set(key, { total, chunkSize, plain });
+    this.vaultChunkCacheBytes += plain.byteLength;
+    while (this.vaultChunkCacheBytes > ImgVaultServiceWorker.CHUNK_CACHE_MAX_BYTES
+      && this.vaultChunkCache.size > 0) {
+      const oldest = this.vaultChunkCache.keys().next().value;
+      const evicted = this.vaultChunkCache.get(oldest);
+      this.vaultChunkCache.delete(oldest);
+      this.vaultChunkCacheBytes -= evicted?.plain?.byteLength || 0;
+    }
   }
 
   /**
@@ -1628,6 +1677,18 @@ class ImgVaultServiceWorker {
           const lastChunk = Math.floor(end / chunkSize);
           for (let i = firstChunk; i <= lastChunk; i++) {
             if (!alive()) return; // client aborted (probe churn) — stop cleanly
+            const chunkStart = rangeLayout.plainChunkStart(i);
+            const chunkLen = rangeLayout.plainChunkLength(i);
+            const sliceStart = Math.max(0, start - chunkStart);
+            const sliceEnd = Math.min(chunkLen, end - chunkStart + 1);
+            // moov probes re-read the same chunks (chunk 0, the tail); a cached
+            // decrypt makes the repeat free — this is what unblocks blobs too
+            // big for the whole-blob cache (2.12.86).
+            const cachedPlain = this._getCachedChunk(itemId, i, total, chunkSize);
+            if (cachedPlain) {
+              if (sliceEnd > sliceStart && alive()) controller.enqueue(cachedPlain.subarray(sliceStart, sliceEnd));
+              continue;
+            }
             const encStart = rangeLayout.encryptedChunkOffset(i);
             const encLen = rangeLayout.encryptedChunkLength(i);
             console.log('[Vault-stream] chunk', i, 'fetch', encStart, encLen);
@@ -1643,10 +1704,7 @@ class ImgVaultServiceWorker {
               return;
             }
             const plain = await decryptEncryptedChunk(this.vaultMasterKey, encChunk);
-            const chunkStart = rangeLayout.plainChunkStart(i);
-            const chunkLen = rangeLayout.plainChunkLength(i);
-            const sliceStart = Math.max(0, start - chunkStart);
-            const sliceEnd = Math.min(chunkLen, end - chunkStart + 1);
+            this._setCachedChunk(itemId, i, plain, total, chunkSize);
             if (sliceEnd > sliceStart) {
               // the client may have aborted this response mid-flight (the media
               // engine closes the stream when it moves on to another probe
