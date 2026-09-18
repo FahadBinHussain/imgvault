@@ -450,9 +450,12 @@ export function useTrash() {
       setTrashedImages(prev => prev.filter(img => img.id !== id));
     } catch (err) {
       setError(err);
+      // The item survived (host blob delete failed) — reload so the list shows
+      // the truth instead of a card that is still in the DB.
+      loadTrashedImages();
       throw err;
     }
-  }, [sendMessage]);
+  }, [sendMessage, loadTrashedImages]);
 
   const emptyTrash = useCallback(async () => {
     try {
@@ -461,9 +464,11 @@ export function useTrash() {
       return deletedCount;
     } catch (err) {
       setError(err);
+      // Some items survived — the local list no longer matches the DB.
+      loadTrashedImages();
       throw err;
     }
-  }, [sendMessage]);
+  }, [sendMessage, loadTrashedImages]);
 
   useEffect(() => {
     loadTrashedImages();

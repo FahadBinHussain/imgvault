@@ -497,15 +497,16 @@ export async function resolveTeraBoxThumbnail(explicitCookie, fsId) {
 }
 
 /**
- * Resolve a fresh, currently-valid TeraBox download link (dlink) for a file.
- * Stored dlinks carry an 8h expiry, so playback must refresh it at open time
- * via /api/filemetas (crack dlna mode). Returns '' when unavailable.
+ * Resolve the TeraBox full path for a file (fs_id or filename). Vault blobs
+ * are deleted by PATH (filemanager), not fs_id, so the delete flow needs this
+ * separately from the dlink. Shares the fs_id -> path cache with the playback
+ * resolver. Returns '' when the file is not found in the listing.
  * @param {string} explicitCookie - optional explicit session cookie
  * @param {string|number} fsId
  * @param {string} [fileName] - fallback match by name when fsId lookup misses
  * @returns {Promise<string>}
  */
-export async function resolveTeraBoxPlaybackUrl(explicitCookie, fsId, fileName = '') {
+export async function resolveTeraBoxFilePath(explicitCookie, fsId, fileName = '') {
   const target = String(fsId || '');
   let auth;
   try {
@@ -534,7 +535,29 @@ export async function resolveTeraBoxPlaybackUrl(explicitCookie, fsId, fileName =
     const byName = entries.find((entry) => entry.isdir !== 1 && String(entry.server_filename || '') === String(fileName));
     path = String(byName?.path || '');
   }
+  return path;
+}
+
+/**
+ * Resolve a fresh, currently-valid TeraBox download link (dlink) for a file.
+ * Stored dlinks carry an 8h expiry, so playback must refresh it at open time
+ * via /api/filemetas (crack dlna mode). Returns '' when unavailable.
+ * @param {string} explicitCookie - optional explicit session cookie
+ * @param {string|number} fsId
+ * @param {string} [fileName] - fallback match by name when fsId lookup misses
+ * @returns {Promise<string>}
+ */
+export async function resolveTeraBoxPlaybackUrl(explicitCookie, fsId, fileName = '') {
+  const path = await resolveTeraBoxFilePath(explicitCookie, fsId, fileName);
   if (!path) return '';
+
+  let auth;
+  try {
+    auth = await authorizeTeraBox(explicitCookie);
+  } catch (_) {
+    return '';
+  }
+  if (!auth) return '';
 
   const json = await request(auth.cookie, auth.jsToken, '/api/filemetas', {
     target: JSON.stringify([path]),

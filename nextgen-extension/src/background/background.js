@@ -25,7 +25,8 @@ import {
 } from '../utils/imageProviderLinks.js';
 import { extractFilemoonFilecode, getFilemoonDirectLink, getFilemoonHlsLink } from '../utils/filemoonApi.js';
 import { getFilemoonStreamSource } from '../utils/filemoonSpa.js';
-import { resolveTeraBoxThumbnail, resolveTeraBoxPlaybackUrl } from '../utils/teraBoxApi.js';
+import { resolveTeraBoxThumbnail, resolveTeraBoxPlaybackUrl, resolveTeraBoxFilePath, deleteTeraBoxFiles, teraBoxFsIdFromUrl } from '../utils/teraBoxApi.js';
+import { deleteUdropFile } from '../utils/udropApi.js';
 import { flattenSceneConfig } from '../utils/sceneConfig.js';
 import {
   getConfiguredVideoUploadServices,
@@ -2373,6 +2374,95 @@ class ImgVaultServiceWorker {
   }
 
   /**
+   * Delete the encrypted vault blob (.bin) from every host it was uploaded to.
+   * Without this, permanently deleting a vault item orphans the ciphertext on
+   * the host forever — unreferenceable but still consuming account quota.
+   * Loud by design: any copy that cannot be removed THROWS (the caller keeps
+   * the row in trash with its blob fields intact, so the user can retry).
+   * Never silently orphans a blob. TeraBox deletes move the file to the
+   * account's recycle bin (recoverable), same as the Resolve-page orphan
+   * deletes — nothing is hard-wiped from here.
+   * @param {Object} item - trashed row carrying the encrypted* fields
+   */
+  async deleteVaultBlobFiles(item) {
+    const copies = Array.isArray(item.encryptedBlobHosts) && item.encryptedBlobHosts.length > 0
+      ? item.encryptedBlobHosts
+      : (item.encryptedBlobUrl
+        ? [{ host: item.vaultHost || DEFAULT_VAULT_BLOB_HOST, encryptedBlobUrl: item.encryptedBlobUrl, encryptedBlobFileId: item.encryptedBlobFileId || '' }]
+        : []);
+    if (copies.length === 0) return; // plain gallery item — no blob to clean up
+
+    const settings = await this.getMergedVideoHostSettings().catch(() => ({}));
+    const fileName = item.encryptedFileName || '';
+
+    for (const copy of copies) {
+      const host = String(copy.host || '').toLowerCase();
+      const url = copy.encryptedBlobUrl || '';
+      const fileId = copy.encryptedBlobFileId || '';
+      try {
+        if (host === 'udrop') {
+          if (!fileId) throw new Error('item has no encryptedBlobFileId — cannot delete without it');
+          if (!settings?.udropKey1 || !settings?.udropKey2) throw new Error('UDrop API keys not configured (Settings)');
+          const uploader = new UDropUploader();
+          const auth = await uploader.authorize(settings.udropKey1, settings.udropKey2);
+          await deleteUdropFile(auth.access_token, auth.account_id, fileId);
+          console.log(`[VAULT DELETE] udrop blob ${fileId} deleted`);
+        } else if (host === 'terabox') {
+          if (!settings?.teraboxCookie) throw new Error('TeraBox cookie not configured (Settings)');
+          const fsId = fileId || teraBoxFsIdFromUrl(url);
+          if (!fsId) throw new Error('no fs_id (encryptedBlobFileId or ?fid= in the dlink) to resolve the path');
+          const path = await resolveTeraBoxFilePath(settings.teraboxCookie, fsId, fileName);
+          if (!path) throw new Error(`could not resolve a TeraBox path for fs_id ${fsId} (file no longer listed?)`);
+          await deleteTeraBoxFiles(settings.teraboxCookie, [path]);
+          console.log(`[VAULT DELETE] terabox blob ${path} deleted (moved to recycle bin)`);
+        } else {
+          throw new Error(`unsupported vault blob host "${host}" — cannot delete the blob`);
+        }
+      } catch (err) {
+        throw new Error(`Vault blob delete failed on ${host}: ${err.message || err}. Item kept in trash — fix the host issue and retry.`);
+      }
+    }
+  }
+
+  /**
+   * Permanent delete that removes the encrypted vault blob from its host(s)
+   * BEFORE dropping the row. A host delete failure throws, so the row (and its
+   * blob fields) survive in trash and the user can retry after fixing the
+   * host/credentials — the blob is never orphaned silently.
+   */
+  async permanentlyDeleteItem(id) {
+    const item = await this.storage.getTrashedImageById(id);
+    if (!item) throw new Error('Trashed item not found');
+    await this.deleteVaultBlobFiles(item);
+    this._invalidateVaultBlobCaches(id);
+    return this.storage.permanentlyDelete(id);
+  }
+
+  /**
+   * Empty trash: deletes every trashed item (host blobs first). Items whose
+   * host delete fails SURVIVE — a blocked item never silently vanishes from
+   * the DB while its blob lives on, and never blocks the deletable items.
+   */
+  async emptyTrashItems() {
+    const trashed = await this.storage.getTrashedImages();
+    let deleted = 0;
+    let survivors = 0;
+    for (const item of trashed) {
+      try {
+        await this.permanentlyDeleteItem(item.id);
+        deleted += 1;
+      } catch (err) {
+        survivors += 1;
+        console.error(`[EMPTY TRASH] item ${item.id} survived: ${err.message || err}`);
+      }
+    }
+    if (survivors > 0) {
+      throw new Error(`${survivors} of ${trashed.length} item(s) could not be deleted (host blob delete failed — see console for per-item reasons). They remain in trash; reload trash to see them.`);
+    }
+    return deleted;
+  }
+
+  /**
    * Handle runtime messages
    * @param {Object} request - Message request
    * @param {chrome.runtime.MessageSender} sender - Message sender
@@ -2602,13 +2692,13 @@ class ImgVaultServiceWorker {
         return true;
 
       case 'permanentlyDelete':
-        this.storage.permanentlyDelete(request.data.id)
+        this.permanentlyDeleteItem(request.data.id)
           .then(() => sendResponse({ success: true }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
       case 'emptyTrash':
-        this.storage.emptyTrash()
+        this.emptyTrashItems()
           .then(count => sendResponse({ success: true, data: count }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
