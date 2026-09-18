@@ -487,10 +487,7 @@ async function runExtraction(item, getStreamUrl, sendMessage) {
       continue;
     }
     console.log(`[VaultPreview] ${item.id}: frame@${ratio} -> offset ${info.offset} size ${info.size} (${info.width}x${info.height})`);
-    const frameBytes = await sendMessage('vaultFetchPlaintextRange', {
-      id: item.id, copies, fileName: item.encryptedFileName || '',
-      start: info.offset, end: info.offset + info.size - 1,
-    });
+    const frameBytes = await fetchPlain(info.offset, info.offset + info.size - 1);
     if (!frameBytes || frameBytes.length !== info.size) {
       console.warn(`[VaultPreview] ${item.id}: frame range at ratio ${ratio} returned ${frameBytes?.length || 0}B, expected ${info.size}`);
       continue;
