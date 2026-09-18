@@ -1152,7 +1152,17 @@ class ImgVaultServiceWorker {
         };
 
         // console.log('💾 Storing YouTube frame image data:', pendingData);
-        await chrome.storage.local.set({ pendingImage: pendingData });
+        try {
+          await chrome.storage.local.set({ pendingImage: pendingData });
+        } catch (storageError) {
+          // The frame is a multi-MB PNG data URL; storage.local has a 10MB
+          // default quota and accumulated upload logs can exhaust it. Surface
+          // the real cause instead of the generic 'Failed to capture' below.
+          throw new Error(
+            `Could not stage the captured frame for upload (chrome.storage.local: ${storageError?.message || storageError}). ` +
+            'Clear extension site data or restart the extension, then try again.'
+          );
+        }
 
         await this.openOrFocusApp('/gallery', { reload: true });
       } catch (error) {
