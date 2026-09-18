@@ -473,8 +473,8 @@ export default function VaultPage() {
       if (config && !cancelled) {
         try {
           const session = JSON.parse(sessionStorage.getItem(VAULT_SESSION_KEY) || '{}');
-          const sessionValid = session?.passHash === config.passHash;
-          if (sessionValid) {
+          let unlocked = session?.passHash === config.passHash;
+          if (unlocked) {
             // Rehydrate the master key so encrypted operations (decrypt preview,
             // restore, move-to-vault) actually work. The SW and page both lose
             // their in-memory key on an MV3 idle restart; without this the page
@@ -488,8 +488,33 @@ export default function VaultPage() {
                 console.warn('[Vault] Could not rehydrate master key from session:', err.message);
               }
             }
+          } else {
+            // No valid session in THIS tab (fresh tab, closed tab, or an unlock
+            // done elsewhere — the upload dialog's lock screen lives in
+            // gallery.html, a separate document, and sessionStorage never crosses
+            // tabs). The service worker is the ONLY unlock state shared by every
+            // page, so trust it: if the SW already holds the master key this page
+            // is unlocked too. Same hydration as the session branch, and the
+            // entry is written so this tab's later reloads stay instant.
+            try {
+              const status = await sendMessage('getVaultStatus');
+              if (status?.unlocked) {
+                const res = await sendMessage('vaultGetMasterKey');
+                if (res?.keyB64) {
+                  await importMasterKeyFromB64(res.keyB64);
+                  await sendMessage('vaultSetMasterKey', { keyB64: res.keyB64 });
+                  sessionStorage.setItem(
+                    VAULT_SESSION_KEY,
+                    JSON.stringify({ passHash: config.passHash, unlockedAt: Date.now(), keyB64: res.keyB64 })
+                  );
+                  unlocked = true;
+                }
+              }
+            } catch (err) {
+              console.warn('[Vault] Could not hydrate unlock from the service worker:', err.message);
+            }
           }
-          setUnlocked(sessionValid);
+          setUnlocked(unlocked);
         } catch (_) {
           setUnlocked(false);
         }
