@@ -151,6 +151,13 @@ export default function ResolvePage() {
   // result retriggers the check forever ("stuck loading").
   const [sceneHasChecked, setSceneHasChecked] = useState(false);
   const sceneCheckSeqRef = useRef(0); // latest scene check wins; stale runs discard
+  // Which host the CURRENT sceneIntegrity belongs to. Every label on this tab
+  // is derived from sceneSubTab, so the check that produced the numbers and the
+  // subtab must never diverge — the auto-run effect below keeps them in sync.
+  const [sceneCheckedTab, setSceneCheckedTab] = useState('');
+  // Once the user picks a subtab or re-checks manually, their choice wins over
+  // the default-3D-source auto-sync.
+  const sceneUserPickedRef = useRef(false);
 
   // ---- Filemoon integrity check state ----
   const [filemoonIntegrity, setFilemoonIntegrity] = useState({ found: [], missing: [], noUrl: [], extra: [] });
@@ -692,7 +699,7 @@ export default function ResolvePage() {
 
       await sendMessage('updateImage', { id: item.id, ...updates });
       await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
-      const recheck = () => runSceneIntegrityCheck(sceneSubTab);
+      const recheck = () => { sceneUserPickedRef.current = true; return runSceneIntegrityCheck(sceneSubTab); };
       await recheck();
       setNotice({ type: 'success', message: `Scene fixed on ${service.label} for "${item.pageTitle || item.fileName || 'scene'}".` });
     } catch (err) {
@@ -863,6 +870,7 @@ export default function ResolvePage() {
       updates.extraMetadata = { ...(freshItem.extraMetadata || {}), sceneFiles };
       await sendMessage('updateImage', { id: freshItem.id, ...updates });
       await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
+      sceneUserPickedRef.current = true;
       await runSceneIntegrityCheck(targetHost);
       setNotice({ type: 'success', message: `Scene fixed on ${hostLabel} for "${freshItem.pageTitle || freshItem.fileName || 'scene'}" — SPZ${texRes ? '+Image' : ''} copied from ${sourceHost}.` });
     } catch (err) {
@@ -923,6 +931,7 @@ export default function ResolvePage() {
     if (!checkSceneKeysConfigured()) {
       if (seq !== sceneCheckSeqRef.current) return;
       setSceneError('No 3D host configured. Add UDrop keys or log into TeraBox.');
+      setSceneCheckedTab(tab);
       setSceneHasChecked(true);
       return;
     }
@@ -952,6 +961,7 @@ export default function ResolvePage() {
       }
       if (seq !== sceneCheckSeqRef.current) return;
       setSceneLoadingMessage(null);
+      setSceneCheckedTab(tab);
       setSceneIntegrity(result);
       setNotice({
         type: result.missing.length > 0 ? 'error' : 'success',
@@ -961,6 +971,7 @@ export default function ResolvePage() {
       if (seq !== sceneCheckSeqRef.current) return;
       setSceneLoadingMessage(null);
       setSceneError(err.message || String(err));
+      setSceneCheckedTab(tab);
       setSceneIntegrity({ found: [], missing: [], noUrl: [], extra: [] });
     } finally {
       if (seq === sceneCheckSeqRef.current) {
@@ -970,17 +981,23 @@ export default function ResolvePage() {
     }
   }, [settings, sendMessage, checkSceneKeysConfigured, sceneSubTab]);
 
+  // Enter the 3D tab: run the check FOR the default 3D source, which also sets
+  // the subtab atomically (line `if (tab !== sceneSubTab) setSceneSubTab(tab)`
+  // above). Previously this was TWO effects — the auto-run fired the check with
+  // the pre-flip subtab ('udrop' is also useChromeStorage's placeholder before
+  // the stored value lands from chrome.storage.sync), then the default-source
+  // init effect flipped sceneSubTab to 'terabox' mid-flight. The check then
+  // committed UDrop numbers under TeraBox labels and nothing ever re-synced
+  // (the init effect's deps never changed again). One effect, one commit.
+  // Re-runs when the stored default resolves AFTER a check already ran for the
+  // placeholder tab — sceneCheckedTab !== target is exactly that divergence.
+  // Once the user picked a subtab manually, their choice wins (no auto-switch).
   useEffect(() => {
-    if (activeTab === 'scenes' && !sceneLoading && !sceneHasChecked) {
-      runSceneIntegrityCheck();
-    }
-  }, [activeTab, sceneLoading, sceneHasChecked, runSceneIntegrityCheck]);
-
-  useEffect(() => {
-    if (activeTab === 'scenes' && default3DSource && sceneSubTab !== default3DSource && !sceneHasChecked) {
-      setSceneSubTab(default3DSource === 'terabox' ? 'terabox' : 'udrop');
-    }
-  }, [activeTab, default3DSource]);
+    if (activeTab !== 'scenes' || sceneLoading || sceneUserPickedRef.current) return;
+    const targetTab = default3DSource === 'terabox' ? 'terabox' : 'udrop';
+    if (sceneHasChecked && sceneCheckedTab === targetTab) return;
+    runSceneIntegrityCheck(targetTab);
+  }, [activeTab, sceneLoading, sceneHasChecked, sceneCheckedTab, default3DSource, runSceneIntegrityCheck]);
 
   useEffect(() => {
     if (activeTab === 'scenes') {
@@ -2804,7 +2821,7 @@ export default function ResolvePage() {
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <Button
                   variant="primary"
-                  onClick={() => runSceneIntegrityCheck()}
+                  onClick={() => { sceneUserPickedRef.current = true; runSceneIntegrityCheck(); }}
                   className="h-10 gap-2 px-3 text-sm"
                   disabled={sceneLoading}
                 >
@@ -2819,10 +2836,10 @@ export default function ResolvePage() {
             </section>
 
             <section className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => runSceneIntegrityCheck('udrop')} className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${sceneSubTab === 'udrop' ? 'border-primary bg-primary text-primary-content shadow-sm' : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'}`}>
+              <button type="button" onClick={() => { sceneUserPickedRef.current = true; runSceneIntegrityCheck('udrop'); }} className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${sceneSubTab === 'udrop' ? 'border-primary bg-primary text-primary-content shadow-sm' : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'}`}>
                 <Shield className="h-4 w-4" /> UDrop 3D
               </button>
-              <button type="button" onClick={() => runSceneIntegrityCheck('terabox')} className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${sceneSubTab === 'terabox' ? 'border-primary bg-primary text-primary-content shadow-sm' : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'}`}>
+              <button type="button" onClick={() => { sceneUserPickedRef.current = true; runSceneIntegrityCheck('terabox'); }} className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${sceneSubTab === 'terabox' ? 'border-primary bg-primary text-primary-content shadow-sm' : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'}`}>
                 <Box className="h-4 w-4" /> TeraBox 3D
               </button>
             </section>
