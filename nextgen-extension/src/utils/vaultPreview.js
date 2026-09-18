@@ -303,6 +303,7 @@ async function runExtraction(item, getStreamUrl, sendMessage) {
     throw new Error('legacy (non-chunked) blob — single-frame preview unavailable');
   }
   const { total, chunkSize } = probe;
+  console.log(`[VaultPreview] ${item.id}: layout total=${total} chunkSize=${chunkSize} (faststart=${total > 0 ? 'checking' : '?'})`);
 
   const headLen = Math.min(chunkSize, total);
   const head = await sendMessage('vaultFetchPlaintextRange', {
@@ -310,21 +311,29 @@ async function runExtraction(item, getStreamUrl, sendMessage) {
     start: 0, end: headLen - 1,
   });
   if (!head || !head.length) throw new Error('plaintext head range returned no bytes');
+  console.log(`[VaultPreview] ${item.id}: head read ${head.length}B`);
 
   let moovBytes = null;
+  let moovWhere = '';
   if (findMoov(head)) {
     moovBytes = head;
+    moovWhere = 'head';
   } else {
     // moov at the end: fetch the tail. Cheap on the common case and still
     // bounded to one chunk.
     const tailStart = Math.max(0, total - chunkSize);
+    console.log(`[VaultPreview] ${item.id}: no moov in head — reading tail at ${tailStart}`);
     const tail = await sendMessage('vaultFetchPlaintextRange', {
       id: item.id, copies, fileName: item.encryptedFileName || '',
       start: tailStart, end: total - 1,
     });
-    if (tail && tail.length) moovBytes = tail;
+    if (tail && tail.length) {
+      if (findMoov(tail)) { moovBytes = tail; moovWhere = 'tail'; }
+      else console.warn(`[VaultPreview] ${item.id}: moov absent from BOTH head and tail (${tail.length}B tail read)`);
+    }
   }
   if (!moovBytes) throw new Error('moov not found in head or tail — cannot locate a frame');
+  console.log(`[VaultPreview] ${item.id}: moov found in ${moovWhere}`);
 
   let best = null;
   for (const ratio of CANDIDATE_RATIOS) {
@@ -333,6 +342,7 @@ async function runExtraction(item, getStreamUrl, sendMessage) {
       console.warn(`[VaultPreview] ${item.id}: frame at ratio ${ratio} could not be located (unsupported container?)`);
       continue;
     }
+    console.log(`[VaultPreview] ${item.id}: frame@${ratio} -> offset ${info.offset} size ${info.size} (${info.width}x${info.height})`);
     const frameBytes = await sendMessage('vaultFetchPlaintextRange', {
       id: item.id, copies, fileName: item.encryptedFileName || '',
       start: info.offset, end: info.offset + info.size - 1,

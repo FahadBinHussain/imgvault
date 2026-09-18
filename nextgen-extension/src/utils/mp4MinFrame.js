@@ -62,9 +62,45 @@ export function findBox(bytes, type, start, end) {
   return null;
 }
 
-/** Locate the movie metadata box in a buffer known to contain it. */
+/**
+ * Locate the movie metadata box in a window known to contain it.
+ *
+ * The window is NOT guaranteed to start on a box boundary: the head read starts
+ * at byte 0 (ftyp first, so it is aligned), but a TAIL read starts at an
+ * arbitrary offset — mid-box — and a strict box walk from offset 0 of that
+ * slice parses garbage and silently misses moov entirely. So instead of
+ * walking boxes, scan for a plausible moov header (4-byte size + 'moov') and
+ * VALIDATE it by checking it actually holds mvhd + trak. The mvhd/trak
+ * requirement makes a false positive on random compressed video data
+ * effectively impossible.
+ */
 export function findMoov(bytes, start = 0, end = bytes.length) {
-  return findBox(bytes, 'moov', start, end);
+  for (let off = start; off + 8 <= end; off += 1) {
+    if (typeAt(bytes, off) !== 'moov') continue;
+    let size = u32(bytes, off);
+    let hdr = 8;
+    if (size === 1) {
+      size = u64(bytes, off + 8);
+      hdr = 16;
+    } else if (size === 0) {
+      // size 0 = "extends to end of file" — the buffer is all we have
+      size = end - off;
+    }
+    if (size < hdr) continue;
+    const dataOff = off + hdr;
+    const dataEnd = Math.min(off + size, end);
+    if (dataEnd - dataOff < 16) continue;
+    let hasMvhd = false;
+    let hasTrak = false;
+    for (const b of iterBoxes(bytes, dataOff, dataEnd)) {
+      if (b.type === 'mvhd') hasMvhd = true;
+      else if (b.type === 'trak') hasTrak = true;
+    }
+    if (hasMvhd && hasTrak) {
+      return { type: 'moov', off, size, hdr, dataOff, dataEnd };
+    }
+  }
+  return null;
 }
 
 function parseStts(bytes, box) {
@@ -343,38 +379,54 @@ export function buildSingleFrameMp4(info, sampleBytes) {
     ascii('isom'), u32Box(0x200), ascii('isomiso2avc1mp41'),
   ]));
 
+  // mvhd v0: version/flags(4) creation(4) modification(4) timescale(4)
+  // duration(4) rate(4) volume(2) reserved(10) matrix(36) predefined(24)
+  // next_track_ID(4) = 96-byte payload. Field offsets are spec-fixed — a
+  // decoder tolerates a misplaced one, but let's not rely on leniency.
   const mvhd = box('mvhd', (() => {
-    const p = new Uint8Array(100);
+    const p = new Uint8Array(96);
     w32(p, 12, timescale || 1000);
     w32(p, 16, sampleDuration || 1);
     w32(p, 20, 0x00010000); // rate 1.0
     p[24] = 0x01; p[25] = 0x00; // volume 1.0
     p.set(MATRIX, 32);
-    w32(p, 96, 2); // next_track_id
+    w32(p, 92, 2); // next_track_id
     return p;
   })());
 
+  // tkhd v0: version/flags(4) creation(4) modification(4) track_ID(4)
+  // reserved(4) duration(4) reserved(8) volume(2) reserved(2) matrix(36)
+  // width(4) height(4) = 80-byte payload. duration is at +20 (a 4-byte
+  // reserved field sits between track_ID and duration).
   const tkhd = box('tkhd', (() => {
     const p = new Uint8Array(80);
     w32(p, 0, 0x0003); // enabled + in_movie
     w32(p, 12, 1); // track_id
-    w32(p, 16, sampleDuration || 1); // duration
+    w32(p, 20, sampleDuration || 1); // duration
+    p[32] = 0x01; p[33] = 0x00; // volume 1.0
     p.set(MATRIX, 36);
     w32(p, 72, (w << 16)); // width 16.16
     w32(p, 76, (h << 16)); // height 16.16
     return p;
   })());
 
+  // mdhd v0: version/flags(4) creation(4) modification(4) timescale(4)
+  // duration(4) language(2) pre_defined(2) = 24-byte payload. language is at
+  // +20, immediately after duration.
   const mdhd = box('mdhd', (() => {
-    const p = new Uint8Array(20);
+    const p = new Uint8Array(24);
     w32(p, 12, timescale || 1000);
     w32(p, 16, sampleDuration || 1);
-    p[18] = 0x55; p[19] = 0xc4; // und
+    p[20] = 0x55; p[21] = 0xc4; // und
     return p;
   })());
 
+  // hdlr layout is [version/flags 4][pre_defined 4][handler_type 4][reserved 12]
+  // — handler_type sits at payload offset 8, NOT 4 (pre_defined comes first).
+  // Writing 'vide' at offset 4 still plays in lenient decoders but is invalid
+  // ISO-BMFF, and a strict parser then sees a non-video track and skips it.
   const hdlr = box('hdlr', concat([
-    new Uint8Array(4), ascii('vide'), new Uint8Array(12),
+    new Uint8Array(8), ascii('vide'), new Uint8Array(12),
     ascii('VideoHandler\0'),
   ]));
 

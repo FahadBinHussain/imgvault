@@ -126,6 +126,12 @@ class ImgVaultServiceWorker {
     // chunk 0 and the tail, they land in memory, later probes cost nothing.
     this.vaultChunkCache = new Map(); // `${itemId}:${i}` -> plain Uint8Array
     this.vaultChunkCacheBytes = 0;
+    // IVG1 blob layout per item (2.12.89). The 16-byte header was being re-read
+    // on EVERY plaintext-range call — each read is a full terabox dlink resolve
+    // + fetch for 16 bytes, and a single preview issued 4+ of them. The layout
+    // is immutable per blob, so it is memoized per item and invalidated whenever
+    // a new encrypted blob is written under the id (re-vault) or the vault locks.
+    this.vaultBlobLayout = new Map(); // itemId -> {total, chunkSize}
     this.initialized = false;
     this.defaultActionIcon = {
       16: 'icons/1-16.png',
@@ -1417,23 +1423,30 @@ class ImgVaultServiceWorker {
       throw new Error('fetchVaultPlaintextRange: id and copies are required');
     }
     const item = { id, encryptedBlobUrl: copies[0]?.encryptedBlobUrl || '' };
-    const headerBuf = await this.fetchVaultBlobRange(item, copies, fileName, 0, 15);
-    const layout = parseVaultBlobHeader(headerBuf);
+    const layout = await this._resolveBlobLayout(item, copies, fileName);
     if (!layout) {
       throw new Error('Legacy (non-chunked) vault blob — plaintext ranges are unavailable');
     }
-    const rangeLayout = getVaultChunkLayout(layout.total, layout.chunkSize);
-    const s = Math.max(0, Math.min(start, layout.total - 1));
-    const e = Math.max(s, Math.min(end, layout.total - 1));
-    const firstChunk = Math.floor(s / layout.chunkSize);
-    const lastChunk = Math.floor(e / layout.chunkSize);
+    const { total, chunkSize } = layout;
+    const rangeLayout = getVaultChunkLayout(total, chunkSize);
+    const s = Math.max(0, Math.min(start, total - 1));
+    const e = Math.max(s, Math.min(end, total - 1));
+    const firstChunk = Math.floor(s / chunkSize);
+    const lastChunk = Math.floor(e / chunkSize);
     const out = new Uint8Array(e - s + 1);
     let writeAt = 0;
     for (let i = firstChunk; i <= lastChunk; i++) {
-      const encStart = rangeLayout.encryptedChunkOffset(i);
-      const encLen = rangeLayout.encryptedChunkLength(i);
-      const encChunk = await this.fetchVaultBlobRange(item, copies, fileName, encStart, encStart + encLen - 1);
-      const plain = await decryptEncryptedChunk(this.vaultMasterKey, encChunk);
+      // The head read and the chosen frame often share a chunk; the tail read
+      // and the frame can too. Serve a repeat chunk from the granule cache
+      // instead of paying another dlink resolve + 8MiB fetch for it.
+      let plain = this._getCachedChunk(id, i, total, chunkSize);
+      if (!plain) {
+        const encStart = rangeLayout.encryptedChunkOffset(i);
+        const encLen = rangeLayout.encryptedChunkLength(i);
+        const encChunk = await this.fetchVaultBlobRange(item, copies, fileName, encStart, encStart + encLen - 1);
+        plain = await decryptEncryptedChunk(this.vaultMasterKey, encChunk);
+        this._setCachedChunk(id, i, plain, total, chunkSize);
+      }
       const chunkStart = rangeLayout.plainChunkStart(i);
       const chunkLen = rangeLayout.plainChunkLength(i);
       const sliceStart = Math.max(0, s - chunkStart);
@@ -1455,8 +1468,7 @@ class ImgVaultServiceWorker {
       : [{ host: vaultHost, encryptedBlobUrl: url, encryptedBlobFileId: fileId || '' }];
     const item = { id, encryptedBlobUrl: url };
     try {
-      const headerBuf = await this.fetchVaultBlobRange(item, copies, fileName, 0, 15);
-      const layout = parseVaultBlobHeader(headerBuf);
+      const layout = await this._resolveBlobLayout(item, copies, fileName);
       if (!layout) return { chunked: false };
       return { chunked: true, total: layout.total, chunkSize: layout.chunkSize };
     } catch (err) {
@@ -1521,6 +1533,43 @@ class ImgVaultServiceWorker {
     this.vaultPlaintextCache.clear();
     this.vaultChunkCache.clear();
     this.vaultChunkCacheBytes = 0;
+    this.vaultBlobLayout.clear();
+  }
+
+  /**
+   * Drop every cached artifact tied to an item's encrypted blob. Called when a
+   * NEW encrypted blob is written under the same id (move-to-vault, direct
+   * vaulted upload, restore): the layout changes, cached chunks become wrong
+   * plaintext, and the resolved URL is stale.
+   */
+  _invalidateVaultBlobCaches(itemId) {
+    if (!itemId) return;
+    this.vaultBlobLayout.delete(itemId);
+    this.vaultPlaintextCache.delete(itemId);
+    for (const key of this.vaultChunkCache.keys()) {
+      if (key.startsWith(`${itemId}:`)) this.vaultChunkCache.delete(key);
+    }
+    for (const key of this.vaultStreamUrlCache?.keys() || []) {
+      if (key.startsWith(`${itemId}:`)) this.vaultStreamUrlCache.delete(key);
+    }
+  }
+
+  /**
+   * Resolve the IVG1 chunk layout for an item, memoized per blob (2.12.89).
+   * The 16-byte header is the ONLY thing that needs a host round-trip to learn
+   * the layout, and it never changes for a given blob — so it is read ONCE per
+   * item per unlock instead of once per range request. Returns null for legacy
+   * single-shot blobs (loud: the caller rejects rather than guessing).
+   */
+  async _resolveBlobLayout(item, copies, fileName) {
+    const cached = this.vaultBlobLayout.get(item.id);
+    if (cached) return cached;
+    const headerBuf = await this.fetchVaultBlobRange(item, copies, fileName, 0, 15);
+    const layout = parseVaultBlobHeader(headerBuf);
+    if (!layout) return null;
+    const entry = { total: layout.total, chunkSize: layout.chunkSize };
+    this.vaultBlobLayout.set(item.id, entry);
+    return entry;
   }
 
   /**
@@ -2059,6 +2108,9 @@ class ImgVaultServiceWorker {
         if (current.collectionId) {
           await this.storage.incrementCollectionCount(current.collectionId, -1);
         }
+        // A new encrypted blob now lives under this id — every cached artifact
+        // of the OLD blob (layout, decrypted chunks, resolved URLs) is stale.
+        this._invalidateVaultBlobCaches(id);
         return true;
       } catch (error) {
         console.error('[Vault] Encrypted move failed, falling back to legacy flag-only:', error.message);
@@ -2270,6 +2322,9 @@ class ImgVaultServiceWorker {
         if (current.collectionId) {
           await this.storage.incrementCollectionCount(current.collectionId, 1);
         }
+        // The encrypted blob is gone from this item; its cached layout/chunks/URLs
+        // must not survive it.
+        this._invalidateVaultBlobCaches(id);
         await chrome.storage.local.set({ uploadActive: false }).catch(() => {});
         return true;
       } catch (error) {
@@ -3429,6 +3484,9 @@ class ImgVaultServiceWorker {
       const sanitized = sanitizeForNeon(mediaMetadata);
       const savedId = await this.storage.saveImage(sanitized);
       await this.updateStatusWithLog('🔒 Encrypted item saved to Secret Vault.', 'success');
+      // Nothing of this blob was cached before, but stay consistent: a saved id
+      // must never carry a stale artifact from a previous blob.
+      this._invalidateVaultBlobCaches(savedId);
 
       await this.archiveUploadLogRun('success', 'Encrypted vault upload completed.');
 
