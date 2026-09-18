@@ -314,10 +314,40 @@ async function runExtraction(item, getStreamUrl, sendMessage) {
   // cap. So the window GROWS until moov fits completely: read a chunk, look
   // for a complete moov, read another chunk if it is truncated. Bounded, and
   // loud if it never fits.
-  const fetchPlain = async (start, end) => sendMessage('vaultFetchPlaintextRange', {
-    id: item.id, copies, fileName: item.encryptedFileName || '',
-    start, end,
-  });
+  // chrome.runtime.sendMessage caps the response at 64MiB. An 8MiB Uint8Array
+  // SHOULD fit, but Chrome's structured-clone overhead for typed arrays can
+  // push it over (observed: an 8MiB head fetch blew the cap on 9cc25ea7).
+  // So large ranges are split into 1MiB messages and reassembled here. The
+  // background's chunk cache makes the extra round-trips cheap — the same
+  // 8MiB encrypted chunk is fetched once and the slices are served from
+  // memory.
+  const PLAIN_FETCH_CHUNK = 1 * 1024 * 1024;
+  const fetchPlain = async (start, end) => {
+    const len = end - start + 1;
+    if (len <= PLAIN_FETCH_CHUNK) {
+      console.log(`[VaultPreview] ${item.id}: fetching range ${start}-${end} (${len}B)`);
+      const one = await sendMessage('vaultFetchPlaintextRange', {
+        id: item.id, copies, fileName: item.encryptedFileName || '',
+        start, end,
+      });
+      console.log(`[VaultPreview] ${item.id}: received ${one?.length || 0}B for ${start}-${end}`);
+      return one;
+    }
+    console.log(`[VaultPreview] ${item.id}: chunked fetch ${start}-${end} (${len}B) in ${Math.ceil(len / PLAIN_FETCH_CHUNK)} parts`);
+    const out = new Uint8Array(len);
+    let off = 0;
+    for (let s = start; s <= end; s += PLAIN_FETCH_CHUNK) {
+      const e = Math.min(s + PLAIN_FETCH_CHUNK - 1, end);
+      const part = await sendMessage('vaultFetchPlaintextRange', {
+        id: item.id, copies, fileName: item.encryptedFileName || '',
+        start: s, end: e,
+      });
+      if (!part || !part.length) throw new Error(`chunk ${s}-${e} returned no bytes (expected ${e - s + 1})`);
+      out.set(part, off);
+      off += part.length;
+    }
+    return out;
+  };
 
   // 32MiB is generous (a 2-hour 30fps video's moov is ~1-2MiB) while still
   // bounded — a file whose moov is bigger than this is not a normal video.
