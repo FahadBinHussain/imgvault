@@ -319,42 +319,6 @@ async function runExtraction(item, getStreamUrl, sendMessage) {
   const { total, chunkSize } = probe;
   console.log(`[VaultPreview] ${item.id}: layout total=${total} chunkSize=${chunkSize} (faststart=${total > 0 ? 'checking' : '?'})`);
 
-  const MOOV_MAX_WINDOW = 32 * 1024 * 1024;
-
-  // Matroska (MKV/WebM) is EBML, not ISO-BMFF — there is no moov at all. Its
-  // header is tiny and sits at the very start, and the seek index (Cues) may
-  // live at the far end, so the moov search below reads head AND tail and
-  // finds nothing (observed on 1327ea6b, video/matroska). Identify the
-  // container from one head chunk and branch before paying for that.
-  const headFirst = await fetchPlain(0, Math.min(chunkSize, total) - 1);
-  const container = detectContainer(headFirst);
-  console.log(`[VaultPreview] ${item.id}: container=${container}`);
-  if (container === 'matroska') {
-    let head = headFirst;
-    for (let n = 1; n * chunkSize <= MOOV_MAX_WINDOW;) {
-      const res = await decodeMatroskaHead(head, total, timeouts);
-      if (res) {
-        if (!res.usable) {
-          console.warn(`[VaultPreview] ${item.id}: matroska candidates looked black/fade (mean ${res.mean.toFixed(1)}, sd ${res.sd.toFixed(1)}) — using the most detailed one`);
-        }
-        await setCachedThumb(key, res.blob);
-        persistRemoteVaultPreview(item, res.blob, sendMessage);
-        const url = URL.createObjectURL(res.blob);
-        objectUrlMap.set(key, url);
-        return url;
-      }
-      const next = n * 2;
-      if (next * chunkSize > MOOV_MAX_WINDOW) break;
-      console.log(`[VaultPreview] ${item.id}: matroska head (${head.length}B) did not decode — growing to ${next} chunks`);
-      head = await fetchPlain(0, Math.min(next * chunkSize, total) - 1);
-      n = next;
-    }
-    throw new Error('matroska: head window did not decode (unsupported variants?)');
-  }
-  if (container !== 'iso-bmff') {
-    throw new Error(`unsupported container "${container}" — cannot locate a frame`);
-  }
-
   // moov sits near the start for faststart files, at the end otherwise. Its
   // size is not bounded by the chunk size: a long video's sample tables (stsz/
   // stsc/stss/stco, one entry per frame) can run to tens of MiB. A window that
@@ -416,6 +380,42 @@ async function runExtraction(item, getStreamUrl, sendMessage) {
     }
     return out;
   };
+
+  const MOOV_MAX_WINDOW = 32 * 1024 * 1024;
+
+  // Matroska (MKV/WebM) is EBML, not ISO-BMFF — there is no moov at all. Its
+  // header is tiny and sits at the very start, and the seek index (Cues) may
+  // live at the far end, so the moov search below reads head AND tail and
+  // finds nothing (observed on 1327ea6b, video/matroska). Identify the
+  // container from one head chunk and branch before paying for that.
+  const headFirst = await fetchPlain(0, Math.min(chunkSize, total) - 1);
+  const container = detectContainer(headFirst);
+  console.log(`[VaultPreview] ${item.id}: container=${container}`);
+  if (container === 'matroska') {
+    let head = headFirst;
+    for (let n = 1; n * chunkSize <= MOOV_MAX_WINDOW;) {
+      const res = await decodeMatroskaHead(head, total, timeouts);
+      if (res) {
+        if (!res.usable) {
+          console.warn(`[VaultPreview] ${item.id}: matroska candidates looked black/fade (mean ${res.mean.toFixed(1)}, sd ${res.sd.toFixed(1)}) — using the most detailed one`);
+        }
+        await setCachedThumb(key, res.blob);
+        persistRemoteVaultPreview(item, res.blob, sendMessage);
+        const url = URL.createObjectURL(res.blob);
+        objectUrlMap.set(key, url);
+        return url;
+      }
+      const next = n * 2;
+      if (next * chunkSize > MOOV_MAX_WINDOW) break;
+      console.log(`[VaultPreview] ${item.id}: matroska head (${head.length}B) did not decode — growing to ${next} chunks`);
+      head = await fetchPlain(0, Math.min(next * chunkSize, total) - 1);
+      n = next;
+    }
+    throw new Error('matroska: head window did not decode (unsupported variants?)');
+  }
+  if (container !== 'iso-bmff') {
+    throw new Error(`unsupported container "${container}" — cannot locate a frame`);
+  }
 
   // 32MiB is generous (a 2-hour 30fps video's moov is ~1-2MiB) while still
   // bounded — a file whose moov is bigger than this is not a normal video.
