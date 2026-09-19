@@ -117,8 +117,43 @@ jobs:
           path: nextgen-extension/artifacts/*.crx
           if-no-files-found: error
 
-      - name: Attach artifacts to GitHub release
-        if: github.event_name == 'release' || github.event_name == 'push'
+  publish-release:
+    needs: [build-extension-packages, build-native-host]
+    runs-on: ubuntu-latest
+
+    if: github.event_name == 'release' || github.event_name == 'push'
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read extension version
+        id: extension-version
+        run: |
+          echo "version=$(node -p "require('./nextgen-extension/public/manifest.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Download extension ZIP artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nextgen-extension-zip
+          path: artifacts
+
+      - name: Download extension CRX artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nextgen-extension-crx
+          path: artifacts
+
+      - name: Download native host artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: native-host-exe
+          path: artifacts
+
+      - name: Attach all artifacts to GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || format('v{0}-build.{1}', steps.extension-version.outputs.version, github.run_number) }}
@@ -126,9 +161,11 @@ jobs:
           body: ${{ github.event_name == 'release' && github.event.release.body || format('Automated production build from `{0}` (run {1}).', github.ref_name, github.run_number) }}
           prerelease: ${{ github.event_name == 'release' && github.event.release.prerelease || false }}
           draft: ${{ github.event_name == 'release' && github.event.release.draft || false }}
+          fail_on_unmatched_files: true
           files: |
-            nextgen-extension/artifacts/*.zip
-            nextgen-extension/artifacts/*.crx
+            artifacts/*.zip
+            artifacts/*.crx
+            artifacts/ImgVault-Native-Host.exe
 
   build-native-host:
     runs-on: windows-latest
@@ -164,15 +201,3 @@ jobs:
           name: native-host-exe
           path: native-host/artifacts/ImgVault-Native-Host.exe
           if-no-files-found: error
-
-      - name: Attach native host to GitHub release
-        if: github.event_name == 'release' || github.event_name == 'push'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || format('v{0}-build.{1}', steps.extension-version.outputs.version, github.run_number) }}
-          name: ${{ github.event_name == 'release' && github.event.release.name || format('ImgVault v{0} Build {1}', steps.extension-version.outputs.version, github.run_number) }}
-          body: ${{ github.event_name == 'release' && github.event.release.body || format('Automated production build from `{0}` (run {1}).', github.ref_name, github.run_number) }}
-          prerelease: ${{ github.event_name == 'release' && github.event.release.prerelease || false }}
-          draft: ${{ github.event_name == 'release' && github.event.release.draft || false }}
-          files: |
-            native-host/artifacts/ImgVault-Native-Host.exe
