@@ -2,6 +2,7 @@ import { getVideoRetrySourceCandidates, getVideoUploadService, mergeVideoProvide
 import { extractFilemoonFilecode, getFilemoonDirectLink, getFilemoonHlsLink } from './filemoonApi.js';
 import { getFilemoonStreamSource } from './filemoonSpa.js';
 import { FilemoonUploader, UDropUploader, TeraBoxUploader } from './uploaders.js';
+import { resolveTeraBoxPlaybackUrl, teraBoxFsIdFromUrl } from './teraBoxApi.js';
 
 const absolute = (url, base) => new URL(url, base).toString();
 
@@ -318,6 +319,27 @@ export async function retryVideoHostPageSide(item, targetHost, settings, options
     let fetchTarget = candidate;
     let referrer = item.sourcePageUrl || candidate;
 
+    // TeraBox dm-d links are signed CDN URLs and may be expired or already
+    // consumed. Never retry a stored dlink directly; resolve a fresh one from
+    // the stable fs_id before downloading the source video.
+    if (/terabox\.com/i.test(candidate)) {
+      const fileId = teraBoxFsIdFromUrl(candidate) || item?.videoHosts?.terabox?.fileId || item?.extraMetadata?.videoHosts?.terabox?.fileId;
+      if (!fileId) {
+        fetchErrors.push(`${candidate} -> no TeraBox fs_id available for fresh-link resolution`);
+        continue;
+      }
+      try {
+        const fresh = await resolveTeraBoxPlaybackUrl(settings.teraboxCookie || '', fileId, item.fileName || '');
+        if (!fresh) throw new Error(`TeraBox returned no fresh download link for fs_id ${fileId}`);
+        fetchTarget = fresh;
+        referrer = 'https://www.terabox.com/';
+        report('resolve', `Resolved a fresh TeraBox link for ${item.fileName || 'video'}...`);
+      } catch (resolveError) {
+        fetchErrors.push(`${candidate} -> fresh TeraBox resolve failed: ${resolveError.message || resolveError}`);
+        continue;
+      }
+    }
+
     const filemoonCode = extractFilemoonFilecode(candidate);
     if (filemoonCode) {
       if (settings.filemoonApiKey) {
@@ -355,7 +377,7 @@ export async function retryVideoHostPageSide(item, targetHost, settings, options
       );
       if (isVideoBlob) {
         videoBlob = blob;
-        sourceUrl = candidate;
+        sourceUrl = fetchTarget;
         break;
       }
       fetchErrors.push(`${candidate} -> not a video (${blob?.type || 'empty'})`);
