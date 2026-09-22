@@ -107,6 +107,7 @@ class ImgVaultServiceWorker {
     this.teraboxUploader = new TeraBoxUploader();
     this.activeUploadController = null;
     this.activeNativeDownloadPorts = new Map();
+    this.nativeVideoPorts = new Map();
     this.cancellingNativeDownloads = new Set();
     this.vaultMasterKey = null;
     this.vaultStreamUrlCache = new Map();
@@ -2903,6 +2904,12 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'nativeVideoNormalize':
+        this.handleNativeVideoNormalize(request.data || {})
+          .then(result => sendResponse({ success: true, data: result }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'checkNativeDownloadJournal':
         this.checkNativeDownloadJournal(request.requestId || '')
           .then(result => sendResponse({ success: true, data: result }))
@@ -4896,6 +4903,72 @@ class ImgVaultServiceWorker {
     await chrome.storage.sync.set({ downloadFolder: detectedFolder });
     // console.log(`📁 [NATIVE] Auto-detected default video folder: ${detectedFolder}`);
     return detectedFolder;
+  }
+
+  async handleNativeVideoNormalize(data = {}) {
+    const { operation, sessionId } = data;
+    if (operation === 'start') {
+      const id = sessionId || `vault-video-${crypto.randomUUID()}`;
+      if (this.nativeVideoPorts.has(id)) throw new Error(`Native video session ${id} already exists.`);
+      let port;
+      try {
+        port = chrome.runtime.connectNative('com.imgvault.nativehost');
+      } catch (error) {
+        throw new Error(`Native video normalizer unavailable: ${error.message}`);
+      }
+      this.nativeVideoPorts.set(id, port);
+      try {
+        return await this.sendNativeVideoPortMessage(id, { action: 'video_normalize_start', request_id: id });
+      } catch (error) {
+        port.disconnect();
+        this.nativeVideoPorts.delete(id);
+        throw error;
+      }
+    }
+    if (!sessionId || !this.nativeVideoPorts.has(sessionId)) {
+      throw new Error('Native video session is missing or expired.');
+    }
+    if (operation === 'cleanup') {
+      try {
+        return await this.sendNativeVideoPortMessage(sessionId, { action: 'video_normalize_cleanup', request_id: sessionId });
+      } finally {
+        this.nativeVideoPorts.get(sessionId)?.disconnect();
+        this.nativeVideoPorts.delete(sessionId);
+      }
+    }
+    const payload = operation === 'chunk'
+      ? { action: 'video_normalize_chunk', request_id: sessionId, data: data.data }
+      : operation === 'finish'
+        ? { action: 'video_normalize_finish', request_id: sessionId, file_name: data.fileName }
+        : operation === 'read'
+          ? { action: 'video_normalize_read', request_id: sessionId, offset: data.offset, max_bytes: data.maxBytes }
+          : null;
+    if (!payload) throw new Error(`Unknown native video operation: ${operation}`);
+    return this.sendNativeVideoPortMessage(sessionId, payload, operation === 'finish' ? 30 * 60 * 1000 : 120000);
+  }
+
+  sendNativeVideoPortMessage(sessionId, payload, timeoutMs = 120000) {
+    const port = this.nativeVideoPorts.get(sessionId);
+    if (!port) return Promise.reject(new Error('Native video port is not connected.'));
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        port.onMessage.removeListener(onMessage);
+        port.onDisconnect.removeListener(onDisconnect);
+        fn(value);
+      };
+      const onMessage = (response) => response?.success
+        ? finish(resolve, response)
+        : finish(reject, new Error(response?.message || 'Native video operation failed.'));
+      const onDisconnect = () => finish(reject, new Error(chrome.runtime.lastError?.message || 'Native video host disconnected during video normalization.'));
+      const timeout = setTimeout(() => finish(reject, new Error(`Native video operation timed out after ${timeoutMs / 1000} seconds.`)), timeoutMs);
+      port.onMessage.addListener(onMessage);
+      port.onDisconnect.addListener(onDisconnect);
+      try { port.postMessage(payload); } catch (error) { finish(reject, error); }
+    });
   }
 
   async handleNativeHostCommand(command, data = {}, timeoutMs = 15000) {

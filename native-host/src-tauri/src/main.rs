@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use std::env;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
@@ -61,6 +62,10 @@ struct NativeMessage {
     cookies_data: Option<Vec<BrowserCookie>>,
     request_id: Option<String>,
     format: Option<String>,
+    data: Option<String>,
+    file_name: Option<String>,
+    offset: Option<u64>,
+    max_bytes: Option<usize>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -76,6 +81,60 @@ struct NativeResponse {
     file_path: Option<String>,
     stdout: Option<String>,
     stderr: Option<String>,
+}
+
+fn video_session_path(request_id: &str, suffix: &str) -> PathBuf {
+    env::temp_dir().join(format!("imgvault-{}-{}", sanitize_request_id(request_id), suffix))
+}
+
+fn video_normalize_start(request_id: &str) -> Result<(), String> {
+    let input = video_session_path(request_id, "input");
+    let output = video_session_path(request_id, "output.mp4");
+    let _ = fs::remove_file(&input);
+    let _ = fs::remove_file(&output);
+    fs::File::create(input).map(|_| ()).map_err(|e| format!("Could not create native video input: {}", e))
+}
+
+fn video_normalize_chunk(request_id: &str, encoded: &str) -> Result<(), String> {
+    let bytes = BASE64.decode(encoded).map_err(|e| format!("Invalid native video chunk: {}", e))?;
+    let path = video_session_path(request_id, "input");
+    let mut file = fs::OpenOptions::new().append(true).open(&path)
+        .map_err(|e| format!("Could not open native video input: {}", e))?;
+    file.write_all(&bytes).map_err(|e| format!("Could not write native video chunk: {}", e))
+}
+
+fn video_normalize_finish(request_id: &str) -> Result<u64, String> {
+    let input = video_session_path(request_id, "input");
+    let output = video_session_path(request_id, "output.mp4");
+    let result = Command::new("ffmpeg")
+        .args(["-y", "-hwaccel", "auto", "-threads", "0", "-i"])
+        .arg(&input)
+        .args(["-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "medium", "-crf", "12", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "320k", "-movflags", "+faststart"])
+        .arg(&output)
+        .output()
+        .map_err(|e| format!("Native FFmpeg is unavailable: {}", e))?;
+    if !result.status.success() {
+        let detail = String::from_utf8_lossy(&result.stderr);
+        return Err(format!("Native FFmpeg conversion failed: {}", detail.trim()));
+    }
+    fs::metadata(output).map(|meta| meta.len()).map_err(|e| format!("Native FFmpeg produced no output: {}", e))
+}
+
+fn video_normalize_read(request_id: &str, offset: u64, max_bytes: usize) -> Result<(String, u64, bool), String> {
+    let path = video_session_path(request_id, "output.mp4");
+    let mut file = fs::File::open(&path).map_err(|e| format!("Could not open native video output: {}", e))?;
+    use std::io::Seek;
+    file.seek(std::io::SeekFrom::Start(offset)).map_err(|e| format!("Could not seek native video output: {}", e))?;
+    let mut bytes = vec![0u8; max_bytes.min(700 * 1024)];
+    let count = file.read(&mut bytes).map_err(|e| format!("Could not read native video output: {}", e))?;
+    bytes.truncate(count);
+    let total = fs::metadata(&path).map_err(|e| e.to_string())?.len();
+    Ok((BASE64.encode(bytes), offset, offset + count as u64 >= total))
+}
+
+fn video_normalize_cleanup(request_id: &str) {
+    let _ = fs::remove_file(video_session_path(request_id, "input"));
+    let _ = fs::remove_file(video_session_path(request_id, "output.mp4"));
 }
 
 struct DownloadOutcome {
@@ -1274,6 +1333,38 @@ fn handle_native_messaging() {
         let response = match serde_json::from_str::<NativeMessage>(&msg) {
             Ok(native_msg) => {
                 match native_msg.action.as_str() {
+                    "video_normalize_start" => {
+                        let request_id = native_msg.request_id.clone().unwrap_or_default();
+                        match video_normalize_start(&request_id) {
+                            Ok(()) => NativeResponse { success: true, event: Some("complete".to_string()), request_id: Some(request_id), message: Some("Native video session started".to_string()), line: None, stream: None, file_path: None, stdout: None, stderr: None },
+                            Err(error) => NativeResponse { success: false, event: Some("complete".to_string()), request_id: Some(request_id), message: Some(error), line: None, stream: None, file_path: None, stdout: None, stderr: None },
+                        }
+                    }
+                    "video_normalize_chunk" => {
+                        let request_id = native_msg.request_id.clone().unwrap_or_default();
+                        match native_msg.data.as_deref().ok_or_else(|| "Missing video chunk data".to_string()).and_then(|data| video_normalize_chunk(&request_id, data)) {
+                            Ok(()) => NativeResponse { success: true, event: Some("complete".to_string()), request_id: Some(request_id), message: Some("chunk accepted".to_string()), line: None, stream: None, file_path: None, stdout: None, stderr: None },
+                            Err(error) => NativeResponse { success: false, event: Some("complete".to_string()), request_id: Some(request_id), message: Some(error), line: None, stream: None, file_path: None, stdout: None, stderr: None },
+                        }
+                    }
+                    "video_normalize_finish" => {
+                        let request_id = native_msg.request_id.clone().unwrap_or_default();
+                        match video_normalize_finish(&request_id) {
+                            Ok(size) => NativeResponse { success: true, event: Some("complete".to_string()), request_id: Some(request_id), message: Some(size.to_string()), line: None, stream: None, file_path: None, stdout: None, stderr: None },
+                            Err(error) => NativeResponse { success: false, event: Some("complete".to_string()), request_id: Some(request_id), message: Some(error), line: None, stream: None, file_path: None, stdout: None, stderr: None },
+                        }
+                    }
+                    "video_normalize_read" => {
+                        let request_id = native_msg.request_id.clone().unwrap_or_default();
+                        match video_normalize_read(&request_id, native_msg.offset.unwrap_or(0), native_msg.max_bytes.unwrap_or(700 * 1024)) {
+                            Ok((data, offset, done)) => NativeResponse { success: true, event: Some("complete".to_string()), request_id: Some(request_id), message: Some(format!("{}:{}", offset, done)), line: None, stream: None, file_path: None, stdout: Some(data), stderr: None },
+                            Err(error) => NativeResponse { success: false, event: Some("complete".to_string()), request_id: Some(request_id), message: Some(error), line: None, stream: None, file_path: None, stdout: None, stderr: None },
+                        }
+                    }
+                    "video_normalize_cleanup" => {
+                        if let Some(request_id) = native_msg.request_id.as_deref() { video_normalize_cleanup(request_id); }
+                        NativeResponse { success: true, event: Some("complete".to_string()), request_id: native_msg.request_id.clone(), message: Some("Native video session cleaned up".to_string()), line: None, stream: None, file_path: None, stdout: None, stderr: None }
+                    }
                     "download" => {
                         let NativeMessage { url, output_path, cookies_data, request_id, format, .. } = native_msg;
                         if let (Some(url), Some(output_path)) = 
