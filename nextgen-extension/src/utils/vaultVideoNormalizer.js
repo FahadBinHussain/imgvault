@@ -1,7 +1,8 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import { fetchFile } from '@ffmpeg/util';
 import coreURL from '../../node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.js?url';
 import wasmURL from '../../node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.wasm?url';
+import classWorkerURL from '../../node_modules/@ffmpeg/ffmpeg/dist/esm/worker.js?url';
 
 const NORMALIZE_RE = /\.(avi|mov)$/i;
 let ffmpegInstance = null;
@@ -17,8 +18,9 @@ async function getFFmpeg(report) {
       report?.('Loading the local video normalizer (first use downloads the bundled engine)...');
       const ffmpeg = new FFmpeg();
       await ffmpeg.load({
-        coreURL: await toBlobURL(coreURL, 'text/javascript'),
-        wasmURL: await toBlobURL(wasmURL, 'application/wasm'),
+        classWorkerURL,
+        coreURL,
+        wasmURL,
       });
       ffmpegInstance = ffmpeg;
       return ffmpeg;
