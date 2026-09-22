@@ -2,7 +2,7 @@ import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
 import coreURL from '../../node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.js?url';
 import wasmURL from '../../node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.wasm?url';
-import classWorkerURL from '../../node_modules/@ffmpeg/ffmpeg/dist/esm/worker.js?url';
+import classWorkerURL from '@ffmpeg/ffmpeg/worker?worker&url';
 
 const NORMALIZE_RE = /\.(avi|mov)$/i;
 let ffmpegInstance = null;
@@ -11,17 +11,22 @@ let conversionQueue = Promise.resolve();
 
 const extensionOf = (name = '') => String(name).match(/\.([^.]+)$/)?.[1]?.toLowerCase() || '';
 
+function loadWithTimeout(ffmpeg, timeoutMs = 120000) {
+  let timer;
+  const loadPromise = ffmpeg.load({ classWorkerURL, coreURL, wasmURL });
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`FFmpeg initialization timed out after ${timeoutMs / 1000} seconds.`)), timeoutMs);
+  });
+  return Promise.race([loadPromise, timeoutPromise]).finally(() => clearTimeout(timer));
+}
+
 async function getFFmpeg(report) {
   if (ffmpegInstance?.loaded) return ffmpegInstance;
   if (!ffmpegLoadPromise) {
     ffmpegLoadPromise = (async () => {
       report?.('Loading the local video normalizer (first use downloads the bundled engine)...');
       const ffmpeg = new FFmpeg();
-      await ffmpeg.load({
-        classWorkerURL,
-        coreURL,
-        wasmURL,
-      });
+      await loadWithTimeout(ffmpeg);
       ffmpegInstance = ffmpeg;
       return ffmpeg;
     })().catch((error) => {
@@ -57,7 +62,7 @@ async function convertVideo(file, report) {
     const output = await ffmpeg.readFile(outputName);
     if (!output?.length) throw new Error('FFmpeg returned an empty MP4.');
     report?.(`Converted ${file.name} to MP4 (${(output.length / 1024 / 1024).toFixed(1)} MB).`);
-    return new Blob([output.buffer], { type: 'video/mp4' });
+    return new Blob([output.slice().buffer], { type: 'video/mp4' });
   } finally {
     await ffmpeg.deleteFile(inputName).catch(() => {});
     await ffmpeg.deleteFile(outputName).catch(() => {});
