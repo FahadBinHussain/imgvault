@@ -1608,6 +1608,36 @@ export default function GalleryPage() {
     setFullImageDetails(null); // Clear cached details for new image
   };
 
+  const modalImageIndex = selectedImage
+    ? filteredImages.findIndex((img) => img.id === selectedImage.id)
+    : -1;
+  const canGoPrevious = modalImageIndex > 0;
+  const canGoNext = modalImageIndex >= 0 && modalImageIndex < filteredImages.length - 1;
+
+  // Start loading adjacent image media as soon as the modal opens. Navigation
+  // itself never waits for these requests; this only warms the browser cache.
+  useEffect(() => {
+    if (modalImageIndex < 0) return undefined;
+
+    const adjacentItems = [
+      filteredImages[modalImageIndex - 1],
+      filteredImages[modalImageIndex + 1],
+    ];
+    const preloaders = adjacentItems
+      .filter((candidate) => candidate && getMediaItemKind(candidate) === 'image')
+      .map((candidate) => {
+        const url = getPreferredImageProviderLink(candidate, defaultGallerySource, 'url') || candidate.sourceImageUrl;
+        if (!url) return null;
+        const image = new Image();
+        image.decoding = 'async';
+        image.src = url;
+        return image;
+      })
+      .filter(Boolean);
+
+    return () => preloaders.forEach((image) => { image.src = ''; });
+  }, [defaultGallerySource, filteredImages, modalImageIndex]);
+
   const closeImageModal = () => {
     setSelectedImage(null);
     setFullImageDetails(null);
@@ -4313,6 +4343,10 @@ export default function GalleryPage() {
           technicalEntries={nerdsEntries}
           technicalLoading={loadingNerdsTab}
           renderMedia={renderModalMedia}
+          onPrevious={navigateToPreviousImage}
+          onNext={navigateToNextImage}
+          canGoPrevious={canGoPrevious}
+          canGoNext={canGoNext}
           actions={renderModalActions}
           renderOverviewField={renderModalOverviewField}
           renderDocumentId={renderModalDocumentId}

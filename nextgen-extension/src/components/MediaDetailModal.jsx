@@ -6,7 +6,7 @@
  * field renderers for page-specific editing.
  */
 import React, { useState, useEffect } from 'react';
-import { FileText, Hash, Fingerprint } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileText, Hash, Fingerprint } from 'lucide-react';
 import { Modal, Spinner } from './UI';
 
 const formatDetailValue = (value) => {
@@ -109,6 +109,10 @@ export default function MediaDetailModal({
   technicalLoading = false,
   isLink = false,
   renderMedia,
+  onPrevious,
+  onNext,
+  canGoPrevious = false,
+  canGoNext = false,
   actions,
   renderOverviewField,
   renderTechnicalField,
@@ -153,6 +157,30 @@ export default function MediaDetailModal({
                           transition-all duration-700 ease-out
                           ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`} />
             {renderMedia(item, { isModalAnimating })}
+            {(onPrevious || onNext) && (
+              <>
+                <button
+                  type="button"
+                  onClick={onPrevious}
+                  disabled={!canGoPrevious}
+                  aria-label="Previous item"
+                  title={canGoPrevious ? 'Previous item' : 'Already at the first item'}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-base-content/15 bg-base-100/80 text-base-content shadow-lg backdrop-blur transition-all duration-200 hover:scale-105 hover:bg-base-100 disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  <ChevronLeft className="h-6 w-6 transition-transform duration-200 group-hover:-translate-x-0.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={onNext}
+                  disabled={!canGoNext}
+                  aria-label="Next item"
+                  title={canGoNext ? 'Next item' : 'Already at the last item'}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-base-content/15 bg-base-100/80 text-base-content shadow-lg backdrop-blur transition-all duration-200 hover:scale-105 hover:bg-base-100 disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  <ChevronRight className="h-6 w-6 transition-transform duration-200 group-hover:translate-x-0.5" />
+                </button>
+              </>
+            )}
           </div>
 
           <div className={`w-full lg:w-[550px] lg:flex-shrink-0 overflow-y-auto flex flex-col relative z-10
