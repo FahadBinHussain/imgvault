@@ -49,6 +49,7 @@ import MpegtsPlayer from '../components/MpegtsPlayer';
 import { CachedImg, CachedVideo } from '../components/CachedThumb';
 import SceneViewer from '../components/SceneViewer';
 import MediaDetailModal from '../components/MediaDetailModal';
+import { normalizeVaultVideo } from '../utils/vaultVideoNormalizer.js';
 
 const createVideoUploader = (service) => {
   if (service?.uploaderKey === 'filemoonUploader') return new FilemoonUploader();
@@ -1211,13 +1212,20 @@ export default function GalleryPage() {
         throw new Error('Secret Vault is locked. Unlock it before saving encrypted items.');
       }
 
-      const blob = uploadData.fileBlob;
-      if (!(blob instanceof Blob) || blob.size <= 0) {
+      const sourceBlob = uploadData.fileBlob;
+      if (!(sourceBlob instanceof Blob) || sourceBlob.size <= 0) {
         throw new Error('Media payload is empty. Please reload the file and try again.');
       }
 
       const kind = uploadData.isVideo ? 'video' : 'image';
-      const fileName = uploadData.fileName || (kind === 'video' ? 'video.mp4' : 'image.jpg');
+      const normalized = kind === 'video'
+        ? await normalizeVaultVideo(sourceBlob, (message) => {
+          chrome.storage.local.set({ uploadStatus: message }).catch(() => {});
+          appendClientUploadLog(message).catch(() => {});
+        })
+        : { blob: sourceBlob, fileName: uploadData.fileName || 'image.jpg', fileType: sourceBlob.type || 'image/jpeg', normalizedFrom: '' };
+      const blob = normalized.blob;
+      const fileName = normalized.fileName || uploadData.fileName || (kind === 'video' ? 'video.mp4' : 'image.jpg');
       const creationDate = uploadData.fileLastModified ? new Date(uploadData.fileLastModified).toISOString() : null;
 
       // 1) Encrypt with chunked progress (log + status bar)
@@ -1240,7 +1248,8 @@ export default function GalleryPage() {
         description: uploadData.description || '',
         tags: Array.isArray(uploadData.tags) ? uploadData.tags : [],
         fileName,
-        fileType: uploadData.fileMimeType || uploadData.fileType || blob.type || '',
+        fileType: normalized.fileType || uploadData.fileMimeType || uploadData.fileType || blob.type || '',
+        originalFileName: normalized.normalizedFrom || uploadData.fileName || fileName,
         sourceImageUrl: uploadData.originalSourceUrl || '',
         sourcePageUrl: uploadData.pageUrl || '',
         creationDate,
