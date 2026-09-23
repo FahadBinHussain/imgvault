@@ -46,6 +46,8 @@ import {
   checkTeraBoxIntegrity,
   checkTeraBoxSceneIntegrity,
   deleteTeraBoxFiles,
+  extractTeraBoxFileId,
+  teraBoxFsIdFromUrl,
   resolveTeraBoxPlaybackUrl,
 } from '../utils/teraBoxApi';
 import { retryVideoHostPageSide } from '../utils/videoRetryPageSide';
@@ -751,12 +753,14 @@ export default function ResolvePage() {
       }
       const fetchBlob = async (url, fileId, fileName) => {
         const candidates = [];
-        if (url && /^https?:\/\//i.test(url)) candidates.push(url);
-        if (sourceHost === 'terabox' && fileId) {
-          try {
-            const fresh = await resolveTeraBoxPlaybackUrl(hostSettings?.teraboxCookie || '', fileId, fileName || '');
-            if (fresh && fresh !== url) candidates.push(fresh);
-          } catch {}
+        if (sourceHost === 'terabox') {
+          const stableFileId = String(fileId || teraBoxFsIdFromUrl(url) || extractTeraBoxFileId(freshItem) || '').trim();
+          if (!stableFileId) throw new Error(`No TeraBox file id is stored for ${fileName || 'scene file'}.`);
+          const fresh = await resolveTeraBoxPlaybackUrl(hostSettings?.teraboxCookie || '', stableFileId, fileName || '');
+          if (!fresh) throw new Error(`TeraBox returned no fresh download link for fs_id ${stableFileId}.`);
+          candidates.push(fresh);
+        } else if (url && /^https?:\/\//i.test(url)) {
+          candidates.push(url);
         }
         if (sourceHost === 'udrop') {
           const code = extractUdropCode(url) || (fileId && /^\d+$/.test(fileId) ? null : fileId);
@@ -801,8 +805,8 @@ export default function ResolvePage() {
       };
       setSceneFixBusy(true);
       setFixProgress((prev) => ({ ...prev, [freshItem.id]: { phase: 'download', message: `Downloading SPZ from ${sourceHost}...`, percent: null } }));
-      const spzFileId = String(freshItem.extraMetadata?.sceneSpzFileId || freshItem.extraMetadata?.sceneFiles?.[sourceHost]?.spz?.fileId || freshItem.teraboxFileId || '').trim();
-      const texFileId = String(freshItem.extraMetadata?.sceneTextureFileId || freshItem.extraMetadata?.sceneFiles?.[sourceHost]?.texture?.fileId || freshItem.textureFileId || '').trim();
+      const spzFileId = String(freshItem.extraMetadata?.sceneSpzFileId || freshItem.extraMetadata?.sceneFiles?.[sourceHost]?.spz?.fileId || (sourceHost === 'terabox' ? extractTeraBoxFileId(freshItem) : '') || teraBoxFsIdFromUrl(freshItem.spzUrl) || '').trim();
+      const texFileId = String(freshItem.extraMetadata?.sceneTextureFileId || freshItem.extraMetadata?.sceneFiles?.[sourceHost]?.texture?.fileId || freshItem.textureFileId || (sourceHost === 'terabox' ? teraBoxFsIdFromUrl(freshItem.textureUrl) : '') || '').trim();
       const spzFileName = String(freshItem.fileName || freshItem.spzUrl?.split('/').pop()?.split('?')[0] || 'scene.spz');
       const texFileName = String(freshItem.textureUrl?.split('/').pop()?.split('?')[0] || 'texture.webp');
       let spzBlob = null;
