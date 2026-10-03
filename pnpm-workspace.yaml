@@ -1,0 +1,8 @@
+packages:
+  - web
+  - nextgen-extension
+  - packages/*
+
+# each app keeps its own lockfile so CI (--frozen-lockfile in
+# nextgen-extension/) and Vercel builds stay byte-identical to before
+shared-workspace-lockfile: false

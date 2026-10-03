@@ -1,0 +1,8 @@
+{
+  "name": "imgvault",
+  "private": true,
+  "scripts": {
+    "build:web": "pnpm --dir web build",
+    "build:extension": "pnpm --dir nextgen-extension build"
+  }
+}
