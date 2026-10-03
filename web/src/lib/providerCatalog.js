@@ -50,6 +50,15 @@ export const VIDEO_UPLOAD_SERVICES = [
     directUrlField: 'udropDirectUrl',
     aliasWatchUrlField: 'udropUrl',
   },
+  {
+    key: 'terabox',
+    label: 'TeraBox',
+    sourceValue: 'terabox',
+    sourceLabel: 'TeraBox',
+    watchUrlField: 'teraboxWatchUrl',
+    directUrlField: 'teraboxDirectUrl',
+    aliasWatchUrlField: 'teraboxUrl',
+  },
 ]
 
 export const VIDEO_SOURCE_OPTIONS = [

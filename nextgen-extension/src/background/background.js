@@ -2868,6 +2868,16 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'mirrorVideoThumbnail':
+        this.mirrorVideoThumbnail(
+          request.data?.imageId || request.imageId,
+          request.data?.providerKey || request.providerKey,
+          request.data?.thumbnailUrl || request.thumbnailUrl
+        )
+          .then(mirrorUrl => sendResponse({ success: true, data: mirrorUrl }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'nativeDownload':
         this.handleNativeDownload(request.url, request.requestId, request.format)
           .then(result => sendResponse({
@@ -4561,6 +4571,38 @@ class ImgVaultServiceWorker {
       return thumb || null;
     }
     return null;
+  }
+
+  /**
+   * Re-host a live provider thumbnail on ImgBB and persist the durable mirror
+   * URL on the item (extra_metadata.videoHosts.<provider>.thumbnailUrl).
+   * TeraBox thumbnails are signed links that expire (~8h) — the mirror URL is
+   * what the web gallery reads through the strict selected-host lookup; the
+   * signed link is never written to the DB.
+   * @param {string} imageId - item id
+   * @param {string} providerKey - video host key (terabox | filemoon | udrop)
+   * @param {string} liveThumbnailUrl - currently-valid thumbnail URL
+   * @returns {Promise<string>} durable ImgBB mirror URL
+   */
+  async mirrorVideoThumbnail(imageId, providerKey, liveThumbnailUrl) {
+    const settings = await chrome.storage.sync.get(['imgbbApiKey']);
+    const apiKey = String(settings?.imgbbApiKey || '').trim();
+    if (!apiKey) {
+      throw new Error('ImgBB API key missing — set it in Settings so thumbnails can be persisted for the web gallery');
+    }
+    if (!imageId) throw new Error('mirrorVideoThumbnail: missing imageId');
+    if (!liveThumbnailUrl) throw new Error('mirrorVideoThumbnail: missing live thumbnail URL');
+    const resp = await fetch(liveThumbnailUrl, { credentials: 'omit' });
+    if (!resp.ok) throw new Error(`Live thumbnail fetch failed: HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    if (blob.type && !blob.type.startsWith('image/')) {
+      throw new Error(`Live thumbnail is not an image (${blob.type})`);
+    }
+    const uploaded = await this.imgbbUploader.upload(blob, apiKey);
+    const mirrorUrl = String(uploaded?.url || uploaded?.displayUrl || '').trim();
+    if (!mirrorUrl) throw new Error('ImgBB upload returned no URL');
+    await this.storage.updateVideoThumbnail(imageId, providerKey, mirrorUrl);
+    return mirrorUrl;
   }
 
   /**

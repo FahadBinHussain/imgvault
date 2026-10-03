@@ -42,6 +42,12 @@ export function hasAnyVideoProviderLink(item) {
   return Object.values(getVideoProviderLinks(item)).some((link) => link.watchUrl || link.directUrl)
 }
 
+export function getStrictVideoProviderLink(item, providerKey, field = 'watchUrl') {
+  const link = getVideoProviderLinks(item)?.[providerKey]
+  if (!link) return ''
+  return pickText(link[field], field === 'watchUrl' ? link.directUrl : '')
+}
+
 export function getPreferredVideoProviderLink(item, preferredProvider = DEFAULT_VIDEO_SOURCE, field = 'watchUrl') {
   const links = getVideoProviderLinks(item)
   const orderedKeys = [

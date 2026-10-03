@@ -51,6 +51,13 @@ export function getImageProviderLinks(item = {}) {
   return links
 }
 
+export function getStrictImageProviderLink(item, providerKey, field = 'url') {
+  const link = getImageProviderLinks(item)?.[providerKey]
+  if (!link) return ''
+  if (field === 'thumbnailUrl') return pickText(link.thumbnailUrl, link.thumbUrl)
+  return pickText(link[field], link.displayUrl, link.directUrl, link.url)
+}
+
 export function getPreferredImageProviderLink(item, preferredProvider = DEFAULT_IMAGE_SOURCE, field = 'url') {
   const links = getImageProviderLinks(item)
   const orderedKeys = [

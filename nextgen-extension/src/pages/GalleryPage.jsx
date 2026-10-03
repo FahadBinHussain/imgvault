@@ -227,9 +227,11 @@ export default function GalleryPage() {
   }, [loading, images]);
 
   // Lazy-fetch missing video thumbnails for the selected host. Filemoon thumbs
-  // are stable (videothumbs.me) and get persisted; TeraBox thumbs are signed
-  // and expire (8h), so they stay live-only — re-fetched on every page load,
-  // never written to the DB where they'd go stale.
+  // are stable (videothumbs.me) and get persisted directly. TeraBox thumbs are
+  // signed and expire (~8h), so each one is re-hosted on ImgBB once and the
+  // durable mirror URL is persisted on the item — the signed link is never
+  // written to the DB where it would go stale (and break the web gallery's
+  // strict selected-host poster lookup). Any failure surfaces as one toast.
   useEffect(() => {
     if (loading || !images || images.length === 0) return;
     const extractFilecode = (providerKey, links) => {
@@ -245,18 +247,22 @@ export default function GalleryPage() {
         const m = String(link.watchUrl || link.directUrl || '').match(/udrop\.com(?:\/file)?\/([^\/\?#]+)/i);
         return m?.[1] || null;
       }
+      if (providerKey === 'terabox') {
+        const m = String(link.watchUrl || link.directUrl || '').match(/[?&]fid=([^&#]+)/i);
+        return m ? String(m[1]).split('-').pop() || null : null;
+      }
       return null;
     };
     const needsThumb = images.filter(img => {
       if (getMediaItemKind(img) !== 'video') return false;
       const links = getVideoProviderLinks(img);
-      const filecode = extractFilecode(defaultVideoSource, links);
-      if (!filecode) return false;
-      // terabox thumbs are expiring — always refresh; other hosts skip when persisted
-      return defaultVideoSource === 'terabox' || !links?.[defaultVideoSource]?.thumbnailUrl;
+      if (!extractFilecode(defaultVideoSource, links)) return false;
+      // a persisted thumbnail (stable CDN URL or ImgBB mirror) is final
+      return !links?.[defaultVideoSource]?.thumbnailUrl;
     });
     if (needsThumb.length === 0) return;
     let cancelled = false;
+    const failures = [];
     (async () => {
       for (const img of needsThumb) {
         if (cancelled) break;
@@ -264,19 +270,39 @@ export default function GalleryPage() {
           const links = getVideoProviderLinks(img);
           const filecode = extractFilecode(defaultVideoSource, links);
           if (!filecode) continue;
-          if (defaultVideoSource !== 'terabox' && links?.[defaultVideoSource]?.thumbnailUrl) continue;
           const res = await sendMessage('getVideoThumbnail', { providerKey: defaultVideoSource, filecode });
-          const thumbUrl = typeof res === 'string' ? res : res?.thumbnailUrl || (res?.success ? res.thumbnailUrl : '');
-          if (thumbUrl) {
-            if (defaultVideoSource === 'terabox') {
-              setFilemoonThumbs((prev) => ({ ...prev, [img.id]: thumbUrl }));
-            } else {
-              await sendMessage('updateVideoThumbnail', { imageId: img.id, providerKey: defaultVideoSource, thumbnailUrl: thumbUrl });
-              setFilemoonThumbs((prev) => ({ ...prev, [img.id]: thumbUrl }));
+          const thumbUrl = typeof res === 'string' ? res : res?.thumbnailUrl || '';
+          if (!thumbUrl) continue;
+          if (defaultVideoSource === 'terabox') {
+            try {
+              await sendMessage('mirrorVideoThumbnail', {
+                imageId: img.id,
+                providerKey: defaultVideoSource,
+                thumbnailUrl: thumbUrl,
+              });
+            } catch (mirrorErr) {
+              const msg = mirrorErr?.message || String(mirrorErr);
+              if (/ImgBB API key missing/.test(msg)) {
+                // every later item fails the same way — stop, keep live thumb for this session
+                setFilemoonThumbs((prev) => ({ ...prev, [img.id]: thumbUrl }));
+                failures.push(msg);
+                break;
+              }
+              failures.push(`${img.pageTitle || img.fileName || img.id}: ${msg}`);
             }
+            setFilemoonThumbs((prev) => ({ ...prev, [img.id]: thumbUrl }));
+          } else {
+            await sendMessage('updateVideoThumbnail', { imageId: img.id, providerKey: defaultVideoSource, thumbnailUrl: thumbUrl });
+            setFilemoonThumbs((prev) => ({ ...prev, [img.id]: thumbUrl }));
           }
-        } catch {}
+        } catch (err) {
+          failures.push(`${img.pageTitle || img.fileName || img.id}: ${err?.message || err}`);
+        }
         await new Promise(r => setTimeout(r, 500));
+      }
+      if (!cancelled && failures.length > 0) {
+        const extra = failures.length > 1 ? ` (+${failures.length - 1} more)` : '';
+        showToast(`Thumbnails: ${failures.length} failed — ${failures[0]}${extra}`, 'error', 6000);
       }
     })();
     return () => { cancelled = true; };

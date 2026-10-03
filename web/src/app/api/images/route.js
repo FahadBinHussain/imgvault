@@ -134,6 +134,8 @@ const galleryListSelect = {
   filemoonDirectUrl: mediaItems.filemoonDirectUrl,
   udropWatchUrl: mediaItems.udropWatchUrl,
   udropDirectUrl: mediaItems.udropDirectUrl,
+  spzUrl: mediaItems.spzUrl,
+  textureUrl: mediaItems.textureUrl,
   linkUrl: mediaItems.linkUrl,
   linkUrlCanonical: mediaItems.linkUrlCanonical,
   linkPreviewImageUrl: mediaItems.linkPreviewImageUrl,
@@ -142,6 +144,10 @@ const galleryListSelect = {
   deletedAt: mediaItems.deletedAt,
   createdAt: mediaItems.createdAt,
   updatedAt: mediaItems.updatedAt,
+  // Read server-side only: toClientMediaListItem builds imageHosts/videoHosts
+  // (TeraBox links + thumbnails live exclusively in extra_metadata) and never
+  // returns the raw blob to the client, keeping list payloads small.
+  extraMetadata: mediaItems.extraMetadata,
   videoThumbnailUrl: sql`coalesce(
     ${mediaItems.extraMetadata}->'videoHosts'->'filemoon'->>'thumbnailUrl',
     ${mediaItems.extraMetadata}->'videoHosts'->'udrop'->>'thumbnailUrl',

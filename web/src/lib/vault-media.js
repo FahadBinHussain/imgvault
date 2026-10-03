@@ -56,14 +56,15 @@ export function toClientMediaItem(item) {
     vaultedAt: typeof extra.vaultedAt === 'string' ? extra.vaultedAt : '',
     filemoonUrl: videoHosts.filemoon?.watchUrl || item?.filemoonWatchUrl || '',
     udropUrl: videoHosts.udrop?.watchUrl || item?.udropWatchUrl || '',
+    teraboxUrl: videoHosts.terabox?.watchUrl || '',
     _isSummary: false,
   }
 }
 
 export function toClientMediaListItem(item) {
   const extra = getExtraMetadata(item)
-  const imageHosts = compactProviderLinks(getImageProviderLinks(item), IMAGE_LIST_LINK_FIELDS)
-  const videoHosts = compactProviderLinks(getVideoProviderLinks(item), VIDEO_LIST_LINK_FIELDS)
+  const imageHosts = compactProviderLinks(getImageProviderLinks({ ...extra, ...item }), IMAGE_LIST_LINK_FIELDS)
+  const videoHosts = compactProviderLinks(getVideoProviderLinks({ ...extra, ...item }), VIDEO_LIST_LINK_FIELDS)
 
   return {
     id: item?.id || '',
@@ -91,6 +92,8 @@ export function toClientMediaListItem(item) {
     filemoonDirectUrl: item?.filemoonDirectUrl || '',
     udropWatchUrl: item?.udropWatchUrl || '',
     udropDirectUrl: item?.udropDirectUrl || '',
+    spzUrl: item?.spzUrl || '',
+    textureUrl: item?.textureUrl || '',
     linkUrl: item?.linkUrl || '',
     linkUrlCanonical: item?.linkUrlCanonical || '',
     linkPreviewImageUrl: item?.linkPreviewImageUrl || '',
@@ -107,6 +110,7 @@ export function toClientMediaListItem(item) {
     vaultedAt: typeof extra.vaultedAt === 'string' ? extra.vaultedAt : '',
     filemoonUrl: videoHosts.filemoon?.watchUrl || item?.filemoonWatchUrl || '',
     udropUrl: videoHosts.udrop?.watchUrl || item?.udropWatchUrl || '',
+    teraboxUrl: videoHosts.terabox?.watchUrl || '',
     _isSummary: true,
   }
 }

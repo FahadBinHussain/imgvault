@@ -3,11 +3,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
-import { 
-  Image, 
-  Search, 
-  Grid, 
-  List, 
+import {
+  Image,
+  Search,
+  Grid,
+  List,
   ArrowUpDown,
   ExternalLink,
   Calendar,
@@ -21,12 +21,19 @@ import {
   FileText,
   Pencil,
   Save,
-  Share2
+  Share2,
+  Box
 } from 'lucide-react'
 import AppNavbar from '../components/AppNavbar'
 import GalleryLightbox from '../components/GalleryLightbox'
-import { getPreferredImageProviderLink } from '@/lib/image-provider-links'
-import { getPreferredVideoProviderLink } from '@/lib/video-provider-links'
+import { getStrictImageProviderLink } from '@/lib/image-provider-links'
+import { getStrictVideoProviderLink } from '@/lib/video-provider-links'
+import {
+  DEFAULT_IMAGE_SOURCE,
+  DEFAULT_VIDEO_SOURCE,
+  IMAGE_SOURCE_OPTIONS,
+  VIDEO_SOURCE_OPTIONS,
+} from '@/lib/providerCatalog'
 import {
   getBaseFieldKeys,
   getMediaItemKind,
@@ -44,30 +51,29 @@ async function readJsonSafely(res) {
   }
 }
 
-function getPreferredImageUrl(image, preferredProvider = 'imgbb') {
-  return getPreferredImageProviderLink(image, preferredProvider, 'url') || image?.sourceImageUrl || image?.imgbbThumbUrl || null
+function getGalleryImageUrl(image, preferredProvider = DEFAULT_IMAGE_SOURCE) {
+  return (
+    getStrictImageProviderLink(image, preferredProvider, 'url') ||
+    getStrictImageProviderLink(image, preferredProvider, 'thumbnailUrl') ||
+    image?.sourceImageUrl ||
+    ''
+  )
 }
 
 function getItemKind(item) {
   return getMediaItemKind(item)
 }
 
-function getPreferredVideoWatchUrl(item, preferredVideoSource = 'filemoon') {
-  return getPreferredVideoProviderLink(item, preferredVideoSource, 'watchUrl')
+function getVideoWatchUrl(item, preferredVideoSource = DEFAULT_VIDEO_SOURCE) {
+  return getStrictVideoProviderLink(item, preferredVideoSource, 'watchUrl')
 }
 
-function getPreferredVideoDirectUrl(item, preferredVideoSource = 'filemoon') {
-  return getPreferredVideoProviderLink(item, preferredVideoSource, 'directUrl')
+function getVideoDirectUrl(item, preferredVideoSource = DEFAULT_VIDEO_SOURCE) {
+  return getStrictVideoProviderLink(item, preferredVideoSource, 'directUrl')
 }
 
-function getLinkPreviewImage(item, preferredProvider = 'imgbb') {
-  return (
-    item?.linkPreviewImageUrl ||
-    getPreferredImageUrl(item, preferredProvider) ||
-    getPreferredImageProviderLink(item, preferredProvider, 'thumbnailUrl') ||
-    item?.sourceImageUrl ||
-    ''
-  )
+function getLinkPreviewImage(item, preferredProvider = DEFAULT_IMAGE_SOURCE) {
+  return item?.linkPreviewImageUrl || getGalleryImageUrl(item, preferredProvider) || ''
 }
 
 function toProxyMediaUrl(url) {
@@ -80,18 +86,17 @@ function isLikelyVideoUrl(url) {
   return typeof url === 'string' && /\.(mp4|webm|mov|m4v|mkv|avi|ogv)(?:[?#].*)?$/i.test(url.trim())
 }
 
+function isFilemoonHtmlUrl(url) {
+  return typeof url === 'string' && /filemoon\.sx\/(?:d|e)\//i.test(url)
+}
+
 function firstImageLikeUrl(...urls) {
   return urls.find((url) => typeof url === 'string' && url.trim() && !isLikelyVideoUrl(url)) || ''
 }
 
-function getVideoPosterUrl(item, preferredProvider = 'imgbb') {
-  return firstImageLikeUrl(
-    item?.videoThumbnailUrl,
-    item?.linkPreviewImageUrl,
-    getPreferredImageProviderLink(item, preferredProvider, 'thumbnailUrl'),
-    item?.imgbbThumbUrl,
-    getPreferredImageProviderLink(item, preferredProvider, 'url')
-  )
+function getVideoPosterUrl(item, preferredVideoSource = DEFAULT_VIDEO_SOURCE) {
+  const poster = getStrictVideoProviderLink(item, preferredVideoSource, 'thumbnailUrl')
+  return firstImageLikeUrl(isLikelyVideoUrl(poster) ? '' : poster)
 }
 
 const SORT_OPTIONS = [
@@ -109,12 +114,14 @@ const MEDIA_FILTER_OPTIONS = [
   { value: 'image', label: 'Images' },
   { value: 'video', label: 'Videos' },
   { value: 'link', label: 'Links' },
+  { value: 'scene', label: '3D Scenes' },
 ]
 
 const MEDIA_KIND_ORDER = {
   image: 0,
   video: 1,
   link: 2,
+  scene: 3,
 }
 
 function getAddedTimestamp(item) {
@@ -360,8 +367,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
   }
 
   const imageUrl =
-    getPreferredImageProviderLink(image, 'imgbb', 'url') ||
-    image.sourceImageUrl ||
+    getGalleryImageUrl(image, 'imgbb') ||
     image.imgbbThumbUrl
 
   // Format file size
@@ -611,18 +617,31 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
 }
 
 // Image Card Component
-function ImageCard({ image, index, viewMode, onClick, className = '', preferredProvider = 'imgbb', preferredVideoSource = 'filemoon' }) {
+function ImageCard({ image, index, viewMode, onClick, className = '', preferredProvider = DEFAULT_IMAGE_SOURCE, preferredVideoSource = DEFAULT_VIDEO_SOURCE }) {
   const [isLoaded, setIsLoaded] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   const [videoPreviewFailed, setVideoPreviewFailed] = useState(false)
+  const [videoPosterFailed, setVideoPosterFailed] = useState(false)
+  const [sceneThumbFailed, setSceneThumbFailed] = useState(false)
   const kind = getItemKind(image)
-  const imageUrl = getPreferredImageUrl(image, preferredProvider)
-  const videoPosterUrl = toProxyMediaUrl(getVideoPosterUrl(image, preferredProvider))
-  const videoWatchUrl = getPreferredVideoWatchUrl(image, preferredVideoSource)
-  const videoDirectUrl = getPreferredVideoDirectUrl(image, preferredVideoSource)
+  const imageUrl = getGalleryImageUrl(image, preferredProvider)
+  const videoPosterUrl = toProxyMediaUrl(getVideoPosterUrl(image, preferredVideoSource))
+  const videoWatchUrl = getVideoWatchUrl(image, preferredVideoSource)
+  const videoDirectUrl = getVideoDirectUrl(image, preferredVideoSource)
+  const sceneThumbUrl = firstImageLikeUrl(image?.textureUrl)
+  const isDirectPlayableVideo = Boolean(videoDirectUrl) && !isFilemoonHtmlUrl(videoDirectUrl)
+  const videoMediaVisible =
+    (Boolean(videoPosterUrl) && !videoPosterFailed) ||
+    (isDirectPlayableVideo && !videoPreviewFailed)
   const linkPreviewImage = toProxyMediaUrl(getLinkPreviewImage(image, preferredProvider))
   const mediaLoading = index < 8 ? 'eager' : 'lazy'
   const mediaAnimationDelay = Math.min(index, 12) * 25
+
+  const placeholderNote = (label) => (
+    <span className="absolute bottom-3 left-1/2 -translate-x-1/2 px-2 py-1 rounded-full bg-error/15 text-error text-[10px] font-semibold whitespace-nowrap">
+      {label}
+    </span>
+  )
 
   return (
     <div 
@@ -641,7 +660,36 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
         className={`${viewMode === 'list' ? 'w-28 h-24 sm:w-40 sm:h-28 flex-shrink-0' : 'h-auto'} bg-base-100 relative overflow-hidden`}
         style={viewMode !== 'list' && !isLoaded ? { minHeight: '220px' } : undefined}
       >
-        {kind === 'link' ? (
+        {kind === 'scene' ? (
+          <div className={`relative w-full overflow-hidden ${viewMode === 'list' ? 'h-full' : 'aspect-video'} bg-gradient-to-br from-[#1a1a2e] to-[#16213e]`}>
+            {sceneThumbUrl && !sceneThumbFailed ? (
+              <img
+                src={sceneThumbUrl}
+                alt={image.pageTitle || '3D Scene'}
+                loading={mediaLoading}
+                decoding="async"
+                referrerPolicy="no-referrer"
+                className={`block w-full h-full object-cover transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                onLoad={() => setIsLoaded(true)}
+                onError={() => {
+                  setSceneThumbFailed(true)
+                  setIsLoaded(true)
+                }}
+              />
+            ) : (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                <Box className="w-10 h-10 text-cyan-400 transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6" />
+                <span className="text-xs font-medium text-white/70">3D Scene</span>
+                {sceneThumbFailed && placeholderNote('thumbnail unavailable')}
+              </div>
+            )}
+            <div className="absolute top-2 left-2">
+              <span className="px-2 py-1 text-[10px] font-bold rounded-md bg-cyan-500/90 text-white transition-transform duration-300 group-hover:scale-105">
+                3D
+              </span>
+            </div>
+          </div>
+        ) : kind === 'link' ? (
           linkPreviewImage ? (
             <img
               src={linkPreviewImage}
@@ -655,25 +703,11 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
             />
           ) : (
             <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center">
-              <FileText className="w-12 h-12 text-base-content/55" />
+              <FileText className="w-12 h-12 text-base-content/55 transition-transform duration-500 group-hover:scale-110" />
             </div>
           )
         ) : kind === 'video' ? (
-          videoDirectUrl && !videoPreviewFailed ? (
-            <video
-              src={videoDirectUrl}
-              poster={videoPosterUrl || undefined}
-              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 opacity-100`}
-              muted
-              playsInline
-              preload={index < 8 ? 'auto' : 'none'}
-              onLoadedData={() => setIsLoaded(true)}
-              onError={() => {
-                setVideoPreviewFailed(true)
-                setIsLoaded(true)
-              }}
-            />
-          ) : videoPosterUrl ? (
+          videoPosterUrl && !videoPosterFailed ? (
             <img
               src={videoPosterUrl}
               alt={image.pageTitle || 'Saved video'}
@@ -682,15 +716,44 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
               referrerPolicy="no-referrer"
               className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
               onLoad={() => setIsLoaded(true)}
-              onError={() => setIsLoaded(true)}
+              onError={() => {
+                setVideoPosterFailed(true)
+                setIsLoaded(true)
+              }}
             />
-          ) : videoDirectUrl || videoWatchUrl ? (
-            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center">
-              <FileText className="w-12 h-12 text-base-content/55" />
+          ) : isDirectPlayableVideo && !videoPreviewFailed ? (
+            <video
+              src={videoDirectUrl}
+              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 opacity-100`}
+              muted
+              playsInline
+              preload="metadata"
+              onLoadedData={() => setIsLoaded(true)}
+              onError={() => {
+                setVideoPreviewFailed(true)
+                setIsLoaded(true)
+              }}
+            />
+          ) : videoWatchUrl ? (
+            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex flex-col items-center justify-center gap-2">
+              <svg className="w-8 h-8 text-base-content/55 transition-transform duration-500 group-hover:scale-110" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+              <a
+                href={videoWatchUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1.5 rounded-full border border-base-content/20 bg-base-100/80 px-3 py-1.5 text-xs font-semibold transition-all duration-300 hover:bg-base-100 hover:scale-105"
+              >
+                Open video <ExternalLink className="w-3 h-3" />
+              </a>
+              {(videoPreviewFailed || videoPosterFailed) && placeholderNote('preview unavailable')}
             </div>
           ) : (
             <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center">
-              <FileText className="w-12 h-12 text-base-content/55" />
+              <FileText className="w-12 h-12 text-base-content/55 transition-transform duration-500 group-hover:scale-110" />
+              {(videoPreviewFailed || videoPosterFailed) && placeholderNote('preview unavailable')}
             </div>
           )
         ) : imageUrl ? (
@@ -716,12 +779,12 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
           </>
         ) : (
           <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center">
-            <Image className="w-12 h-12 text-base-content/55" />
+            <Image className="w-12 h-12 text-base-content/55 transition-transform duration-500 group-hover:scale-110" />
           </div>
         )}
-        {kind === 'video' && (
+        {kind === 'video' && videoMediaVisible && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="bg-black/45 rounded-full p-3">
+            <div className="bg-black/45 rounded-full p-3 transition-transform duration-500 group-hover:scale-110">
               <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z" />
               </svg>
@@ -892,8 +955,18 @@ export default function GalleryPage() {
       const configured = !!data.config
       setHasConfig(configured)
       setFirebaseProjectId(data?.config?.projectId || '')
-      setPreferredProvider(data?.settings?.defaultGallerySource === 'pixvid' ? 'pixvid' : 'imgbb')
-      setPreferredVideoSource(data?.settings?.defaultVideoSource === 'udrop' ? 'udrop' : 'filemoon')
+      const gallerySource = data?.settings?.defaultGallerySource
+      const videoSource = data?.settings?.defaultVideoSource
+      setPreferredProvider(
+        IMAGE_SOURCE_OPTIONS.some((option) => option.value === gallerySource)
+          ? gallerySource
+          : DEFAULT_IMAGE_SOURCE
+      )
+      setPreferredVideoSource(
+        VIDEO_SOURCE_OPTIONS.some((option) => option.value === videoSource)
+          ? videoSource
+          : DEFAULT_VIDEO_SOURCE
+      )
 
       if (!configured) {
         setImages([])
@@ -939,11 +1012,11 @@ export default function GalleryPage() {
     return searchedImages.reduce((acc, item) => {
       const kind = getItemKind(item)
       acc.all += 1
-      if (kind === 'image' || kind === 'video' || kind === 'link') {
+      if (kind === 'image' || kind === 'video' || kind === 'link' || kind === 'scene') {
         acc[kind] += 1
       }
       return acc
-    }, { all: 0, image: 0, video: 0, link: 0 })
+    }, { all: 0, image: 0, video: 0, link: 0, scene: 0 })
   }, [searchedImages])
 
   const mediaFilteredImages = useMemo(() => {
@@ -960,7 +1033,7 @@ export default function GalleryPage() {
     acc.total += 1
     acc[kind] += 1
     return acc
-  }, { total: 0, image: 0, video: 0, link: 0 })
+  }, { total: 0, image: 0, video: 0, link: 0, scene: 0 })
   const filteredIndexById = new Map(filteredImages.map((item, itemIndex) => [item.id, itemIndex]))
   const groupedImages = groupImagesByDate(filteredImages, sortMode)
 
@@ -1206,7 +1279,7 @@ export default function GalleryPage() {
                 </h1>
                 <p className="text-base-content/65">
                   {counts.total > 0
-                    ? `${counts.total} total · ${counts.image} images · ${counts.video} videos · ${counts.link} links`
+                    ? `${counts.total} total · ${counts.image} images · ${counts.video} videos${counts.scene ? ` · ${counts.scene} 3D scenes` : ''} · ${counts.link} links`
                     : 'Your saved media from across the web'}
                 </p>
                 {images.length > 0 && (

@@ -13,12 +13,15 @@ import {
   Info,
   LockKeyhole,
   RotateCcw,
+  Box,
+  ExternalLink,
 } from 'lucide-react'
+import { getStrictVideoProviderLink } from '@/lib/video-provider-links'
+import { getStrictImageProviderLink } from '@/lib/image-provider-links'
 import {
-  getPreferredVideoProviderLink,
-  hasAnyVideoProviderLink,
-} from '@/lib/video-provider-links'
-import { getPreferredImageProviderLink } from '@/lib/image-provider-links'
+  DEFAULT_IMAGE_SOURCE,
+  DEFAULT_VIDEO_SOURCE,
+} from '@/lib/providerCatalog'
 import {
   getDisplayFieldKeys,
   getMediaItemKind,
@@ -40,8 +43,8 @@ export default function GalleryLightbox({
   shareStatus = '',
   redactedFields = [],
   omittedFields = [],
-  preferredProvider = 'imgbb',
-  preferredVideoSource = 'filemoon',
+  preferredProvider = DEFAULT_IMAGE_SOURCE,
+  preferredVideoSource = DEFAULT_VIDEO_SOURCE,
   firebaseProjectId = '',
 }) {
   const [isLoading, setIsLoading] = useState(true)
@@ -67,21 +70,35 @@ export default function GalleryLightbox({
     description: '',
     tags: '',
   })
-  const getPreferredVideoWatchUrl = (item) => (
-    getPreferredVideoProviderLink(item, preferredVideoSource, 'watchUrl')
+  const [videoSourceFailed, setVideoSourceFailed] = useState(false)
+  const isFilemoonHtmlUrl = (url) => typeof url === 'string' && /filemoon\.sx\/(?:d|e)\//i.test(url)
+  const getVideoWatchUrl = (item) => (
+    getStrictVideoProviderLink(item, preferredVideoSource, 'watchUrl')
   )
-  const getPreferredVideoDirectUrl = (item) => (
-    getPreferredVideoProviderLink(item, preferredVideoSource, 'directUrl')
+  const getVideoDirectUrl = (item) => (
+    getStrictVideoProviderLink(item, preferredVideoSource, 'directUrl')
   )
-  const getPreferredImageUrl = (item) => (
-    getPreferredImageProviderLink(item, preferredProvider, 'url') || item?.sourceImageUrl || item?.imgbbThumbUrl || ''
+  const getGalleryImageUrl = (item) => (
+    getStrictImageProviderLink(item, preferredProvider, 'url') ||
+    getStrictImageProviderLink(item, preferredProvider, 'thumbnailUrl') ||
+    item?.sourceImageUrl ||
+    ''
   )
   const getLinkPreviewImage = (item) => (
     item?.linkPreviewImageUrl ||
-    getPreferredImageUrl(item) ||
-    getPreferredImageProviderLink(item, preferredProvider, 'thumbnailUrl') ||
+    getGalleryImageUrl(item) ||
     ''
   )
+  const getModalVideoSource = (item) => {
+    const directUrl = getVideoDirectUrl(item)
+    const watchUrl = getVideoWatchUrl(item)
+    if (isFilemoonHtmlUrl(directUrl)) return { type: 'iframe', src: directUrl }
+    if (directUrl) return { type: 'video', src: directUrl }
+    if (isFilemoonHtmlUrl(watchUrl)) return { type: 'iframe', src: watchUrl }
+    if (watchUrl) return { type: 'watch', src: watchUrl }
+    return null
+  }
+  const hostLabel = { filemoon: 'Filemoon', udrop: 'UDrop', terabox: 'TeraBox' }[preferredVideoSource] || preferredVideoSource
   const toProxyMediaUrl = (url) => {
     if (!url || typeof url !== 'string') return ''
     if (!/^https?:\/\//i.test(url)) return url
@@ -90,13 +107,6 @@ export default function GalleryLightbox({
 
   const currentKind = getMediaItemKind(image)
   const isSelectedLink = currentKind === 'link'
-  const isSelectedVideo = Boolean(
-    currentKind === 'video' ||
-    (
-      !isSelectedLink &&
-      hasAnyVideoProviderLink(image)
-    )
-  )
 
   const omittedFieldSet = new Set(omittedFields)
   const displayedNoobFields = getDisplayFieldKeys(image, { omittedFields })
@@ -173,15 +183,17 @@ export default function GalleryLightbox({
     setEditValues(toEditValues(image))
   }
 
-  const imageUrl = getPreferredImageUrl(image)
-  const currentVideoWatchUrl = getPreferredVideoWatchUrl(image)
-  const currentVideoDirectUrl = getPreferredVideoDirectUrl(image)
+  const imageUrl = getGalleryImageUrl(image)
+  const modalVideoSource = currentKind === 'video' && !videoSourceFailed ? getModalVideoSource(image) : null
+  const currentVideoWatchUrl = getVideoWatchUrl(image)
+  const currentVideoDirectUrl = getVideoDirectUrl(image)
   const currentLinkPreview = toProxyMediaUrl(getLinkPreviewImage(image))
 
   useEffect(() => {
     setIsEditing(false)
     setIsSaving(false)
     setSaveError('')
+    setVideoSourceFailed(false)
     setIsLoading(imageUrl ? !loadedImageUrls[imageUrl] : false)
     setDragOffset(0)
     setIsDraggingMedia(false)
@@ -207,7 +219,7 @@ export default function GalleryLightbox({
       if (p && typeof p.catch === 'function') p.catch(() => {})
     })
     return () => v.removeEventListener('loadedmetadata', onMeta)
-  }, [currentVideoDirectUrl])
+  }, [modalVideoSource?.type === 'video' ? modalVideoSource.src : ''])
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -457,8 +469,8 @@ export default function GalleryLightbox({
 
   const previousImage = currentIndex > 0 ? images[currentIndex - 1] : null
   const nextImage = currentIndex < images.length - 1 ? images[currentIndex + 1] : null
-  const previousImageUrl = previousImage ? toProxyMediaUrl(getLinkPreviewImage(previousImage) || getPreferredImageUrl(previousImage)) : null
-  const nextImageUrl = nextImage ? toProxyMediaUrl(getLinkPreviewImage(nextImage) || getPreferredImageUrl(nextImage)) : null
+  const previousImageUrl = previousImage ? toProxyMediaUrl(getLinkPreviewImage(previousImage) || getGalleryImageUrl(previousImage)) : null
+  const nextImageUrl = nextImage ? toProxyMediaUrl(getLinkPreviewImage(nextImage) || getGalleryImageUrl(nextImage)) : null
   const markImageLoaded = (url) => {
     if (!url) return
     setLoadedImageUrls((prev) => (prev[url] ? prev : { ...prev, [url]: true }))
@@ -570,11 +582,57 @@ export default function GalleryLightbox({
             )}
 
             <div className="w-full shrink-0 flex items-center justify-center px-1">
-              {currentKind === 'video' ? (
-                currentVideoDirectUrl ? (
+              {currentKind === 'scene' ? (
+                image?.textureUrl ? (
+                  <div className="relative max-w-full">
+                    <img
+                      src={image.textureUrl}
+                      alt={image.pageTitle || '3D Scene'}
+                      className="max-w-full max-h-[40dvh] sm:max-h-[70vh] lg:max-h-[80vh] object-contain rounded-[var(--radius-box)] shadow-2xl"
+                      onLoad={() => setIsLoading(false)}
+                      onError={() => setIsLoading(false)}
+                      draggable="false"
+                    />
+                    <span className="absolute top-3 left-3 px-2 py-1 text-[11px] font-bold rounded-md bg-cyan-500/90 text-white transition-transform duration-300 hover:scale-105">
+                      3D
+                    </span>
+                    <div className="mt-3 flex flex-col items-center gap-1.5">
+                      <p className="text-xs text-base-content/60">3D scene · texture preview</p>
+                      <p className="text-[11px] text-base-content/45">open in the ImgVault extension to view the model</p>
+                      {image?.spzUrl && (
+                        <a
+                          href={image.spzUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-400 hover:text-primary-300 transition-colors"
+                        >
+                          Open .spz file <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-3 rounded-[var(--radius-box)] border border-base-content/15 bg-base-200/60 px-8 py-10">
+                    <Box className="w-12 h-12 text-cyan-400 transition-transform duration-500 animate-pulse" />
+                    <p className="text-sm font-semibold text-base-content/75">3D scene</p>
+                    <p className="text-xs font-semibold text-error">No texture thumbnail stored</p>
+                    {image?.spzUrl && (
+                      <a
+                        href={image.spzUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-base-content/20 bg-base-100 px-3 py-1.5 text-xs font-semibold transition-all duration-300 hover:scale-105"
+                      >
+                        Open .spz file <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                )
+              ) : currentKind === 'video' ? (
+                modalVideoSource?.type === 'video' ? (
                   <video
-                    key={currentVideoDirectUrl}
-                    src={currentVideoDirectUrl}
+                    key={modalVideoSource.src}
+                    src={modalVideoSource.src}
                     controls
                     autoPlay
                     muted
@@ -583,30 +641,47 @@ export default function GalleryLightbox({
                     ref={videoRef}
                     className="max-w-full max-h-[40dvh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300"
                     onLoadedData={() => {
-                      markImageLoaded(currentVideoDirectUrl)
+                      markImageLoaded(modalVideoSource.src)
+                      setIsLoading(false)
+                    }}
+                    onError={() => {
+                      setVideoSourceFailed(true)
                       setIsLoading(false)
                     }}
                   />
-                ) : currentVideoWatchUrl ? (
+                ) : modalVideoSource?.type === 'iframe' ? (
                   <iframe
-                    key={currentVideoWatchUrl}
-                    src={currentVideoWatchUrl}
+                    key={modalVideoSource.src}
+                    src={modalVideoSource.src}
                     className={`w-full max-w-[960px] aspect-video rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
                     frameBorder="0"
                     allow="autoplay; fullscreen; picture-in-picture"
                     onLoad={() => setIsLoading(false)}
                   />
                 ) : (
-                  <img
-                    src={imageUrl}
-                    alt={image.pageTitle || 'Video'}
-                    className={`max-w-full max-h-[40dvh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
-                    onLoad={() => {
-                      markImageLoaded(imageUrl)
-                      setIsLoading(false)
-                    }}
-                    draggable="false"
-                  />
+                  <div className="flex w-full max-w-[520px] flex-col items-center gap-3 rounded-[var(--radius-box)] border border-base-content/15 bg-base-200/60 px-6 py-10 text-center">
+                    <svg className="w-10 h-10 text-base-content/55 transition-transform duration-500 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                    <p className="text-sm font-semibold text-base-content/75">
+                      No playable {hostLabel} source
+                    </p>
+                    {videoSourceFailed && (
+                      <p className="text-xs font-semibold text-error">
+                        {hostLabel} link failed to load (may be expired)
+                      </p>
+                    )}
+                    {(modalVideoSource?.src || currentVideoWatchUrl || currentVideoDirectUrl) && (
+                      <a
+                        href={modalVideoSource?.src || currentVideoWatchUrl || currentVideoDirectUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-base-content/20 bg-base-100 px-3 py-1.5 text-xs font-semibold transition-all duration-300 hover:scale-105"
+                      >
+                        Open {hostLabel} link <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
                 )
               ) : currentKind === 'link' ? (
                 <img
