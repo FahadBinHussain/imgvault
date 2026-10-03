@@ -134,6 +134,7 @@ export const settings = pgTable('settings', {
   udropKey2: text('udrop_key2').notNull().default(''),
   defaultGallerySource: text('default_gallery_source').notNull().default('imgbb'),
   defaultVideoSource: text('default_video_source').notNull().default('filemoon'),
+  default3DSource: text('default_3d_source').notNull().default('udrop'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
 

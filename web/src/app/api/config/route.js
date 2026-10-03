@@ -1,6 +1,10 @@
 import { db } from '@/db'
 import { settings as settingsTable, userConfigs } from '@/db/schema'
 import { eq } from 'drizzle-orm'
+import {
+  buildTableSettingsPayload,
+  SETTINGS_DEFAULTS,
+} from 'imgvault-shared'
 
 async function getSession() {
   const { auth } = await import('@/app/api/auth/[...nextauth]/route')
@@ -28,13 +32,22 @@ export async function GET() {
     where: eq(userConfigs.userId, session.user.id),
   })
 
+  const appSettings =
+    userConfig?.appSettings && typeof userConfig.appSettings === 'object'
+      ? userConfig.appSettings
+      : {}
+
+  const { id: _rowId, updatedAt: _rowUpdatedAt, ...globalTableSettings } =
+    globalSettings || {}
+
   return Response.json({
-    config: { provider: 'neon' },
+    config: userConfig?.firebaseConfig || { provider: 'neon' },
     settings: {
-      ...(globalSettings || {}),
-      ...((userConfig?.appSettings && typeof userConfig.appSettings === 'object')
-        ? userConfig.appSettings
-        : {}),
+      ...SETTINGS_DEFAULTS,
+      ...appSettings,
+      // public.settings columns win over the app_settings JSON for
+      // table-backed keys (the extension upserts those columns)
+      ...globalTableSettings,
     },
   })
 }
@@ -53,15 +66,11 @@ export async function POST(request) {
   const body = await request.json()
   const settings = body?.settings && typeof body.settings === 'object' ? body.settings : {}
 
+  // every table-backed field from the shared schema, always written -
+  // a missing key falls to the schema default, never silently skipped
   const globalSettingsPayload = {
     id: 'config',
-    pixvidApiKey: String(settings.pixvidApiKey || ''),
-    imgbbApiKey: String(settings.imgbbApiKey || ''),
-    filemoonApiKey: String(settings.filemoonApiKey || ''),
-    udropKey1: String(settings.udropKey1 || ''),
-    udropKey2: String(settings.udropKey2 || ''),
-    defaultGallerySource: String(settings.defaultGallerySource || 'imgbb'),
-    defaultVideoSource: String(settings.defaultVideoSource || 'filemoon'),
+    ...buildTableSettingsPayload(settings),
     updatedAt: new Date(),
   }
 
@@ -77,6 +86,11 @@ export async function POST(request) {
     await db.insert(settingsTable).values(globalSettingsPayload)
   }
 
+  const firebaseConfig =
+    body?.firebaseConfig && typeof body.firebaseConfig === 'object' && !Array.isArray(body.firebaseConfig)
+      ? body.firebaseConfig
+      : {}
+
   const existingUserConfig = await db.query.userConfigs.findFirst({
     where: eq(userConfigs.userId, session.user.id),
   })
@@ -86,13 +100,14 @@ export async function POST(request) {
       .update(userConfigs)
       .set({
         appSettings: settings,
+        firebaseConfig,
         updatedAt: new Date(),
       })
       .where(eq(userConfigs.userId, session.user.id))
   } else {
     await db.insert(userConfigs).values({
       userId: session.user.id,
-      firebaseConfig: {},
+      firebaseConfig,
       appSettings: settings,
     })
   }

@@ -10,26 +10,24 @@ import {
   AlertCircle,
   KeyRound,
   Cloud,
-  ImageIcon,
-  Folder,
   Eye,
   EyeOff,
   Clipboard,
   ClipboardPaste,
   Trash2,
+  Sparkles,
 } from 'lucide-react'
 import AppNavbar from '../components/AppNavbar'
-import { IMAGE_SOURCE_OPTIONS, VIDEO_SOURCE_OPTIONS } from '@/lib/providerCatalog'
+import {
+  SETTINGS_SECTIONS,
+  getSettingsSectionFields,
+  SETTINGS_DEFAULTS,
+} from 'imgvault-shared'
 
-const defaultSettings = {
-  pixvidApiKey: '',
-  imgbbApiKey: '',
-  filemoonApiKey: '',
-  udropKey1: '',
-  udropKey2: '',
-  defaultGallerySource: 'imgbb',
-  defaultVideoSource: 'filemoon',
-  downloadFolder: 'C:\\Users\\Admin\\Videos',
+const SECTION_ICONS = {
+  keys: KeyRound,
+  cloud: Cloud,
+  prefs: Sparkles,
 }
 
 const firebaseConfigKeys = new Set([
@@ -75,6 +73,9 @@ function getMaskedFirebaseConfigText(value) {
   }
 }
 
+const inputClass =
+  'w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary'
+
 export default function SettingsPage() {
   const { status } = useSession()
   const [loading, setLoading] = useState(true)
@@ -84,7 +85,7 @@ export default function SettingsPage() {
   const [configText, setConfigText] = useState('')
   const [parsedConfig, setParsedConfig] = useState(null)
   const [parseError, setParseError] = useState('')
-  const [settings, setSettings] = useState(defaultSettings)
+  const [settings, setSettings] = useState(SETTINGS_DEFAULTS)
   const [showFirebaseConfig, setShowFirebaseConfig] = useState(false)
 
   useEffect(() => {
@@ -214,6 +215,74 @@ export default function SettingsPage() {
     setShowFirebaseConfig(false)
   }
 
+  const renderField = (field) => {
+    const value = settings[field.key] ?? ''
+    const label = (
+      <label className="block text-sm font-medium text-base-content/85 mb-2">
+        {field.label}
+      </label>
+    )
+
+    if (field.type === 'select') {
+      const known = field.options?.some((option) => option.value === value)
+      return (
+        <div key={field.key}>
+          {label}
+          <select
+            value={value}
+            onChange={(e) => updateSetting(field.key, e.target.value)}
+            className={inputClass}
+          >
+            {!known && value ? (
+              <option value={value}>{value} (not in options)</option>
+            ) : null}
+            {(field.options || []).map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          {field.hint ? (
+            <p className="mt-2 text-xs text-base-content/65">{field.hint}</p>
+          ) : null}
+        </div>
+      )
+    }
+
+    if (field.type === 'textarea') {
+      return (
+        <div key={field.key}>
+          {label}
+          <textarea
+            value={value}
+            onChange={(e) => updateSetting(field.key, e.target.value)}
+            placeholder={field.placeholder || ''}
+            className={`${inputClass} min-h-[96px] resize-y`}
+          />
+          {field.hint ? (
+            <p className="mt-2 text-xs text-base-content/65">{field.hint}</p>
+          ) : null}
+        </div>
+      )
+    }
+
+    return (
+      <div key={field.key}>
+        {label}
+        <input
+          type={field.type === 'secret' ? 'password' : 'text'}
+          value={value}
+          onChange={(e) => updateSetting(field.key, e.target.value)}
+          placeholder={field.placeholder || ''}
+          className={inputClass}
+        />
+        {field.hint ? (
+          <p className="mt-2 text-xs text-base-content/65">{field.hint}</p>
+        ) : null}
+      </div>
+    )
+  }
+
   if (status === 'loading' || loading) {
     return (
       <main className="min-h-screen theme-surface">
@@ -233,75 +302,29 @@ export default function SettingsPage() {
         <div className="max-w-3xl mx-auto">
           <div className="mb-8">
             <h1 className="text-2xl sm:text-3xl font-bold mb-2">Settings</h1>
-            <p className="text-base-content/65">Configure your web dashboard like the extension</p>
+            <p className="text-base-content/65">
+              Every extension setting lives here too — one shared schema, both platforms
+            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="glass rounded-[var(--radius-box)] p-5 sm:p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <KeyRound className="w-5 h-5 text-primary-400" />
-                <h2 className="text-xl font-semibold">API Keys</h2>
-              </div>
-
-              <div className="space-y-5">
-                <div>
-                  <label className="block text-sm font-medium text-base-content/85 mb-2">Pixvid API Key</label>
-                  <input
-                    type="password"
-                    value={settings.pixvidApiKey}
-                    onChange={(e) => updateSetting('pixvidApiKey', e.target.value)}
-                    placeholder="Enter your Pixvid API key"
-                    className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-base-content/85 mb-2">ImgBB API Key</label>
-                  <input
-                    type="password"
-                    value={settings.imgbbApiKey}
-                    onChange={(e) => updateSetting('imgbbApiKey', e.target.value)}
-                    placeholder="Enter your ImgBB API key"
-                    className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-base-content/85 mb-2">Filemoon API Key</label>
-                  <input
-                    type="password"
-                    value={settings.filemoonApiKey}
-                    onChange={(e) => updateSetting('filemoonApiKey', e.target.value)}
-                    placeholder="Enter your Filemoon API key"
-                    className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-base-content/85 mb-2">UDrop API Key 1</label>
-                    <input
-                      type="password"
-                      value={settings.udropKey1}
-                      onChange={(e) => updateSetting('udropKey1', e.target.value)}
-                      placeholder="Enter UDrop API Key 1"
-                      className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
-                    />
+            {SETTINGS_SECTIONS.map((section) => {
+              const fields = getSettingsSectionFields(section.id)
+              if (!fields.length) return null
+              const Icon = SECTION_ICONS[section.id] || Sparkles
+              return (
+                <div
+                  key={section.id}
+                  className="glass rounded-[var(--radius-box)] p-5 sm:p-8"
+                >
+                  <div className="flex items-center gap-3 mb-6">
+                    <Icon className="w-5 h-5 text-primary-400" />
+                    <h2 className="text-xl font-semibold">{section.label}</h2>
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-base-content/85 mb-2">UDrop API Key 2</label>
-                    <input
-                      type="password"
-                      value={settings.udropKey2}
-                      onChange={(e) => updateSetting('udropKey2', e.target.value)}
-                      placeholder="Enter UDrop API Key 2"
-                      className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
-                    />
-                  </div>
+                  <div className="space-y-5">{fields.map(renderField)}</div>
                 </div>
-              </div>
-            </div>
+              )
+            })}
 
             <div className="glass rounded-[var(--radius-box)] p-5 sm:p-8">
               <div className="flex items-center justify-between gap-3 mb-6">
@@ -361,66 +384,6 @@ export default function SettingsPage() {
               <p className="mt-2 text-xs text-base-content/65">
                 Hidden by default. Use Reveal only when you need to edit the full JSON.
               </p>
-            </div>
-
-            <div className="glass rounded-[var(--radius-box)] p-5 sm:p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <ImageIcon className="w-5 h-5 text-primary-400" />
-                <h2 className="text-xl font-semibold">Gallery Preferences</h2>
-              </div>
-
-              <div className="space-y-5">
-                <div>
-                <label className="block text-sm font-medium text-base-content/85 mb-2">Default Image Source</label>
-                <select
-                  value={settings.defaultGallerySource}
-                  onChange={(e) => updateSetting('defaultGallerySource', e.target.value)}
-                  className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
-                >
-                  {IMAGE_SOURCE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-base-content/85 mb-2">Default Video Source</label>
-                  <select
-                    value={settings.defaultVideoSource}
-                    onChange={(e) => updateSetting('defaultVideoSource', e.target.value)}
-                    className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
-                  >
-                    {VIDEO_SOURCE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div className="glass rounded-[var(--radius-box)] p-5 sm:p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <Folder className="w-5 h-5 text-primary-400" />
-                <h2 className="text-xl font-semibold">Video Download Folder</h2>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-base-content/85 mb-2">Download Folder</label>
-                <input
-                  type="text"
-                  value={settings.downloadFolder}
-                  onChange={(e) => updateSetting('downloadFolder', e.target.value)}
-                  placeholder="C:\Users\Admin\Videos"
-                  className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-100/70 px-4 py-3 text-sm text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
-                />
-                <p className="mt-2 text-xs text-base-content/65">
-                  Stored for parity with the extension settings page.
-                </p>
-              </div>
             </div>
 
             {parseError ? (
