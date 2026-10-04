@@ -1726,6 +1726,11 @@ export class StorageManager {
     };
     const updates = {
       extraMetadata: { ...(current.extraMetadata || {}), videoHosts: vh },
+      // top-level copy MUST ride along: fromNeonMediaRow exposes videoHosts
+      // top-level, so buildExtraSeed treats the key as "already merged" and
+      // drops extraMetadata.videoHosts — the mirror URL was silently lost
+      // without this (terabox thumbs never persisted to the web gallery).
+      videoHosts: vh,
     };
     if (key === 'filemoon') {
       updates.filemoonThumbUrl = String(thumbnailUrl || '');
@@ -1792,6 +1797,9 @@ export class StorageManager {
         url: String(link.watchUrl || link.directUrl || ''),
       };
       updates.extraMetadata = { ...updates.extraMetadata, videoHosts: vh };
+      // same rule as updateVideoThumbnail: the top-level copy must ride along
+      // or buildExtraSeed drops extraMetadata.videoHosts (stale top-level wins).
+      updates.videoHosts = vh;
     }
     return this.updateImage(id, updates);
   }
