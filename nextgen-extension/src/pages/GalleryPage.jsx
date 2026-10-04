@@ -274,22 +274,8 @@ export default function GalleryPage() {
           const thumbUrl = typeof res === 'string' ? res : res?.thumbnailUrl || '';
           if (!thumbUrl) continue;
           if (defaultVideoSource === 'terabox') {
-            try {
-              await sendMessage('mirrorVideoThumbnail', {
-                imageId: img.id,
-                providerKey: defaultVideoSource,
-                thumbnailUrl: thumbUrl,
-              });
-            } catch (mirrorErr) {
-              const msg = mirrorErr?.message || String(mirrorErr);
-              if (/ImgBB API key missing/.test(msg)) {
-                // every later item fails the same way — stop, keep live thumb for this session
-                setFilemoonThumbs((prev) => ({ ...prev, [img.id]: thumbUrl }));
-                failures.push(msg);
-                break;
-              }
-              failures.push(`${img.pageTitle || img.fileName || img.id}: ${msg}`);
-            }
+            // no persistence for terabox (user decision 2026-10-04): video
+            // thumbs are never mirrored to ImgBB — session-only live thumb.
             setFilemoonThumbs((prev) => ({ ...prev, [img.id]: thumbUrl }));
           } else {
             await sendMessage('updateVideoThumbnail', { imageId: img.id, providerKey: defaultVideoSource, thumbnailUrl: thumbUrl });
