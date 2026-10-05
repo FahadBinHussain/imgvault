@@ -4,7 +4,11 @@ packages:
   - packages/*
 
 # each app keeps its own lockfile so CI (--frozen-lockfile in
-# nextgen-extension/) and Vercel builds stay byte-identical to before
+# nextgen-extension/) and Vercel builds stay byte-identical to before.
+# Note: pnpm-workspace.yaml uses camelCase `sharedWorkspaceLockfile: false`
+# (kebab-case `shared-workspace-lockfile` is only for .npmrc and is ignored
+# by pnpm 10 in pnpm-workspace.yaml, causing ERR_PNPM_NO_LOCKFILE at root).
+sharedWorkspaceLockfile: false
 shared-workspace-lockfile: false
 
 # pnpm 11 reads build approvals from the WORKSPACE ROOT config only -

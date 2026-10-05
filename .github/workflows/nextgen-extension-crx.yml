@@ -66,6 +66,7 @@ jobs:
           cp slideshare-fix.css dist/slideshare-fix.css
           cp rajce-fix.css dist/rajce-fix.css
           cp src/content/contextmenu-unlock.js dist/contextmenu-unlock.js
+          cp src/scene-viewer.js dist/scene-viewer.js
           rm -rf dist/icons
           cp -R icons dist/icons
 
