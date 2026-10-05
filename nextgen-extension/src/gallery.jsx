@@ -1,15 +1,10 @@
 /**
- * @fileoverview Gallery Entry Point
+ * @fileoverview Gallery Entry Point — redirects to the routed SPA entry
  * @version 2.0.0
  */
 
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import GalleryPage from './pages/GalleryPage';
-import './index.css';
+const hash = window.location.hash && window.location.hash !== '#'
+  ? window.location.hash
+  : '#/gallery';
+window.location.replace(`index.html${window.location.search || ''}${hash}`);
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <GalleryPage />
-  </React.StrictMode>
-);

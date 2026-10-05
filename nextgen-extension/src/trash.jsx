@@ -1,16 +1,10 @@
 /**
- * @fileoverview Trash Entry Point
+ * @fileoverview Trash Entry Point — redirects to the routed SPA entry
  * @version 2.0.0
  */
 
-import React from 'react';
-import { createRoot } from 'react-dom/client';
-import TrashPage from './pages/TrashPage';
-import './index.css';
+const hash = window.location.hash && window.location.hash !== '#'
+  ? window.location.hash
+  : '#/trash';
+window.location.replace(`index.html${window.location.search || ''}${hash}`);
 
-const root = createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <TrashPage />
-  </React.StrictMode>
-);

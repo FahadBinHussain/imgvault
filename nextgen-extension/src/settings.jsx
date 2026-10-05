@@ -1,15 +1,10 @@
 /**
- * @fileoverview Settings Entry Point
+ * @fileoverview Settings Entry Point — redirects to the routed SPA entry
  * @version 2.0.0
  */
 
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import SettingsPage from './pages/SettingsPage';
-import './index.css';
+const hash = window.location.hash && window.location.hash !== '#'
+  ? window.location.hash
+  : '#/settings';
+window.location.replace(`index.html${window.location.search || ''}${hash}`);
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <SettingsPage />
-  </React.StrictMode>
-);
