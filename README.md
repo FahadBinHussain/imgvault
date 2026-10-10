@@ -1,69 +1,120 @@
 <p align="center">
-  <img src="./nextgen-extension/icons/1.png" alt="ImgVault Logo" width="96" />
+  <img src="nextgen-extension/icons/1.png" width="104" alt="ImgVault logo">
 </p>
 
 <h1 align="center">ImgVault</h1>
 
 <p align="center">
-  <strong>Context-first media vault for images, videos, and links.</strong>
+  save images, videos and links with the context that makes them findable later<br>
+  <b>chrome extension (mv3)</b> · <b>next.js web app</b> · <b>rust native host</b>
 </p>
 
 <p align="center">
-  <a href="https://github.com/FahadBinHussain/imgvault/actions/workflows/nextgen-extension-crx.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/FahadBinHussain/imgvault/nextgen-extension-crx.yml?branch=main&label=build" alt="Build Status" />
-  </a>
-  <a href="https://github.com/FahadBinHussain/imgvault/releases">
-    <img src="https://img.shields.io/github/v/release/FahadBinHussain/imgvault?display_name=tag" alt="Latest Release" />
-  </a>
-  <a href="./LICENSE">
-    <img src="https://img.shields.io/github/license/FahadBinHussain/imgvault" alt="License" />
-  </a>
-  <a href="https://github.com/FahadBinHussain/imgvault/stargazers">
-    <img src="https://img.shields.io/github/stars/FahadBinHussain/imgvault?style=social" alt="GitHub Stars" />
-  </a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/FahadBinHussain/imgvault" alt="MIT license"></a>
+  <a href="https://github.com/FahadBinHussain/imgvault/releases/latest"><img src="https://img.shields.io/github/v/release/FahadBinHussain/imgvault?label=release" alt="latest release"></a>
+  <a href="https://github.com/FahadBinHussain/imgvault/actions/workflows/nextgen-extension-crx.yml"><img src="https://github.com/FahadBinHussain/imgvault/actions/workflows/nextgen-extension-crx.yml/badge.svg" alt="release workflow"></a>
+  <img src="https://img.shields.io/badge/extension-mv3%20%2B%20react-555" alt="extension stack">
+  <img src="https://img.shields.io/badge/web-next.js%20%2B%20neon-black" alt="web stack">
+  <img src="https://img.shields.io/badge/native%20host-rust%20%2B%20yt--dlp-F74C00" alt="native host stack">
 </p>
 
-## What Is ImgVault
+<table align="center">
+  <tr>
+    <td align="center" width="33%"><b>📸 save with context</b><br>right-click an image or link —<br>source url, page title, tags ride along</td>
+    <td align="center" width="33%"><b>🔍 duplicate detection</b><br>hash + contextual checks catch<br>the same file saved twice</td>
+    <td align="center" width="33%"><b>🎬 native downloads</b><br>a rust host runs yt-dlp for videos,<br>then hands them to the gallery</td>
+  </tr>
+  <tr>
+    <td align="center" width="33%"><b>🗄️ gallery + collections</b><br>tags, collections, search,<br>trash with restore</td>
+    <td align="center" width="33%"><b>🔐 encrypted vault</b><br>aes-256-gcm blobs with a passcode,<br>streamed back chunk by chunk</td>
+    <td align="center" width="33%"><b>🌍 web app</b><br>same vault from next.js — auth,<br>gallery, share links, settings</td>
+  </tr>
+</table>
 
-ImgVault is a production-ready media vault ecosystem:
+## what's in the repo
 
-- Browser extension for fast capture and metadata-first workflows
-- Native host companion for advanced download and local file handoff
-- Web app for authenticated gallery, share links, and remote access
+| path | what |
+| --- | --- |
+| `nextgen-extension/` | **the current extension** — react + vite + tailwind + daisyui, mv3, builds to `dist/` |
+| `native-host/` | rust (tauri build path) native messaging companion for yt-dlp downloads |
+| `web/` | next.js app router web app — nextauth, drizzle, neon postgres |
+| `packages/` | pnpm workspace packages shared between extension and web (settings schema etc.) |
+| `docs/` | architecture, workflows, api and gotchas notes |
+| `old extension/` | legacy extension code, kept for reference only — don't load this |
 
-The core idea is simple: media is not useful without context. ImgVault stores the source, metadata, and organization data so your vault stays searchable and reusable over time.
+## quick start
 
-## Key Features
+### extension (chrome / edge)
 
-### Capture and Save
+```bash
+git clone https://github.com/FahadBinHussain/imgvault.git
+cd imgvault/nextgen-extension
+pnpm install
+pnpm build
+```
 
-- Save images from web pages via context menu
-- Save links with metadata and preview support
-- Process video workflows through native host integration
+then `chrome://extensions` (or `edge://extensions`) → developer mode → **load unpacked** → pick `nextgen-extension/dist`.
 
-### Metadata and Organization
+manifest source of truth is `nextgen-extension/public/manifest.json` (currently mv3, min chrome 93) — bump its `version` with any extension change and reload with `pwsh tools/reload-extension.ps1`, which rebuilds `dist/` and self-reloads the extension.
 
-- Rich metadata fields (source URLs, page title, tags, dimensions, type, timestamps, hashes)
-- For Noobs and For Nerds detail views
-- Collections support
-- Post-upload metadata editing
+### native host (windows)
 
-### Integrity and Safety
+```bash
+cd native-host
+pnpm install
+pnpm run cargo:build     # portable package: pnpm portable:build
+```
 
-- Duplicate detection using contextual and hash-based checks
-- Trash and restore flow
-- Clear technical field visibility for debugging and auditing
+### web app
 
-### Hosting and Delivery
+```bash
+cd web
+pnpm install
+cp .env.example .env     # powershell: Copy-Item .env.example .env
+pnpm dev
+```
 
-- Image hosts: Pixvid, ImgBB
-- Video hosts: Filemoon, UDrop
-- Release assets published through GitHub Actions
+env vars are documented in [`web/.env.example`](./web/.env.example).
 
-## Comparison
+## how you use it
 
-`✅` means the tool is built around that capability. `partial` means it has a related feature, but
-not the same workflow or depth. `-` means it is not the point of that tool.
+- **image**: right-click → save to ImgVault → review the captured metadata → it uploads to your configured host (pixvid / imgbb) and lands in the gallery with the source url and page title attached
+- **video**: start a download through the native host → it lands in your local videos folder → the gallery upload flow picks it up → hosted on filemoon / udrop / terabox
+- **link**: save the page → url, title and preview become a first-class vault item instead of a bare bookmark
+- detail views come in a friendly and a nerds mode, so the raw hashes/dimensions/ids are one click away when you're debugging
+
+uploads are strict, no fallback chains: the host picked in settings is the host used, and a failure says so loudly instead of silently bouncing to another provider.
+
+## releases
+
+every push that touches the extension or native host runs
+[`.github/workflows/nextgen-extension-crx.yml`](./.github/workflows/nextgen-extension-crx.yml)
+and publishes a github release with the extension `.zip` + `.crx` and the native host `.exe` attached — grab them from
+[releases](https://github.com/FahadBinHussain/imgvault/releases/latest) (that's what the badge at the top tracks).
+
+## screenshots
+
+<p align="center">
+  <img src="https://i.ibb.co.com/zWh6MX4t/image-197.png" alt="ImgVault screenshot" width="30%" />
+  <img src="https://i.ibb.co.com/Sw0JtSxD/image-192.png" alt="ImgVault screenshot" width="30%" />
+  <img src="https://i.ibb.co.com/vxQLpwGr/image-195.png" alt="ImgVault screenshot" width="30%" />
+</p>
+
+<p align="center">
+  <img src="https://i.ibb.co.com/jZqphFcJ/image-190.png" alt="ImgVault screenshot" width="30%" />
+  <img src="https://i.ibb.co.com/WpNhsyv8/image-189.png" alt="ImgVault screenshot" width="30%" />
+  <img src="https://i.ibb.co.com/RpKnQxn3/image-193.png" alt="ImgVault screenshot" width="30%" />
+</p>
+
+<p align="center">
+  <img src="https://i.ibb.co.com/d0zHJs3p/image-198.png" alt="ImgVault screenshot" width="30%" />
+  <img src="https://i.ibb.co.com/DfrwkjKF/image-191.png" alt="ImgVault screenshot" width="30%" />
+  <img src="https://i.ibb.co.com/Q3wPSx3V/image-196.png" alt="ImgVault screenshot" width="30%" />
+</p>
+
+## comparison
+
+`✅` = built around that capability. `partial` = has a related feature, not the same workflow. `-` = not the point of that tool.
 
 | Capability | ImgVault | [Eagle](https://eagle.cool/) | [Raindrop.io](https://raindrop.io/) | [Immich](https://immich.app/) | [Hydrus Network](https://hydrusnetwork.github.io/hydrus/) | [Google Photos](https://photos.google.com/) |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -79,229 +130,27 @@ not the same workflow or depth. `-` means it is not the point of that tool.
 | AI face/object/semantic search | - | ✅ | partial | ✅ | partial | ✅ |
 | Open-source, self-modifiable stack | ✅ | - | - | ✅ | ✅ | - |
 
-The closest product overlap is Eagle for design/reference collection and Raindrop.io for
-bookmark-style capture. Immich and Google Photos are much stronger for mobile photo backup,
-faces, albums, and polished gallery behavior. Hydrus is stronger for serious local tagging,
-duplicate workflows, and large personal media libraries.
+the closest overlap is eagle for design/reference collection and raindrop for bookmark-style capture. immich and google photos are much stronger at mobile photo backup and faces; hydrus is stronger at serious local tagging and big personal libraries. imgvault's niche is the bridge: browser capture, source-aware metadata, local/native handoff, a hosted gallery, and configurable upload hosts in one repo. the obvious backlog is mobile backup, ai search, and bulk tagging.
 
-ImgVault's current niche is the bridge: browser capture, source-aware metadata, local/native
-handoff, hosted gallery/share flows, and configurable upload providers in one repo. The
-obvious backlog is mobile backup, stronger AI search, better bulk tagging, and a more mature
-desktop library experience.
+## docs
 
-## Screenshots
+- [project overview](./docs/project-overview.md)
+- [architecture](./docs/architecture.md)
+- [extension workflows](./docs/extension-workflows.md)
+- [web app api](./docs/web-app-api.md)
+- [native host + yt-dlp](./docs/native-host-yt-dlp.md)
+- [build and release](./docs/build-and-release.md)
+- [known gotchas](./docs/known-gotchas.md)
 
-<p align="center">
-  <img src="https://i.ibb.co.com/zWh6MX4t/image-197.png" alt="ImgVault Screenshot 9" width="30%" />
-  <img src="https://i.ibb.co.com/Sw0JtSxD/image-192.png" alt="ImgVault Screenshot 4" width="30%" />
-  <img src="https://i.ibb.co.com/vxQLpwGr/image-195.png" alt="ImgVault Screenshot 7" width="30%" />
-  
-  
-</p>
+## contributing
 
-<p align="center">
-  <img src="https://i.ibb.co.com/jZqphFcJ/image-190.png" alt="ImgVault Screenshot 2" width="30%" />
-  <img src="https://i.ibb.co.com/WpNhsyv8/image-189.png" alt="ImgVault Screenshot 1" width="30%" />
-  <img src="https://i.ibb.co.com/RpKnQxn3/image-193.png" alt="ImgVault Screenshot 5" width="30%" />
-  
-</p>
+fork it, branch it, keep the diff focused, open a pr with build notes. local check is `pnpm build` in `nextgen-extension/` and in `web/`.
 
-<p align="center">
-  <img src="https://i.ibb.co.com/d0zHJs3p/image-198.png" alt="ImgVault Screenshot 6" width="30%" />
-  <img src="https://i.ibb.co.com/DfrwkjKF/image-191.png" alt="ImgVault Screenshot 3" width="30%" />
-  <img src="https://i.ibb.co.com/Q3wPSx3V/image-196.png" alt="ImgVault Screenshot 8" width="30%" />
-  
-</p>
+## license
 
-## Repository Layout
+[MIT](LICENSE)
 
-| Path | Purpose |
-|---|---|
-| `nextgen-extension/` | Main browser extension (React + Vite + Tailwind + DaisyUI) |
-| `native-host/` | Native messaging companion (Rust/Tauri build path) |
-| `web/` | Next.js web platform (auth, gallery, share, settings APIs) |
-| `docs/` | Architecture notes, workflows, gotchas, and API docs |
-| `old extension/` | Legacy extension code kept for reference |
-
-## Downloads
-
-Production artifacts are published in GitHub Releases:
-
-- Extension ZIP
-- Extension CRX
-- Native Host EXE
-
-Use:
-
-- [Latest Release](https://github.com/FahadBinHussain/imgvault/releases/latest)
-- [All Releases](https://github.com/FahadBinHussain/imgvault/releases)
-
-## Quick Start
-
-### 1) Clone
-
-```powershell
-git clone https://github.com/FahadBinHussain/imgvault.git
-cd imgvault
-```
-
-### 2) Build Extension
-
-```powershell
-cd nextgen-extension
-pnpm install
-pnpm build
-```
-
-Output:
-
-- `nextgen-extension/dist`
-
-Load in browser:
-
-1. Open `chrome://extensions` (or Edge equivalent)
-2. Enable Developer Mode
-3. Click `Load unpacked`
-4. Select `nextgen-extension/dist`
-
-### 3) Build Native Host (Windows)
-
-```powershell
-cd native-host
-pnpm install
-pnpm run cargo:build
-```
-
-Optional portable packaging:
-
-```powershell
-pnpm portable:build
-```
-
-### 4) Run Web App
-
-```powershell
-cd web
-pnpm install
-Copy-Item .env.example .env
-pnpm dev
-```
-
-Web app env variables are documented in:
-
-- [web/.env.example](./web/.env.example)
-
-## Production Build and Release Flow
-
-Workflow:
-
-- [nextgen-extension-crx.yml](./.github/workflows/nextgen-extension-crx.yml)
-
-Current behavior:
-
-- Push and release events trigger extension + native host build jobs
-- Extension artifacts include both `.zip` and `.crx`
-- Native host artifact includes `.exe`
-- Artifacts are attached to GitHub releases
-
-## Core Workflows
-
-### Save Image
-
-1. Right-click image
-2. Save to ImgVault
-3. Review metadata
-4. Upload to configured hosts
-5. Persist record in vault storage
-
-### Save Video
-
-1. Start host-assisted download
-2. Save to local Videos folder
-3. Auto-handoff into gallery upload flow
-4. Upload to video hosts
-5. Persist full metadata and host URLs
-
-### Save Link
-
-1. Use link/page save action
-2. Capture URL, title, and preview metadata
-3. Store as first-class vault item
-
-## Stack
-
-### Extension
-
-- React 18
-- Vite 5
-- Tailwind CSS
-- DaisyUI
-- Framer Motion
-
-### Web
-
-- Next.js App Router
-- NextAuth
-- Drizzle ORM
-- Neon Postgres
-- Tailwind CSS + DaisyUI
-
-### Native Host
-
-- Rust (Tauri build target)
-- Native messaging integration
-
-## Documentation
-
-- [docs/project-overview.md](./docs/project-overview.md)
-- [docs/architecture.md](./docs/architecture.md)
-- [docs/extension-workflows.md](./docs/extension-workflows.md)
-- [docs/web-app-api.md](./docs/web-app-api.md)
-- [docs/build-and-release.md](./docs/build-and-release.md)
-- [docs/known-gotchas.md](./docs/known-gotchas.md)
-
-## Contributing
-
-Contributions are welcome.
-
-1. Fork the repo
-2. Create a feature branch
-3. Make focused changes with clear commit messages
-4. Open a pull request with test/build notes
-
-For local verification, use:
-
-```powershell
-cd nextgen-extension
-pnpm build
-```
-
-and
-
-```powershell
-cd web
-pnpm build
-```
-
-## License
-
-MIT License. See [LICENSE](./LICENSE).
-
-## Community
-
-Built with love by people who care about fast workflows, clean metadata, and long-term usability.
-
-Contributions are always welcome:
-
-- Bug reports
-- Feature requests
-- Documentation improvements
-- Design and UX polish
-- Code contributions
-
-If ImgVault helps you, consider starring the repo and sharing it with others.
-
-## Contributors
+## contributors
 
 <a href="https://github.com/FahadBinHussain/imgvault/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=FahadBinHussain/imgvault" alt="Contributors" />
