@@ -3338,7 +3338,7 @@ export default function GalleryPage() {
     .g-date{display:flex;align-items:center;gap:10px;margin-bottom:20px}
     .g-date-line{width:3px;height:20px;border-radius:2px;background:linear-gradient(180deg,var(--color-primary),var(--color-secondary))}
     .g-date-text{font-size:16px;font-weight:600;color:oklch(from var(--color-base-content) l c h / 0.7);letter-spacing:-.01em}
-    .g-fab{position:fixed;bottom:32px;right:32px;z-index:50;width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,var(--color-primary),var(--color-secondary));color:var(--color-primary-content);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .25s ease;box-shadow:0 4px 24px oklch(from var(--color-primary) l c h / 0.3);overflow:hidden}
+    .g-fab{position:fixed;bottom:32px;right:32px;z-index:40;width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,var(--color-primary),var(--color-secondary));color:var(--color-primary-content);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .25s ease;box-shadow:0 4px 24px oklch(from var(--color-primary) l c h / 0.3);overflow:hidden}
     .g-fab:hover{transform:translateY(-2px) scale(1.05);box-shadow:0 8px 32px oklch(from var(--color-primary) l c h / 0.4)}
     .g-fab:active{transform:scale(.95)}
     .g-fab::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,hsl(0 0% 100%/.12),transparent);transform:translateX(-100%);animation:g-shimmer 3s infinite}
@@ -3501,8 +3501,8 @@ export default function GalleryPage() {
   };
 
   const renderModalDocumentId = (item) => (
-    <div className="flex items-start justify-between gap-3">
-      <p className="text-base-content font-mono text-sm break-all flex-1">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <p className="text-base-content font-mono text-sm break-all flex-1 min-w-0">
         {formatBaseFieldValue(item?.id)}
       </p>
       {canOpenFirestoreConsole && (
@@ -3552,7 +3552,7 @@ export default function GalleryPage() {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-base-content font-mono text-sm break-all">
                   {collections.find((collection) => collection.id === modalImage?.collectionId)?.name ||
                     formatBaseFieldValue(modalImage?.collectionId)}
@@ -3563,8 +3563,8 @@ export default function GalleryPage() {
               </div>
             )
           ) : key === 'pixvidUrl' || key === 'imgbbUrl' || key === 'filemoonDirectUrl' || key === 'udropDirectUrl' ? (
-            <div className="flex items-start justify-between gap-3">
-              <p className="text-base-content font-mono text-sm break-all flex-1">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <p className="text-base-content font-mono text-sm break-all flex-1 min-w-0">
                 {formatBaseFieldValue(overviewValueByKey[key] ?? modalImage?.[key])}
               </p>
               <Button
@@ -3616,8 +3616,8 @@ export default function GalleryPage() {
                 </div>
               </div>
             ) : (
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-base-content font-mono text-sm break-all flex-1">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <p className="text-base-content font-mono text-sm break-all flex-1 min-w-0">
                   {formatBaseFieldValue(modalImage?.[key])}
                 </p>
                 <div className="flex items-center gap-2">
@@ -3663,8 +3663,8 @@ export default function GalleryPage() {
                 </div>
               </div>
             ) : (
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-base-content font-mono text-sm whitespace-pre-wrap break-words flex-1">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <p className="text-base-content font-mono text-sm whitespace-pre-wrap break-words flex-1 min-w-0">
                   {formatBaseFieldValue(modalImage?.description)}
                 </p>
                 <Button variant="ghost" size="sm" onClick={() => startEditing('description')}>
@@ -3698,7 +3698,7 @@ export default function GalleryPage() {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-base-content font-mono text-sm">
                   {modalImage?.creationDate ? new Date(modalImage.creationDate).toLocaleString() : 'N/A'}
                 </p>
@@ -3958,7 +3958,7 @@ export default function GalleryPage() {
       </AnimatePresence>
 
       {/* Timeline Scrollbar */}
-      <TimelineScrollbar dateGroups={timelineData} containerRef={pageContainerRef} />
+      <TimelineScrollbar dateGroups={timelineData} containerRef={pageContainerRef} navbarHeight={navbarHeight} />
 
       <GalleryNavbar
         key={`gallery-navbar-${collectionId || 'all'}`}
@@ -3997,7 +3997,8 @@ export default function GalleryPage() {
 
       <div style={{ height: navbarHeight ? `${navbarHeight + 8}px` : '180px' }} />
 
-      <div className="w-full px-3 sm:px-6">
+      {/* lg:pr-16 reserves the gutter for the fixed timeline rail so cards never sit under it */}
+      <div className="w-full px-3 sm:px-6 lg:pr-16">
   <div className="px-0">
         {/* Loading State */}
         {loading && (
@@ -4479,7 +4480,7 @@ export default function GalleryPage() {
                 position: 'fixed',
                 bottom: 100,
                 right: 32,
-                zIndex: 50,
+                zIndex: 40,
                 width: 48,
                 height: 48,
                 borderRadius: '14px',
@@ -4658,7 +4659,7 @@ export default function GalleryPage() {
                       </div>
                     </div>
                     <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-100/70 p-3">
-                      <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                         <div><h4 className="text-sm font-semibold text-base-content">{uploadLogTitle}</h4><p className="text-xs text-base-content/60">{uploadLogDescription}</p></div>
                         <button type="button" onClick={() => navigate('/logs')} className="btn btn-ghost btn-xs">Open Logs</button>
                       </div>
@@ -4763,7 +4764,7 @@ export default function GalleryPage() {
 
                     {uploadQueue.length > 1 && (
                       <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/70 p-4 space-y-3">
-                        <div className="flex items-start justify-between gap-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
                             <div className="text-sm font-semibold text-base-content">Batch queue</div>
                             <div className="text-xs text-base-content/65">
@@ -5034,7 +5035,7 @@ export default function GalleryPage() {
                           </div>
                         </div>
                         <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-100/70 p-3">
-                          <div className="mb-3 flex items-center justify-between gap-3">
+                          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                             <div>
                               <h4 className="text-sm font-semibold text-base-content">{uploadLogTitle}</h4>
                               <p className="text-xs text-base-content/60">

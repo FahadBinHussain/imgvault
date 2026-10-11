@@ -694,7 +694,7 @@ export default function TrashPage() {
   return (
   <div ref={pageContainerRef} className="min-h-screen bg-base-200 text-base-content overflow-y-auto prem-page">`n      <PremiumBackground />
       {/* Timeline Scrollbar */}
-      <TimelineScrollbar dateGroups={timelineData} containerRef={pageContainerRef} />
+      <TimelineScrollbar dateGroups={timelineData} containerRef={pageContainerRef} navbarHeight={navbarHeight} />
       
       <div className="w-full px-6">
         <GalleryNavbar
@@ -725,7 +725,7 @@ export default function TrashPage() {
 
         {/* Warning Message */}
         {trashedImages.length > 0 && !selectionMode && (
-          <div className="px-6 mb-6">
+          <div className="px-6 mb-6 lg:pr-16">
             <div className="p-4 bg-warning/15 border border-warning/40 rounded-[var(--radius-box)] backdrop-blur-sm flex items-start gap-3">
               <AlertTriangle className="text-warning mt-1 flex-shrink-0" size={20} />
               <div className="text-sm">
@@ -740,7 +740,7 @@ export default function TrashPage() {
 
         {/* Bulk Actions Bar - Shown when in selection mode */}
         {selectionMode && trashedImages.length > 0 && (
-          <div className="px-6 mb-6">
+          <div className="px-6 mb-6 lg:pr-16">
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -800,7 +800,7 @@ export default function TrashPage() {
           </div>
         )}
 
-        <div className="px-6">
+        <div className="px-6 lg:pr-16">
         {/* Loading State */}
         {loading && (
           <div className="flex flex-col justify-center items-center py-32">

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Upload, Search, Trash2, Settings, FolderOpen, Image, Cable, FileText, LockKeyhole, ArrowUpDown, UploadCloud, Globe, ArrowUpRight } from 'lucide-react';
+import { RefreshCw, Upload, Search, Trash2, Settings, FolderOpen, Image, Cable, FileText, LockKeyhole, ArrowUpDown, UploadCloud, Globe, ArrowUpRight, ListChecks, X } from 'lucide-react';
 
 const WEBAPP_URL = 'https://imgvaultt.vercel.app/';
 import ThemeToggleButton from './ThemeToggleButton';
@@ -9,45 +9,64 @@ const CSS = `
 .iv-nav{font-family:'Outfit',system-ui,sans-serif;position:fixed;top:0;left:0;right:0;z-index:50;width:100%}
 .iv-nav-bar{border-bottom:1px solid var(--color-base-300);background:var(--color-base-200);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);position:relative}
 
-.iv-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:9px;border:1px solid var(--color-base-300);background:var(--color-base-100);color:var(--color-base-content);opacity:.6;cursor:pointer;transition:all .15s ease;position:relative;font-family:inherit}
-.iv-icon-btn:hover{opacity:1;background:var(--color-base-200)}
-.iv-icon-btn-on{opacity:1!important;color:var(--color-primary)!important;background:oklch(from var(--color-primary) l c h / 0.08)!important;border-color:oklch(from var(--color-primary) l c h / 0.15)!important}
+/* Top layout: stacked rows everywhere, one row from 1700px up.
+   row1 = logo + actions | row2 = search+sort+filters | row3 = destinations */
+.iv-top{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;min-width:0}
+.iv-left{order:1;flex:1 1 auto;display:flex;align-items:center;gap:10px;min-width:0}
+.iv-actions{order:2;flex:0 0 auto;display:flex;align-items:center;gap:4px}
+.iv-controls{order:3;flex:1 0 100%;display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-width:0}
+.iv-destwrap{order:4;flex:1 0 100%;display:flex;align-items:center;gap:4px;justify-content:space-between;min-width:0}
+.iv-dests{display:flex;align-items:center;gap:4px;flex-wrap:wrap;min-width:0}
+.iv-webapp-wrap{display:flex;align-items:center;gap:4px}
+.iv-divider-a{display:none}
+@media(min-width:1700px){
+  .iv-top{flex-wrap:nowrap}
+  .iv-left{flex:0 1 auto}
+  .iv-controls{order:2;flex:1 1 0;justify-content:center}
+  .iv-actions{order:3}
+  .iv-destwrap{order:4;flex:0 0 auto;justify-content:flex-start}
+  .iv-divider-a{display:block}
+}
 
-.iv-nav-search{position:relative;flex:1;max-width:380px}
+.iv-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:9px;border:1px solid var(--color-base-300);background:var(--color-base-100);color:var(--color-base-content);opacity:.6;cursor:pointer;transition:all .15s ease;position:relative;font-family:inherit;flex-shrink:0}
+.iv-icon-btn:hover{opacity:1;background:var(--color-base-200)}
+.iv-icon-btn:active{transform:scale(.94)}
+.iv-icon-btn svg{transition:transform .2s cubic-bezier(.22,1,.36,1)}
+.iv-icon-btn:hover svg{transform:scale(1.12)}
+.iv-icon-btn-on{opacity:1!important;color:var(--color-primary)!important;background:oklch(from var(--color-primary) l c h / 0.08)!important;border-color:oklch(from var(--color-primary) l c h / 0.15)!important}
+.iv-refresh-ico{transition:transform .6s cubic-bezier(.22,1,.36,1)}
+.iv-icon-btn:hover .iv-refresh-ico{transform:rotate(180deg)}
+
+.iv-nav-search{position:relative;flex:1 1 0;max-width:380px;min-width:170px}
 .iv-nav-search input{width:100%;height:32px;padding:0 12px 0 32px;font-size:13px;font-family:'Outfit',system-ui,sans-serif;color:var(--color-base-content);background:var(--color-base-100);border:1px solid var(--color-base-300);border-radius:9px;outline:none;transition:all .2s ease}
 .iv-nav-search input:focus{border-color:var(--color-primary);box-shadow:0 0 0 2px oklch(from var(--color-primary) l c h / 0.1)}
 .iv-nav-search input::placeholder{opacity:.35}
 .iv-nav-search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);opacity:.35;pointer-events:none}
-.iv-nav-controls{display:flex;align-items:center;justify-content:center;gap:8px;flex:1;min-width:0}
-.iv-nav-sort{position:relative;flex:0 0 154px}
+.iv-nav-sort{position:relative;flex:0 0 142px}
 .iv-nav-sort select{width:100%;height:32px;padding:0 28px 0 32px;font-size:12px;font-weight:500;font-family:'Outfit',system-ui,sans-serif;color:var(--color-base-content);background:var(--color-base-100);border:1px solid var(--color-base-300);border-radius:9px;outline:none;appearance:none;cursor:pointer;transition:all .2s ease}
 .iv-nav-sort select:focus{border-color:var(--color-primary);box-shadow:0 0 0 2px oklch(from var(--color-primary) l c h / 0.1)}
 .iv-nav-sort-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);opacity:.35;pointer-events:none}
 .iv-nav-sort::after{content:'';position:absolute;right:11px;top:50%;width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-70%) rotate(45deg);opacity:.35;pointer-events:none}
-.iv-filter-tabs{display:flex;align-items:center;gap:3px;height:32px;padding:3px;border:1px solid var(--color-base-300);background:var(--color-base-100);border-radius:9px}
-.iv-filter-tab{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:24px;padding:0 8px;border:0;border-radius:7px;background:transparent;color:var(--color-base-content);opacity:.55;font-size:11px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;cursor:pointer;transition:all .15s ease;white-space:nowrap}
+.iv-filter-tabs{display:flex;align-items:center;gap:3px;height:32px;padding:3px;border:1px solid var(--color-base-300);background:var(--color-base-100);border-radius:9px;flex:0 0 auto;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.iv-filter-tabs::-webkit-scrollbar{display:none}
+.iv-filter-tab{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:24px;padding:0 8px;border:0;border-radius:7px;background:transparent;color:var(--color-base-content);opacity:.55;font-size:11px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;cursor:pointer;transition:all .15s ease;white-space:nowrap;flex-shrink:0}
 .iv-filter-tab:hover{opacity:.85;background:var(--color-base-200)}
+.iv-filter-tab:active{transform:scale(.95)}
 .iv-filter-tab-on{opacity:1!important;color:var(--color-primary-content)!important;background:var(--color-primary)!important;box-shadow:0 2px 10px oklch(from var(--color-primary) l c h / 0.25)}
 .iv-filter-count{font-size:10px;opacity:.72}
-.iv-mobile-controls{display:flex;align-items:center;gap:8px;margin-top:8px}
-@media(min-width:768px){.iv-mobile-controls{display:none}}
-@media(max-width:767px){.iv-nav-controls{display:none}}
-.iv-mobile-controls .iv-nav-search{max-width:none}
-.iv-mobile-controls .iv-nav-sort{flex-basis:142px;flex-shrink:0}
-.iv-mobile-filters{margin-top:8px;width:100%;overflow-x:auto}
-.iv-mobile-filters .iv-filter-tabs{width:max-content;min-width:100%}
 
-.iv-select-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:9px;font-size:12px;font-weight:500;font-family:'Outfit',system-ui,sans-serif;cursor:pointer;transition:all .15s ease;border:1px solid transparent;background:transparent;color:var(--color-base-content);opacity:.6}
+.iv-select-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:9px;font-size:12px;font-weight:500;font-family:'Outfit',system-ui,sans-serif;cursor:pointer;transition:all .15s ease;border:1px solid transparent;background:transparent;color:var(--color-base-content);opacity:.6;flex-shrink:0}
 .iv-select-btn:hover{opacity:1;background:var(--color-base-200)}
+.iv-select-btn:active{transform:scale(.96)}
 .iv-select-btn-on{opacity:1!important;color:var(--color-primary)!important;background:oklch(from var(--color-primary) l c h / 0.08)!important;border-color:oklch(from var(--color-primary) l c h / 0.15)!important}
 
-.iv-upload-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:9px;font-size:12px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;color:var(--color-primary-content);background:var(--color-primary);border:none;cursor:pointer;transition:all .2s ease;box-shadow:0 2px 12px oklch(from var(--color-primary) l c h / 0.3);position:relative;overflow:hidden}
+.iv-upload-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:9px;font-size:12px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;color:var(--color-primary-content);background:var(--color-primary);border:none;cursor:pointer;transition:all .2s ease;box-shadow:0 2px 12px oklch(from var(--color-primary) l c h / 0.3);position:relative;overflow:hidden;flex-shrink:0}
 .iv-upload-btn:hover{transform:translateY(-1px);box-shadow:0 4px 18px oklch(from var(--color-primary) l c h / 0.4);filter:brightness(1.1)}
 .iv-upload-btn:active{transform:translateY(0) scale(.97)}
 .iv-upload-btn::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,hsl(0 0% 100%/.1),transparent);transform:translateX(-100%);animation:iv-shimmer 3s infinite}
 @keyframes iv-shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
 
-.iv-webapp-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:999px;font-size:12px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;color:var(--color-primary-content);background:linear-gradient(135deg,var(--color-primary),oklch(from var(--color-primary) calc(l - .07) c h));border:1px solid oklch(from var(--color-primary) l c h / .45);text-decoration:none;position:relative;overflow:hidden;cursor:pointer;transition:all .3s cubic-bezier(.22,1,.36,1);box-shadow:0 2px 12px oklch(from var(--color-primary) l c h / .25)}
+.iv-webapp-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:999px;font-size:12px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;color:var(--color-primary-content);background:linear-gradient(135deg,var(--color-primary),oklch(from var(--color-primary) calc(l - .07) c h));border:1px solid oklch(from var(--color-primary) l c h / .45);text-decoration:none;position:relative;overflow:hidden;cursor:pointer;transition:all .3s cubic-bezier(.22,1,.36,1);box-shadow:0 2px 12px oklch(from var(--color-primary) l c h / .25);flex-shrink:0}
 .iv-webapp-btn:hover{transform:translateY(-1px);filter:brightness(1.08);box-shadow:0 6px 22px oklch(from var(--color-primary) l c h / .5)}
 .iv-webapp-btn:active{transform:translateY(0) scale(.97)}
 .iv-webapp-btn:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
@@ -60,20 +79,22 @@ const CSS = `
 .iv-webapp-arrow{opacity:.65;transition:transform .3s cubic-bezier(.22,1,.36,1),opacity .3s ease}
 .iv-webapp-btn:hover .iv-webapp-arrow{transform:translate(3px,-3px);opacity:1}
 
-.iv-empty-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:9px;font-size:12px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;color:var(--color-error);background:oklch(from var(--color-error) l c h / 0.08);border:1px solid oklch(from var(--color-error) l c h / 0.15);cursor:pointer;transition:all .15s ease}
+.iv-empty-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:9px;font-size:12px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;color:var(--color-error);background:oklch(from var(--color-error) l c h / 0.08);border:1px solid oklch(from var(--color-error) l c h / 0.15);cursor:pointer;transition:all .15s ease;flex-shrink:0}
 .iv-empty-btn:hover{background:oklch(from var(--color-error) l c h / 0.12);border-color:oklch(from var(--color-error) l c h / 0.25)}
+.iv-empty-btn:active{transform:scale(.96)}
 
-.iv-badge{position:absolute;top:-3px;right:-3px;min-width:15px;height:15px;padding:0 4px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;font-family:'Outfit',system-ui,sans-serif;border-radius:6px;line-height:1}
+.iv-badge{position:absolute;top:-3px;right:-3px;min-width:15px;height:15px;padding:0 4px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;font-family:'Outfit',system-ui,sans-serif;border-radius:6px;line-height:1;animation:iv-badge-pop .3s cubic-bezier(.22,1,.36,1)}
+@keyframes iv-badge-pop{0%{transform:scale(0)}70%{transform:scale(1.15)}100%{transform:scale(1)}}
 .iv-badge-count{color:var(--color-base-content);opacity:.7;background:var(--color-base-300);border:1px solid var(--color-base-300)}
 .iv-badge-error{color:#fff;background:var(--color-error)}
 
-.iv-divider{width:1px;height:16px;background:var(--color-base-300);margin:0 4px}
+.iv-divider{width:1px;height:16px;background:var(--color-base-300);margin:0 4px;flex-shrink:0}
 
 .iv-title{font-size:13px;font-weight:600;color:var(--color-base-content);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .iv-subtitle{font-size:11px;color:var(--color-base-content);opacity:.4;line-height:1.2;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-.iv-sel-bar{display:flex;align-items:center;justify-content:space-between;padding-top:8px;margin-top:8px;border-top:1px solid var(--color-base-300)}
-.iv-sel-info{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-base-content);opacity:.5}
+.iv-sel-bar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding-top:8px;margin-top:8px;border-top:1px solid var(--color-base-300)}
+.iv-sel-info{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-base-content);opacity:.5;flex-wrap:wrap}
 .iv-sel-link{font-size:12px;color:var(--color-primary);cursor:pointer;background:none;border:none;font-family:inherit;transition:opacity .15s}
 .iv-sel-link:hover{opacity:.75}
 .iv-sel-del{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 10px;border-radius:7px;font-size:11px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;color:#fff;background:var(--color-error);border:none;cursor:pointer;transition:all .15s ease}
@@ -209,9 +230,9 @@ export default function GalleryNavbar({
       <style>{CSS}</style>
       <div className="iv-nav-bar" style={{ position: 'relative' }}>
         <div style={{ padding: '10px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+          <div className="iv-top">
             {/* Left: Logo / Title */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <div className="iv-left">
               {collectionId && currentCollection ? (
                 <>
                   <button onClick={() => navigate('/gallery')} className="iv-icon-btn" title="Back to All Images">
@@ -236,9 +257,47 @@ export default function GalleryNavbar({
               )}
             </div>
 
-            {/* Center: Search + Sort */}
+            {/* Context actions */}
+            <div className="iv-actions">
+              <ThemeToggleButton />
+
+              {showActions && (
+                <button onClick={reload} className="iv-icon-btn" title="Refresh">
+                  <RefreshCw className="iv-refresh-ico" style={{ width: 14, height: 14 }} />
+                </button>
+              )}
+
+              {showActions && (
+                <button
+                  onClick={toggleSelectionMode}
+                  className={`iv-select-btn ${selectionMode ? 'iv-select-btn-on' : ''}`}
+                  title={selectionMode ? 'Exit Selection' : 'Select'}
+                >
+                  {selectionMode
+                    ? <X style={{ width: 13, height: 13 }} className="sm:hidden" />
+                    : <ListChecks style={{ width: 13, height: 13 }} className="sm:hidden" />}
+                  <span className="hidden sm:inline">{selectionMode ? 'Cancel' : 'Select'}</span>
+                </button>
+              )}
+
+              {isTrashPage && typeof onEmptyTrash === 'function' && images.length > 0 && (
+                <button onClick={onEmptyTrash} className="iv-empty-btn" title="Empty Trash">
+                  <span className="hidden sm:inline">Empty</span>
+                  <span className="sm:hidden"><Trash2 style={{ width: 13, height: 13 }} /></span>
+                </button>
+              )}
+
+              {showActions && (
+                <button onClick={openUploadModal} className="iv-upload-btn">
+                  <Upload style={{ width: 13, height: 13 }} />
+                  <span className="hidden sm:inline">Upload</span>
+                </button>
+              )}
+            </div>
+
+            {/* Search + sort + media filters (wraps to its own rows when narrow) */}
             {showSearch && (
-              <div className="iv-nav-controls hidden md:flex">
+              <div className="iv-controls">
                 <div className="iv-nav-search">
                   <Search className="iv-nav-search-icon" style={{ width: 14, height: 14 }} />
                   <input
@@ -268,134 +327,68 @@ export default function GalleryNavbar({
               </div>
             )}
 
-            {/* Right: Context actions + fixed nav block */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <ThemeToggleButton />
+            {/* Destinations + web app */}
+            <div className="iv-destwrap">
+              <div className="iv-divider iv-divider-a" />
 
-              {showActions && (
-                <button onClick={reload} className="iv-icon-btn" title="Refresh">
-                  <RefreshCw style={{ width: 14, height: 14 }} />
+              <div className="iv-dests">
+                <button onClick={() => navigate('/gallery')} className={`iv-icon-btn ${isGalleryPage ? 'iv-icon-btn-on' : ''}`} title="Gallery">
+                  <Image style={{ width: 14, height: 14 }} />
                 </button>
-              )}
 
-              {showActions && (
-                <button
-                  onClick={toggleSelectionMode}
-                  className={`iv-select-btn ${selectionMode ? 'iv-select-btn-on' : ''}`}
-                  title={selectionMode ? 'Exit Selection' : 'Select'}
+                <button onClick={() => navigate('/collections')} className={`iv-icon-btn ${isCollectionsPage ? 'iv-icon-btn-on' : ''}`} title="Collections" style={{ position: 'relative' }}>
+                  <FolderOpen style={{ width: 14, height: 14 }} />
+                  {!collectionsLoading && collections.length > 0 && (
+                    <span className="iv-badge iv-badge-count">{collections.length}</span>
+                  )}
+                </button>
+
+                <button onClick={() => navigate('/trash')} className={`iv-icon-btn ${isTrashPage ? 'iv-icon-btn-on' : ''}`} title="Trash" style={{ position: 'relative' }}>
+                  <Trash2 style={{ width: 14, height: 14 }} />
+                  {!trashLoading && trashedImages.length > 0 && (
+                    <span className="iv-badge iv-badge-error">{trashedImages.length}</span>
+                  )}
+                </button>
+
+                <button onClick={() => navigate('/host')} className={`iv-icon-btn ${isHostPage ? 'iv-icon-btn-on' : ''}`} title="Native Host">
+                  <Cable style={{ width: 14, height: 14 }} />
+                </button>
+
+                <button onClick={() => navigate('/logs')} className={`iv-icon-btn ${isLogsPage ? 'iv-icon-btn-on' : ''}`} title="Logs">
+                  <FileText style={{ width: 14, height: 14 }} />
+                </button>
+
+                <button onClick={() => navigate('/resolve')} className={`iv-icon-btn ${isResolvePage ? 'iv-icon-btn-on' : ''}`} title="Resolve Hosts">
+                  <UploadCloud style={{ width: 14, height: 14 }} />
+                </button>
+
+                <button onClick={() => navigate('/vault')} className={`iv-icon-btn ${isVaultPage ? 'iv-icon-btn-on' : ''}`} title="Secret Vault">
+                  <LockKeyhole style={{ width: 14, height: 14 }} />
+                </button>
+
+                <button onClick={() => navigate('/settings')} className={`iv-icon-btn ${isSettingsPage ? 'iv-icon-btn-on' : ''}`} title="Settings">
+                  <Settings style={{ width: 14, height: 14 }} />
+                </button>
+              </div>
+
+              <div className="iv-webapp-wrap">
+                <div className="iv-divider" />
+                <a
+                  href={WEBAPP_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="iv-webapp-btn"
+                  title="Open Web App"
                 >
-                  <span className="hidden sm:inline">{selectionMode ? 'Cancel' : 'Select'}</span>
-                </button>
-              )}
-
-              {isTrashPage && typeof onEmptyTrash === 'function' && images.length > 0 && (
-                <button onClick={onEmptyTrash} className="iv-empty-btn" title="Empty Trash">
-                  <span className="hidden sm:inline">Empty</span>
-                  <span className="sm:hidden"><Trash2 style={{ width: 13, height: 13 }} /></span>
-                </button>
-              )}
-
-              {showActions && (
-                <button onClick={openUploadModal} className="iv-upload-btn">
-                  <Upload style={{ width: 13, height: 13 }} />
-                  <span className="hidden sm:inline">Upload</span>
-                </button>
-              )}
-
-              <div className="iv-divider" />
-
-              <button onClick={() => navigate('/gallery')} className={`iv-icon-btn ${isGalleryPage ? 'iv-icon-btn-on' : ''}`} title="Gallery">
-                <Image style={{ width: 14, height: 14 }} />
-              </button>
-
-              <button onClick={() => navigate('/collections')} className={`iv-icon-btn ${isCollectionsPage ? 'iv-icon-btn-on' : ''}`} title="Collections" style={{ position: 'relative' }}>
-                <FolderOpen style={{ width: 14, height: 14 }} />
-                {!collectionsLoading && collections.length > 0 && (
-                  <span className="iv-badge iv-badge-count">{collections.length}</span>
-                )}
-              </button>
-
-              <button onClick={() => navigate('/trash')} className={`iv-icon-btn ${isTrashPage ? 'iv-icon-btn-on' : ''}`} title="Trash" style={{ position: 'relative' }}>
-                <Trash2 style={{ width: 14, height: 14 }} />
-                {!trashLoading && trashedImages.length > 0 && (
-                  <span className="iv-badge iv-badge-error">{trashedImages.length}</span>
-                )}
-              </button>
-
-              <button onClick={() => navigate('/host')} className={`iv-icon-btn ${isHostPage ? 'iv-icon-btn-on' : ''}`} title="Native Host">
-                <Cable style={{ width: 14, height: 14 }} />
-              </button>
-
-              <button onClick={() => navigate('/logs')} className={`iv-icon-btn ${isLogsPage ? 'iv-icon-btn-on' : ''}`} title="Logs">
-                <FileText style={{ width: 14, height: 14 }} />
-              </button>
-
-              <button onClick={() => navigate('/resolve')} className={`iv-icon-btn ${isResolvePage ? 'iv-icon-btn-on' : ''}`} title="Resolve Hosts">
-                <UploadCloud style={{ width: 14, height: 14 }} />
-              </button>
-
-              <button onClick={() => navigate('/vault')} className={`iv-icon-btn ${isVaultPage ? 'iv-icon-btn-on' : ''}`} title="Secret Vault">
-                <LockKeyhole style={{ width: 14, height: 14 }} />
-              </button>
-
-              <button onClick={() => navigate('/settings')} className={`iv-icon-btn ${isSettingsPage ? 'iv-icon-btn-on' : ''}`} title="Settings">
-                <Settings style={{ width: 14, height: 14 }} />
-              </button>
-
-              <div className="iv-divider" />
-
-              <a
-                href={WEBAPP_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="iv-webapp-btn"
-                title="Open Web App"
-              >
-                <span className="iv-webapp-globe-wrap">
-                  <Globe className="iv-webapp-globe" style={{ width: 13, height: 13 }} />
-                </span>
-                <span className="hidden sm:inline">Web App</span>
-                <ArrowUpRight className="iv-webapp-arrow hidden sm:block" style={{ width: 12, height: 12 }} />
-              </a>
+                  <span className="iv-webapp-globe-wrap">
+                    <Globe className="iv-webapp-globe" style={{ width: 13, height: 13 }} />
+                  </span>
+                  <span className="hidden sm:inline">Web App</span>
+                  <ArrowUpRight className="iv-webapp-arrow hidden sm:block" style={{ width: 12, height: 12 }} />
+                </a>
+              </div>
             </div>
           </div>
-
-          {/* Mobile search */}
-          {showSearch && (
-            <div className="iv-mobile-controls md:hidden">
-              <div className="iv-nav-search" style={{ maxWidth: '100%' }}>
-                <Search className="iv-nav-search-icon" style={{ width: 14, height: 14 }} />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={isTrashPage ? 'Search trash...' : 'Search images...'}
-                />
-              </div>
-              {showSort && (
-                <div className="iv-nav-sort">
-                  <ArrowUpDown className="iv-nav-sort-icon" style={{ width: 14, height: 14 }} />
-                  <select
-                    value={sortMode}
-                    onChange={(e) => setSortMode(e.target.value)}
-                    aria-label="Sort gallery"
-                  >
-                    {sortOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          )}
-
-          {showMediaFilter && (
-            <div className="iv-mobile-filters md:hidden">
-              {renderMediaFilterTabs()}
-            </div>
-          )}
 
           {/* Selection mode bar */}
           {selectionMode && showActions && (
