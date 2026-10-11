@@ -130,6 +130,18 @@ estimate 1–2 days; stop and report before touching the extension for it.
   drag handle gone (shell stacks panel under media), chevrons now also on mobile.
 - web config: `imgvault-ui: workspace:*` dep + `transpilePackages: ['imgvault-ui']` in
   next.config.js (JSX inside a workspace package needs it).
+- **workspace-package dep trap (CI bit here)**: a `packages/*` project that imports ANY
+  npm package (ui imports `lucide-react`) needs that dep in its own `package.json` AND its
+  own committed `pnpm-lock.yaml` — `sharedWorkspaceLockfile: false` means per-project
+  lockfiles, and CI's root `pnpm install --frozen-lockfile` ("Scope: all N workspace
+  projects") fails `ERR_PNPM_NO_LOCKFILE` for a dep-ful project without one (phase 2 never
+  hit it: `packages/shared` is dep-less). `peerDependencies` are NOT a workaround: pnpm
+  still wants a lockfile for them, and once they're gone the package's `node_modules` is
+  empty so the bundler cannot resolve bare imports from the package's realpath (Next only
+  aliases `react`; `lucide-react` from `packages/ui/` fails the build loudly). only
+  dep-less packages get to skip the lockfile. `.gitignore` now ignores ONLY
+  `packages/shared/pnpm-lock.yaml` (stray, dep-less) — a dep-ful package's lockfile is
+  committed.
 - verified: frozen install (state files deleted first), `next build` green all routes,
   drift guard OK untouched, live smoke on imgvaultt.vercel.app.
 
