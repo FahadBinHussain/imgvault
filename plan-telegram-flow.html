@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Telegram host — the whole plan</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #eb6c36;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    .diagram { overflow-x: auto; }
+    svg { width: 1160px; min-width: 1160px; display: block; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Flowchart · plan-telegram-host</p>
+    <h1>Telegram host — the whole plan</h1>
+
+    <div class="diagram">
+    <svg viewBox="0 0 1160 880" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="plan-telegram-flow-title plan-telegram-flow-desc">
+      <title id="plan-telegram-flow-title">Telegram host — the whole plan</title>
+      <desc id="plan-telegram-flow-desc">Flowchart of upload routing to a Telegram public channel, per-read URL resolution, gallery and vault read paths, and the optional local Bot API server.</desc>
+      <defs>
+        <pattern id="tgflow-dots" width="22" height="22" patternUnits="userSpaceOnUse">
+          <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+        </pattern>
+        <marker id="tgflow-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+        <marker id="tgflow-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+      </defs>
+
+      <rect width="100%" height="100%" fill="#f5f5f5"/>
+      <rect width="100%" height="100%" fill="url(#tgflow-dots)" opacity="0.55"/>
+
+      <!-- Arrows (behind boxes) -->
+      <!-- start -> vault? -->
+      <path d="M570 88 V116" stroke="#4f5d75" stroke-width="1.2" fill="none" marker-end="url(#tgflow-arrow)"/>
+      <!-- vault? YES -> encrypt -->
+      <path d="M450 164 H298 Q290 164 290 172 V232" stroke="#4f5d75" stroke-width="1.2" fill="none" marker-end="url(#tgflow-arrow)"/>
+      <!-- vault? NO -> cloud upload -->
+      <path d="M690 164 H884 Q892 164 892 172 V392 Q892 400 884 400 H855" stroke="#4f5d75" stroke-width="1.2" fill="none" marker-end="url(#tgflow-arrow)"/>
+      <!-- encrypt -> size gate -->
+      <path d="M290 304 V344" stroke="#4f5d75" stroke-width="1.2" fill="none" marker-end="url(#tgflow-arrow)"/>
+      <!-- gate >20MB -> local server -->
+      <path d="M290 440 V480" stroke="#4f5d75" stroke-width="1.2" fill="none" marker-end="url(#tgflow-arrow)"/>
+      <!-- gate <=20MB -> cloud upload -->
+      <path d="M400 392 H575" stroke="#4f5d75" stroke-width="1.2" fill="none" marker-end="url(#tgflow-arrow)"/>
+      <!-- local server -> channel -->
+      <path d="M400 512 H575" stroke="#4f5d75" stroke-width="1.2" fill="none" marker-end="url(#tgflow-arrow)"/>
+      <!-- cloud upload -> channel (happy path, accent) -->
+      <path d="M715 432 V472" stroke="#eb6c36" stroke-width="1.4" fill="none" marker-end="url(#tgflow-arrow-accent)"/>
+      <!-- channel -> resolve -->
+      <path d="M715 536 V576" stroke="#4f5d75" stroke-width="1.2" fill="none" marker-end="url(#tgflow-arrow)"/>
+      <!-- resolve -> gallery read -->
+      <path d="M658 640 V668 Q658 676 650 676 H338 Q330 676 330 684 V700" stroke="#4f5d75" stroke-width="1.2" fill="none" marker-end="url(#tgflow-arrow)"/>
+      <!-- resolve -> vault read -->
+      <path d="M772 640 V668 Q772 676 780 676 H992 Q1000 676 1000 684 V700" stroke="#4f5d75" stroke-width="1.2" fill="none" marker-end="url(#tgflow-arrow)"/>
+
+      <!-- Arrow labels (masks before boxes) -->
+      <rect x="358" y="157" width="36" height="14" rx="2" fill="#f5f5f5"/>
+      <text x="376" y="167" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">YES</text>
+
+      <rect x="744" y="157" width="84" height="14" rx="2" fill="#f5f5f5"/>
+      <text x="786" y="167" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">NO · GALLERY</text>
+
+      <rect x="462" y="385" width="62" height="14" rx="2" fill="#f5f5f5"/>
+      <text x="493" y="395" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">≤ 20 MB</text>
+
+      <rect x="304" y="446" width="58" height="14" rx="2" fill="#f5f5f5"/>
+      <text x="333" y="456" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">&gt; 20 MB</text>
+
+      <rect x="466" y="669" width="64" height="14" rx="2" fill="#f5f5f5"/>
+      <text x="498" y="679" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">GALLERY</text>
+
+      <rect x="866" y="669" width="54" height="14" rx="2" fill="#f5f5f5"/>
+      <text x="893" y="679" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">VAULT</text>
+
+      <!-- Start oval -->
+      <rect x="490" y="32" width="160" height="56" rx="28" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+      <text x="570" y="56" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">New file upload</text>
+      <text x="570" y="73" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">GALLERY OR VAULT</text>
+
+      <!-- Decision: vault item? -->
+      <polygon points="570,116 690,164 570,212 450,164" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="570" y="159" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Vault item?</text>
+      <text x="570" y="175" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">OR GALLERY FILE</text>
+
+      <!-- Encrypt (vault branch) -->
+      <rect x="180" y="232" width="220" height="72" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="290" y="258" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Encrypt client-side</text>
+      <text x="290" y="277" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">AES-256-GCM · IVG1</text>
+      <text x="290" y="291" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">BEFORE ANY UPLOAD</text>
+
+      <!-- Decision: ciphertext size -->
+      <polygon points="290,344 400,392 290,440 180,392" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="290" y="387" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Ciphertext</text>
+      <text x="290" y="402" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">≤ 20 MB?</text>
+
+      <!-- Local Bot API server (OPTIONAL) -->
+      <rect x="180" y="480" width="220" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.45)" stroke-width="1" stroke-dasharray="5,4"/>
+      <text x="290" y="506" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Local Bot API server</text>
+      <text x="290" y="529" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">PHASE 3B · OPTIONAL</text>
+
+      <!-- Cloud upload -->
+      <rect x="575" y="368" width="280" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="715" y="394" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Cloud Bot API upload</text>
+      <text x="715" y="417" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">sendVideo/Photo/Document · ≤50 MB</text>
+
+      <!-- Public channel (coral focal) -->
+      <rect x="575" y="472" width="280" height="64" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+      <text x="715" y="498" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Telegram public channel</text>
+      <text x="715" y="521" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">OBSCURE NAME · BOT ADMIN</text>
+
+      <!-- Fresh resolve -->
+      <rect x="545" y="576" width="340" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="715" y="598" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Fresh resolve on every read</text>
+      <text x="715" y="617" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.05em">t.me/s SCRAPE → CDN URL · GETFILE → FILEID</text>
+      <text x="715" y="631" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.05em">TOKEN NEVER PERSISTS</text>
+
+      <!-- Gallery read -->
+      <rect x="180" y="700" width="300" height="72" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="330" y="726" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Gallery playback</text>
+      <text x="330" y="747" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.05em">DIRECT CDN URL · RANGE 206</text>
+      <text x="330" y="761" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.05em">PLAYS ON WEB + EXT</text>
+
+      <!-- Vault read -->
+      <rect x="860" y="700" width="280" height="72" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="1000" y="726" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Vault stream (SW)</text>
+      <text x="1000" y="747" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.05em">RANGE-FETCH CIPHERTEXT →</text>
+      <text x="1000" y="761" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.05em">DECRYPT CHUNKS · EXT ONLY</text>
+
+      <!-- Annotation callout: not required -->
+      <line x1="290" y1="544" x2="290" y2="560" stroke="rgba(45,49,66,0.35)" stroke-width="1"/>
+      <text x="290" y="578" fill="#4f5d75" font-size="11.5" font-family="'Instrument Serif', serif" font-style="italic" text-anchor="middle">Not required — cut phase 3b:</text>
+      <text x="290" y="594" fill="#4f5d75" font-size="11.5" font-family="'Instrument Serif', serif" font-style="italic" text-anchor="middle">big vault blobs stay on udrop / terabox</text>
+
+      <!-- Annotation callout: loud limits -->
+      <line x1="857" y1="500" x2="900" y2="500" stroke="rgba(45,49,66,0.35)" stroke-width="1"/>
+      <text x="905" y="478" fill="#4f5d75" font-size="11.5" font-family="'Instrument Serif', serif" font-style="italic">LOUD limits (no fallback):</text>
+      <text x="905" y="495" fill="#4f5d75" font-size="11.5" font-family="'Instrument Serif', serif" font-style="italic">cloud upload &gt; 50 MB fails ·</text>
+      <text x="905" y="512" fill="#4f5d75" font-size="11.5" font-family="'Instrument Serif', serif" font-style="italic">getFile &gt; 20 MB fails</text>
+
+      <!-- Legend -->
+      <line x1="40" y1="800" x2="1120" y2="800" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+      <text x="40" y="818" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND · SHAPE CARRIES TYPE</text>
+
+      <rect x="40" y="832" width="24" height="12" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+      <text x="72" y="842" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Start / upload</text>
+
+      <rect x="180" y="832" width="24" height="12" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="212" y="842" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Step</text>
+
+      <polygon points="312,832 324,838 312,844 300,838" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="332" y="842" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Decision</text>
+
+      <rect x="430" y="832" width="24" height="12" rx="2" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.45)" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="462" y="842" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Optional · droppable</text>
+
+      <line x1="640" y1="838" x2="668" y2="838" stroke="#eb6c36" stroke-width="1.4" marker-end="url(#tgflow-arrow-accent)"/>
+      <text x="676" y="842" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Linchpin path</text>
+
+      <text x="40" y="864" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.06em">DELETE = deleteMessage · INTEGRITY = getMessages · PHASES: 0 SPIKE → 1 IMAGES/VIDEO → 2 3D → 3A VAULT ≤20MB → 3B LOCAL SERVER (OPTIONAL)</text>
+    </svg>
+    </div>
+  </div>
+</body>
+</html>
