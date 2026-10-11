@@ -38,6 +38,9 @@ importers:
       imgvault-shared:
         specifier: workspace:*
         version: link:../packages/shared
+      imgvault-ui:
+        specifier: workspace:*
+        version: link:../packages/ui
       lucide-react:
         specifier: ^0.294.0
         version: 0.294.0(react@18.3.1)

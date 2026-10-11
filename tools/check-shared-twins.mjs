@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-// phase-2 drift guard (plan-platform-parity.md): the logic twins (media field registry,
-// media db payload, media item normalizer, provider links, provider catalog metadata)
-// live ONLY in packages/shared/. This fails loudly when:
+// phase-2/3b drift guard (plan-platform-parity.md): the logic twins (media field registry,
+// media db payload, media item normalizer, provider links, provider catalog metadata) and
+// the phase-3 ui twins (MediaDetailModal, Modal, Spinner) live ONLY in packages/ (shared
+// and ui). This fails loudly when:
 //   1. a pre-phase-2 twin location reappears (shared/ at repo root, web/src/shared/)
 //   2. a known shim file grows anything beyond re-exports
-//   3. a twin implementation filename exists anywhere outside packages/shared/ (and is not a known shim)
+//   3. a twin implementation filename exists anywhere outside packages/ (and is not a known shim)
 //   4. the extension runtime catalog layer stops importing the shared catalog or re-defines metadata
 // run locally: pnpm check:twins (root). wired into .github/workflows/nextgen-extension-crx.yml.
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
@@ -35,6 +36,8 @@ const SHIM_ALLOWLIST = {
     'imgvault-shared/videoProviderLinks.js',
     '../config/providerCatalog.js',
   ],
+  // phase 3b: extension detail modal is a re-export of the canonical packages/ui copy
+  'nextgen-extension/src/components/MediaDetailModal.jsx': ['imgvault-ui'],
 };
 const SHIM_LINE = /^(export \* from '[^']+';|export \{[^}]+\} from '[^']+';)$/;
 for (const [rel, allowedSources] of Object.entries(SHIM_ALLOWLIST)) {
@@ -57,7 +60,7 @@ for (const [rel, allowedSources] of Object.entries(SHIM_ALLOWLIST)) {
   }
 }
 
-// 3. twin implementation filenames must not exist anywhere outside packages/shared/
+// 3. twin implementation filenames must not exist anywhere outside packages/
 const TWIN_BASENAMES = new Set([
   'mediaFieldRegistry.js',
   'mediaDbPayload.js',
@@ -66,6 +69,10 @@ const TWIN_BASENAMES = new Set([
   'videoProviderLinks.js',
   'image-provider-links.js',
   'video-provider-links.js',
+  // phase 3: canonical copies in packages/ui (imgvault-ui)
+  'MediaDetailModal.jsx',
+  'Modal.jsx',
+  'Spinner.jsx',
 ]);
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.next', 'artifacts', 'target', 'coverage']);
 const scan = (dir) => {
@@ -79,9 +86,9 @@ const scan = (dir) => {
     }
     if (!TWIN_BASENAMES.has(entry)) continue;
     const rel = relative(root, full).split('\\').join('/');
-    if (rel.startsWith('packages/shared/')) continue;
+    if (rel.startsWith('packages/')) continue;
     if (rel in SHIM_ALLOWLIST) continue;
-    fail(`twin implementation outside packages/shared: ${rel}`);
+    fail(`twin implementation outside packages/: ${rel}`);
   }
 };
 scan(root);
@@ -110,4 +117,4 @@ if (problems.length > 0) {
   for (const p of problems) console.error(`  - ${p}`);
   process.exit(1);
 }
-console.log('shared-twins guard OK — implementations live only in packages/shared/');
+console.log('shared-twins guard OK — implementations live only in packages/');

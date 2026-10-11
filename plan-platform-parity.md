@@ -1,7 +1,7 @@
 # plan: platform feature parity (web ⇄ extension)
 
 date: 2026-10-03
-status: **phase 3a done (shared `packages/ui` + web swap). phase 3b (extension-side swap) next — STOP POINT per plan: report before touching the extension.**
+status: **phase 3 done (shared `packages/ui` + web AND extension swaps shipped). phase 4 (web feature parity) next — stop-and-go after 3b per plan.**
 
 standing rule (AGENTS.md): every feature exists on BOTH platforms — if one side lacks it,
 build it there; never hide/drop a field or UI to make them "match". this plan is the
@@ -104,7 +104,7 @@ the `.pnpm-workspace-state-v1.json` gotcha bit again locally: a CI=true frozen r
 the rerun short-circuited "Already up to date" in 42ms — always delete both state files
 (root + member `node_modules/`) before trusting a local frozen result.
 
-## phase 3 — `packages/ui` detail-modal merge (gate-able / skippable) 🔄 in progress
+## phase 3 — `packages/ui` detail-modal merge (gate-able / skippable) ✅ done
 
 the one the user fears: extract the gallery detail modal (image/video/3D variants) into a
 shared package consumed by both platforms. do it ONLY after phase 2 is proven — it is the
@@ -145,15 +145,35 @@ estimate 1–2 days; stop and report before touching the extension for it.
 - verified: frozen install (state files deleted first), `next build` green all routes,
   drift guard OK untouched, live smoke on imgvaultt.vercel.app.
 
-### 3b — extension swap ⏳ (its own commit, then stop-and-go gate)
+### 3b — extension swap ✅ done (2026-10-11, ext 2.13.24, own commit)
 
-plan: extension gains `imgvault-ui: workspace:*`; `src/components/MediaDetailModal.jsx`
-becomes a pure re-export; `UI.jsx` Modal/Spinner re-export from the package (killing the
-temporary twin); pages keep importing the old paths (zero consumer edits). add
-`MediaDetailModal.jsx` + `Modal.jsx`/`Spinner.jsx` basenames to the drift guard with the
-shim allowlist at that point (guard currently ignores them on purpose — the extension
-copy is still the real implementation until the swap). extension version bump + reload +
-gallery/vault/trash modal smoke after.
+shipped exactly as planned: extension gained `imgvault-ui: workspace:*` (+ its lockfile via
+`pnpm --dir nextgen-extension install --lockfile-only`); `src/components/MediaDetailModal.jsx`
+is now a one-line shim `export { MediaDetailModal as default } from 'imgvault-ui';` (NOT
+`export { default }` — the package's index exports it as a NAMED export, so the shim maps
+named→default to keep the three pages' default imports working); `UI.jsx` dropped its own
+Spinner + Modal definitions (and the now-unused `X` lucide import) for
+`export { Modal, Spinner } from 'imgvault-ui';` — every `./UI` consumer path unchanged
+(Modal: 7 importers, Spinner: 5). drift guard extended in the same commit: 3 new
+TWIN_BASENAMES (`MediaDetailModal.jsx`/`Modal.jsx`/`Spinner.jsx`), skip generalized
+`packages/shared/` → `packages/`, shim allowlist entry for the extension MediaDetailModal.
+- **vite compiles workspace-package JSX with ZERO config** (proven here, was assumption):
+  symlinked workspace deps resolve to their realpath inside the repo, so vite's esbuild
+  transform covers them — no optimizeDeps/alias needed (contrast Next, which needs
+  `transpilePackages`). `pnpm build` green first run, 6.8s.
+- CI-mirror frozen install green (5 workspace projects, ext lockfile consistent) after
+  deleting BOTH `.pnpm-workspace-state-v1.json` files (root + native-host stray).
+- smoke on loaded 2.13.24 (CDP, user's Edge): gallery modal opens from grid (h2 + tabs
+  Overview 21 / Technical 6, technical field list renders, Next-item nav changes the h2,
+  ✕ closes), trash modal (Overview 22 / Technical 3, Restore + Delete Forever actions),
+  collections New Collection dialog (non-media Modal consumer: title/2 inputs/
+  Create+Cancel) — all through the shared package. dist backup at
+  `C:\tmp\imgvault-dist-backup-2.13.23` (44 files) predates the rebuild.
+- gotchas hit in smoke only (not the app): `browser-use` stdin via pwsh pipe fails
+  silently (exit 1) — use `cmd /c "browser-use < script.py"`; `ensure_real_tab()` bounces
+  the attach off chrome-extension:// tabs back to the visible tab — for extension pages
+  use `switch_tab(id)` alone; non-ASCII literals (✕) mangle through the console codepage —
+  match via `\u2715` escapes in JS instead.
 
 ## phase 4 — web feature parity roadmap ⏳
 
