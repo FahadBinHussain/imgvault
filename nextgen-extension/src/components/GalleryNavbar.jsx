@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Upload, Search, Trash2, Settings, FolderOpen, Image, Cable, FileText, LockKeyhole, ArrowUpDown, UploadCloud } from 'lucide-react';
+import { RefreshCw, Upload, Search, Trash2, Settings, FolderOpen, Image, Cable, FileText, LockKeyhole, ArrowUpDown, UploadCloud, Globe, ArrowUpRight } from 'lucide-react';
+
+const WEBAPP_URL = 'https://imgvaultt.vercel.app/';
 import ThemeToggleButton from './ThemeToggleButton';
 
 const CSS = `
@@ -44,6 +46,19 @@ const CSS = `
 .iv-upload-btn:active{transform:translateY(0) scale(.97)}
 .iv-upload-btn::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,hsl(0 0% 100%/.1),transparent);transform:translateX(-100%);animation:iv-shimmer 3s infinite}
 @keyframes iv-shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+
+.iv-webapp-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:999px;font-size:12px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;color:var(--color-primary-content);background:linear-gradient(135deg,var(--color-primary),oklch(from var(--color-primary) calc(l - .07) c h));border:1px solid oklch(from var(--color-primary) l c h / .45);text-decoration:none;position:relative;overflow:hidden;cursor:pointer;transition:all .3s cubic-bezier(.22,1,.36,1);box-shadow:0 2px 12px oklch(from var(--color-primary) l c h / .25)}
+.iv-webapp-btn:hover{transform:translateY(-1px);filter:brightness(1.08);box-shadow:0 6px 22px oklch(from var(--color-primary) l c h / .5)}
+.iv-webapp-btn:active{transform:translateY(0) scale(.97)}
+.iv-webapp-btn:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
+.iv-webapp-btn::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,hsl(0 0% 100%/.22),transparent);transform:translateX(-110%);animation:iv-webapp-sheen 5s cubic-bezier(.4,0,.2,1) infinite;pointer-events:none}
+@keyframes iv-webapp-sheen{0%{transform:translateX(-110%)}55%,100%{transform:translateX(110%)}}
+.iv-webapp-globe-wrap{display:inline-flex;animation:iv-webapp-float 3.2s ease-in-out infinite}
+@keyframes iv-webapp-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+.iv-webapp-globe{transition:transform .6s cubic-bezier(.22,1,.36,1)}
+.iv-webapp-btn:hover .iv-webapp-globe{transform:rotate(180deg)}
+.iv-webapp-arrow{opacity:.65;transition:transform .3s cubic-bezier(.22,1,.36,1),opacity .3s ease}
+.iv-webapp-btn:hover .iv-webapp-arrow{transform:translate(3px,-3px);opacity:1}
 
 .iv-empty-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:9px;font-size:12px;font-weight:600;font-family:'Outfit',system-ui,sans-serif;color:var(--color-error);background:oklch(from var(--color-error) l c h / 0.08);border:1px solid oklch(from var(--color-error) l c h / 0.15);cursor:pointer;transition:all .15s ease}
 .iv-empty-btn:hover{background:oklch(from var(--color-error) l c h / 0.12);border-color:oklch(from var(--color-error) l c h / 0.25)}
@@ -326,6 +341,22 @@ export default function GalleryNavbar({
               <button onClick={() => navigate('/settings')} className={`iv-icon-btn ${isSettingsPage ? 'iv-icon-btn-on' : ''}`} title="Settings">
                 <Settings style={{ width: 14, height: 14 }} />
               </button>
+
+              <div className="iv-divider" />
+
+              <a
+                href={WEBAPP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="iv-webapp-btn"
+                title="Open Web App"
+              >
+                <span className="iv-webapp-globe-wrap">
+                  <Globe className="iv-webapp-globe" style={{ width: 13, height: 13 }} />
+                </span>
+                <span className="hidden sm:inline">Web App</span>
+                <ArrowUpRight className="iv-webapp-arrow hidden sm:block" style={{ width: 12, height: 12 }} />
+              </a>
             </div>
           </div>
 
