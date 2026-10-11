@@ -46,7 +46,7 @@ export default defineConfig({
       '@hooks': resolve(__dirname, './src/hooks'),
       '@utils': resolve(__dirname, './src/utils'),
       '@stores': resolve(__dirname, './src/stores'),
-      '@shared': resolve(__dirname, '../shared'),
+      '@shared': resolve(__dirname, '../packages/shared'),
     }
   }
 });

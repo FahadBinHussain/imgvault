@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "build:web": "pnpm --dir web build",
-    "build:extension": "pnpm --dir nextgen-extension build"
+    "build:extension": "pnpm --dir nextgen-extension build",
+    "check:twins": "node tools/check-shared-twins.mjs"
   }
 }

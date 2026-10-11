@@ -1,7 +1,7 @@
 # plan: platform feature parity (web ⇄ extension)
 
 date: 2026-10-03
-status: **phase 0 + 1 done (pushed). phase 2 next. stop-and-go between phases.**
+status: **phase 0 + 1 + 2 done (pushed). phase 3 (detail-modal merge) next. stop-and-go between phases.**
 
 standing rule (AGENTS.md): every feature exists on BOTH platforms — if one side lacks it,
 build it there; never hide/drop a field or UI to make them "match". this plan is the
@@ -53,28 +53,56 @@ single source of truth: `packages/shared/settingsSchema.js` (pnpm package
 - minor cleanup left: GET response can carry `id`/`updatedAt` keys from old app_settings
   JSON — harmless (form ignores unknown keys); strip on next settings pass if convenient.
 
-## phase 2 — move the logic twins into `imgvault-shared` + drift guard ⏳ next
+## phase 2 — move the logic twins into `imgvault-shared` + drift guard ✅ done (2026-10-11)
 
-targets (the hand-copied twins that exist today):
+what moved into `packages/shared/`:
 
-- `web/src/lib/image-provider-links.js` ⇄ `nextgen-extension/src/utils/imageProviderLinks.js`
-- `web/src/lib/video-provider-links.js` ⇄ `nextgen-extension/src/utils/videoProviderLinks.js`
-- provider catalog (host lists / upload services metadata) currently inlined in both apps
-- `web/src/shared/{mediaDbPayload,mediaFieldRegistry,mediaItemNormalizer}.js` (vendored
-  copies) ⇄ their extension `src/utils/` counterparts
+- `providerCatalog.js` — host metadata (keys, labels, url/watch/direct field names,
+  `apiKeyFields`, `uploaderKey`, `vaultBlobHost` flags, `isConfigured`) + pure helpers
+  (`filterUploadServicesByKeys`, `getConfiguredServices`, `getVaultBlobHost*`,
+  `normalizeVaultBlobHostKeys`, the `*_SOURCE_OPTIONS` builders). the extension catalog was
+  the superset → canonical; web's 66-line copy was metadata-only and is now a shim.
+- `imageProviderLinks.js` + `videoProviderLinks.js` — extension versions were supersets
+  (11/12 exports vs web's 3/4, plus two real logic upgrades: legacy `<key>ThumbUrl`
+  column fallback and the thumbnailUrl no-fallback rule) → canonical. web copies were
+  older/simpler; both are now shims. note: web `VIDEO_SOURCE_OPTIONS` gains the ext sort
+  (default first, then localeCompare → filemoon, TeraBox, UDrop) — parity of option order.
+- `mediaDbPayload.js` / `mediaFieldRegistry.js` / `mediaItemNormalizer.js` — moved from
+  repo-root `shared/` (the extension's `@shared` target); web's vendored `web/src/shared/`
+  copies were byte-identical (diff exit 0) and are deleted.
 
-steps:
+architecture:
 
-1. move the real implementations into `packages/shared/` (keep unscoped `imgvault-*`
-   naming — symmetry with `imgvault-web` / `imgvault-nextgen`).
-2. both apps import from `imgvault-shared`; delete the vendored copies (web's
-   `src/shared/`, web's `src/lib/*-provider-links.js` re-exports only if a thin adapter
-   keeps imports short).
-3. drift guard: a check (script, run in CI + locally via root `pnpm` script) that fails
-   loudly if a twin file reappears outside `packages/shared` — or if imports point at the
-   deleted paths. record the chosen mechanism in AGENTS.md.
-4. gate: frozen install + build both apps, extension smoke (gallery 461 items, kind
-   classification), web gallery + resolve pages load, push, Vercel READY, live check.
+- **runtime stays app-side**: `uploaderClass` / `upload` / `uploadWithProgress` /
+  `vaultDownloadUrl` are NOT in shared (they import uploaders.js / teraBoxApi.js).
+  `nextgen-extension/src/config/providerCatalog.js` = thin runtime layer that imports the
+  shared catalog and attaches per-host runtime (`attachRuntime` map keyed by host).
+  web's `src/lib/providerCatalog.js` re-exports shared as-is.
+- **the trap — runtime-bound lookups must return enriched entries**: `getImageUploadService`,
+  `getVideoUploadService`, `getConfigured{Image,Video}UploadServices`, `getVaultBlobHostServices`
+  feed `service.upload(...)` / `new service.uploaderClass()` / `service.uploadWithProgress` all
+  over background.js, GalleryPage, ResolvePage, VaultPage, videoRetryPageSide. a pure
+  `export *` shim returns metadata-only entries → every upload path crashes. so the extension
+  shims (`src/utils/{image,video}ProviderLinks.js`) re-export shared AND override exactly those
+  lookups from `../config/providerCatalog.js` (explicit named re-export beats `export *`).
+- **zero consumer-import edits**: both `@shared` aliases now point at `packages/shared`
+  (ext `vite.config.js`; web `next.config.js` + `jsconfig.json`), and every old import path
+  is kept as a shim. extension gained the `imgvault-shared: workspace:*` dep (lockfile updated).
+
+drift guard (recorded in AGENTS.md too): `tools/check-shared-twins.mjs`, run locally as
+`pnpm check:twins` (repo root) and as a CI step in `nextgen-extension-crx.yml` (workflow now
+also triggers on `packages/**` + the guard path). fails loudly when: `shared/` or
+`web/src/shared/` reappear; a shim grows any line beyond re-exports; a twin implementation
+filename (`mediaFieldRegistry.js` etc.) exists outside `packages/shared/`; or the extension
+runtime layer stops importing the shared catalog / re-defines metadata markers.
+
+verification (2026-10-11): guard OK; `vite build` green (13.9s, postbuild complete);
+`next build` green (all routes); `CI=true pnpm install --frozen-lockfile` green in BOTH apps
+(after clearing the `.pnpm-workspace-state-v1.json` short-circuit — the AGENTS.md trap);
+extension bumped to 2.13.22, dist backed up, reloaded, gallery + settings smoke passed.
+the `.pnpm-workspace-state-v1.json` gotcha bit again locally: a CI=true frozen run failed,
+the rerun short-circuited "Already up to date" in 42ms — always delete both state files
+(root + member `node_modules/`) before trusting a local frozen result.
 
 ## phase 3 — `packages/ui` detail-modal merge (gate-able / skippable) ⏳
 
