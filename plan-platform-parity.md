@@ -175,6 +175,31 @@ TWIN_BASENAMES (`MediaDetailModal.jsx`/`Modal.jsx`/`Spinner.jsx`), skip generali
   use `switch_tab(id)` alone; non-ASCII literals (✕) mangle through the console codepage —
   match via `\u2715` escapes in JS instead.
 
+### post-3b visual incident ✅ fixed (same day, ext 2.13.25)
+
+the shared modal shipped on BOTH platforms with its shell unstyled — classic tailwind
+content-glob trap: both apps scanned only their own `src/`, so every class used solely
+inside `packages/ui` (95vw dialog, lg:w-[550px] panel, the base-300/90 animation layer)
+was missing from the compiled css; the inline `<style>` block still shipped, which is why
+fields/tabs looked half-styled while the layout collapsed (the user's screenshot). web had
+been visually broken since 3a — the 3a/3b smokes were DOM-level and cannot see css.
+
+- fix 1: both tailwind configs scan `../packages/ui/**/*.{js,jsx}` — forward slashes only
+  (fast-glob treats `\` as escape chars, silently matching nothing).
+- fix 2 (found while verifying fix 1): web's daisyui was registered UNINVOKED
+  (`plugins: [require('daisyui')]` + `daisyui: { themes: 'all' }` config key) — daisyui v5
+  on tailwind v3 silently drops theme colors from theme.extend in that form, so NO
+  semantic utility (`bg-base-100`/`text-info`/`text-error`/`from-base-300`/...) ever
+  generated web-side; web's own pages never used them so nothing visibly broke before the
+  modal. switched web to the extension's invoked style `daisyui({ themes: 'all' })` —
+  web css 41KB → 141KB, activating ~13 semantic utilities already written into web src
+  (text-base-content in 24 files etc.) — intended per parity (extension always had them).
+- alpha-on-var variants (`bg-base-300/90`, `border-base-content/15`) never generate on
+  tailwind v3 (both platforms) — the modal design tolerates this (opaque gradient bg).
+- verify tooling: `Select-String` gave FALSE NEGATIVES grepping minified single-line css
+  (the classes were present; `(Get-Content f -Raw)` + `[regex]::Matches` found them) —
+  use the raw-regex method for built css. screenshot-verify UI changes from now on.
+
 ## phase 4 — web feature parity roadmap ⏳
 
 missing on web today, in order (each its own phase-sized chunk, same gate):

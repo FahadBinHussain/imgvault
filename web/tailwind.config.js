@@ -81,8 +81,9 @@ module.exports = {
       },
     },
   },
-  plugins: [require('daisyui')],
-  daisyui: {
-    themes: 'all',
-  },
+  // invoke the plugin with options (same registration style as the extension):
+  // daisyui v5 on tailwind v3 does NOT apply its theme colors to theme.extend when
+  // the plugin is passed uninvoked with a `daisyui:` config key — utilities like
+  // bg-base-100/text-info/from-base-300 silently never generate (2026-10-11 modal fix)
+  plugins: [require('daisyui')({ themes: 'all' })],
 }
