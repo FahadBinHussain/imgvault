@@ -18,8 +18,12 @@ third-party app in the loop.
 - `api.telegram.org` sends `Access-Control-Allow-Origin: *` (+ GET/POST/OPTIONS) — the Bot
   API is callable from extension page XHR (progress events work, like pixvid/imgbb) AND
   from the web app. no localhost, no native host needed for bot-size files.
-- **Bot API caps**: upload ≤ 50 MB (`sendVideo`/`sendDocument`/`sendPhoto`),
-  `getFile` download ≤ 20 MB.
+- **Bot API caps (official docs, re-verified 2026-10-11)**: cloud upload ≤ 50 MB
+  (`sendVideo`/`sendDocument`/`sendPhoto`), cloud `getFile` download ≤ 20 MB.
+- **local Bot API server** (official, self-hosted): "Download files **without a size
+  limit**, upload up to **2000 MB**" — same Bot API surface, different base URL. this is
+  the big-blob path (supersedes writing grammers MTProto). Range support on cloud
+  `getFile` URLs and on the local server = **VERIFY in phase 0 spike**.
 - **public-channel video**: the `https://t.me/s/<channel>` preview HTML exposes
   `<video src="https://cdn1.telesco.pe/file/<hash>.mp4?token=…">`. verified: plain-curl
   hotlink **200 `video/mp4`** with no referer/cookies, **Range → 206**, **ACAO `*`**,
@@ -40,8 +44,8 @@ third-party app in the loop.
 
 ## what we take from Telegram-Drive (reference only — no code reuse; it's a Tauri app)
 
-- grammers (Rust MTProto) usage: chunked upload, `FLOOD_WAIT` handling → informs the
-  phase-3 native-host actions.
+- grammers (Rust MTProto) usage: chunked upload, `FLOOD_WAIT` handling — kept as the
+  documented ALTERNATIVE to the local Bot API server (plan phase 3b), not built by default.
 - public message-link shape `t.me/<channel>/<msg_id>` as the stable watch URL.
 - we do NOT take: their app, loopback REST/WebDAV, TDENC2 (our vault crypto already exists).
 
@@ -77,12 +81,25 @@ in the DB or in any client-visible URL.
 
 ### vault
 
-- ≤ 50 MB blobs: bot `sendDocument` — plugs into the existing
-  `encryptAndUploadVaultedBlob` catalog dispatch with zero new plumbing. safe on a public
-  channel: blobs are AES-256-GCM client-side already.
-- bigger blobs: phase-3 MTProto actions in the Rust native host (grammers) — extension-only,
-  which is parity-safe because the vault is ext-only by design (web page is metadata-only).
-  native-message 1 MiB cap → reuse the chunk-transfer pattern from `video_normalize_*`.
+**crypto is unchanged — it already exists.** the vault encrypts client-side BEFORE any
+host sees bytes (`vaultCrypto.js`: passcode → PBKDF2 → master key → per-8 MiB-chunk
+AES-256-GCM, `IVG1` container). Telegram is just another dumb byte pipe that stores an
+opaque `<32-hex>.bin` — which is exactly why a public channel is safe for vault blobs: a
+leak yields gibberish, and neither the passcode nor any key ever leaves the browser.
+the bot token leak ≠ vault compromise (ciphertext only).
+
+- upload: existing `encryptAndUploadVaultedBlob` catalog dispatch → `sendDocument`
+  (cloud) or local Bot API server (below). stored as `vaultHost: 'telegram'` +
+  `encryptedBlobHosts` entry, same shape as udrop/terabox.
+- read-back (the real constraint): cloud `getFile` download cap is **20 MB** → cloud
+  telegram vault blobs are hard-capped at 20 MB (loud error naming the cap; blobs ARE
+  encrypted before upload, so size checks run on the ciphertext = plaintext + ~1%).
+- **bigger blobs → local Bot API server** (official Telegram binary, spawned/managed by
+  the existing Rust native host like yt-dlp/ffmpeg): unlimited download, 2000 MB upload,
+  same API code path (only base URL + auth differ) → `fetchVaultBlobRange` telegram
+  branch resolves through it. extension-only, which is parity-safe: the web vault page is
+  metadata-only by design and never reads blobs. if the server isn't running → LOUD error
+  naming it, never a silent skip.
 
 ### privacy (loud)
 
@@ -104,14 +121,19 @@ an obscure channel name. vault blobs are encrypted regardless.
 - **2 — 3D (~2–3 h)**: spz as document + texture as photo; enable in all THREE_D lists
   (ext `GalleryPage.jsx` ×2, both providerCatalog filters, settingsSchema options,
   `GalleryLightbox` label map); scene integrity.
-- **3a — vault via bot (~2 h)**: add `telegram` to vault blob hosts (≤ 50 MB).
-- **3b — MTProto native host (1–2 days)**: grammers actions `tg_upload`/`tg_download` in
-  `native-host/src-tauri/src/main.rs`, session mgmt, flood-wait → lifts vault/video to 2 GB.
+- **3a — vault via cloud bot (≤ 20 MB) (~2 h)**: add `telegram` to the vault blob hosts;
+  `fetchVaultBlobRange` telegram branch + `vaultDownloadUrl` fresh-resolve + loud 20 MB gate.
+- **3b — local Bot API server for big blobs (1 day)**: run Telegram's official local Bot
+  API server, lifecycle-managed by the Rust native host (spawn on demand like yt-dlp);
+  same API code path, base URL swapped → vault to 2000 MB uploads / unlimited reads.
+  Telegram-Drive's grammers MTProto stays the documented alternative if the local server
+  misbehaves — not built unless 3b fails.
 - **4 — optional**: bulk-migrate existing library via the bot/mainframe helper.
 
 ## failure modes (no-fallback rule: every one fails LOUD, naming the cap)
 
-- upload > 50 MB via bot → error names the cap (MTProto is 3b).
-- `getFile` > 20 MB → error names the cap.
+- upload > 50 MB via cloud bot → error names the cap (local Bot API server = 3b).
+- `getFile` > 20 MB → error names the cap + points at the local server (3b).
+- local server not running when a big blob is read → LOUD, names the native-host spawn.
 - `FLOOD_WAIT n` → wait + one retry, then loud.
 - scrape breakage (Telegram changes preview HTML) → resolver throws with the marker text.
