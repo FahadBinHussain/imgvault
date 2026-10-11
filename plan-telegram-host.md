@@ -1,7 +1,9 @@
 # Plan: Telegram as a video / 3D / vault host (own integration, Telegram-Drive as method reference only)
 
 date: 2026-10-10
-status: **draft — recon + live probes done, phase 0 needs a bot from you**
+status: **paused 2026-10-11 — focus moved to the platform-parity plan (`plan-platform-parity.md`,
+phase 2). nothing built, zero code written. resume trigger: BotFather token + public
+channel with bot-as-admin.**
 
 ## context
 
@@ -137,3 +139,19 @@ an obscure channel name. vault blobs are encrypted regardless.
 - local server not running when a big blob is read → LOUD, names the native-host spawn.
 - `FLOOD_WAIT n` → wait + one retry, then loud.
 - scrape breakage (Telegram changes preview HTML) → resolver throws with the marker text.
+
+## decisions at the pause point (2026-10-11)
+
+- **whole-plan diagram**: `plan-telegram-flow.html` (repo root, commit `f95ce283`) —
+  upload routing → channel → fresh-resolve → gallery/vault read paths, size gates, loud caps.
+- **phase 3b (local Bot API server) is OPTIONAL, not required** — the cloud bot API alone
+  covers gallery images + videos, 3D spz (`getFile` ≤ 20 MB), and vault blobs ≤ 20 MB
+  ciphertext. the local server buys exactly ONE thing: telegram-hosted vault blobs bigger
+  than 20 MB — which existing hosts (udrop, 1.2 GB verified / terabox) already serve. cut
+  3b freely; over-cap on telegram = loud error naming it, that item goes udrop/terabox.
+  the flowchart draws 3b dashed for this reason.
+- **scope clarification**: telegram is NOT gallery-only — the vault works on it too, just
+  capped (phase 3a). the phase ORDER is risk order (gallery first because vault reuses the
+  same upload plumbing), not an exclusion of the vault.
+- still open from the spike list: Range support on cloud `getFile` URLs + the local
+  server; `sendPhoto` vs `sendDocument` image A/B (default byte-faithful `sendDocument`).
