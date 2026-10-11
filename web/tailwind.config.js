@@ -1,7 +1,16 @@
 /** @type {import('tailwindcss').Config} */
+const path = require('path');
+
+// shared ui package (imgvault-ui) — Tailwind only scans content globs, so every
+// class used ONLY in packages/ui (the detail modal shell) disappears from the
+// compiled CSS without this (2026-10-11 visual-break incident). forward slashes
+// only: fast-glob treats Windows backslashes as escape chars and silently matches nothing
+const uiGlob = path.resolve(__dirname, '../packages/ui').split(path.sep).join('/') + '/**/*.{js,jsx}';
+
 module.exports = {
   content: [
     './src/**/*.{js,ts,jsx,tsx,mdx}',
+    uiGlob,
   ],
   theme: {
     extend: {

@@ -1,4 +1,11 @@
 import daisyui from 'daisyui'
+import { fileURLToPath } from 'node:url'
+
+// shared ui package (imgvault-ui) — Tailwind only scans content globs, so every
+// class used ONLY in packages/ui (the detail modal shell) disappears from the
+// compiled CSS without this (2026-10-11 visual-break incident). forward slashes
+// only: fast-glob treats Windows backslashes as escape chars and silently matches nothing
+const uiGlob = fileURLToPath(new URL('../packages/ui', import.meta.url)).split('\\').join('/') + '/**/*.{js,jsx}'
 
 const DAISYUI_THEMES = [
   'light',
@@ -44,7 +51,8 @@ export default {
     "./popup.html",
     "./gallery.html",
     "./settings.html",
-    "./src/**/*.{js,jsx}"
+    "./src/**/*.{js,jsx}",
+    uiGlob
   ],
   theme: {
     extend: {
