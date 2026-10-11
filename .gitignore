@@ -16,3 +16,4 @@ last_input.txt
 # workspace: per-app lockfiles are authoritative (pnpm-workspace.yaml)
 node_modules/
 /pnpm-lock.yaml
+packages/*/pnpm-lock.yaml

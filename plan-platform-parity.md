@@ -1,7 +1,7 @@
 # plan: platform feature parity (web ⇄ extension)
 
 date: 2026-10-03
-status: **phase 0 + 1 + 2 done (pushed). phase 3 (detail-modal merge) next. stop-and-go between phases.**
+status: **phase 3a done (shared `packages/ui` + web swap). phase 3b (extension-side swap) next — STOP POINT per plan: report before touching the extension.**
 
 standing rule (AGENTS.md): every feature exists on BOTH platforms — if one side lacks it,
 build it there; never hide/drop a field or UI to make them "match". this plan is the
@@ -104,12 +104,44 @@ the `.pnpm-workspace-state-v1.json` gotcha bit again locally: a CI=true frozen r
 the rerun short-circuited "Already up to date" in 42ms — always delete both state files
 (root + member `node_modules/`) before trusting a local frozen result.
 
-## phase 3 — `packages/ui` detail-modal merge (gate-able / skippable) ⏳
+## phase 3 — `packages/ui` detail-modal merge (gate-able / skippable) 🔄 in progress
 
 the one the user fears: extract the gallery detail modal (image/video/3D variants) into a
 shared package consumed by both platforms. do it ONLY after phase 2 is proven — it is the
 riskiest phase. keep the extension-side swap as its own commit so a revert is one command.
 estimate 1–2 days; stop and report before touching the extension for it.
+
+### 3a — `packages/ui` + web swap ✅ done (2026-10-11)
+
+- new pnpm package `imgvault-ui` (`packages/ui/`): `MediaDetailModal.jsx` (canonical,
+  lifted verbatim from the extension's `src/components/MediaDetailModal.jsx`) +
+  `Modal.jsx`/`Spinner.jsx` (lifted from the extension `UI.jsx`, clsx inlined away).
+  two additive deltas vs the extension original: `overviewNotice` slot (renders above the
+  ID row; web puts saveError + shareStatus there) and the panel `h2` now shows
+  `item.pageTitle || item.fileName || 'Details'` (web used to show the title mobile-only).
+- web `GalleryLightbox.jsx` is now a wrapper with the SAME public props (gallery/vault/
+  share-token consumers untouched): all logic (swipe, keyboard nav, scroll lock, edit
+  state, video source resolution, field renderers) stays web-side; the return renders the
+  shared modal with slots — renderMedia = the swipe track, actions = the button row
+  (moved from bottom bar to beside the tabs, ext placement), renderDocumentId = the
+  firestore card, renderOverviewField/TechnicalField = web's labeled renderer.
+- visible web changes: full-screen takeover → 95vw/95vh centered dialog (ext look), tabs
+  "For Noobs/For Nerds" → "Overview/Technical" (canonical labels), mobile bottom-sheet
+  drag handle gone (shell stacks panel under media), chevrons now also on mobile.
+- web config: `imgvault-ui: workspace:*` dep + `transpilePackages: ['imgvault-ui']` in
+  next.config.js (JSX inside a workspace package needs it).
+- verified: frozen install (state files deleted first), `next build` green all routes,
+  drift guard OK untouched, live smoke on imgvaultt.vercel.app.
+
+### 3b — extension swap ⏳ (its own commit, then stop-and-go gate)
+
+plan: extension gains `imgvault-ui: workspace:*`; `src/components/MediaDetailModal.jsx`
+becomes a pure re-export; `UI.jsx` Modal/Spinner re-export from the package (killing the
+temporary twin); pages keep importing the old paths (zero consumer edits). add
+`MediaDetailModal.jsx` + `Modal.jsx`/`Spinner.jsx` basenames to the drift guard with the
+shim allowlist at that point (guard currently ignores them on purpose — the extension
+copy is still the real implementation until the swap). extension version bump + reload +
+gallery/vault/trash modal smoke after.
 
 ## phase 4 — web feature parity roadmap ⏳
 

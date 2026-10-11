@@ -2,20 +2,17 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  X,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
   FileText,
   Pencil,
   Save,
   Share2,
-  Info,
   LockKeyhole,
   RotateCcw,
   Box,
   ExternalLink,
 } from 'lucide-react'
+import { MediaDetailModal } from 'imgvault-ui'
 import { getStrictVideoProviderLink } from '@/lib/video-provider-links'
 import { getStrictImageProviderLink } from '@/lib/image-provider-links'
 import {
@@ -482,73 +479,151 @@ export default function GalleryLightbox({
     ? `https://console.firebase.google.com/u/1/project/${encodeURIComponent(firebaseProjectId)}/firestore/databases/-default-/data/${encodedDocPath}?view=panel-view`
     : null
 
+  const renderDocumentIdCard = () => (
+    <div>
+      <div className="text-xs font-semibold text-base-content/65 mb-1 flex items-center gap-2">
+        <FileText className="w-3.5 h-3.5" />
+        firestoreDocumentId
+      </div>
+      <p className="mt-1 text-base-content text-sm break-all font-mono">{formatFieldValue('id', image?.id)}</p>
+      {canOpenFirestoreConsole && (
+        <a
+          href={firestoreDocUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1 inline-block text-primary-400 hover:text-primary-300 text-xs break-all"
+        >
+          Open in Firebase Console
+        </a>
+      )}
+    </div>
+  )
+
+  const actionBtnClass = 'inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 px-2 text-sm font-semibold text-base-content/85 hover:bg-base-content/5 transition-colors lg:min-h-0 lg:border-0 lg:bg-base-content/5 lg:px-3 lg:py-2 lg:hover:bg-base-content/10'
+  const hasLightboxActions = Boolean(
+    onShare ||
+      (onShareAlbum && image?.collectionId) ||
+      onMoveToVault ||
+      onRestoreFromVault ||
+      onSaveEdits
+  )
+
   return (
-    <div
-      className="fixed inset-0 z-[100] flex flex-col bg-base-100 text-base-content animate-fade-in lg:flex-row"
-      style={{
-        backgroundColor: 'var(--color-base-100)',
-        opacity: 1,
-      }}
-    >
-      <div
-        className="h-[44dvh] min-h-[44dvh] flex-none flex items-center justify-center bg-black p-0 sm:p-4 lg:flex-1 lg:h-auto lg:min-h-0 lg:bg-transparent lg:p-8 relative"
-        onTouchStart={handleMediaTouchStart}
-        onTouchEnd={handleMediaTouchEnd}
-      >
-        <button
-          onClick={onClose}
-        className="absolute top-4 right-4 grid h-12 w-12 place-items-center rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 text-base-content shadow-xl hover:bg-base-200 transition-all duration-300 z-10 sm:top-6 sm:right-6 sm:h-auto sm:w-auto sm:p-3"
-        style={{
-          backgroundColor: 'var(--color-base-100)',
-          backdropFilter: 'none',
-          WebkitBackdropFilter: 'none',
-          opacity: 1,
-        }}
-        >
-          <X className="w-5 h-5 sm:w-6 sm:h-6" />
-        </button>
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            setActiveTab('noobs')
-          }}
-          className="lg:hidden absolute top-4 left-4 grid h-12 w-12 place-items-center rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 text-base-content shadow-xl hover:bg-base-100 transition-all duration-300 z-10"
-          style={{
-            backgroundColor: 'var(--color-base-100)',
-            backdropFilter: 'none',
-            WebkitBackdropFilter: 'none',
-            opacity: 1,
-          }}
-        >
-          <Info className="w-5 h-5" />
-        </button>
-
-        {currentIndex > 0 && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onNavigate(currentIndex - 1)
-            }}
-            className="hidden lg:block absolute left-2 sm:left-6 p-2 sm:p-4 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 hover:bg-base-200 transition-all duration-300 hover:-translate-x-1"
-          >
-            <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
-          </button>
-        )}
-
-        {currentIndex < images.length - 1 && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onNavigate(currentIndex + 1)
-            }}
-            className="hidden lg:block absolute right-2 sm:right-6 p-2 sm:p-4 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 hover:bg-base-200 transition-all duration-300 hover:translate-x-1"
-          >
-            <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
-          </button>
-        )}
-
+    <MediaDetailModal
+      isOpen={Boolean(image)}
+      onClose={onClose}
+      item={image}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      overviewEntries={displayedNoobFields.map((key) => ({ key, value: image?.[key] }))}
+      technicalEntries={nerdVisibleFields.map((key) => ({ key, value: image?.[key] }))}
+      onPrevious={currentIndex > 0 ? () => onNavigate(currentIndex - 1) : undefined}
+      onNext={currentIndex < images.length - 1 ? () => onNavigate(currentIndex + 1) : undefined}
+      canGoPrevious={currentIndex > 0}
+      canGoNext={currentIndex < images.length - 1}
+      actions={hasLightboxActions ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {onShare && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onShare(image)
+              }}
+              className={actionBtnClass}
+            >
+              <Share2 className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
+              Share
+            </button>
+          )}
+          {onShareAlbum && image?.collectionId && !isEditing && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onShareAlbum(image)
+              }}
+              className={actionBtnClass}
+            >
+              <Share2 className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
+              Share Album
+            </button>
+          )}
+          {onMoveToVault && !isEditing && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onMoveToVault(image)
+              }}
+              className={actionBtnClass}
+            >
+              <LockKeyhole className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
+              Move to Vault
+            </button>
+          )}
+          {onRestoreFromVault && !isEditing && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onRestoreFromVault(image)
+              }}
+              disabled={isRestoringFromVault}
+              className={`${actionBtnClass} disabled:opacity-50`}
+            >
+              {isRestoringFromVault ? <Loader2 className="w-4 h-4 animate-spin lg:w-3.5 lg:h-3.5" /> : <RotateCcw className="w-4 h-4 lg:w-3.5 lg:h-3.5" />}
+              {isRestoringFromVault ? 'Restoring...' : 'Restore'}
+            </button>
+          )}
+          {onSaveEdits && isEditing && (
+            <>
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                disabled={isSaving}
+                className={`${actionBtnClass} disabled:opacity-50`}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[var(--radius-box)] bg-primary px-2 text-sm font-semibold text-primary-content transition-colors hover:bg-primary/90 disabled:opacity-50 lg:min-h-0 lg:px-4 lg:py-2"
+              >
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin lg:w-3.5 lg:h-3.5" /> : <Save className="w-4 h-4 lg:w-3.5 lg:h-3.5" />}
+                Save
+              </button>
+            </>
+          )}
+          {onSaveEdits && !isEditing && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setIsEditing(true); setSaveError('') }}
+              className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[var(--radius-box)] bg-base-content px-2 text-sm font-semibold text-base-100 transition-colors hover:bg-base-content/90 lg:min-h-0 lg:bg-primary lg:px-4 lg:py-2 lg:text-primary-content lg:hover:bg-primary/90"
+            >
+              <Pencil className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
+              Edit
+            </button>
+          )}
+        </div>
+      ) : null}
+      overviewNotice={saveError || shareStatus ? (
+        <div className="space-y-2">
+          {saveError && (
+            <div className="rounded-[var(--radius-box)] border border-error/30 bg-error/10 text-error text-xs p-2">
+              {saveError}
+            </div>
+          )}
+          {shareStatus && (
+            <div className="rounded-[var(--radius-box)] border border-primary-500/30 bg-primary-500/10 text-primary text-xs p-2">
+              {shareStatus}
+            </div>
+          )}
+        </div>
+      ) : null}
+      renderMedia={() => (
         <div
           ref={mediaViewportRef}
           className="relative w-full max-w-full max-h-full animate-scale-in overflow-hidden"
@@ -724,203 +799,10 @@ export default function GalleryLightbox({
           </div>
         </div>
 
-      </div>
-
-      <div
-          className="fixed lg:static left-0 right-0 bottom-0 w-full lg:w-[400px] h-[56dvh] lg:h-auto max-h-[56dvh] lg:max-h-none bg-base-100 border-t lg:border-t-0 lg:border-l border-base-content/15 overflow-hidden flex flex-col rounded-t-[1.75rem] lg:rounded-none shadow-[0_-18px_40px_rgba(15,23,42,0.16)] lg:shadow-none transition-transform duration-300 translate-y-0"
-          style={{
-            backgroundColor: 'var(--color-base-100)',
-            opacity: 1,
-          }}
-      >
-        <div className="lg:hidden h-5 flex-none pt-2">
-          <div className="mx-auto h-1.5 w-11 rounded-full bg-base-content/20" />
-        </div>
-
-        <div
-          className="px-4 pt-3 pb-4 lg:p-6 flex-1 overflow-y-auto bg-base-100"
-          style={{
-            backgroundColor: 'var(--color-base-100)',
-            opacity: 1,
-          }}
-        >
-          <div className="lg:hidden mb-4">
-            <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.14em] text-base-content/55">Image details</p>
-            <h3 className="text-2xl font-bold leading-tight text-base-content">
-              {image?.pageTitle || 'Saved image'}
-            </h3>
-            <p className="mt-1 flex items-center gap-2 text-sm text-base-content/60">
-              <span className="h-1.5 w-1.5 rounded-full bg-base-content/30" />
-              {noobsVisibleFieldCount} fields in For Noobs
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 mb-5 rounded-[var(--radius-box)] bg-base-200/70 p-1 lg:flex lg:bg-base-100 lg:border-b lg:border-base-content/15 lg:pb-4 lg:p-0">
-            <button
-              onClick={(e) => { e.stopPropagation(); setActiveTab('noobs') }}
-              className={`min-h-14 px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] flex flex-col items-center justify-center gap-0.5 border lg:min-h-0 lg:flex-row lg:justify-start lg:gap-2 ${
-                activeTab === 'noobs'
-                  ? 'bg-base-100 text-base-content border-primary/35 shadow-sm ring-2 ring-primary/30 lg:bg-primary lg:text-primary-content lg:border-primary'
-                  : 'bg-base-100 border-base-content/15 text-base-content/65 hover:text-base-content hover:bg-base-content/5'
-              }`}
-            >
-              For Noobs
-              <span className="inline-flex items-center justify-center min-w-[1.6rem] h-6 px-2 rounded-full bg-base-content/10 text-base-content/80 text-xs font-semibold">
-                {noobsVisibleFieldCount}
-              </span>
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); setActiveTab('nerds') }}
-              className={`min-h-14 px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] flex flex-col items-center justify-center gap-0.5 border lg:min-h-0 lg:flex-row lg:justify-start lg:gap-2 ${
-                activeTab === 'nerds'
-                  ? 'bg-base-100 text-base-content border-success/35 shadow-sm ring-2 ring-success/30 lg:bg-success lg:text-success-content lg:border-success'
-                  : 'bg-base-100 border-base-content/15 text-base-content/65 hover:text-base-content hover:bg-base-content/5'
-              }`}
-            >
-              For Nerds
-              <span className="inline-flex items-center justify-center min-w-[1.6rem] h-6 px-2 rounded-full bg-base-content/10 text-base-content/80 text-xs font-semibold">
-                {nerdsVisibleFieldCount}
-              </span>
-            </button>
-          </div>
-
-          {activeTab === 'noobs' && (
-            <div className="space-y-4">
-              {saveError && (
-                <div className="rounded-[var(--radius-box)] border border-error/30 bg-error/10 text-error text-xs p-2">
-                  {saveError}
-                </div>
-              )}
-
-              <div className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 p-3 shadow-sm lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
-                <div className="text-xs font-semibold text-base-content/65 mb-1 flex items-center gap-2">
-                  <FileText className="w-3.5 h-3.5" />
-                  firestoreDocumentId
-                </div>
-                <div className="rounded-[var(--radius-box)] p-3 bg-base-200/70 lg:rounded lg:p-2 lg:bg-base-200">
-                  <p className="text-base-content text-sm break-all font-mono">{formatFieldValue('id', image?.id)}</p>
-                  {canOpenFirestoreConsole && (
-                    <a
-                      href={firestoreDocUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-2 inline-block text-primary-400 hover:text-primary-300 text-xs break-all"
-                    >
-                      Open in Firebase Console
-                    </a>
-                  )}
-                </div>
-              </div>
-
-              {displayedNoobFields.map((field, index) => renderMetadataField(field, index))}
-            </div>
-          )}
-
-          {activeTab === 'nerds' && (
-            <div className="space-y-4">
-              {nerdVisibleFields.map((field, index) => renderMetadataField(field, index))}
-            </div>
-          )}
-        </div>
-
-        {activeTab === 'noobs' && (onShare || onShareAlbum || onMoveToVault || onRestoreFromVault || onSaveEdits || shareStatus) && (
-          <div className="shrink-0 border-t border-base-content/15 bg-base-100/95 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur lg:p-4">
-            {shareStatus && (
-              <div className="mb-3 rounded-[var(--radius-box)] border border-primary-500/30 bg-primary-500/10 text-primary text-xs p-2">
-                {shareStatus}
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:flex lg:flex-wrap lg:items-center">
-              {onShare && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onShare(image)
-                  }}
-                  className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 px-2 text-sm font-semibold text-base-content/85 hover:bg-base-content/5 transition-colors lg:min-h-0 lg:border-0 lg:bg-base-content/5 lg:px-3 lg:py-2 lg:hover:bg-base-content/10"
-                >
-                  <Share2 className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
-                  Share
-                </button>
-              )}
-              {onShareAlbum && image?.collectionId && !isEditing && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onShareAlbum(image)
-                  }}
-                  className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 px-2 text-sm font-semibold text-base-content/85 hover:bg-base-content/5 transition-colors lg:min-h-0 lg:border-0 lg:bg-base-content/5 lg:px-3 lg:py-2 lg:hover:bg-base-content/10"
-                >
-                  <Share2 className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
-                  <span className="lg:hidden">Album</span>
-                  <span className="hidden lg:inline">Share Album</span>
-                </button>
-              )}
-              {onMoveToVault && !isEditing && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onMoveToVault(image)
-                  }}
-                  className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 px-2 text-sm font-semibold text-base-content/85 hover:bg-base-content/5 transition-colors lg:min-h-0 lg:border-0 lg:bg-base-content/5 lg:px-3 lg:py-2 lg:hover:bg-base-content/10"
-                >
-                  <LockKeyhole className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
-                  <span className="lg:hidden">Vault</span>
-                  <span className="hidden lg:inline">Move to Vault</span>
-                </button>
-              )}
-              {onRestoreFromVault && !isEditing && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onRestoreFromVault(image)
-                  }}
-                  disabled={isRestoringFromVault}
-                  className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 px-2 text-sm font-semibold text-base-content/85 hover:bg-base-content/5 transition-colors disabled:opacity-50 lg:min-h-0 lg:border-0 lg:bg-base-content/5 lg:px-3 lg:py-2 lg:hover:bg-base-content/10"
-                >
-                  {isRestoringFromVault ? <Loader2 className="w-4 h-4 animate-spin lg:w-3.5 lg:h-3.5" /> : <RotateCcw className="w-4 h-4 lg:w-3.5 lg:h-3.5" />}
-                  {isRestoringFromVault ? 'Restoring...' : 'Restore'}
-                </button>
-              )}
-              {onSaveEdits && isEditing && (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleCancelEdit}
-                    disabled={isSaving}
-                    className="inline-flex min-h-12 items-center justify-center rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 px-2 text-sm font-semibold text-base-content/80 transition-colors hover:bg-base-content/5 disabled:opacity-50 lg:ml-auto lg:min-h-0 lg:border-0 lg:bg-base-content/5 lg:px-3 lg:py-2 lg:hover:bg-base-content/10"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[var(--radius-box)] bg-primary px-2 text-sm font-semibold text-primary-content transition-colors hover:bg-primary/90 disabled:opacity-50 lg:min-h-0 lg:px-4 lg:py-2"
-                  >
-                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin lg:w-3.5 lg:h-3.5" /> : <Save className="w-4 h-4 lg:w-3.5 lg:h-3.5" />}
-                    Save
-                  </button>
-                </>
-              )}
-              {onSaveEdits && !isEditing && (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); setIsEditing(true); setSaveError('') }}
-                  className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[var(--radius-box)] bg-base-content px-2 text-sm font-semibold text-base-100 transition-colors hover:bg-base-content/90 lg:ml-auto lg:min-h-0 lg:bg-primary lg:px-4 lg:py-2 lg:text-primary-content lg:hover:bg-primary/90"
-                >
-                  <Pencil className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
-                  Edit
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      )}
+      renderOverviewField={(entry, index) => renderMetadataField(entry.key, index)}
+      renderTechnicalField={(entry, index) => renderMetadataField(entry.key, index)}
+      renderDocumentId={renderDocumentIdCard}
+    />
   )
 }
