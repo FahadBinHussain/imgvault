@@ -204,11 +204,37 @@ been visually broken since 3a — the 3a/3b smokes were DOM-level and cannot see
 
 missing on web today, in order (each its own phase-sized chunk, same gate):
 
-1. trash actions (restore / permanent delete / empty trash — extension logic is in
-   `storage.js` + SW handlers, incl. the vault-blob host delete path)
+1. trash actions (restore / permanent delete / empty trash) ✅ done (2026-10-12,
+   commit `6ebc7e63`) — web-side only, extension untouched. server host-delete
+   clients in `web/src/lib/hostDeletes.js` (imgbb/pixvid delete-url + TeraBox/UDrop
+   vault-blob cleanup), deliberately NOT extracted to `imgvault-shared`: they are
+   runtime-bound (extension = chrome.cookies + uploader classes, web = server
+   fetch), extraction deferred until a third consumer exists. `/api/trash` gained
+   POST `{action: restore|delete|empty}` mirroring `restoreFromTrashNeon` /
+   `permanentlyDeleteNeon` / `emptyTrashNeon` (incl. the survivors-stay-trashed
+   loud `N of M` error + `maxDuration: 60`), `web/src/db/schema.js` gained
+   `mediaItemPreviews` (parity with ext schema.ts), UI = `TrashLightbox.jsx`
+   (shared `MediaDetailModal` wrapper, same pattern as GalleryLightbox; creation-date
+   editor PATCHes `/api/images` — no `deletedAt` filter there, body `{id, updates}`)
+   + trash-page banner / Empty Trash header button / three confirm modals / sticky
+   toasts. verified live on imgvaultt.vercel.app against a synthetic Neon row:
+   creation-date round-trip (db `2020-01-15 04:30+00`), restore (db `deleted_at`
+   cleared + list refresh), delete-forever (row gone), empty confirm opened +
+   cancelled only — never run a real empty without asking. note: CI runs on NOTHING
+   for a `web/**`-only push (workflow path filter) — the web gate is local
+   frozen-lockfile + `pnpm --dir web build` + the Vercel deploy itself.
 2. gallery delete + bulk select + bulk download
 3. scene-viewer route (the extension's `scene-viewer` page as a Next.js route)
 4. collections management parity
+
+follow-up found during chunk 1: the extension trash page carries ~15 load-bearing
+daisyui alpha classes (`bg-warning/15`, `bg-error/20`, `bg-success/15`, `border-warning/30`,
+bordered chip variants) that never generate on tailwind v3 — its banner, confirm
+boxes and chips render with no visible tint, while the web trash uses palette
+alphas (`bg-amber-500/10 border-amber-500/40 bg-red-500/15 bg-green-500/20 bg-sky-500/20`)
+and renders correctly. true visual parity needs a small extension tint fix
+(manifest patch bump + reload) — its kept-dead `border-success/40`/`border-error/40`
+on confirm buttons also only light up after that pairing.
 
 every chunk: shared logic first (`imgvault-shared`), web UI second, extension untouched
 unless it is actually missing something.
