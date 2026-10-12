@@ -9,7 +9,6 @@ import {
   Share2,
   LockKeyhole,
   RotateCcw,
-  Box,
   ExternalLink,
   Trash2,
   Download,
@@ -755,51 +754,30 @@ export default function GalleryLightbox({
 
             <div className="w-full shrink-0 flex items-center justify-center px-1">
               {currentKind === 'scene' ? (
-                image?.textureUrl ? (
-                  <div className="relative max-w-full">
-                    <img
-                      src={image.textureUrl}
-                      alt={image.pageTitle || '3D Scene'}
-                      className="max-w-full max-h-[40dvh] sm:max-h-[70vh] lg:max-h-[80vh] object-contain rounded-[var(--radius-box)] shadow-2xl"
-                      onLoad={() => setIsLoading(false)}
-                      onError={() => setIsLoading(false)}
-                      draggable="false"
-                    />
-                    <span className="absolute top-3 left-3 px-2 py-1 text-[11px] font-bold rounded-md bg-cyan-500/90 text-white transition-transform duration-300 hover:scale-105">
+                <div className="flex max-w-full flex-col items-center gap-3">
+                  <iframe
+                    src={`/scene-viewer?url=${encodeURIComponent(image?.spzUrl || '')}&id=${encodeURIComponent(image?.id || '')}&title=${encodeURIComponent(image?.pageTitle || '3D Scene')}`}
+                    title="3D Scene viewer"
+                    allow="accelerometer; gyroscope; fullscreen"
+                    onLoad={() => setIsLoading(false)}
+                    className="h-[min(74vh,760px)] w-[min(90vw,1152px)] max-w-full rounded-[var(--radius-box)] border-0 bg-[#f9f9fb] shadow-2xl"
+                  />
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-md bg-cyan-500/90 px-2 py-1 text-[11px] font-bold text-white transition-transform duration-300 hover:scale-105">
                       3D
                     </span>
-                    <div className="mt-3 flex flex-col items-center gap-1.5">
-                      <p className="text-xs text-base-content/60">3D scene · texture preview</p>
-                      <p className="text-[11px] text-base-content/45">open in the ImgVault extension to view the model</p>
-                      {image?.spzUrl && (
-                        <a
-                          href={image.spzUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-400 hover:text-primary-300 transition-colors"
-                        >
-                          Open .spz file <ExternalLink className="w-3 h-3" />
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-3 rounded-[var(--radius-box)] border border-base-content/15 bg-base-200/60 px-8 py-10">
-                    <Box className="w-12 h-12 text-cyan-400 transition-transform duration-500 animate-pulse" />
-                    <p className="text-sm font-semibold text-base-content/75">3D scene</p>
-                    <p className="text-xs font-semibold text-error">No texture thumbnail stored</p>
                     {image?.spzUrl && (
                       <a
                         href={image.spzUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-full border border-base-content/20 bg-base-100 px-3 py-1.5 text-xs font-semibold transition-all duration-300 hover:scale-105"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-400 transition-colors hover:text-primary-300"
                       >
                         Open .spz file <ExternalLink className="w-3 h-3" />
                       </a>
                     )}
                   </div>
-                )
+                </div>
               ) : currentKind === 'video' ? (
                 modalVideoSource?.type === 'video' ? (
                   <video

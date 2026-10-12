@@ -119,6 +119,10 @@ export const mediaItems = pgTable('media_items', {
   spzFileSize: bigint('spz_file_size', { mode: 'number' }),
   textureUrl: text('texture_url').notNull().default(''),
   textureFileSize: bigint('texture_file_size', { mode: 'number' }),
+  // 3D scene render config (flattened worldlabs shape) — mirrors ext schema.ts
+  // (nullable text, same column). Read by the /scene-viewer route via the
+  // /api/images detail payload (toClientMediaItem spreads the full row).
+  configJson: text('config_json'),
 
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
