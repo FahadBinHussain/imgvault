@@ -24,7 +24,8 @@
       transition: background 0.2s;
     }
     .btn:hover { background: rgba(255,255,255,0.2); }
-    .btn svg { width: 20px; height: 20px; }
+    .btn svg { width: 20px; height: 20px; transition: transform 0.2s ease; }
+    .btn:hover svg { transform: scale(1.12); }
     #loading {
       position: fixed; inset: 0; z-index: 20;
       display: flex; align-items: center; justify-content: center;

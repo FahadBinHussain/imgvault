@@ -1,0 +1,14 @@
+{
+  "name": "imgvault-scene-viewer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "dependencies": {
+    "@sparkjsdev/spark": "^2.0.0",
+    "three": "^0.180.0"
+  }
+}

@@ -22,7 +22,7 @@ importers:
         version: 1.0.2
       '@sparkjsdev/spark':
         specifier: ^2.0.0
-        version: 2.1.0(three@0.180.0)
+        version: 2.3.1(three@0.180.0)
       clsx:
         specifier: ^2.1.0
         version: 2.1.1
@@ -35,6 +35,9 @@ importers:
       framer-motion:
         specifier: ^12.23.24
         version: 12.38.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      imgvault-scene-viewer:
+        specifier: workspace:*
+        version: link:../packages/scene-viewer
       imgvault-shared:
         specifier: workspace:*
         version: link:../packages/shared
@@ -1015,8 +1018,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@sparkjsdev/spark@2.1.0':
-    resolution: {integrity: sha512-BRw+MuMzx0B3K8fDLQygt2OHEhYUV+41RX7btq9pZ3rCVrq42o57jW34VAIvC7JO/84DJh/1AutACV9ym6BfVg==}
+  '@sparkjsdev/spark@2.3.1':
+    resolution: {integrity: sha512-K+SyIbkO/dx1TLLudK8Jp3/noS13z/kdNPo6OK2waxQaGy81HBmKGnNBT/t/K9Ew3dsIXmWqsJXxGfmAu1T5Jg==}
     peerDependencies:
       three: '>=0.180.0'
 
@@ -3047,7 +3050,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.60.1':
     optional: true
 
-  '@sparkjsdev/spark@2.1.0(three@0.180.0)':
+  '@sparkjsdev/spark@2.3.1(three@0.180.0)':
     dependencies:
       fflate: 0.8.3
       three: 0.180.0
