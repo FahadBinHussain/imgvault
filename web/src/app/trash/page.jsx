@@ -14,6 +14,9 @@ import {
   CheckCircle2,
   XCircle,
   Info,
+  ListChecks,
+  Check,
+  X,
 } from 'lucide-react'
 import { Modal } from 'imgvault-ui'
 import AppNavbar from '../components/AppNavbar'
@@ -133,6 +136,10 @@ export default function TrashPage() {
   const [showEmptyConfirm, setShowEmptyConfirm] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [toast, setToast] = useState(null)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [showBulkRestoreConfirm, setShowBulkRestoreConfirm] = useState(false)
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -149,6 +156,19 @@ export default function TrashPage() {
     const timer = setTimeout(() => setToast(null), toast.duration)
     return () => clearTimeout(timer)
   }, [toast])
+
+  // Escape exits selection mode (the lightbox owns Escape while it is open)
+  useEffect(() => {
+    if (!selectionMode || selectedItem) return undefined
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setSelectionMode(false)
+        setSelectedIds(new Set())
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [selectionMode, selectedItem])
 
   const showToast = (message, type = 'success') => {
     setToast({ id: Date.now(), message, type, duration: TOAST_DURATIONS[type] ?? 3000 })
@@ -239,6 +259,66 @@ export default function TrashPage() {
     }
   }
 
+  const splitSettled = (results, ids) => {
+    const failed = []
+    let okCount = 0
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') okCount += 1
+      else failed.push({ id: ids[index], message: result.reason?.message || 'request failed' })
+    })
+    return { okCount, failed }
+  }
+
+  const handleBulkRestore = async () => {
+    if (isProcessing) return
+    const ids = [...selectedIds]
+    if (!ids.length) return
+
+    setIsProcessing(true)
+    setShowBulkRestoreConfirm(false)
+    try {
+      showToast(`Restoring ${ids.length} item${ids.length === 1 ? '' : 's'}...`, 'info')
+      const results = await Promise.allSettled(ids.map((id) => postTrashAction({ action: 'restore', id })))
+      const { okCount, failed } = splitSettled(results, ids)
+      if (failed.length > 0) {
+        setSelectedIds(new Set(failed.map((entry) => entry.id)))
+        showToast(`${okCount} restored, ${failed.length} failed: ${failed[0].message.slice(0, 120)}`, 'error')
+      } else {
+        setSelectedIds(new Set())
+        setSelectionMode(false)
+        showToast(`${ids.length} item${ids.length === 1 ? '' : 's'} restored`, 'success')
+      }
+      await loadTrash({ silent: true })
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handleBulkDeleteForever = async () => {
+    if (isProcessing) return
+    const ids = [...selectedIds]
+    if (!ids.length) return
+
+    setIsProcessing(true)
+    setShowBulkDeleteConfirm(false)
+    try {
+      showToast(`Permanently deleting ${ids.length} item${ids.length === 1 ? '' : 's'} from trash and hosts where possible...`, 'info')
+      const results = await Promise.allSettled(ids.map((id) => postTrashAction({ action: 'delete', id })))
+      const { okCount, failed } = splitSettled(results, ids)
+      if (failed.length > 0) {
+        setSelectedIds(new Set(failed.map((entry) => entry.id)))
+        showToast(`${okCount} permanently deleted, ${failed.length} failed: ${failed[0].message.slice(0, 120)}`, 'error')
+      } else {
+        setSelectedIds(new Set())
+        setSelectionMode(false)
+        showToast(`${ids.length} item${ids.length === 1 ? '' : 's'} permanently deleted`, 'success')
+      }
+      await loadTrash({ silent: true })
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
   const handleSaveCreationDate = async (inputValue) => {
     if (!selectedItem) return false
     const parsed = new Date(inputValue)
@@ -287,7 +367,20 @@ export default function TrashPage() {
     return haystack.includes(q)
   })
 
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   const handleItemClick = (item, index) => {
+    if (selectionMode) {
+      toggleSelect(item.id)
+      return
+    }
     setSelectedItem(item)
     setSelectedIndex(index)
   }
@@ -332,6 +425,23 @@ export default function TrashPage() {
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
                   <button
                     type="button"
+                    onClick={() => {
+                      setSelectionMode((prev) => !prev)
+                      setSelectedIds(new Set())
+                    }}
+                    disabled={isProcessing}
+                    title={selectionMode ? 'Exit selection' : 'Select items'}
+                    className={`group inline-flex items-center justify-center gap-2 rounded-[var(--radius-box)] border px-4 py-3 text-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${selectionMode ? 'border-red-500/50 bg-red-500/20 text-error' : 'border-white/15 bg-white/5 text-base-content hover:bg-white/10'}`}
+                  >
+                    {selectionMode ? (
+                      <X className="w-4 h-4 transition-transform duration-300 group-hover:rotate-90" />
+                    ) : (
+                      <ListChecks className="w-4 h-4 transition-transform duration-300 group-hover:scale-110" />
+                    )}
+                    <span>{selectionMode ? 'Cancel' : 'Select'}</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setShowEmptyConfirm(true)}
                     disabled={isProcessing}
                     className="group inline-flex items-center justify-center gap-2 rounded-[var(--radius-box)] border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-semibold text-error transition-all duration-200 hover:bg-red-500/20 hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -366,6 +476,55 @@ export default function TrashPage() {
               </div>
             )}
 
+            {/* Bulk Actions Bar - shown in selection mode */}
+            {selectionMode && !loadError && filteredItems.length > 0 && (
+              <div className="mb-8 p-4 rounded-[var(--radius-box)] border border-red-500/40 bg-red-500/15 backdrop-blur-sm animate-fade-in">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="font-semibold text-base-content">{selectedIds.size} selected</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedIds(new Set(filteredItems.map((it) => it.id)))}
+                      className="rounded-[var(--radius-box)] bg-white/10 px-3 py-1.5 text-sm text-base-content transition-all duration-200 hover:bg-white/20"
+                    >
+                      Select All ({filteredItems.length})
+                    </button>
+                    {selectedIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedIds(new Set())}
+                        className="rounded-[var(--radius-box)] bg-white/10 px-3 py-1.5 text-sm text-base-content transition-all duration-200 hover:bg-white/20"
+                      >
+                        Deselect All
+                      </button>
+                    )}
+                  </div>
+                  {selectedIds.size > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowBulkRestoreConfirm(true)}
+                        disabled={isProcessing}
+                        className="group inline-flex items-center gap-2 rounded-[var(--radius-box)] border border-green-500/40 bg-green-500/20 px-4 py-2 text-sm font-semibold text-green-400 transition-all duration-200 hover:bg-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Undo2 className="w-4 h-4 transition-transform duration-300 group-hover:rotate-12" />
+                        Restore Selected
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowBulkDeleteConfirm(true)}
+                        disabled={isProcessing}
+                        className="group inline-flex items-center gap-2 rounded-[var(--radius-box)] border border-red-500/40 bg-red-500/20 px-4 py-2 text-sm font-semibold text-error transition-all duration-200 hover:bg-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Trash2 className="w-4 h-4 transition-transform duration-300 group-hover:rotate-12" />
+                        Delete Permanently
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {loadError ? (
               <div className="glass rounded-[var(--radius-box)] p-8 text-error text-center">
                 <p className="font-medium">{loadError}</p>
@@ -380,10 +539,17 @@ export default function TrashPage() {
                       key={item.id}
                       type="button"
                       onClick={() => handleItemClick(item, index)}
-                      className="glass rounded-[var(--radius-box)] overflow-hidden text-left transition-transform duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-red-500/10"
+                      className={`glass rounded-[var(--radius-box)] overflow-hidden text-left transition-transform duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-red-500/10 ${selectedIds.has(item.id) ? 'ring-2 ring-red-400/80' : ''}`}
                     >
                       <div className="h-48 bg-base-100 relative overflow-hidden flex items-center justify-center">
                         <TrashThumbnail item={item} />
+                        {selectionMode && (
+                          <div className="absolute right-3 top-3 z-20">
+                            <span className={`flex h-6 w-6 items-center justify-center rounded-[var(--radius-box)] border-2 backdrop-blur-sm transition-all duration-200 ${selectedIds.has(item.id) ? 'scale-110 border-red-400 bg-error text-error-content' : 'border-white/70 bg-black/40 text-transparent'}`}>
+                              <Check className="w-4 h-4" />
+                            </span>
+                          </div>
+                        )}
                       </div>
                       <div className="p-4">
                         <p className="text-sm font-semibold truncate">{item.pageTitle || 'Untitled'}</p>
@@ -527,6 +693,119 @@ export default function TrashPage() {
                   <>
                     <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
                     <span>Delete Forever</span>
+                  </>
+                )}
+              </div>
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk Restore Confirmation Modal */}
+      <Modal isOpen={showBulkRestoreConfirm} onClose={() => !isProcessing && setShowBulkRestoreConfirm(false)}>
+        <div className="text-center space-y-6">
+          <div className="flex items-center justify-center mb-4">
+            <Undo2 size={48} className="animate-scale-in" style={{ color: 'var(--color-success)', opacity: 0.7 }} />
+          </div>
+
+          <h3 className="text-2xl font-bold text-success">
+            Restore {selectedIds.size} Item{selectedIds.size === 1 ? '' : 's'}?
+          </h3>
+
+          <p className="text-base-content/80 text-lg leading-relaxed">
+            This will restore {selectedIds.size} item{selectedIds.size === 1 ? '' : 's'} back to your gallery.
+            <br />
+            <span className="font-semibold text-success">They will be removed from trash.</span>
+          </p>
+
+          <div className="flex gap-4 justify-center pt-4">
+            <button
+              onClick={() => setShowBulkRestoreConfirm(false)}
+              disabled={isProcessing}
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content font-medium hover:bg-base-300 hover:scale-105 active:scale-95 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+
+            <button
+              onClick={handleBulkRestore}
+              disabled={isProcessing}
+              className="group relative px-8 py-3 rounded-[var(--radius-box)] overflow-hidden bg-success text-success-content border border-green-500/40 transform transition-all duration-300 hover:scale-105 hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {isProcessing && <div className="absolute inset-0 bg-success-content animate-ping opacity-10" />}
+              <div className="relative flex items-center gap-2 font-bold text-lg">
+                {isProcessing ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    <span>Restoring...</span>
+                  </>
+                ) : (
+                  <>
+                    <Undo2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
+                    <span>Restore All</span>
+                  </>
+                )}
+              </div>
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk Permanent Delete Confirmation Modal */}
+      <Modal isOpen={showBulkDeleteConfirm} onClose={() => !isProcessing && setShowBulkDeleteConfirm(false)}>
+        <div className="text-center space-y-6">
+          <div className="flex items-center justify-center mb-4">
+            <Trash2 size={48} className="animate-pulse" style={{ color: 'var(--color-error)', opacity: 0.7 }} />
+          </div>
+
+          <h3 className="text-2xl font-bold text-error">
+            Permanently Delete {selectedIds.size} Item{selectedIds.size === 1 ? '' : 's'}?
+          </h3>
+
+          <div className="text-left bg-red-500/10 border border-red-500/30 rounded-[var(--radius-box)] p-4 space-y-2">
+            <p className="text-base-content/80 leading-relaxed">
+              This will permanently delete{' '}
+              <span className="font-bold text-error">
+                {selectedIds.size} item{selectedIds.size === 1 ? '' : 's'}
+              </span>{' '}
+              from:
+            </p>
+            <ul className="list-disc list-inside text-base-content/80 space-y-1 ml-2">
+              <li>Provider hosts where a saved delete URL exists</li>
+              <li>Your trash bin</li>
+            </ul>
+          </div>
+
+          <p className="text-warning font-semibold text-lg flex items-center justify-center gap-2">
+            <AlertTriangle size={20} />
+            This action cannot be undone!
+          </p>
+
+          <div className="flex gap-4 justify-center pt-4">
+            <button
+              onClick={() => setShowBulkDeleteConfirm(false)}
+              disabled={isProcessing}
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content font-medium hover:bg-base-300 hover:scale-105 active:scale-95 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+
+            <button
+              onClick={handleBulkDeleteForever}
+              disabled={isProcessing}
+              className="group relative px-8 py-3 rounded-[var(--radius-box)] overflow-hidden bg-error text-error-content border border-red-500/40 transform transition-all duration-300 hover:scale-105 hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {isProcessing && <div className="absolute inset-0 bg-error-content animate-ping opacity-10" />}
+              <div className="relative flex items-center gap-2 font-bold text-lg">
+                {isProcessing ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
+                    <span>Delete Permanently</span>
                   </>
                 )}
               </div>
