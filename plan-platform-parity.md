@@ -12,6 +12,17 @@ roadmap for getting there without ever breaking the extension (the user fears to
 - extension is touched LAST, if at all; phases 0–2 are build-time/shared-code only for it.
 - per-phase gate before moving on: both apps `pnpm install --frozen-lockfile` + `pnpm build`
   green, phase-specific smoke test passes, commit pushed, Vercel deploy READY and live-checked.
+- **never test destructive actions on real items (user rule, 2026-10-12 — non-negotiable)**:
+  restore / permanent delete / empty / gallery delete / bulk ops run ONLY against
+  synthetic rows I insert myself via Neon HTTP (needs just `id` + `kind`; no host
+  URLs, no vault blob, no `collection_id` → host cleanup + collection counts are
+  no-ops). real items are READ-ONLY: open modals, view, screenshot — never click a
+  final confirm on a real row, never run Empty Trash for real (confirm dialog +
+  Cancel only, every time). every live test session ENDS with a count audit vs the
+  pre-test baseline: `SELECT count(*) FILTER (WHERE deleted_at IS NULL), count(*)
+  FILTER (WHERE deleted_at IS NOT NULL) FROM media_items` must equal the
+  pre-test numbers exactly, and `WHERE id LIKE 'synthetic%'` must be 0. if any
+  number mismatches, stop and report loudly before doing anything else.
 - extension dist rollback: `C:\tmp\imgvault-dist-backup-<version>` (xcopy restore);
   `tools/reload-extension.ps1` refuses a partial dist.
 - never flip `shared-workspace-lockfile: false` without updating CI
