@@ -234,7 +234,28 @@ missing on web today, in order (each its own phase-sized chunk, same gate):
    cancelled only — never run a real empty without asking. note: CI runs on NOTHING
    for a `web/**`-only push (workflow path filter) — the web gate is local
    frozen-lockfile + `pnpm --dir web build` + the Vercel deploy itself.
-2. gallery delete + bulk select + bulk download
+2. gallery delete + bulk select + bulk download ✅ done (2026-10-12) — 5 commits:
+   `6a5d45c7` shared `packages/shared/downloadTargets.js` + `web/src/lib/downloads.js`
+   (proxy transport) + `/api/trash` `action:'trash'`, `6dfb519e` web gallery selection
+   state / card checkboxes / selection bar / Escape / single+bulk delete confirm modals /
+   bulk download / bulk vault, `81fa93c0` web trash bulk select + 2 confirm modals,
+   `aa771591` extension bulk Download (navbar button + `src/utils/downloads.js`,
+   manifest **2.15.0**), `963060a2` fix: `/api/trash` `action:'trash'` used `isNull`
+   without importing it from `drizzle-orm` (runtime-only — build can't catch it).
+   bulk ops use `Promise.allSettled` + aggregate error toast; successes leave the
+   selection, failed ids stay selected for retry (no fallbacks — per-item loud failure
+   for filemoon/udrop, no tab spam). live-tested end to end on prod against synthetic
+   rows ONLY: select/checkboxes/ring/bar UI, Escape exits selection, bulk Download
+   (image → `~/Downloads/untitled.jpg`, link → loud aggregate error, row stayed
+   selected), bulk Vault (470→468, restored via flag-only PATCH), single + bulk delete
+   confirms (modal screenshots verified), trash bulk Restore ("2 items restored",
+   trash 3→1) + Delete Permanently ("2 items permanently deleted", trash 3→1, real
+   "Downloaded Video" row never selected — content-guarded clicks). closing audit
+   exact vs baseline: **live 580 / trashed 1 / synth 0**. CSS probe: all 12 new
+   chunk-2 classes present in the built main CSS (literal `.Contains` on raw text).
+   note: web `/api/vault` PATCH `move` is flag-only (extra_metadata + share revocation,
+   no encrypt/upload) vs the extension's full-encrypt move — possible future parity
+   gap, out of chunk-2 scope.
 3. scene-viewer route (the extension's `scene-viewer` page as a Next.js route)
 4. collections management parity
 
