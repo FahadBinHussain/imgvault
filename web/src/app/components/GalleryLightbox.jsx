@@ -11,8 +11,11 @@ import {
   RotateCcw,
   Box,
   ExternalLink,
+  Trash2,
+  Download,
 } from 'lucide-react'
 import { MediaDetailModal } from 'imgvault-ui'
+import { downloadFieldViaProxy } from '@/lib/downloads'
 import { getStrictVideoProviderLink } from '@/lib/video-provider-links'
 import { getStrictImageProviderLink } from '@/lib/image-provider-links'
 import {
@@ -25,6 +28,15 @@ import {
   getTechnicalMetadataEntries,
 } from '@shared/mediaFieldRegistry.js'
 
+// Overview fields that carry a downloadable file URL, mapped to their host —
+// mirrors the extension's per-field Download buttons (same four keys).
+const DOWNLOAD_FIELD_HOSTS = {
+  pixvidUrl: 'pixvid',
+  imgbbUrl: 'imgbb',
+  filemoonDirectUrl: 'filemoon',
+  udropDirectUrl: 'udrop',
+}
+
 export default function GalleryLightbox({
   image,
   images,
@@ -35,6 +47,8 @@ export default function GalleryLightbox({
   onShare,
   onShareAlbum,
   onMoveToVault,
+  onDelete,
+  isDeleting = false,
   onRestoreFromVault,
   isRestoringFromVault = false,
   shareStatus = '',
@@ -68,6 +82,8 @@ export default function GalleryLightbox({
     tags: '',
   })
   const [videoSourceFailed, setVideoSourceFailed] = useState(false)
+  const [downloadNotice, setDownloadNotice] = useState(null) // {text, tone: 'info'|'error'}
+  const [isDownloadingField, setIsDownloadingField] = useState('')
   const isFilemoonHtmlUrl = (url) => typeof url === 'string' && /filemoon\.sx\/(?:d|e)\//i.test(url)
   const getVideoWatchUrl = (item) => (
     getStrictVideoProviderLink(item, preferredVideoSource, 'watchUrl')
@@ -180,6 +196,33 @@ export default function GalleryLightbox({
     setEditValues(toEditValues(image))
   }
 
+  const handleFieldDownload = async (key, url) => {
+    const source = DOWNLOAD_FIELD_HOSTS[key]
+    if (!source) return
+    setDownloadNotice(null)
+
+    // Filemoon / UDrop "direct" URLs are download PAGES (HTML), not file
+    // bytes — same behavior as the extension: open the page in a new tab.
+    if (source === 'filemoon' || source === 'udrop') {
+      window.open(url, '_blank', 'noopener,noreferrer')
+      setDownloadNotice({
+        text: `Opening ${source === 'filemoon' ? 'Filemoon' : 'UDrop'} download page in a new tab...`,
+        tone: 'info',
+      })
+      return
+    }
+
+    setIsDownloadingField(key)
+    try {
+      const fileName = await downloadFieldViaProxy(image, url)
+      setDownloadNotice({ text: `Saved ${fileName}`, tone: 'info' })
+    } catch (error) {
+      setDownloadNotice({ text: error?.message || 'Download failed', tone: 'error' })
+    } finally {
+      setIsDownloadingField('')
+    }
+  }
+
   const imageUrl = getGalleryImageUrl(image)
   const modalVideoSource = currentKind === 'video' && !videoSourceFailed ? getModalVideoSource(image) : null
   const currentVideoWatchUrl = getVideoWatchUrl(image)
@@ -191,6 +234,8 @@ export default function GalleryLightbox({
     setIsSaving(false)
     setSaveError('')
     setVideoSourceFailed(false)
+    setDownloadNotice(null)
+    setIsDownloadingField('')
     setIsLoading(imageUrl ? !loadedImageUrls[imageUrl] : false)
     setDragOffset(0)
     setIsDraggingMedia(false)
@@ -236,10 +281,16 @@ export default function GalleryLightbox({
       if (e.key === 'Escape') onClose()
       if (e.key === 'ArrowLeft' && currentIndex > 0) onNavigate(currentIndex - 1)
       if (e.key === 'ArrowRight' && currentIndex < images.length - 1) onNavigate(currentIndex + 1)
+      // same shortcut as the extension: Delete asks the page to open the
+      // move-to-trash confirm (it never deletes without confirmation)
+      if (e.key === 'Delete' && onDelete && !isEditing && !isSaving) {
+        e.preventDefault()
+        onDelete(image)
+      }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentIndex, images.length, onClose, onNavigate])
+  }, [currentIndex, images.length, onClose, onNavigate, onDelete, image, isEditing, isSaving])
 
   useEffect(() => {
     const originalOverflow = document.body.style.overflow
@@ -446,14 +497,34 @@ export default function GalleryLightbox({
           </div>
         ) : isUrlField(key) && typeof rawValue === 'string' && rawValue ? (
           <div className="rounded-[var(--radius-box)] p-3 bg-base-200/70 lg:rounded lg:p-2 lg:bg-base-200">
-            <a
-              href={rawValue}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary-400 hover:text-primary-300 break-all text-sm"
-            >
-              {rawValue}
-            </a>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <a
+                href={rawValue}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-w-0 text-primary-400 hover:text-primary-300 break-all text-sm"
+              >
+                {rawValue}
+              </a>
+              {DOWNLOAD_FIELD_HOSTS[key] && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleFieldDownload(key, rawValue)
+                  }}
+                  disabled={Boolean(isDownloadingField)}
+                  className="group inline-flex shrink-0 items-center gap-1 rounded-[var(--radius-box)] border border-base-content/15 bg-base-content/10 px-2 py-1 text-[11px] font-semibold text-base-content/80 transition-colors hover:bg-base-content/15 disabled:opacity-50"
+                >
+                  {isDownloadingField === key ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Download className="w-3 h-3 transition-transform duration-200 group-hover:translate-y-0.5" />
+                  )}
+                  Download
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="rounded-[var(--radius-box)] p-3 bg-base-200/70 lg:rounded lg:p-2 lg:bg-base-200">
@@ -504,6 +575,7 @@ export default function GalleryLightbox({
     onShare ||
       (onShareAlbum && image?.collectionId) ||
       onMoveToVault ||
+      onDelete ||
       onRestoreFromVault ||
       onSaveEdits
   )
@@ -562,6 +634,20 @@ export default function GalleryLightbox({
               Move to Vault
             </button>
           )}
+          {onDelete && !isEditing && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete(image)
+              }}
+              disabled={isDeleting}
+              className={`${actionBtnClass} border-red-500/40 text-red-400 hover:bg-red-500/10 disabled:opacity-50`}
+            >
+              <Trash2 className="w-4 h-4 transition-transform duration-200 hover:scale-110 lg:w-3.5 lg:h-3.5" />
+              Delete
+            </button>
+          )}
           {onRestoreFromVault && !isEditing && (
             <button
               type="button"
@@ -609,7 +695,7 @@ export default function GalleryLightbox({
           )}
         </div>
       ) : null}
-      overviewNotice={saveError || shareStatus ? (
+      overviewNotice={saveError || shareStatus || downloadNotice ? (
         <div className="space-y-2">
           {saveError && (
             <div className="rounded-[var(--radius-box)] border border-error/30 bg-error/10 text-error text-xs p-2">
@@ -619,6 +705,17 @@ export default function GalleryLightbox({
           {shareStatus && (
             <div className="rounded-[var(--radius-box)] border border-primary-500/30 bg-primary-500/10 text-primary text-xs p-2">
               {shareStatus}
+            </div>
+          )}
+          {downloadNotice && (
+            <div
+              className={`rounded-[var(--radius-box)] border p-2 text-xs ${
+                downloadNotice.tone === 'error'
+                  ? 'border-red-500/40 bg-red-500/15 text-red-400'
+                  : 'border-primary-500/30 bg-primary-500/10 text-primary'
+              }`}
+            >
+              {downloadNotice.text}
             </div>
           )}
         </div>

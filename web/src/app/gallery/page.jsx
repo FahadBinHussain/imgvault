@@ -22,12 +22,22 @@ import {
   Pencil,
   Save,
   Share2,
-  Box
+  Box,
+  ListChecks,
+  Check,
+  Trash2,
+  Download,
+  LockKeyhole,
+  XCircle,
+  CheckCircle2,
+  Info
 } from 'lucide-react'
+import { Modal } from 'imgvault-ui'
 import AppNavbar from '../components/AppNavbar'
 import GalleryLightbox from '../components/GalleryLightbox'
 import { getStrictImageProviderLink } from '@/lib/image-provider-links'
 import { getStrictVideoProviderLink } from '@/lib/video-provider-links'
+import { downloadItemViaProxy } from '@/lib/downloads'
 import {
   DEFAULT_IMAGE_SOURCE,
   DEFAULT_VIDEO_SOURCE,
@@ -617,7 +627,7 @@ function Lightbox({ image, images, currentIndex, onClose, onNavigate, onSaveEdit
 }
 
 // Image Card Component
-function ImageCard({ image, index, viewMode, onClick, className = '', preferredProvider = DEFAULT_IMAGE_SOURCE, preferredVideoSource = DEFAULT_VIDEO_SOURCE }) {
+function ImageCard({ image, index, viewMode, onClick, className = '', preferredProvider = DEFAULT_IMAGE_SOURCE, preferredVideoSource = DEFAULT_VIDEO_SOURCE, selectMode = false, selected = false }) {
   const [isLoaded, setIsLoaded] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   const [videoPreviewFailed, setVideoPreviewFailed] = useState(false)
@@ -645,7 +655,7 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
 
   return (
     <div 
-      className={`group relative glass rounded-[var(--radius-box)] overflow-hidden cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-xl hover:shadow-primary-500/10 ${viewMode === 'list' ? 'flex' : ''} ${className}`}
+      className={`group relative glass rounded-[var(--radius-box)] overflow-hidden cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-xl hover:shadow-primary-500/10 ${viewMode === 'list' ? 'flex' : ''} ${selected ? 'ring-2 ring-primary-400/80' : ''} ${className}`}
       style={{ 
         animationDelay: `${mediaAnimationDelay}ms`,
         animation: 'fadeInUp 0.6s ease-out forwards',
@@ -803,6 +813,15 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
             pointerEvents: 'none'
           }}
         />
+
+        {/* Selection checkbox (top-right: the 3D badge owns top-left) */}
+        {selectMode && (
+          <div className="absolute right-3 top-3 z-10">
+            <span className={`flex h-6 w-6 items-center justify-center rounded-full border-2 backdrop-blur-sm transition-all duration-300 group-hover:scale-110 ${selected ? 'scale-110 border-primary-400 bg-primary-500 text-white' : 'border-white/80 bg-black/40 text-transparent'}`}>
+              <Check className="h-3.5 w-3.5" />
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Content - Only show in list mode */}
@@ -893,6 +912,8 @@ function DateHeader({ date }) {
 }
 
 // Main Gallery Component
+const TOAST_DURATIONS = { info: 4000, success: 3000, error: 8000 }
+
 export default function GalleryPage() {
   const { data: session, status } = useSession()
   const [images, setImages] = useState([])
@@ -910,6 +931,34 @@ export default function GalleryPage() {
   const [preferredProvider, setPreferredProvider] = useState('imgbb')
   const [preferredVideoSource, setPreferredVideoSource] = useState('filemoon')
   const [firebaseProjectId, setFirebaseProjectId] = useState('')
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [pendingDeleteImage, setPendingDeleteImage] = useState(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isBulkVaulting, setIsBulkVaulting] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [toast, setToast] = useState(null)
+
+  const showToast = useCallback((message, type = 'success', durationOverride) => {
+    setToast({ id: Date.now(), message, type, duration: durationOverride ?? TOAST_DURATIONS[type] ?? 3000 })
+  }, [])
+
+  useEffect(() => {
+    if (!toast || !toast.duration) return undefined
+    const timer = setTimeout(() => setToast(null), toast.duration)
+    return () => clearTimeout(timer)
+  }, [toast])
+
+  const toggleSelect = useCallback((id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -1061,6 +1110,11 @@ export default function GalleryPage() {
   }, [])
 
   const handleImageClick = useCallback((image, index) => {
+    if (selectionMode) {
+      toggleSelect(image.id)
+      return
+    }
+
     setShareStatus('')
     setSelectedImage(image)
     setSelectedIndex(index)
@@ -1068,7 +1122,7 @@ export default function GalleryPage() {
     loadImageDetail(image).catch((error) => {
       setShareStatus(error?.message || 'Failed to load full media metadata')
     })
-  }, [loadImageDetail])
+  }, [loadImageDetail, selectionMode, toggleSelect])
 
   const handleCloseLightbox = useCallback(() => {
     setShareStatus('')
@@ -1243,6 +1297,183 @@ export default function GalleryPage() {
     }
   }, [handleCloseLightbox])
 
+  // Escape exits selection mode (the lightbox owns Escape while it is open)
+  useEffect(() => {
+    if (!selectionMode || selectedImage) return undefined
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setSelectionMode(false)
+        setSelectedIds(new Set())
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [selectionMode, selectedImage])
+
+  const postTrash = async (payload) => {
+    const res = await fetch('/api/trash', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const data = await readJsonSafely(res)
+    if (!res.ok) throw new Error(data?.error || 'Trash request failed')
+    return data
+  }
+
+  const splitSettled = (results, ids) => {
+    const failed = []
+    let okCount = 0
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') okCount += 1
+      else failed.push({ id: ids[index], message: result.reason?.message || 'request failed' })
+    })
+    return { okCount, failed }
+  }
+
+  const handleRequestDelete = useCallback((image) => {
+    if (!image?.id) return
+    setPendingDeleteImage(image)
+    setShowDeleteConfirm(true)
+  }, [])
+
+  const handleConfirmSingleDelete = useCallback(async () => {
+    if (isDeleting) return
+    const image = pendingDeleteImage
+    if (!image?.id) return
+
+    setIsDeleting(true)
+    try {
+      await postTrash({ action: 'trash', id: image.id })
+      setImages((prev) => prev.filter((img) => img.id !== image.id))
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(image.id)
+        return next
+      })
+      setShowDeleteConfirm(false)
+      setPendingDeleteImage(null)
+      handleCloseLightbox()
+      showToast('Item moved to trash', 'success')
+    } catch (error) {
+      showToast(error?.message || 'Failed to move item to trash', 'error')
+    } finally {
+      setIsDeleting(false)
+    }
+  }, [pendingDeleteImage, isDeleting, handleCloseLightbox, showToast])
+
+  const handleBulkDelete = async () => {
+    if (isDeleting) return
+    const ids = [...selectedIds]
+    if (!ids.length) return
+
+    setIsDeleting(true)
+    showToast(`Moving ${ids.length} item${ids.length === 1 ? '' : 's'} to trash...`, 'info')
+    try {
+      const results = await Promise.allSettled(ids.map((id) => postTrash({ action: 'trash', id })))
+      const { okCount, failed } = splitSettled(results, ids)
+      setShowBulkDeleteConfirm(false)
+
+      if (okCount > 0 && failed.length > 0) {
+        const failedSet = new Set(failed.map((entry) => entry.id))
+        setImages((prev) => prev.filter((img) => !failedSet.has(img.id)))
+        setSelectedIds(failedSet)
+        showToast(`${okCount} moved to trash, ${failed.length} failed: ${failed[0].message.slice(0, 120)}`, 'error')
+      } else if (failed.length > 0) {
+        showToast(`${failed.length} of ${ids.length} failed: ${failed[0].message.slice(0, 120)}`, 'error')
+      } else {
+        setImages((prev) => prev.filter((img) => !ids.includes(img.id)))
+        setSelectedIds(new Set())
+        showToast(`${ids.length} item${ids.length === 1 ? '' : 's'} moved to trash`, 'success')
+      }
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const handleBulkVault = async () => {
+    if (isBulkVaulting) return
+    const ids = [...selectedIds]
+    if (!ids.length) return
+
+    setIsBulkVaulting(true)
+    showToast(`Moving ${ids.length} item${ids.length === 1 ? '' : 's'} to the vault...`, 'info')
+    try {
+      const results = await Promise.allSettled(
+        ids.map(async (id) => {
+          const res = await fetch('/api/vault', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, action: 'move' }),
+          })
+          const data = await readJsonSafely(res)
+          if (!res.ok) throw new Error(data?.error || 'Failed to move item to vault')
+          return data
+        })
+      )
+      const { okCount, failed } = splitSettled(results, ids)
+
+      if (okCount > 0 && failed.length > 0) {
+        const failedSet = new Set(failed.map((entry) => entry.id))
+        setImages((prev) => prev.filter((img) => !failedSet.has(img.id)))
+        setSelectedIds(failedSet)
+        showToast(`${okCount} moved to vault, ${failed.length} failed: ${failed[0].message.slice(0, 120)}`, 'error')
+      } else if (failed.length > 0) {
+        showToast(`${failed.length} of ${ids.length} failed: ${failed[0].message.slice(0, 120)}`, 'error')
+      } else {
+        setImages((prev) => prev.filter((img) => !ids.includes(img.id)))
+        setSelectedIds(new Set())
+        showToast(`${ids.length} item${ids.length === 1 ? '' : 's'} moved to vault`, 'success')
+      }
+    } finally {
+      setIsBulkVaulting(false)
+    }
+  }
+
+  const handleBulkDownload = async () => {
+    if (isDownloading) return
+    const ids = [...selectedIds]
+    const items = ids.map((id) => images.find((img) => img.id === id)).filter(Boolean)
+    if (!items.length) return
+
+    setIsDownloading(true)
+    let okCount = 0
+    const failed = []
+    try {
+      for (let i = 0; i < items.length; i += 1) {
+        const item = items[i]
+        showToast(`Downloading ${i + 1} of ${items.length}: ${item.pageTitle || item.id}`, 'info')
+        try {
+          await downloadItemViaProxy(item, {
+            imageSource: preferredProvider,
+            videoSource: preferredVideoSource,
+          })
+          okCount += 1
+        } catch (error) {
+          failed.push({ id: item.id, message: error?.message || 'Download failed' })
+        }
+        // let the browser start each save before the next fetch
+        if (i < items.length - 1) await new Promise((resolve) => setTimeout(resolve, 400))
+      }
+
+      if (failed.length > 0) {
+        const failedSet = new Set(failed.map((entry) => entry.id))
+        setSelectedIds(failedSet)
+        const firstItem = items.find((item) => item.id === failed[0].id)
+        const suffix = failed.length > 1 ? ` (+${failed.length - 1} more kept selected)` : ''
+        showToast(
+          `${okCount} downloaded, ${failed.length} failed - "${(firstItem?.pageTitle || firstItem?.id || 'item').slice(0, 60)}": ${failed[0].message.slice(0, 120)}${suffix}`,
+          'error'
+        )
+      } else {
+        setSelectedIds(new Set())
+        showToast(`${okCount} file${okCount === 1 ? '' : 's'} downloaded`, 'success')
+      }
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
   if (status === 'loading' || loading) {
     return (
   <main className="min-h-screen theme-surface">
@@ -1301,6 +1532,24 @@ export default function GalleryPage() {
                   >
                     <Share2 className="h-4 w-4" />
                     Share {MEDIA_FILTER_OPTIONS.find((option) => option.value === mediaFilter)?.label || 'All'}
+                  </button>
+
+                  {/* Selection mode toggle */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectionMode((prev) => !prev)
+                      setSelectedIds(new Set())
+                    }}
+                    title={selectionMode ? 'Exit selection' : 'Select items'}
+                    className={`group inline-flex items-center justify-center gap-2 rounded-[var(--radius-box)] border px-4 py-3 text-sm font-semibold transition-all duration-300 ${selectionMode ? 'border-primary-500/50 bg-primary-500/20 text-primary-200' : 'border-white/15 bg-white/5 text-base-content hover:bg-white/10'}`}
+                  >
+                    {selectionMode ? (
+                      <X className="h-4 w-4 transition-transform duration-300 group-hover:rotate-90" />
+                    ) : (
+                      <ListChecks className="h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
+                    )}
+                    {selectionMode ? 'Cancel' : 'Select'}
                   </button>
 
                   {/* Media filter */}
@@ -1386,6 +1635,74 @@ export default function GalleryPage() {
               </div>
             )}
 
+            {/* Selection bar */}
+            {selectionMode && (
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-box)] border border-primary-500/25 bg-primary-500/10 px-4 py-3 animate-fade-in">
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  <span className="font-semibold text-primary-200">{selectedIds.size} selected</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedIds(new Set(filteredImages.map((img) => img.id)))}
+                    className="font-medium text-primary-300 underline-offset-2 transition-colors hover:text-primary-200 hover:underline"
+                  >
+                    All ({filteredImages.length})
+                  </button>
+                  {selectedIds.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedIds(new Set())}
+                      className="font-medium text-white/60 underline-offset-2 transition-colors hover:text-white hover:underline"
+                    >
+                      None
+                    </button>
+                  )}
+                </div>
+                {selectedIds.size > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleBulkDownload}
+                      disabled={isDownloading || isDeleting || isBulkVaulting}
+                      className="group inline-flex items-center gap-1.5 rounded-[var(--radius-box)] border border-primary-500/30 bg-primary-500/15 px-3 py-2 text-xs font-semibold text-primary-200 transition-all duration-300 hover:bg-primary-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isDownloading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4 transition-transform duration-200 group-hover:translate-y-0.5" />
+                      )}
+                      Download
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleBulkVault}
+                      disabled={isDownloading || isDeleting || isBulkVaulting}
+                      className="group inline-flex items-center gap-1.5 rounded-[var(--radius-box)] border border-primary-500/30 bg-primary-500/15 px-3 py-2 text-xs font-semibold text-primary-200 transition-all duration-300 hover:bg-primary-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isBulkVaulting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <LockKeyhole className="h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
+                      )}
+                      Vault
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowBulkDeleteConfirm(true)}
+                      disabled={isDownloading || isDeleting || isBulkVaulting}
+                      className="group inline-flex items-center gap-1.5 rounded-[var(--radius-box)] border border-red-500/40 bg-red-500/15 px-3 py-2 text-xs font-semibold text-red-400 transition-all duration-300 hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isDeleting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4 transition-transform duration-300 group-hover:-rotate-12" />
+                      )}
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Content */}
             {loadError ? (
               <div className="glass rounded-[var(--radius-box)] p-8 text-error text-center animate-fade-in">
@@ -1423,6 +1740,8 @@ export default function GalleryPage() {
                             viewMode={viewMode}
                             preferredProvider={preferredProvider}
                             preferredVideoSource={preferredVideoSource}
+                            selectMode={selectionMode}
+                            selected={selectedIds.has(img.id)}
                             onClick={() => handleImageClick(img, globalIndex)}
                           />
                         )
@@ -1451,6 +1770,8 @@ export default function GalleryPage() {
                             viewMode={viewMode}
                             preferredProvider={preferredProvider}
                             preferredVideoSource={preferredVideoSource}
+                            selectMode={selectionMode}
+                            selected={selectedIds.has(img.id)}
                             onClick={() => handleImageClick(img, globalIndex)}
                           />
                         )
@@ -1476,11 +1797,145 @@ export default function GalleryPage() {
           onShare={handleShareImage}
           onShareAlbum={handleShareAlbum}
           onMoveToVault={handleMoveToVault}
+          onDelete={handleRequestDelete}
+          isDeleting={isDeleting}
           shareStatus={shareStatus}
           preferredProvider={preferredProvider}
           preferredVideoSource={preferredVideoSource}
           firebaseProjectId={firebaseProjectId}
         />
+      )}
+
+      {/* Single Delete Confirmation Modal */}
+      <Modal isOpen={showDeleteConfirm} onClose={() => !isDeleting && setShowDeleteConfirm(false)}>
+        <div className="text-center space-y-6">
+          <div className="flex items-center justify-center mb-4">
+            <Trash2 size={48} className="animate-scale-in" style={{ color: 'var(--color-error)', opacity: 0.7 }} />
+          </div>
+
+          <h3 className="text-2xl font-bold text-error">Move to Trash?</h3>
+
+          <p className="text-base-content/80 text-lg leading-relaxed">
+            This will move the item to trash and keep saved host URLs so restore/retry still works.
+            <br />
+            <span className="font-semibold text-warning">You can restore it later from the trash.</span>
+          </p>
+
+          <div className="flex gap-4 justify-center pt-4">
+            <button
+              onClick={() => {
+                setShowDeleteConfirm(false)
+                setPendingDeleteImage(null)
+              }}
+              disabled={isDeleting}
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content font-medium hover:bg-base-300 hover:scale-105 active:scale-95 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+
+            <button
+              onClick={handleConfirmSingleDelete}
+              disabled={isDeleting}
+              className="group relative px-8 py-3 rounded-[var(--radius-box)] overflow-hidden bg-error text-error-content border border-red-500/40 transform transition-all duration-300 hover:scale-105 hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {isDeleting && <div className="absolute inset-0 bg-error-content animate-ping opacity-10" />}
+              <div className="relative flex items-center gap-2 font-bold text-lg">
+                {isDeleting ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    <span>Moving...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-5 h-5 group-hover:-rotate-12 transition-transform duration-300" />
+                    <span>Move to Trash</span>
+                  </>
+                )}
+              </div>
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk Delete Confirmation Modal */}
+      <Modal isOpen={showBulkDeleteConfirm} onClose={() => !isDeleting && setShowBulkDeleteConfirm(false)}>
+        <div className="text-center space-y-6">
+          <div className="flex items-center justify-center mb-4">
+            <Trash2 size={48} className="animate-scale-in" style={{ color: 'var(--color-error)', opacity: 0.7 }} />
+          </div>
+
+          <h3 className="text-2xl font-bold text-error">
+            Move {selectedIds.size} Item{selectedIds.size === 1 ? '' : 's'} to Trash?
+          </h3>
+
+          <p className="text-base-content/80 text-lg leading-relaxed">
+            This will move {selectedIds.size} item{selectedIds.size === 1 ? '' : 's'} to trash and keep saved host URLs so restore/retry still works.
+            <br />
+            <span className="font-semibold text-warning">You can restore {selectedIds.size === 1 ? 'it' : 'them'} later from the trash.</span>
+          </p>
+
+          <div className="flex gap-4 justify-center pt-4">
+            <button
+              onClick={() => setShowBulkDeleteConfirm(false)}
+              disabled={isDeleting}
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content font-medium hover:bg-base-300 hover:scale-105 active:scale-95 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+
+            <button
+              onClick={handleBulkDelete}
+              disabled={isDeleting}
+              className="group relative px-8 py-3 rounded-[var(--radius-box)] overflow-hidden bg-error text-error-content border border-red-500/40 transform transition-all duration-300 hover:scale-105 hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {isDeleting && <div className="absolute inset-0 bg-error-content animate-ping opacity-10" />}
+              <div className="relative flex items-center gap-2 font-bold text-lg">
+                {isDeleting ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    <span>Moving...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-5 h-5 group-hover:-rotate-12 transition-transform duration-300" />
+                    <span>Move to Trash</span>
+                  </>
+                )}
+              </div>
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Toast */}
+      {toast && (
+        <div
+          key={toast.id}
+          className="fixed bottom-5 right-5 z-[300] max-w-sm animate-fade-in"
+          role="status"
+          aria-live="polite"
+        >
+          <div
+            className={`flex items-start gap-3 rounded-[var(--radius-box)] border px-4 py-3 shadow-2xl backdrop-blur-md ${
+              toast.type === 'error'
+                ? 'border-red-500/50 bg-red-500/15 text-red-500'
+                : toast.type === 'info'
+                  ? 'border-sky-500/50 bg-sky-500/15 text-sky-500'
+                  : 'border-green-500/50 bg-green-500/15 text-green-500'
+            }`}
+          >
+            <span className="mt-0.5 shrink-0 animate-bounce">
+              {toast.type === 'error' ? (
+                <XCircle className="w-5 h-5" />
+              ) : toast.type === 'info' ? (
+                <Info className="w-5 h-5" />
+              ) : (
+                <CheckCircle2 className="w-5 h-5" />
+              )}
+            </span>
+            <p className="text-sm font-medium leading-snug">{toast.message}</p>
+          </div>
+        </div>
       )}
 
       <style jsx global>{`
