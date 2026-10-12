@@ -6,7 +6,7 @@ import {
   settings as settingsTable,
   userConfigs,
 } from '@/db/schema'
-import { and, desc, eq, isNotNull, sql } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 import { auth } from '@/app/api/auth/[...nextauth]/route'
 import { isSystemMediaItem, isVaultedMediaItem } from '@/lib/vault-media'
 import { getImageProviderLinks } from '@/lib/image-provider-links'
