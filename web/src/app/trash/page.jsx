@@ -9,19 +9,16 @@ import {
   Search,
   Calendar,
   Film,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  FileText,
-  Tag,
-  ExternalLink,
+  AlertTriangle,
+  Undo2,
+  CheckCircle2,
+  XCircle,
+  Info,
 } from 'lucide-react'
+import { Modal } from 'imgvault-ui'
 import AppNavbar from '../components/AppNavbar'
+import TrashLightbox from '../components/TrashLightbox'
 import { getPreferredImageProviderLink } from '@/lib/image-provider-links'
-import {
-  getBaseFieldKeys,
-  getTechnicalMetadataEntries,
-} from '@shared/mediaFieldRegistry.js'
 
 function toProxyUrl(url) {
   if (!url || typeof url !== 'string') return null
@@ -109,245 +106,6 @@ function TrashThumbnail({ item }) {
   )
 }
 
-function formatFieldLabel(key) {
-  return key
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
-    .trim()
-}
-
-function formatFieldValue(key, value) {
-  if (value === undefined || value === null || value === '') return 'N/A'
-  if (Array.isArray(value)) return value.length ? value.join(', ') : 'N/A'
-
-  if (
-    key === 'deletedAt' ||
-    key === 'internalAddedTimestamp' ||
-    key === 'creationDate' ||
-    key === 'ProfileDateTime'
-  ) {
-    const dt = new Date(value)
-    if (!Number.isNaN(dt.getTime())) return dt.toLocaleString()
-  }
-
-  if (key === 'fileSize' && Number.isFinite(Number(value))) {
-    const bytes = Number(value)
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-  }
-
-  if (typeof value === 'object') return JSON.stringify(value)
-  return String(value)
-}
-
-function TrashLightbox({ item, items, currentIndex, onClose, onNavigate }) {
-  const [isLoading, setIsLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('noobs')
-
-  useEffect(() => {
-    setIsLoading(true)
-  }, [item?.id])
-
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose()
-      if (e.key === 'ArrowLeft' && currentIndex > 0) onNavigate(currentIndex - 1)
-      if (e.key === 'ArrowRight' && currentIndex < items.length - 1) onNavigate(currentIndex + 1)
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentIndex, items.length, onClose, onNavigate])
-
-  const noobFields = [...new Set([...getBaseFieldKeys(item), 'deletedAt'])]
-  const nerdFields = getTechnicalMetadataEntries(item).map(([field]) => field)
-
-  const isUrlField = (key) => key.toLowerCase().endsWith('url')
-  const filemoonUrl =
-    typeof item?.filemoonUrl === 'string' && /^https?:\/\//i.test(item.filemoonUrl)
-      ? item.filemoonUrl
-      : null
-  const udropUrl =
-    typeof item?.udropUrl === 'string' && /^https?:\/\//i.test(item.udropUrl)
-      ? item.udropUrl
-      : null
-  const imageUrl =
-    getPreferredImageProviderLink(item, 'imgbb', 'url') || item?.sourceImageUrl || item?.imgbbThumbUrl || null
-
-  const renderMetadataField = (key, index) => {
-    const rawValue = item?.[key]
-    const displayValue = formatFieldValue(key, rawValue)
-
-    if (rawValue === undefined || rawValue === null || rawValue === '') {
-      return null
-    }
-
-    return (
-      <div key={key}>
-        <div className="text-xs font-semibold text-base-content/65 mb-1 flex items-center gap-2">
-          {key === 'tags' ? <Tag className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
-          {`${index + 1}. ${formatFieldLabel(key)}`}
-        </div>
-
-        {key === 'tags' && Array.isArray(rawValue) && rawValue.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {rawValue.map((tag) => (
-              <span
-                key={`${key}-${tag}`}
-                className="px-3 py-1 rounded-full bg-error/20 text-error text-sm"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        ) : isUrlField(key) && typeof rawValue === 'string' ? (
-          <div className="bg-base-200/60 rounded p-2">
-            <a
-              href={rawValue}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-start gap-2 text-error hover:text-error break-all text-sm"
-            >
-              <ExternalLink className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              <span>{rawValue}</span>
-            </a>
-          </div>
-        ) : (
-          <div className="bg-base-200/60 rounded p-2">
-            <p className="text-base-content text-sm break-all font-mono">{displayValue}</p>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-[100] flex flex-col lg:flex-row bg-black/90 backdrop-blur-xl animate-fade-in"
-      onClick={onClose}
-    >
-      <div className="flex-1 flex items-center justify-center p-3 sm:p-6 lg:p-8 relative min-h-[45vh] lg:min-h-0">
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 sm:top-6 sm:right-6 p-2 sm:p-3 glass rounded-full hover:bg-base-content/20 transition-all duration-300 z-10"
-        >
-          <X className="w-5 h-5 sm:w-6 sm:h-6" />
-        </button>
-
-        {currentIndex > 0 && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onNavigate(currentIndex - 1)
-            }}
-            className="absolute left-2 sm:left-6 p-2 sm:p-4 glass rounded-full hover:bg-base-content/20 transition-all duration-300 hover:-translate-x-1"
-          >
-            <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
-          </button>
-        )}
-
-        {currentIndex < items.length - 1 && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onNavigate(currentIndex + 1)
-            }}
-            className="absolute right-2 sm:right-6 p-2 sm:p-4 glass rounded-full hover:bg-base-content/20 transition-all duration-300 hover:translate-x-1"
-          >
-            <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
-          </button>
-        )}
-
-        <div
-          className="relative max-w-full max-h-full animate-scale-in w-full h-full flex items-center justify-center"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Loader2 className="w-10 h-10 animate-spin text-error" />
-            </div>
-          )}
-
-          {filemoonUrl ? (
-            <iframe
-              src={filemoonUrl}
-              title={item.pageTitle || 'Trashed video'}
-              className="w-full max-w-5xl h-auto min-h-[200px] rounded-[var(--radius-box)] shadow-2xl"
-              frameBorder="0"
-              scrolling="no"
-              onLoad={() => setIsLoading(false)}
-            />
-          ) : udropUrl ? (
-            <video
-              src={udropUrl}
-              controls
-              className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
-              onLoadedMetadata={() => setIsLoading(false)}
-            />
-          ) : imageUrl ? (
-            <img
-              src={imageUrl}
-              alt={item.pageTitle || 'Trashed image'}
-              className={`max-w-full max-h-[55vh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
-              onLoad={() => setIsLoading(false)}
-              onError={() => setIsLoading(false)}
-            />
-          ) : (
-            <div className="w-72 h-72 rounded-[var(--radius-box)] bg-base-100/80 flex flex-col items-center justify-center gap-3">
-              <Film className="w-12 h-12 text-error" />
-              <p className="text-base-content/75">Preview unavailable</p>
-            </div>
-          )}
-        </div>
-
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 glass rounded-full text-sm">
-          {currentIndex + 1} / {items.length}
-        </div>
-      </div>
-
-      <div className="w-full lg:w-[400px] max-h-[50vh] lg:max-h-none bg-base-100/95 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-base-content/15 overflow-y-auto flex flex-col">
-        <div className="p-6 flex-1">
-          <div className="flex gap-2 mb-6 border-b border-base-content/15 pb-4">
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                setActiveTab('noobs')
-              }}
-              className={`px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] ${
-                activeTab === 'noobs'
-                  ? 'bg-error/20 text-error'
-                  : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'
-              }`}
-            >
-              For Noobs 👶
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                setActiveTab('nerds')
-              }}
-              className={`px-4 py-2 font-semibold transition-all rounded-[var(--radius-box)] ${
-                activeTab === 'nerds'
-                  ? 'bg-error/20 text-error'
-                  : 'text-base-content/65 hover:text-base-content hover:bg-base-content/5'
-              }`}
-            >
-              For Nerds 🤓
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            {(activeTab === 'noobs' ? noobFields : nerdFields)
-              .map((field, index) => renderMetadataField(field, index))
-              .filter(Boolean)}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function EmptyState() {
   return (
     <div className="text-center py-20 animate-fade-in">
@@ -360,6 +118,8 @@ function EmptyState() {
   )
 }
 
+const TOAST_DURATIONS = { info: 0, success: 3000, error: 4000 }
+
 export default function TrashPage() {
   const { status } = useSession()
   const [items, setItems] = useState([])
@@ -368,6 +128,11 @@ export default function TrashPage() {
   const [loadError, setLoadError] = useState('')
   const [selectedItem, setSelectedItem] = useState(null)
   const [selectedIndex, setSelectedIndex] = useState(-1)
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showEmptyConfirm, setShowEmptyConfirm] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [toast, setToast] = useState(null)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -379,12 +144,22 @@ export default function TrashPage() {
     }
   }, [status])
 
-  const loadTrash = async () => {
-    setLoading(true)
+  useEffect(() => {
+    if (!toast || !toast.duration) return undefined
+    const timer = setTimeout(() => setToast(null), toast.duration)
+    return () => clearTimeout(timer)
+  }, [toast])
+
+  const showToast = (message, type = 'success') => {
+    setToast({ id: Date.now(), message, type, duration: TOAST_DURATIONS[type] ?? 3000 })
+  }
+
+  const loadTrash = async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true)
     setLoadError('')
     try {
       const res = await fetch('/api/trash', { cache: 'no-store' })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error(data.error || 'Failed to load trash')
       }
@@ -392,7 +167,108 @@ export default function TrashPage() {
     } catch (error) {
       setLoadError(error.message || 'Failed to load trash')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
+    }
+  }
+
+  const postTrashAction = async (payload) => {
+    const res = await fetch('/api/trash', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(data.error || `Trash action failed (${res.status})`)
+    }
+    return data
+  }
+
+  const handleRestore = async () => {
+    if (!selectedItem) return
+    setIsProcessing(true)
+    setShowRestoreConfirm(false)
+    try {
+      showToast('Restoring item...', 'info')
+      await postTrashAction({ action: 'restore', id: selectedItem.id })
+      showToast('Item restored successfully!', 'success')
+      handleCloseLightbox()
+      await loadTrash({ silent: true })
+    } catch (error) {
+      showToast(error.message || 'Failed to restore', 'error')
+      await loadTrash({ silent: true })
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handleDeleteForever = async () => {
+    if (!selectedItem) return
+    setIsProcessing(true)
+    setShowDeleteConfirm(false)
+    try {
+      showToast('Permanently deleting from trash and hosts where possible...', 'info')
+      await postTrashAction({ action: 'delete', id: selectedItem.id })
+      showToast('Item permanently deleted!', 'success')
+      handleCloseLightbox()
+      await loadTrash({ silent: true })
+    } catch (error) {
+      showToast(error.message || 'Failed to delete', 'error')
+      await loadTrash({ silent: true })
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handleEmptyTrash = async () => {
+    setIsProcessing(true)
+    setShowEmptyConfirm(false)
+    handleCloseLightbox()
+    try {
+      showToast('Emptying trash...', 'info')
+      const result = await postTrashAction({ action: 'empty' })
+      const deleted = Number(result?.deleted) || 0
+      showToast(`Trash emptied — ${deleted} item${deleted !== 1 ? 's' : ''} deleted.`, 'success')
+      await loadTrash({ silent: true })
+    } catch (error) {
+      showToast(error.message || 'Failed to empty trash', 'error')
+      await loadTrash({ silent: true })
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handleSaveCreationDate = async (inputValue) => {
+    if (!selectedItem) return false
+    const parsed = new Date(inputValue)
+    if (Number.isNaN(parsed.getTime())) {
+      showToast('Invalid date value', 'error')
+      return false
+    }
+    setIsProcessing(true)
+    try {
+      const iso = parsed.toISOString()
+      const res = await fetch('/api/images', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selectedItem.id, updates: { creationDate: iso } }),
+        cache: 'no-store',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update creation date')
+      }
+      const id = selectedItem.id
+      setSelectedItem((prev) => (prev?.id === id ? { ...prev, creationDate: iso } : prev))
+      setItems((prev) => prev.map((it) => (it.id === id ? { ...it, creationDate: iso } : it)))
+      showToast('Creation date updated', 'success')
+      return true
+    } catch (error) {
+      showToast(error.message || 'Failed to update creation date', 'error')
+      return false
+    } finally {
+      setIsProcessing(false)
     }
   }
 
@@ -453,18 +329,42 @@ export default function TrashPage() {
                 </p>
               </div>
               {items.length > 0 && (
-                <div className="relative group w-full md:w-80">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/55" />
-                  <input
-                    type="text"
-                    placeholder="Search trash..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-11 pr-4 py-3 bg-base-200/60 border border-base-content/10 rounded-[var(--radius-box)] text-sm focus:outline-none focus:border-red-500/50 w-full"
-                  />
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => setShowEmptyConfirm(true)}
+                    disabled={isProcessing}
+                    className="group inline-flex items-center justify-center gap-2 rounded-[var(--radius-box)] border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-semibold text-error transition-all duration-200 hover:bg-red-500/20 hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Trash2 className="w-4 h-4 transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110" />
+                    <span>Empty Trash</span>
+                  </button>
+                  <div className="relative group w-full sm:w-72 md:w-80">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/55 transition-transform duration-300 group-hover:scale-110" />
+                    <input
+                      type="text"
+                      placeholder="Search trash..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-11 pr-4 py-3 bg-base-200 border border-base-300 rounded-[var(--radius-box)] text-sm focus:outline-none focus:border-red-500 w-full"
+                    />
+                  </div>
                 </div>
               )}
             </div>
+
+            {!loadError && items.length > 0 && (
+              <div className="mb-8 p-4 bg-amber-500/10 border border-amber-500/40 rounded-[var(--radius-box)] backdrop-blur-sm flex items-start gap-3 animate-fade-in">
+                <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0 text-warning animate-pulse" />
+                <div className="text-sm">
+                  <p className="font-medium text-warning">Trash keeps saved host URLs</p>
+                  <p className="text-base-content/80 mt-1">
+                    Saved host URLs are kept so restore and retry still work. Permanent delete removes the vault row
+                    and attempts host cleanup when a provider delete URL exists.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {loadError ? (
               <div className="glass rounded-[var(--radius-box)] p-8 text-error text-center">
@@ -510,7 +410,223 @@ export default function TrashPage() {
           currentIndex={selectedIndex}
           onClose={handleCloseLightbox}
           onNavigate={handleNavigate}
+          onRestore={() => setShowRestoreConfirm(true)}
+          onDeleteForever={() => setShowDeleteConfirm(true)}
+          onSaveCreationDate={handleSaveCreationDate}
+          isProcessing={isProcessing}
         />
+      )}
+
+      {/* Restore Confirmation Modal */}
+      <Modal isOpen={showRestoreConfirm} onClose={() => setShowRestoreConfirm(false)}>
+        <div className="text-center space-y-6">
+          <div className="flex items-center justify-center mb-4">
+            <Undo2 size={48} className="animate-scale-in" style={{ color: 'var(--color-success)', opacity: 0.7 }} />
+          </div>
+
+          <h3 className="text-2xl font-bold text-success">Restore Image?</h3>
+
+          <p className="text-base-content/80 text-lg leading-relaxed">
+            This will restore the image back to your gallery.
+            <br />
+            <span className="font-semibold text-success">You can access it normally again.</span>
+          </p>
+
+          <div className="flex gap-4 justify-center pt-4">
+            <button
+              onClick={() => setShowRestoreConfirm(false)}
+              disabled={isProcessing}
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content font-medium hover:bg-base-300 hover:scale-105 active:scale-95 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+
+            <button
+              onClick={handleRestore}
+              disabled={isProcessing}
+              className="group relative px-8 py-3 rounded-[var(--radius-box)] overflow-hidden bg-success text-success-content border border-success/40 transform transition-all duration-300 hover:scale-105 hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {isProcessing && (
+                <div className="absolute inset-0 bg-success-content animate-ping opacity-10" />
+              )}
+              <div className="relative flex items-center gap-2 font-bold text-lg">
+                {isProcessing ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-success-content/30 border-t-success-content rounded-full animate-spin" />
+                    <span>Restoring...</span>
+                  </>
+                ) : (
+                  <>
+                    <Undo2 className="w-5 h-5 group-hover:-rotate-12 transition-transform duration-300" />
+                    <span>Restore</span>
+                  </>
+                )}
+              </div>
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Permanent Delete Confirmation Modal */}
+      <Modal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)}>
+        <div className="text-center space-y-6">
+          <div className="flex items-center justify-center mb-4">
+            <AlertTriangle size={48} className="animate-pulse" style={{ color: 'var(--color-error)', opacity: 0.7 }} />
+          </div>
+
+          <h3 className="text-2xl font-bold text-error">Permanently Delete?</h3>
+
+          <div className="text-left bg-red-500/10 border border-red-500/30 rounded-[var(--radius-box)] p-4 space-y-2">
+            <p className="text-base-content/80 leading-relaxed">
+              This will permanently delete the item from:
+            </p>
+            <ul className="list-disc list-inside text-base-content/80 space-y-1 ml-2">
+              {selectedItem?.imgbbUrl && <li>ImgBB hosting</li>}
+              {selectedItem?.pixvidUrl && !selectedItem?.filemoonUrl && !selectedItem?.udropUrl && (
+                <li>Pixvid hosting</li>
+              )}
+              {selectedItem?.filemoonUrl && (
+                <li className="text-warning">⚠️ Filemoon video (must be manually deleted from dashboard)</li>
+              )}
+              {selectedItem?.udropUrl && (
+                <li className="text-warning">⚠️ UDrop video (must be manually deleted from dashboard)</li>
+              )}
+              <li>Your trash bin</li>
+            </ul>
+          </div>
+
+          <p className="text-warning font-semibold text-lg flex items-center justify-center gap-2">
+            <AlertTriangle size={20} />
+            This action cannot be undone!
+          </p>
+
+          <div className="flex gap-4 justify-center pt-4">
+            <button
+              onClick={() => setShowDeleteConfirm(false)}
+              disabled={isProcessing}
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content font-medium hover:bg-base-300 hover:scale-105 active:scale-95 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+
+            <button
+              onClick={handleDeleteForever}
+              disabled={isProcessing}
+              className="group relative px-8 py-3 rounded-[var(--radius-box)] overflow-hidden bg-error text-error-content border border-error/40 transform transition-all duration-300 hover:scale-105 hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {isProcessing && (
+                <div className="absolute inset-0 bg-error-content animate-ping opacity-10" />
+              )}
+              <div className="relative flex items-center gap-2 font-bold text-lg">
+                {isProcessing ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-error-content/30 border-t-error-content rounded-full animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
+                    <span>Delete Forever</span>
+                  </>
+                )}
+              </div>
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Empty Trash Confirmation Modal */}
+      <Modal isOpen={showEmptyConfirm} onClose={() => setShowEmptyConfirm(false)}>
+        <div className="text-center space-y-6">
+          <div className="flex items-center justify-center mb-4">
+            <Trash2 size={48} className="animate-pulse" style={{ color: 'var(--color-error)', opacity: 0.7 }} />
+          </div>
+
+          <h3 className="text-2xl font-bold text-error">Empty Entire Trash?</h3>
+
+          <div className="text-left bg-red-500/10 border border-red-500/30 rounded-[var(--radius-box)] p-4 space-y-2">
+            <p className="text-base-content/80 leading-relaxed">
+              This will permanently delete{' '}
+              <span className="font-bold text-error">
+                {items.length} item{items.length !== 1 ? 's' : ''}
+              </span>{' '}
+              from:
+            </p>
+            <ul className="list-disc list-inside text-base-content/80 space-y-1 ml-2">
+              <li>Provider hosts where a saved delete URL exists</li>
+              <li>Your trash bin</li>
+            </ul>
+          </div>
+
+          <p className="text-warning font-semibold text-lg flex items-center justify-center gap-2">
+            <AlertTriangle size={20} />
+            This action cannot be undone!
+          </p>
+
+          <div className="flex gap-4 justify-center pt-4">
+            <button
+              onClick={() => setShowEmptyConfirm(false)}
+              disabled={isProcessing}
+              className="px-6 py-3 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content font-medium hover:bg-base-300 hover:scale-105 active:scale-95 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+
+            <button
+              onClick={handleEmptyTrash}
+              disabled={isProcessing}
+              className="group relative px-8 py-3 rounded-[var(--radius-box)] overflow-hidden bg-error text-error-content border border-error/40 transform transition-all duration-300 hover:scale-105 hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {isProcessing && (
+                <div className="absolute inset-0 bg-error-content animate-ping opacity-10" />
+              )}
+              <div className="relative flex items-center gap-2 font-bold text-lg">
+                {isProcessing ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-error-content/30 border-t-error-content rounded-full animate-spin" />
+                    <span>Emptying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
+                    <span>Empty Trash</span>
+                  </>
+                )}
+              </div>
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Toast */}
+      {toast && (
+        <div
+          key={toast.id}
+          className="fixed bottom-5 right-5 z-[300] max-w-sm animate-fade-in"
+          role="status"
+          aria-live="polite"
+        >
+          <div
+            className={`flex items-start gap-3 rounded-[var(--radius-box)] border px-4 py-3 shadow-2xl backdrop-blur-md ${
+              toast.type === 'error'
+                ? 'border-red-500/50 bg-red-500/15 text-red-500'
+                : toast.type === 'info'
+                  ? 'border-sky-500/50 bg-sky-500/15 text-sky-500'
+                  : 'border-green-500/50 bg-green-500/15 text-green-500'
+            }`}
+          >
+            <span className="mt-0.5 shrink-0 animate-bounce">
+              {toast.type === 'error' ? (
+                <XCircle className="w-5 h-5" />
+              ) : toast.type === 'info' ? (
+                <Info className="w-5 h-5" />
+              ) : (
+                <CheckCircle2 className="w-5 h-5" />
+              )}
+            </span>
+            <p className="text-sm font-medium leading-snug">{toast.message}</p>
+          </div>
+        </div>
       )}
 
       <style jsx global>{`
@@ -541,4 +657,3 @@ export default function TrashPage() {
     </>
   )
 }
-

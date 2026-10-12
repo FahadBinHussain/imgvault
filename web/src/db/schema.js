@@ -125,6 +125,18 @@ export const mediaItems = pgTable('media_items', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
+// Server-side encrypted vault previews (2.12.83): never joined into list
+// payloads; the FK cascade drops the row when a media_items row is
+// hard-deleted (trash delete/empty), and a trash restore that does NOT
+// re-vault deletes it explicitly (mirror of restoreFromTrashNeon).
+export const mediaItemPreviews = pgTable('media_item_previews', {
+  itemId: text('item_id')
+    .primaryKey()
+    .references(() => mediaItems.id, { onDelete: 'cascade' }),
+  previewEncrypted: text('preview_encrypted').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export const settings = pgTable('settings', {
   id: text('id').primaryKey().default('config'),
   pixvidApiKey: text('pixvid_api_key').notNull().default(''),
