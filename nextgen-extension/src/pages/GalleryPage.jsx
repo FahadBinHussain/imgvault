@@ -25,6 +25,7 @@ import { FilemoonUploader, UDropUploader, TeraBoxUploader } from '../utils/uploa
 import { encryptBlob, encryptMetadata } from '../utils/vaultCrypto.js';
 import { getVaultMasterKey, importMasterKeyFromB64 } from '../utils/vaultSession.js';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
+import { downloadItemDirect } from '../utils/downloads';
 import {
   getConfiguredVideoUploadServices,
   getMissingVideoUploadServices,
@@ -185,6 +186,7 @@ export default function GalleryPage() {
   const [toast, setToast] = useState(null); // Toast notification state
   const [isDeleting, setIsDeleting] = useState(false); // Track deletion progress
   const [isVaulting, setIsVaulting] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false); // bulk download progress
   const [loadedImages, setLoadedImages] = useState(new Set()); // Track loaded images for fade-in
   const [failedImages, setFailedImages] = useState(new Set()); // Track images that failed to load
   const [navbarHeight, setNavbarHeight] = useState(0);
@@ -724,6 +726,53 @@ export default function GalleryPage() {
     const items = filteredImages.filter((img) => selectedImages.has(img.id));
     setVaultMoveItems(items);
     setVaultMoveOpen(true);
+  };
+
+  // Bulk download: strict settings source per item, direct fetch, loud
+  // aggregated summary. Failed ids stay selected so the user can retry.
+  const handleBulkDownload = async () => {
+    if (selectedImages.size === 0 || isDownloading) return;
+
+    const items = filteredImages.filter((img) => selectedImages.has(img.id));
+    if (!items.length) return;
+
+    setIsDownloading(true);
+    let okCount = 0;
+    const failed = [];
+    try {
+      for (let i = 0; i < items.length; i += 1) {
+        const item = items[i];
+        showToast(`⬇️ Downloading ${i + 1} of ${items.length}: ${item.pageTitle || item.id}`, 'info', 4000);
+        try {
+          await downloadItemDirect(item, {
+            imageSource: defaultGallerySource,
+            videoSource: defaultVideoSource,
+          });
+          okCount += 1;
+        } catch (error) {
+          failed.push({ id: item.id, message: error?.message || 'Download failed' });
+        }
+        // let the browser start each save before the next fetch
+        if (i < items.length - 1) await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+
+      if (failed.length > 0) {
+        setSelectedImages(new Set(failed.map((entry) => entry.id)));
+        const firstItem = items.find((item) => item.id === failed[0].id);
+        const suffix = failed.length > 1 ? ` (+${failed.length - 1} more kept selected)` : '';
+        showToast(
+          `❌ ${okCount} downloaded, ${failed.length} failed - "${(firstItem?.pageTitle || firstItem?.id || 'item').slice(0, 60)}": ${failed[0].message.slice(0, 120)}${suffix}`,
+          'error',
+          8000
+        );
+      } else {
+        showToast(`✅ ${okCount} file${okCount === 1 ? '' : 's'} downloaded`, 'success', 3000);
+        setSelectedImages(new Set());
+        setSelectionMode(false);
+      }
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const isHttpUrl = (value) =>
@@ -3992,6 +4041,8 @@ export default function GalleryPage() {
         isDeleting={isDeleting || isVaulting}
         onHeightChange={setNavbarHeight}
         onMoveSelectedToVault={handleBulkMoveToVault}
+        onDownloadSelected={handleBulkDownload}
+        isDownloading={isDownloading}
         isGalleryPage
       />
 

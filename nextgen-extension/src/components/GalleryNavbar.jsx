@@ -142,6 +142,8 @@ export default function GalleryNavbar({
   isCollectionsPage = false,
   onEmptyTrash,
   onMoveSelectedToVault,
+  onDownloadSelected,
+  isDownloading = false,
 }) {
   const navRef = useRef(null);
   const visibleCount = Number.isFinite(displayCount)
@@ -410,6 +412,11 @@ export default function GalleryNavbar({
                   {typeof onMoveSelectedToVault === 'function' && (
                     <button onClick={onMoveSelectedToVault} disabled={isDeleting} className="iv-select-btn iv-select-btn-on">
                       Vault
+                    </button>
+                  )}
+                  {typeof onDownloadSelected === 'function' && (
+                    <button onClick={onDownloadSelected} disabled={isDeleting || isDownloading} className="iv-select-btn iv-select-btn-on">
+                      {isDownloading ? 'Downloading...' : 'Download'}
                     </button>
                   )}
                   <button onClick={() => setShowBulkDeleteConfirm(true)} disabled={isDeleting} className="iv-sel-del">
