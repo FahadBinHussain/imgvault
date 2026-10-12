@@ -260,6 +260,47 @@ export async function POST(request) {
   const action = typeof body?.action === 'string' ? body.action : ''
   const id = typeof body?.id === 'string' ? body.id.trim() : ''
 
+  if (action === 'trash') {
+    // Move INTO trash — mirror of the extension's moveToTrashNeon: stamp
+    // deleted_at + updated_at on a live row and drop the collection count.
+    if (!id) {
+      return Response.json({ error: 'Item id is required' }, { status: 400 })
+    }
+    try {
+      const [row] = await db
+        .select({ id: mediaItems.id, collectionId: mediaItems.collectionId })
+        .from(mediaItems)
+        .where(and(eq(mediaItems.id, id), isNull(mediaItems.deletedAt)))
+        .limit(1)
+      if (!row) {
+        return Response.json(
+          { error: 'Item not found (already in trash, or never existed)' },
+          { status: 404 }
+        )
+      }
+
+      const now = new Date()
+      await db
+        .update(mediaItems)
+        .set({ deletedAt: now, updatedAt: now })
+        .where(and(eq(mediaItems.id, id), isNull(mediaItems.deletedAt)))
+
+      if (row.collectionId) {
+        await db
+          .update(collections)
+          .set({ imageCount: sql`greatest(0, ${collections.imageCount} - 1)`, updatedAt: now })
+          .where(eq(collections.id, row.collectionId))
+      }
+
+      return Response.json({ success: true, id })
+    } catch (error) {
+      return Response.json(
+        { error: error?.message || 'Move to trash failed' },
+        { status: 500 }
+      )
+    }
+  }
+
   if (action === 'restore' || action === 'delete') {
     if (!id) {
       return Response.json({ error: 'Item id is required' }, { status: 400 })
@@ -291,7 +332,7 @@ export async function POST(request) {
   }
 
   return Response.json(
-    { error: `Unknown trash action "${action}" (expected restore, delete or empty)` },
+    { error: `Unknown trash action "${action}" (expected trash, restore, delete or empty)` },
     { status: 400 }
   )
 }
