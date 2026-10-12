@@ -209,9 +209,9 @@ export default function MediaDetailModal({
             <div className="p-6 flex-1 pt-16">
               <h2 className="text-2xl font-bold text-base-content mb-4">{item?.pageTitle || item?.fileName || 'Details'}</h2>
 
-              <div className="flex items-center justify-between gap-3 mb-4" style={{ borderBottom: '1px solid oklch(from var(--color-base-content) l c h / 0.06)' }}>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4" style={{ borderBottom: '1px solid oklch(from var(--color-base-content) l c h / 0.06)' }}>
                 {!isLink && (
-                  <div className="flex gap-1 overflow-x-auto whitespace-nowrap">
+                  <div className="flex gap-1 overflow-x-auto whitespace-nowrap w-full sm:w-auto">
                     <button
                       onClick={() => handleTabSwitch('noobs')}
                       className={`g-tab ${activeTab === 'noobs' ? 'g-tab-on' : ''}`}
