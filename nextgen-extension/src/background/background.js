@@ -5569,16 +5569,12 @@ class ImgVaultServiceWorker {
     if (!url) throw new Error('No URL and no cached data available');
     let fetchUrl = url;
 
-    if (url.includes('udrop.com/file/')) {
-      try {
-        const pageResp = await fetch(url);
-        const html = await pageResp.text();
-        const match = html.match(/url='([^']+)'/i) || html.match(/url="([^"]+)"/i);
-        if (match && match[1]) fetchUrl = match[1];
-      } catch (e) {
-        console.warn('[Fetcher] UDrop page parse failed:', e.message);
-      }
-    }
+    // UDrop /file/{code} URLs 302-redirect straight to the .spz bytes (2026-10-13) — there
+    // is no share-page HTML to parse anymore. The old parse read the ENTIRE redirected 30MB
+    // file as text (194s), failed to match `url='...'` against binary, then the primary
+    // fetch below re-downloaded the same 30MB: two full downloads exceeded Chrome's ~5-min
+    // MV3 message channel and the viewer hung at "Fetching scene data...". The primary
+    // fetch follows the 302 in one download — no parse needed.
 
     // Try primary URL first
     let primaryFailed = false;
@@ -5670,64 +5666,14 @@ class ImgVaultServiceWorker {
       } catch {}
     }
     if (!fetchUrl) throw new Error('No URL and no cached data available');
-    if (fetchUrl.includes('udrop.com')) {
-      try {
-        const code = (() => { const m = String(fetchUrl).match(/udrop\.com(?:\/file)?\/([^\/\?#]+)/i); return m ? m[1] : null; })();
-        let fresh = null;
-        if (mediaId) {
-          try {
-            const it = await this.storage.getImageById(mediaId);
-            const fid = it?.extraMetadata?.sceneSpzFileId || it?.extraMetadata?.sceneFiles?.udrop?.spz?.fileId || '';
-            if (fid && /^\d+$/.test(String(fid))) {
-              const settings = await this.getMergedVideoHostSettings().catch(() => ({}));
-              if (settings?.udropKey1 && settings?.udropKey2) {
-                const uploader = new UDropUploader();
-                const auth = await uploader.authorize(settings.udropKey1, settings.udropKey2);
-                const fd = new FormData();
-                fd.append('access_token', auth.access_token);
-                fd.append('account_id', auth.account_id);
-                fd.append('file_id', String(fid));
-                const r = await fetch('https://www.udrop.com/api/v2/file/download', { method: 'POST', body: fd });
-                if (r.ok) {
-                  const j = await r.json();
-                  if (j?._status === 'success' && j?.data?.download_url) fresh = j.data.download_url;
-                }
-              }
-            }
-          } catch {}
-        }
-        if (!fresh && code) {
-          try {
-            const settings = await this.getMergedVideoHostSettings().catch(() => ({}));
-            if (settings?.udropKey1 && settings?.udropKey2) {
-              const uploader = new UDropUploader();
-              const auth = await uploader.authorize(settings.udropKey1, settings.udropKey2);
-              const fd = new FormData();
-              fd.append('access_token', auth.access_token);
-              fd.append('account_id', auth.account_id);
-              fd.append('short_url', code);
-              const r = await fetch('https://www.udrop.com/api/v2/file/download', { method: 'POST', body: fd });
-              if (r.ok) {
-                const j = await r.json();
-                if (j?._status === 'success' && j?.data?.download_url) fresh = j.data.download_url;
-              }
-            }
-          } catch {}
-        }
-        if (!fresh && fetchUrl.includes('udrop.com/file/')) {
-          const pageResp = await fetch(fetchUrl);
-          const html = await pageResp.text();
-          const match = html.match(/url='([^']+)'/i) || html.match(/url="([^"]+)"/i);
-          if (match && match[1]) fresh = match[1];
-        }
-        if (fresh && fresh !== fetchUrl) {
-          console.log('[getSceneDirectUrl] Refreshed UDrop URL for', mediaId);
-          fetchUrl = fresh;
-        }
-      } catch (e) {
-        console.warn('[getSceneDirectUrl] UDrop refresh failed:', e.message);
-      }
-    }
+    // UDrop: NO URL refresh. `GET /file/{code}` 302-redirects to the bytes with a token
+    // minted per request (verified 200 application/octet-stream, 30,361,257 bytes, 585ms,
+    // cookies irrelevant), so /file/ share links never go stale. The old refresh broke the
+    // scene viewer two ways (2026-10-13): api/v2/file/download now returns download_urls
+    // that 404 on fetch (tested with credentials include AND omit, both 404), and the
+    // share-page parse fetched the .spz through a redirect-to-binary so `url='...'` never
+    // matched — a wasted full-file text download whose result was discarded. All 7 scene
+    // rows store /file/ links (DB-verified 2026-10-13).
     // Terabox dlinks expire in 8h / single-use - refresh via fileId (covers Fix'd scenes where fileId lives in sceneFiles, not videoHosts) (2.12.68)
     if (fetchUrl.includes('terabox.com') && mediaId) {
       try {
