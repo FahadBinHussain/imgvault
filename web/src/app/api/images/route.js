@@ -1,6 +1,7 @@
 import { db } from '@/db'
-import { mediaItems } from '@/db/schema'
+import { collections, mediaItems } from '@/db/schema'
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
+import { collectionCountDeltas } from '@shared/collectionsLogic.js'
 import { auth } from '@/app/api/auth/[...nextauth]/route'
 import {
   VAULT_CONFIG_SYSTEM_TYPE,
@@ -238,6 +239,7 @@ export async function PATCH(request) {
     'sourcePageUrl',
     'description',
     'tags',
+    'collectionId',
   ])
 
   const sanitizedUpdates = {}
@@ -265,6 +267,14 @@ export async function PATCH(request) {
       continue
     }
 
+    if (key === 'collectionId') {
+      if (value !== null && typeof value !== 'string') {
+        return Response.json({ error: 'collectionId must be a string or null' }, { status: 400 })
+      }
+      sanitizedUpdates.collectionId = typeof value === 'string' ? value.trim() || null : null
+      continue
+    }
+
     if (value === null) {
       sanitizedUpdates[key] = null
       continue
@@ -289,6 +299,22 @@ export async function PATCH(request) {
       return Response.json({ error: 'Image not found' }, { status: 404 })
     }
 
+    // assigning to a collection must name one that exists — fail loudly, no silent null
+    if (Object.prototype.hasOwnProperty.call(sanitizedUpdates, 'collectionId') && sanitizedUpdates.collectionId) {
+      const [targetCollection] = await db
+        .select({ id: collections.id })
+        .from(collections)
+        .where(eq(collections.id, sanitizedUpdates.collectionId))
+        .limit(1)
+
+      if (!targetCollection) {
+        return Response.json(
+          { error: `Collection not found: ${sanitizedUpdates.collectionId}` },
+          { status: 400 }
+        )
+      }
+    }
+
     const updateSet = {
       ...sanitizedUpdates,
       updatedAt: new Date(),
@@ -300,6 +326,28 @@ export async function PATCH(request) {
       .update(mediaItems)
       .set(updateSet)
       .where(eq(mediaItems.id, imageId))
+
+    // stored counts follow the move (clamped >= 0), same rules as /api/trash
+    if (Object.prototype.hasOwnProperty.call(sanitizedUpdates, 'collectionId')) {
+      const { decrement, increment } = collectionCountDeltas(
+        currentItem.collectionId,
+        sanitizedUpdates.collectionId
+      )
+
+      if (decrement) {
+        await db
+          .update(collections)
+          .set({ imageCount: sql`greatest(0, ${collections.imageCount} - 1)`, updatedAt: new Date() })
+          .where(eq(collections.id, decrement))
+      }
+
+      if (increment) {
+        await db
+          .update(collections)
+          .set({ imageCount: sql`${collections.imageCount} + 1`, updatedAt: new Date() })
+          .where(eq(collections.id, increment))
+      }
+    }
 
     const [updatedItem] = await db.select().from(mediaItems).where(eq(mediaItems.id, imageId)).limit(1)
 
