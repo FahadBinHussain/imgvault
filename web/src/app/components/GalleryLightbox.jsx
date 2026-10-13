@@ -15,7 +15,7 @@ import {
   Download,
   X,
 } from 'lucide-react'
-import { MediaDetailModal, defaultOverviewFieldRenderer } from 'imgvault-ui'
+import { MediaDetailModal } from 'imgvault-ui'
 import { downloadFieldViaProxy } from '@/lib/downloads'
 import { getStrictVideoProviderLink } from '@/lib/video-provider-links'
 import { getStrictImageProviderLink } from '@/lib/image-provider-links'
@@ -458,6 +458,7 @@ export default function GalleryLightbox({
   }
 
   const renderMetadataField = (key, index) => {
+    if (key === 'collectionId') return renderCollectionControlRow(index)
     const rawValue = image[key]
     const isRedacted = redactedFieldSet.has(key)
     const isEditableField = activeTab === 'noobs' && isEditing && editableNoobFields.has(key)
@@ -617,12 +618,13 @@ export default function GalleryLightbox({
   )
 
   // the collectionId overview row is a real control, not a raw uuid — same
-  // Add/Change Collection flow as the extension's detail modal (GalleryPage)
+  // Add/Change Collection flow as the extension's detail modal (GalleryPage).
   const currentCollection = collectionsList.find((collection) => collection.id === image?.collectionId) || null
-
-  const renderCollectionAwareField = (entry, index) => {
-    if (entry.key !== 'collectionId') return defaultOverviewFieldRenderer(entry, index)
-
+  // NOTE: this row MUST be reached through renderMetadataField — that is the
+  // renderOverviewField the modal actually receives (this JSX passes the prop
+  // twice; the later one wins, so a standalone renderOverviewField override
+  // here is silently dropped — live-tested dead control, fixed 2026-10-13).
+  const renderCollectionControlRow = (index) => {
     const displayValue = currentCollection
       ? currentCollection.name
       : image?.collectionId
@@ -630,12 +632,12 @@ export default function GalleryLightbox({
         : 'No Collection'
 
     return (
-      <div key="collectionId">
-        <div className="text-[11px] font-semibold mb-1 flex items-center gap-2" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
-          <span style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{index + 1}.</span>
-          <span className="font-mono">collectionId</span>
+      <div key="collectionId" className="rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 p-3 shadow-sm lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
+        <div className="text-xs font-semibold text-base-content/65 mb-1 flex items-center gap-2">
+          <FileText className="w-3.5 h-3.5" />
+          {`${index + 1}. ${formatFieldLabel('collectionId')}`}
         </div>
-        <div className="g-field">
+        <div className="rounded-[var(--radius-box)] p-3 bg-base-200/70 lg:rounded lg:p-2 lg:bg-base-200">
           {collectionEditing ? (
             <div className="space-y-3">
               <select
@@ -721,7 +723,6 @@ export default function GalleryLightbox({
       activeTab={activeTab}
       onTabChange={setActiveTab}
       overviewEntries={displayedNoobFields.map((key) => ({ key, value: image?.[key] }))}
-      renderOverviewField={renderCollectionAwareField}
       technicalEntries={nerdVisibleFields.map((key) => ({ key, value: image?.[key] }))}
       onPrevious={currentIndex > 0 ? () => onNavigate(currentIndex - 1) : undefined}
       onNext={currentIndex < images.length - 1 ? () => onNavigate(currentIndex + 1) : undefined}
