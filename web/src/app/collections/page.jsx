@@ -163,6 +163,7 @@ export default function CollectionsPage() {
       }
 
       setCollections((prev) => sortByName([...prev, data.collection]))
+      window.dispatchEvent(new Event('imgvault:collections-changed'))
       setCreateOpen(false)
       setNewName('')
       setNewDescription('')
@@ -232,6 +233,7 @@ export default function CollectionsPage() {
 
       const unassigned = Number(data.unassigned) || 0
       setCollections((prev) => prev.filter((c) => c.id !== deleteTarget.id))
+      window.dispatchEvent(new Event('imgvault:collections-changed'))
       setDeleteTarget(null)
       showToast(
         unassigned > 0

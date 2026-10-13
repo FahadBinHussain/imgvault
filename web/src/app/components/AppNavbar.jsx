@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { signIn, useSession } from 'next-auth/react'
 import { FolderOpen, Github, Images, Link2, Loader2, LockKeyhole, LogIn, Menu, Settings, Trash2, X } from 'lucide-react'
 import ThemeSwitcher from './ThemeSwitcher'
@@ -24,28 +24,35 @@ export default function AppNavbar({ mode = 'dashboard', activeRoute }) {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [mode])
 
+  const refreshCollectionCount = useCallback(async () => {
+    try {
+      const res = await fetch('/api/collections', { cache: 'no-store' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      if (Array.isArray(data.collections)) {
+        setCollectionCount(data.collections.length)
+      }
+    } catch (error) {
+      // badge is decoration — the /collections page surfaces the real error
+      console.error('collections badge fetch failed:', error)
+    }
+  }, [])
+
   useEffect(() => {
     if (mode === 'landing' || status !== 'authenticated') {
       return undefined
     }
 
-    let cancelled = false
-    fetch('/api/collections', { cache: 'no-store' })
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
-      .then((data) => {
-        if (!cancelled && Array.isArray(data.collections)) {
-          setCollectionCount(data.collections.length)
-        }
-      })
-      .catch((error) => {
-        // badge is decoration — the /collections page surfaces the real error
-        console.error('collections badge fetch failed:', error)
-      })
+    refreshCollectionCount()
+    // create/delete on /collections broadcasts so the badge updates live,
+    // same behavior as the extension's useCollections-driven navbar badge
+    const onChange = () => refreshCollectionCount()
+    window.addEventListener('imgvault:collections-changed', onChange)
 
     return () => {
-      cancelled = true
+      window.removeEventListener('imgvault:collections-changed', onChange)
     }
-  }, [mode, status])
+  }, [mode, status, refreshCollectionCount])
 
   if (mode === 'landing') {
     return (
