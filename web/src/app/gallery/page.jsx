@@ -718,55 +718,54 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
             </div>
           )
         ) : kind === 'video' ? (
-          videoPosterUrl && !videoPosterFailed ? (
-            <img
-              src={videoPosterUrl}
-              alt={image.pageTitle || 'Saved video'}
-              loading={mediaLoading}
-              decoding="async"
-              referrerPolicy="no-referrer"
-              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-              onLoad={() => setIsLoaded(true)}
-              onError={() => {
-                setVideoPosterFailed(true)
-                setIsLoaded(true)
-              }}
-            />
-          ) : isDirectPlayableVideo && !videoPreviewFailed ? (
-            <video
-              src={videoDirectUrl}
-              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 opacity-100`}
-              muted
-              playsInline
-              preload="metadata"
-              onLoadedData={() => setIsLoaded(true)}
-              onError={() => {
-                setVideoPreviewFailed(true)
-                setIsLoaded(true)
-              }}
-            />
-          ) : videoWatchUrl ? (
-            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex flex-col items-center justify-center gap-2">
-              <svg className="w-8 h-8 text-base-content/55 transition-transform duration-500 group-hover:scale-110" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-              <a
-                href={videoWatchUrl}
-                target="_blank"
-                rel="noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1.5 rounded-full border border-base-content/20 bg-base-100/80 px-3 py-1.5 text-xs font-semibold transition-all duration-300 hover:bg-base-100 hover:scale-105"
-              >
-                Open video <ExternalLink className="w-3 h-3" />
-              </a>
-              {(videoPreviewFailed || videoPosterFailed) && placeholderNote('preview unavailable')}
-            </div>
-          ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 to-primary-700/20 flex items-center justify-center">
-              <FileText className="w-12 h-12 text-base-content/55 transition-transform duration-500 group-hover:scale-110" />
-              {(videoPreviewFailed || videoPosterFailed) && placeholderNote('preview unavailable')}
-            </div>
-          )
+          <div className={`relative w-full overflow-hidden ${viewMode === 'list' ? 'h-full' : 'aspect-video'} bg-gradient-to-br from-[#1a1a2e] to-[#16213e]`}>
+            {videoPosterUrl && !videoPosterFailed ? (
+              <img
+                src={videoPosterUrl}
+                alt={image.pageTitle || 'Saved video'}
+                loading={mediaLoading}
+                decoding="async"
+                referrerPolicy="no-referrer"
+                className={`absolute inset-0 w-full h-full object-cover transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                onLoad={() => setIsLoaded(true)}
+                onError={() => {
+                  setVideoPosterFailed(true)
+                  setIsLoaded(true)
+                }}
+              />
+            ) : isDirectPlayableVideo && !videoPreviewFailed ? (
+              <video
+                src={videoDirectUrl}
+                className="absolute inset-0 w-full h-full object-cover opacity-100"
+                muted
+                playsInline
+                preload="metadata"
+                onLoadedData={() => setIsLoaded(true)}
+                onError={() => {
+                  setVideoPreviewFailed(true)
+                  setIsLoaded(true)
+                }}
+              />
+            ) : (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                <svg className="w-8 h-8 text-base-content/55 transition-transform duration-500 group-hover:scale-110" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+                {videoWatchUrl && (
+                  <a
+                    href={videoWatchUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-base-content/20 bg-base-100/80 px-3 py-1.5 text-xs font-semibold transition-all duration-300 hover:bg-base-100 hover:scale-105"
+                  >
+                    Open video <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+                {(videoPreviewFailed || videoPosterFailed) && placeholderNote('preview unavailable')}
+              </div>
+            )}
+          </div>
         ) : imageUrl ? (
           <>
             {!isLoaded && (
