@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useCallback } from 'react';
-import { Upload, X, Box, Image as ImageIcon, FileJson, Loader2 } from 'lucide-react';
+import { Upload, X, Box, Image as ImageIcon, FileJson, Loader2, Plus } from 'lucide-react';
 import { Button, Input, Textarea, Modal } from './UI';
 import { useSceneUpload, useCollections } from '../hooks/useChromeExtension';
 
@@ -21,10 +21,29 @@ export default function SceneUploadDialog({ isOpen, onClose, onUploaded }) {
   const [collectionId, setCollectionId] = useState('');
   const [showCreateCollection, setShowCreateCollection] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
+  const [createCollectionError, setCreateCollectionError] = useState('');
 
   const spzInputRef = useRef(null);
   const textureInputRef = useRef(null);
   const configInputRef = useRef(null);
+
+  const handleCreateCollection = useCallback(async () => {
+    const name = newCollectionName.trim();
+    if (!name) {
+      setCreateCollectionError('Collection name is required');
+      return;
+    }
+
+    try {
+      setCreateCollectionError('');
+      const newCollection = await createCollection({ name });
+      setCollectionId(newCollection.id);
+      setShowCreateCollection(false);
+      setNewCollectionName('');
+    } catch (err) {
+      setCreateCollectionError(err.message || 'Failed to create collection');
+    }
+  }, [createCollection, newCollectionName]);
 
   const handleSpzDrop = useCallback((e) => {
     e.preventDefault();
@@ -286,13 +305,65 @@ export default function SceneUploadDialog({ isOpen, onClose, onUploaded }) {
           <select
             className="select w-full bg-base-100/70 border border-base-content/20 text-base-content"
             value={collectionId}
-            onChange={(e) => setCollectionId(e.target.value)}
+            onChange={(e) => {
+              if (e.target.value === '__create_new__') {
+                setShowCreateCollection(true);
+              } else {
+                setCollectionId(e.target.value);
+                setShowCreateCollection(false);
+              }
+            }}
           >
             <option value="">No collection</option>
             {collections.map((col) => (
               <option key={col.id} value={col.id}>{col.name}</option>
             ))}
+            <option value="__create_new__">+ Create New Collection</option>
           </select>
+
+          {showCreateCollection && (
+            <div className="mt-3 flex gap-2">
+              <input
+                type="text"
+                value={newCollectionName}
+                onChange={(e) => setNewCollectionName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleCreateCollection();
+                  }
+                }}
+                placeholder="Collection name"
+                className="flex-1 px-4 py-2 rounded-[var(--radius-box)] bg-base-200 border border-base-300 text-base-content placeholder-base-content/40 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+              />
+              <button
+                type="button"
+                onClick={handleCreateCollection}
+                className="px-4 py-2 rounded-[var(--radius-box)] bg-primary hover:brightness-95 font-medium transition-colors inline-flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                Create
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreateCollection(false);
+                  setNewCollectionName('');
+                  setCollectionId('');
+                  setCreateCollectionError('');
+                }}
+                className="px-4 py-2 rounded-[var(--radius-box)] bg-base-300 hover:bg-base-content/15 text-base-content font-medium transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {createCollectionError && (
+            <div className="mt-2 bg-error/10 text-error rounded-lg p-3 text-sm">
+              {createCollectionError}
+            </div>
+          )}
         </div>
 
         {/* Upload Progress */}
