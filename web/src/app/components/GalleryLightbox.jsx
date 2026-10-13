@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
+  Check,
   Loader2,
   FileText,
   Pencil,
@@ -12,8 +13,9 @@ import {
   ExternalLink,
   Trash2,
   Download,
+  X,
 } from 'lucide-react'
-import { MediaDetailModal } from 'imgvault-ui'
+import { MediaDetailModal, defaultOverviewFieldRenderer } from 'imgvault-ui'
 import { downloadFieldViaProxy } from '@/lib/downloads'
 import { getStrictVideoProviderLink } from '@/lib/video-provider-links'
 import { getStrictImageProviderLink } from '@/lib/image-provider-links'
@@ -83,6 +85,51 @@ export default function GalleryLightbox({
   const [videoSourceFailed, setVideoSourceFailed] = useState(false)
   const [downloadNotice, setDownloadNotice] = useState(null) // {text, tone: 'info'|'error'}
   const [isDownloadingField, setIsDownloadingField] = useState('')
+  const [collectionsList, setCollectionsList] = useState([])
+  const [collectionEditing, setCollectionEditing] = useState(false)
+  const [collectionSelectValue, setCollectionSelectValue] = useState('')
+  const [collectionSaving, setCollectionSaving] = useState(false)
+  const [collectionError, setCollectionError] = useState('')
+
+  useEffect(() => {
+    if (!image) return undefined
+
+    setCollectionEditing(false)
+    setCollectionError('')
+
+    let cancelled = false
+    fetch('/api/collections', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data.collections)) {
+          setCollectionsList(data.collections)
+        }
+      })
+      .catch((error) => {
+        // unauthenticated share pages get a 401 — the row then shows the raw id, never a fake name
+        console.error('collections fetch failed:', error)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [image?.id])
+
+  const handleCollectionSave = async (event) => {
+    event.stopPropagation()
+    if (!onSaveEdits || !image) return
+
+    setCollectionSaving(true)
+    setCollectionError('')
+    try {
+      await onSaveEdits(image.id, { collectionId: collectionSelectValue || null })
+      setCollectionEditing(false)
+    } catch (error) {
+      setCollectionError(error?.message || 'Failed to update collection')
+    } finally {
+      setCollectionSaving(false)
+    }
+  }
   const isFilemoonHtmlUrl = (url) => typeof url === 'string' && /filemoon\.sx\/(?:d|e)\//i.test(url)
   const getVideoWatchUrl = (item) => (
     getStrictVideoProviderLink(item, preferredVideoSource, 'watchUrl')
@@ -569,6 +616,93 @@ export default function GalleryLightbox({
     </div>
   )
 
+  // the collectionId overview row is a real control, not a raw uuid — same
+  // Add/Change Collection flow as the extension's detail modal (GalleryPage)
+  const currentCollection = collectionsList.find((collection) => collection.id === image?.collectionId) || null
+
+  const renderCollectionAwareField = (entry, index) => {
+    if (entry.key !== 'collectionId') return defaultOverviewFieldRenderer(entry, index)
+
+    const displayValue = currentCollection
+      ? currentCollection.name
+      : image?.collectionId
+        ? image.collectionId
+        : 'No Collection'
+
+    return (
+      <div key="collectionId">
+        <div className="text-[11px] font-semibold mb-1 flex items-center gap-2" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
+          <span style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{index + 1}.</span>
+          <span className="font-mono">collectionId</span>
+        </div>
+        <div className="g-field">
+          {collectionEditing ? (
+            <div className="space-y-3">
+              <select
+                value={collectionSelectValue}
+                onChange={(e) => setCollectionSelectValue(e.target.value)}
+                className="w-full rounded-[var(--radius-box)] border border-base-content/15 bg-base-200 px-3 py-2 text-sm text-base-content focus:border-primary-500/50 focus:outline-none"
+              >
+                <option value="">No Collection</option>
+                {collectionsList.map((collection) => (
+                  <option key={collection.id} value={collection.id}>
+                    {collection.name}
+                  </option>
+                ))}
+              </select>
+              {collectionError && (
+                <div className="rounded-[var(--radius-box)] border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-400" role="alert">
+                  {collectionError}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleCollectionSave}
+                  disabled={collectionSaving}
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[var(--radius-box)] bg-green-500/20 px-3 py-2 text-xs font-semibold text-green-400 transition-colors hover:bg-green-500/30 disabled:opacity-50"
+                >
+                  {collectionSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setCollectionEditing(false)
+                    setCollectionError('')
+                  }}
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[var(--radius-box)] border border-base-content/15 bg-base-100 px-3 py-2 text-xs font-semibold text-base-content/70 transition-colors hover:bg-base-content/5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-sm">{displayValue}</span>
+              {onSaveEdits && !isEditing && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setCollectionSelectValue(image?.collectionId || '')
+                    setCollectionError('')
+                    setCollectionEditing(true)
+                  }}
+                  className="shrink-0 rounded-[var(--radius-box)] bg-base-content/5 px-2.5 py-1.5 text-xs font-semibold text-base-content/75 transition-colors hover:bg-base-content/10"
+                >
+                  {image?.collectionId ? 'Change Collection' : 'Add to Collection'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   const actionBtnClass = 'inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[var(--radius-box)] border border-base-content/10 bg-base-100 px-2 text-sm font-semibold text-base-content/85 hover:bg-base-content/5 transition-colors lg:min-h-0 lg:border-0 lg:bg-base-content/5 lg:px-3 lg:py-2 lg:hover:bg-base-content/10'
   const hasLightboxActions = Boolean(
     onShare ||
@@ -587,6 +721,7 @@ export default function GalleryLightbox({
       activeTab={activeTab}
       onTabChange={setActiveTab}
       overviewEntries={displayedNoobFields.map((key) => ({ key, value: image?.[key] }))}
+      renderOverviewField={renderCollectionAwareField}
       technicalEntries={nerdVisibleFields.map((key) => ({ key, value: image?.[key] }))}
       onPrevious={currentIndex > 0 ? () => onNavigate(currentIndex - 1) : undefined}
       onNext={currentIndex < images.length - 1 ? () => onNavigate(currentIndex + 1) : undefined}

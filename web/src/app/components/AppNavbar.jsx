@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { signIn, useSession } from 'next-auth/react'
-import { Github, Images, Link2, Loader2, LockKeyhole, LogIn, Menu, Settings, Trash2, X } from 'lucide-react'
+import { FolderOpen, Github, Images, Link2, Loader2, LockKeyhole, LogIn, Menu, Settings, Trash2, X } from 'lucide-react'
 import ThemeSwitcher from './ThemeSwitcher'
 import UserDropdown from './UserDropdown'
 import BrandLogo from './BrandLogo'
@@ -11,6 +11,7 @@ export default function AppNavbar({ mode = 'dashboard', activeRoute }) {
   const { data: session, status } = useSession()
   const [scrolled, setScrolled] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [collectionCount, setCollectionCount] = useState(0)
   const authLoading = status === 'loading'
 
   useEffect(() => {
@@ -22,6 +23,29 @@ export default function AppNavbar({ mode = 'dashboard', activeRoute }) {
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [mode])
+
+  useEffect(() => {
+    if (mode === 'landing' || status !== 'authenticated') {
+      return undefined
+    }
+
+    let cancelled = false
+    fetch('/api/collections', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data.collections)) {
+          setCollectionCount(data.collections.length)
+        }
+      })
+      .catch((error) => {
+        // badge is decoration — the /collections page surfaces the real error
+        console.error('collections badge fetch failed:', error)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [mode, status])
 
   if (mode === 'landing') {
     return (
@@ -110,7 +134,19 @@ export default function AppNavbar({ mode = 'dashboard', activeRoute }) {
             className={`transition-colors p-2 rounded-[var(--radius-box)] ${activeRoute === 'gallery' ? 'text-base-content' : 'text-base-content/75 hover:text-base-content hover:bg-base-content/5'}`}
             title="Gallery"
           >
-            <Images className="w-5 h-5" />
+            <Images className="w-5 h-5 transition-transform duration-300 hover:scale-110" />
+          </a>
+          <a
+            href="/collections"
+            className={`relative transition-colors p-2 rounded-[var(--radius-box)] ${activeRoute === 'collections' ? 'text-base-content' : 'text-base-content/75 hover:text-base-content hover:bg-base-content/5'}`}
+            title="Collections"
+          >
+            <FolderOpen className="w-5 h-5 transition-transform duration-300 hover:scale-110" />
+            {collectionCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-bold text-white">
+                {collectionCount}
+              </span>
+            )}
           </a>
           <a
             href="/links"

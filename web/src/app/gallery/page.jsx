@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSession } from 'next-auth/react'
-import { redirect } from 'next/navigation'
+import { redirect, useParams } from 'next/navigation'
 import {
   Image,
   Search,
@@ -30,7 +30,8 @@ import {
   LockKeyhole,
   XCircle,
   CheckCircle2,
-  Info
+  Info,
+  ArrowLeft
 } from 'lucide-react'
 import { Modal } from 'imgvault-ui'
 import AppNavbar from '../components/AppNavbar'
@@ -916,6 +917,11 @@ const TOAST_DURATIONS = { info: 4000, success: 3000, error: 8000 }
 
 export default function GalleryPage() {
   const { data: session, status } = useSession()
+  const routeParams = useParams()
+  // /gallery/{collectionId} scopes the whole page to one collection (parity with
+  // the extension's /gallery/:collectionId route)
+  const collectionRouteId = typeof routeParams?.collectionId === 'string' && routeParams.collectionId ? routeParams.collectionId : null
+  const [collectionView, setCollectionView] = useState(null)
   const [images, setImages] = useState([])
   const [loading, setLoading] = useState(true)
   const [hasConfig, setHasConfig] = useState(false)
@@ -940,6 +946,7 @@ export default function GalleryPage() {
   const [isBulkVaulting, setIsBulkVaulting] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [toast, setToast] = useState(null)
+  const [collectionViewChecked, setCollectionViewChecked] = useState(false)
 
   const showToast = useCallback((message, type = 'success', durationOverride) => {
     setToast({ id: Date.now(), message, type, duration: durationOverride ?? TOAST_DURATIONS[type] ?? 3000 })
@@ -1038,7 +1045,41 @@ export default function GalleryPage() {
     }
   }
 
-  const searchedImages = useMemo(() => images.filter((img) => {
+  const collectionScopedImages = useMemo(
+    () => (collectionRouteId ? images.filter((img) => img?.collectionId === collectionRouteId) : images),
+    [images, collectionRouteId]
+  )
+
+  useEffect(() => {
+    if (!collectionRouteId) {
+      setCollectionView(null)
+      setCollectionViewChecked(false)
+      return undefined
+    }
+
+    let cancelled = false
+    fetch('/api/collections', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((data) => {
+        if (cancelled) return
+        const list = Array.isArray(data.collections) ? data.collections : []
+        setCollectionView(list.find((collection) => collection.id === collectionRouteId) || null)
+        setCollectionViewChecked(true)
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error('Failed to load collection:', error)
+          setCollectionView(null)
+          setCollectionViewChecked(true)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [collectionRouteId])
+
+  const searchedImages = useMemo(() => collectionScopedImages.filter((img) => {
     const q = searchQuery.trim().toLowerCase()
     if (!q) return true
 
@@ -1055,7 +1096,7 @@ export default function GalleryPage() {
       .toLowerCase()
 
     return haystack.includes(q)
-  }), [images, searchQuery])
+  }), [collectionScopedImages, searchQuery])
 
   const mediaCounts = useMemo(() => {
     return searchedImages.reduce((acc, item) => {
@@ -1477,7 +1518,7 @@ export default function GalleryPage() {
   if (status === 'loading' || loading) {
     return (
   <main className="min-h-screen theme-surface">
-    <AppNavbar mode="dashboard" activeRoute="gallery" />
+    <AppNavbar mode="dashboard" activeRoute={collectionRouteId ? 'collections' : 'gallery'} />
   <section className="pt-24 sm:pt-28 pb-10 sm:pb-12 px-4 sm:px-6">
           <div className="max-w-7xl mx-auto">
             <div className="mb-8">
@@ -1498,10 +1539,25 @@ export default function GalleryPage() {
   return (
     <>
   <main className="min-h-screen theme-surface">
-    <AppNavbar mode="dashboard" activeRoute="gallery" />
+    <AppNavbar mode="dashboard" activeRoute={collectionRouteId ? 'collections' : 'gallery'} />
         
   <section className="pt-24 sm:pt-28 pb-10 sm:pb-12 px-4 sm:px-6">
           <div className="max-w-7xl mx-auto">
+            {collectionRouteId && (
+              <div className="mb-8 flex flex-wrap items-center gap-3 animate-fade-in">
+                <a href="/collections" className="group inline-flex items-center gap-2 rounded-[var(--radius-box)] border border-base-content/15 bg-base-200/60 px-3 py-2 text-sm font-semibold text-base-content/75 transition-all duration-300 hover:bg-base-content/10 hover:text-base-content">
+                  <ArrowLeft className="h-4 w-4 transition-transform duration-300 group-hover:-translate-x-0.5" />
+                  Collections
+                </a>
+                <h2 className="text-xl font-bold">
+                  {collectionViewChecked && !collectionView ? 'Collection not found' : collectionView?.name || 'Collection'}
+                </h2>
+                <span className="rounded-full border border-primary-500/20 bg-primary-500/10 px-3 py-1 text-xs font-medium text-primary-300">
+                  {collectionScopedImages.length} item{collectionScopedImages.length === 1 ? '' : 's'}
+                </span>
+              </div>
+            )}
+
             {/* Header */}
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-10">
               <div className="animate-fade-in">

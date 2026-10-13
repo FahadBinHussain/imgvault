@@ -25,7 +25,7 @@ const formatDetailValue = (value) => {
 
 const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim());
 
-const defaultOverviewFieldRenderer = (entry, index) => {
+export const defaultOverviewFieldRenderer = (entry, index) => {
   const rawValue = entry.value;
   const value = formatDetailValue(rawValue);
   const isUrl = entry.key.toLowerCase().endsWith('url') && typeof rawValue === 'string' && rawValue;
