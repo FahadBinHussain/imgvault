@@ -256,7 +256,25 @@ missing on web today, in order (each its own phase-sized chunk, same gate):
    note: web `/api/vault` PATCH `move` is flag-only (extra_metadata + share revocation,
    no encrypt/upload) vs the extension's full-encrypt move — possible future parity
    gap, out of chunk-2 scope.
-3. scene-viewer route (the extension's `scene-viewer` page as a Next.js route)
+3. scene-viewer route (the extension's `scene-viewer` page as a Next.js route) ✅ done
+   (2026-10-13) — 3 commits: `c2d4da93` shared `packages/scene-viewer` (pnpm package
+   `imgvault-scene-viewer`, three + @sparkjsdev/spark; core `startSceneViewer({spzUrl,
+   sceneId, title, fetchSpz, getConfig})` owns rendering/DOM/IndexedDB cache) + ext
+   `src/scene-viewer.js` rewired to a thin host (manifest **2.15.1**), `13a75b18` web
+   `/scene-viewer` route + gallery-lightbox iframe + schema, `992522c5` live-test fix
+   (manifest **2.15.2** — udrop `/file/` links 302 straight to the bytes now; the old
+   refresh minted 404 tokens and the share-page parse downloaded the 30MB .spz twice,
+   exceeding chrome's ~5-min MV3 message channel; details in AGENTS chunk-3 learnings).
+   `three`/`spark` stay in the ext package.json — `SceneViewer.jsx` still imports them.
+   gates: CI frozen install (6 projects) + `pnpm check:twins` + ext build (hashed
+   scene-viewer entry + decoy `dist/scene-viewer.js`) + web build (`/scene-viewer`
+   route, `min(90vw,1152px)` CSS); CI run `38282741338` needed one rerun (release-attach
+   flake). live: WEB passed (7 badges → iframe → "Ready — 1,920,000 splats", canvas
+   1152x648, clear-cache path, Escape). EXT passed on 2.15.2 — cache miss: first open
+   renders after the ~152s udrop download ("Ready — 1,920,000 splats", no error, canvas);
+   cache hit: reopen "Ready" in 4s; Escape closes both times; screenshot
+   `C:\tmp\chunk3_ext_ready.png` verified (scene visible, hint bar, no overlay). closing
+   audit exact vs baseline: **live 580 / trashed 1 / synth 0**.
 4. collections management parity
 
 follow-up found during chunk 1: the extension trash page carries ~15 load-bearing
