@@ -1,7 +1,7 @@
 # plan: platform feature parity (web ⇄ extension)
 
 date: 2026-10-03
-status: **phase 3 done (shared `packages/ui` + web AND extension swaps shipped). phase 4 (web feature parity) next — stop-and-go after 3b per plan.**
+status: **phase 3 done (shared `packages/ui` + web AND extension swaps shipped). phase 4 (web feature parity) — all 4 roadmap chunks done (trash actions, gallery bulk, scene-viewer route, collections management 2026-10-13); open follow-ups: extension trash tint fix (chunk-1 note), web cards scene-texture thumb (2.13.21 note).**
 
 standing rule (AGENTS.md): every feature exists on BOTH platforms — if one side lacks it,
 build it there; never hide/drop a field or UI to make them "match". this plan is the
@@ -275,7 +275,34 @@ missing on web today, in order (each its own phase-sized chunk, same gate):
    cache hit: reopen "Ready" in 4s; Escape closes both times; screenshot
    `C:\tmp\chunk3_ext_ready.png` verified (scene visible, hint bar, no overlay). closing
    audit exact vs baseline: **live 580 / trashed 1 / synth 0**.
-4. collections management parity
+4. collections management parity ✅ done (2026-10-13) — 5 commits: `cd8450ca` shared
+   `packages/shared/collectionsLogic.js` + web `/api/collections` GET/POST/PATCH/DELETE
+   (deleting/updating a collection WITH `imageCount > 0` is a loud 400 — never a silent
+   count lie; `{id}` body for PATCH/DELETE) + `/api/images` PATCH `collectionId` writes
+   with symmetric image_count deltas, `9a67e632` web `/collections` management page
+   (create/rename/delete modals, `#iv-new-collection-name`/`#iv-new-collection-description`)
+   + `/gallery/[collectionId]` scoped route (back banner, "N items" chip) + AppNavbar
+   FolderOpen badge listening on `imgvault:collections-changed`, `58b6ee16` extension
+   SceneUploadDialog inline-create (`+ Create New Collection` option → name input →
+   Create → auto-selects the new id; manifest **2.15.3**), `b0cc281d` badge live refresh
+   across pages, `2499566` fix: web lightbox collection control was DEAD live — the
+   `MediaDetailModal` JSX passed the overview-field renderer TWICE (last-wins in JSX), so
+   chunk-4's control never rendered; now `renderCollectionControlRow(index)` is routed
+   through the top of `renderMetadataField` (`key === 'collectionId'`) and the duplicate
+   prop + unused `defaultOverviewFieldRenderer` export are gone. live-tested on
+   imgvaultt.vercel.app end to end (post-fix deploy `dpl_56xxvVgdxXt4UYeAattoKeRqi6VB`
+   READY): create (toast + badge → 2) → rename → lightbox assign (row `21. collection Id`,
+   `Add to Collection` → `Change Collection`, collections api count 2) → scoped route
+   (exactly 1 card) → unassign → delete, real `x` collection untouched throughout;
+   extension SceneUploadDialog verified on 2.15.3 (manifest check, FAB → dialog →
+   inline create → select holds `synthetic-ext-collection`, closed with NO file picked /
+   NO submit). screenshots verified by reading the PNGs: `chunk4_collections_page.png`,
+   `chunk4_lightbox_assign.png`, `chunk4_collection_route.png`,
+   `chunk4_ext_inline_create.png`, `chunk4_ext_selected.png`. closing audit exact vs
+   baseline: **live 580 / trashed 1 / synth 0**, collections table back to exactly ONE
+   row `collection_1775099714335` "x" `image_count 0`. test-harness learnings in AGENTS
+   chunk-4 bullets (duplicate JSX prop, web cards carry no title → search-isolation,
+   no-focus-stealing runs, SPA cache-bust navigation between test runs).
 
 follow-up found during chunk 1: the extension trash page carries ~15 load-bearing
 daisyui alpha classes (`bg-warning/15`, `bg-error/20`, `bg-success/15`, `border-warning/30`,
