@@ -155,3 +155,50 @@ an obscure channel name. vault blobs are encrypted regardless.
   same upload plumbing), not an exclusion of the vault.
 - still open from the spike list: Range support on cloud `getFile` URLs + the local
   server; `sendPhoto` vs `sendDocument` image A/B (default byte-faithful `sendDocument`).
+
+## phase 0 status (2026-10-14) — BLOCKED on one human action
+
+bot created and its token verified (`getMe` resolves to the intended bot; the token lives
+only in off-repo scratch storage and is never written here or in settings). channel created
+and public, 1 subscriber (the owner). the only missing piece is **bot-as-admin**, and it is
+blocked on four independent dead-ends — all probed live today, none inferred:
+
+| path | result |
+|---|---|
+| Bot API `joinChat` | `404 Not Found` — a bot cannot add itself to a channel |
+| Bot API `promoteChatMember` | `Forbidden: bot is not a member of the channel chat` (membership is a prerequisite) |
+| MTProto (telethon) | every stored web-session auth key → `AuthKeyUnregisteredError` on its own DC |
+| Telegram Web UI | opening a chat needs a trusted pointer event; both pointer CDP methods are wedged in the harness daemon |
+
+findings worth keeping so the next attempt does not re-litigate them:
+
+- **the stored web auth keys are genuinely dead, not mis-addressed.** an earlier diagnosis
+  blamed a wrong DC IP; re-tested against the DC list the server itself returns
+  (`help.getConfig`, correct production addresses) — every key still rejects on its own
+  home DC. web build 677 keeps the live key in memory only, so there is nothing exportable
+  in localStorage/IndexedDB. a desktop client is not installed either, so there is no local
+  key to borrow.
+- **the web tab is pinned by a privacy extension to one specific chat hash**: any
+  `location.hash` or `history.pushState` change is reverted within ~200 ms, so a chat
+  cannot be reached by URL. (a full document load at the channel's chat URL would bypass
+  this — but only if that URL is allowlisted.)
+- **keyboard input DOES reach the page**: `Input.insertText` works, and the channel is
+  findable — typing its handle into the sidebar search renders the row (correct peer id,
+  "1 subscriber"). selection is the wall: the row is an `<a>` with **no `href`**, JS
+  `.click()` and a full mousedown/mouseup/click sequence do not route it, and
+  ArrowDown/Enter select nothing (no picked autocomplete item, element not focusable).
+- `Input.dispatchMouseEvent` and `Input.dispatchTouchEvent` both fail with
+  `_IPCResponseTimeout … timed out waiting for the daemon` — a harness daemon bug, not a
+  Telegram constraint. an empty-payload call answers instantly, proving the daemon is alive
+  and only payload-bearing pointer dispatch wedges.
+
+**what unblocks phase 0** (both free, pick one):
+
+1. *~30 s, recommended* — the owner adds the bot to the channel and promotes it from their
+   own Telegram client (phone is fine), granting post + edit + delete rights. the spike then
+   runs entirely over the Bot API with no UI driving at all.
+2. temporarily allowlist the channel's chat URL in the blocking extension so a direct
+   document load opens it — but this only pays off once pointer dispatch is fixed too,
+   since the in-app navigation is click-gated.
+
+until one of those lands: **zero code written, spike not started, no results to record.**
