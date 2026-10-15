@@ -283,7 +283,20 @@ chunk live-probed on prod:
 | 2 ext runtime | `82c54b9b` (2.15.6) | `telegramApi.js` + uploader: images → `sendDocument` (byte-faithful, the spike's default), mp4 → `sendVideo` → CDN directUrl; stored url = relative `/telegram-media/<fileId>` (`?mt=` mime) served by the ext proxy; `getFile` per request (file_path never cached); gates: sendVideo ≤ 50 MB, sendDocument/getFile ≤ 20 MB (`400 file is too big`); CDN scrape failure deletes the just-posted message then throws; `thumbUrl: null`; token never in any client-visible url or log |
 | 3 web route | `c0bc188c` | self-contained web serve route (token stays server-side, `getFile` per request); live probe green on prod |
 | 4 delete | `1abf0c63` (2.15.7) + fix `10efae28` | telegram delete fires ONLY on permanent delete (trash/restore keeps the message); ext `deleteTelegramPosts` after blob cleanup, web `deleteTelegramPostsForItem` in `hostDeletes.js` (deduped image+video messageIds); "message to delete not found" = verifiable absent → loud warn + release the row (2.13.3 precedent), every other error throws so the row stays in trash |
-| 5 integrity tab | `91991f55` (2.15.8) | resolve-page top-level **Telegram channel** tab: `listTelegramPosts` walks `t.me/s/<ch>?before=<oldest>` (`data-post` marker, `fresh=` cache-bust, media-segment filter, strict-decreasing cursor + repeat-page stop, LOUD on http/network error and on the 400-page cap — never returns truncated); buckets found/missing/extra only, every entry carries `codes:[messageId]` (2.12.56); referenced set = fresh `getImages` + `getVaultImages` image+video messageIds (trash excluded, 2.2.9 pattern); extra-card Delete runs page-side `deleteTelegramMessage` + local-state drop (2.12.80) |
+| 5 integrity tab | `91991f55` (2.15.8) | resolve-page **Telegram channel** tab: `listTelegramPosts` walks `t.me/s/<ch>?before=<oldest>` (`data-post` marker, `fresh=` cache-bust, media-segment filter, strict-decreasing cursor + repeat-page stop, LOUD on http/network error and on the 400-page cap — never returns truncated); buckets found/missing/extra only, every entry carries `codes:[messageId]` (2.12.56); referenced set = fresh `getImages` + `getVaultImages` image+video messageIds (trash excluded, 2.2.9 pattern); extra-card Delete runs page-side `deleteTelegramMessage` + local-state drop (2.12.80) |
+
+**restructure (2.15.9, same day):** the check first shipped as a 4th top-level Resolve tab,
+but integrity checks live under their TYPE (the 3 tabs: image hosts / video hosts / 3D file
+hosts) — telegram is a host, not a type. it now sits in the video subtab row as
+`Telegram integrity` (sibling of `UDrop/Filemoon/TeraBox integrity`), and the check judges
+the video type only: found/missing = video refs (scenes stay on the 3D tab, vaulted
+encrypted blobs excluded — 2.12.79 rule); the extras pass still compares against ALL items'
+refs (image refs included) so an image-referenced post is never a false orphan. labels
+aligned to siblings: kicker `Telegram integrity`, h1 `Telegram video integrity`, button
+`Check Telegram`, chips `All / Broken links / Found / Extra on Telegram`, card chips
+`Broken link` / `Found`. live-tested with synthetic rows (video-row ref → found, bogus id →
+missing, image-row ref → in NO bucket and NOT extra, unreferenced post → extra; extra-card
+delete dropped the card and really removed the message; channel + counts back to baseline).
 
 **live-learned, keep:**
 
@@ -299,6 +312,12 @@ chunk live-probed on prod:
   / extra 1 exact, the channel's lone **service post stayed out of every bucket** (media
   filter held), extra-card delete dropped the card + success notice, cleanup returned the
   channel to baseline and the audit to 581/1/0 + 1 collection.
+- **browser-use reads drift in a busy Edge profile**: with the real session full of tabs, a
+  `js()` read can land on whatever tab the session last touched — pin with `switch_tab`
+  before EVERY call, return `location.href` in each snippet, and retry when the landing tab
+  is wrong. also: the images tab legitimately renders one `Resolve Telegram` button per
+  image row, so a "no telegram top-level tab" assertion must compare exact tab labels, never
+  a /Telegram/i text filter.
 
 **supersedes:** the phase-0 line "token … never written here or in settings" — phase 1 by
 design stores the token in settings (Neon row for the web, `chrome.storage.sync` for the
@@ -309,5 +328,5 @@ the 48h-window `t.me/s` history probe was NOT attempted (the channel has no old 
 history to probe — only a service post); `sendPhoto` vs `sendDocument` A/B resolved by
 DECISION (byte-faithful `sendDocument`), no A/B run.
 
-**parity note:** the integrity tab is ext-only because the web has no `/resolve` route at
-all — a missing tab there is not a parity drop (nothing to mirror).
+**parity note:** the telegram integrity check is ext-only because the web has no `/resolve`
+route at all — a missing tab there is not a parity drop (nothing to mirror).
