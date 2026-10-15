@@ -271,3 +271,43 @@ route above beat both of them and needs neither a human nor an extension change:
 2. temporarily allowlist the channel's chat URL in the blocking extension so a direct
    document load opens it — only ever paid off once pointer dispatch was fixed too, since
    in-app navigation is click-gated.
+
+## phase 1 — DONE (2026-10-15): gallery host + delete + integrity tab, live-tested
+
+five chunks, each its own commit, every one pushed with green CI (ext chunks) and the web
+chunk live-probed on prod:
+
+| chunk | commit | shipped |
+|---|---|---|
+| 1 settings | `1c0cde25` | `telegramBotToken`/`telegramChannel` in `settingsSchema` (apiKeyFields → both platforms render them); live row seeded in `public.settings` `id='config'` (lengths 46\|9); ext reads `chrome.storage.sync`, web reads the settings row server-side |
+| 2 ext runtime | `82c54b9b` (2.15.6) | `telegramApi.js` + uploader: images → `sendDocument` (byte-faithful, the spike's default), mp4 → `sendVideo` → CDN directUrl; stored url = relative `/telegram-media/<fileId>` (`?mt=` mime) served by the ext proxy; `getFile` per request (file_path never cached); gates: sendVideo ≤ 50 MB, sendDocument/getFile ≤ 20 MB (`400 file is too big`); CDN scrape failure deletes the just-posted message then throws; `thumbUrl: null`; token never in any client-visible url or log |
+| 3 web route | `c0bc188c` | self-contained web serve route (token stays server-side, `getFile` per request); live probe green on prod |
+| 4 delete | `1abf0c63` (2.15.7) + fix `10efae28` | telegram delete fires ONLY on permanent delete (trash/restore keeps the message); ext `deleteTelegramPosts` after blob cleanup, web `deleteTelegramPostsForItem` in `hostDeletes.js` (deduped image+video messageIds); "message to delete not found" = verifiable absent → loud warn + release the row (2.13.3 precedent), every other error throws so the row stays in trash |
+| 5 integrity tab | `91991f55` (2.15.8) | resolve-page top-level **Telegram channel** tab: `listTelegramPosts` walks `t.me/s/<ch>?before=<oldest>` (`data-post` marker, `fresh=` cache-bust, media-segment filter, strict-decreasing cursor + repeat-page stop, LOUD on http/network error and on the 400-page cap — never returns truncated); buckets found/missing/extra only, every entry carries `codes:[messageId]` (2.12.56); referenced set = fresh `getImages` + `getVaultImages` image+video messageIds (trash excluded, 2.2.9 pattern); extra-card Delete runs page-side `deleteTelegramMessage` + local-state drop (2.12.80) |
+
+**live-learned, keep:**
+
+- **Telegram answers "message to delete not found" with HTTP 400 + JSON body**, not 200 +
+  `ok:false`. the web helper must parse the body and classify already-gone BEFORE the
+  `response.ok` check (that ordering bug shipped and was caught live in chunk 4, fixed
+  `10efae28`). the ext side needed no fix: `telegramCallApi`'s HTTP-400 error text embeds
+  the body, so a `/message to delete not found/i` regex on the message already matches.
+- **stat chips render during loading** (they sit outside the loading gate, so they show
+  0/0/0 between tab-click and completion) — in tests, wait for the completion NOTICE
+  (`Telegram check: …`), never for chips existing.
+- chunk-5 live test against an independent oracle (own t.me/s scrape): found 1 / missing 1
+  / extra 1 exact, the channel's lone **service post stayed out of every bucket** (media
+  filter held), extra-card delete dropped the card + success notice, cleanup returned the
+  channel to baseline and the audit to 581/1/0 + 1 collection.
+
+**supersedes:** the phase-0 line "token … never written here or in settings" — phase 1 by
+design stores the token in settings (Neon row for the web, `chrome.storage.sync` for the
+ext). still true: never in git, never in a client-visible url, never in a log.
+
+**still open (`?` = untested, never assume):** Range support on cloud `getFile` urls;
+the 48h-window `t.me/s` history probe was NOT attempted (the channel has no old media
+history to probe — only a service post); `sendPhoto` vs `sendDocument` A/B resolved by
+DECISION (byte-faithful `sendDocument`), no A/B run.
+
+**parity note:** the integrity tab is ext-only because the web has no `/resolve` route at
+all — a missing tab there is not a parity drop (nothing to mirror).
