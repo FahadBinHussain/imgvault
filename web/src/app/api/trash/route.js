@@ -15,6 +15,7 @@ import { isTruthyFlag } from '@shared/mediaFieldRegistry.js'
 import {
   deleteImgbbByDeleteUrl,
   deletePixvidByDeleteUrl,
+  deleteTelegramPostsForItem,
   deleteVaultBlobCopies,
 } from '@/lib/hostDeletes'
 
@@ -103,6 +104,8 @@ async function loadHostSettings(userId) {
     udropKey1: globalSettings?.udropKey1 || '',
     udropKey2: globalSettings?.udropKey2 || '',
     teraboxCookie: appSettings.teraboxCookie || '',
+    telegramBotToken: globalSettings?.telegramBotToken || '',
+    telegramChannel: globalSettings?.telegramChannel || '',
   }
 }
 
@@ -164,15 +167,18 @@ async function restoreTrashedItem(row) {
 
 /**
  * Permanent delete of one trashed row — mirror of permanentlyDeleteItem:
- * vault blob host cleanup FIRST (throws keep the row), then the imgbb delete
- * URL (must confirm or throw — the URL is lost once the row goes), then the
- * pixvid delete URL (best-effort warn), then the row itself (FK cascade drops
- * the preview row).
+ * vault blob host cleanup FIRST (throws keep the row), then the Telegram
+ * channel posts (same rule: confirm/absent or throw — the message ids are
+ * lost once the row goes), then the imgbb delete URL (must confirm or throw —
+ * the URL is lost once the row goes), then the pixvid delete URL (best-effort
+ * warn), then the row itself (FK cascade drops the preview row).
  */
 async function performPermanentDelete(row, settings) {
   const extra = row.extraMetadata && typeof row.extraMetadata === 'object' ? row.extraMetadata : {}
 
   await deleteVaultBlobCopies(extra, settings)
+
+  await deleteTelegramPostsForItem(row, settings)
 
   if (row.imgbbDeleteUrl) {
     let confirmed = false

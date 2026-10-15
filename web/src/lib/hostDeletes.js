@@ -18,6 +18,8 @@
  */
 
 import { DEFAULT_VAULT_BLOB_HOST } from 'imgvault-shared/providerCatalog.js'
+import { getImageProviderLinks } from '@/lib/image-provider-links'
+import { getVideoProviderLinks } from '@/lib/video-provider-links'
 
 const UDROP_API_BASE = 'https://www.udrop.com/api/v2'
 const TERABOX_API_BASE = 'https://dm.terabox.com'
@@ -571,4 +573,134 @@ export async function deleteVaultBlobCopies(extra, settings) {
       )
     }
   }
+}
+
+// ---- Telegram channel posts (Bot API deleteMessage) ----
+
+/**
+ * Bot API chat_id: channel usernames must be @-prefixed (a bare username
+ * answers "chat not found"); explicit ids (-100…/numeric) pass through.
+ * @param {string} channel - channel username from settings
+ * @returns {string}
+ */
+function telegramChatId(channel) {
+  const clean = String(channel || '').trim()
+  if (!clean) return ''
+  return clean.startsWith('-') || /^\d+$/.test(clean) ? clean : `@${clean}`
+}
+
+/** The bot token rides the request URL — it must never reach error text. */
+function redactTelegramToken(text, token) {
+  const value = String(text || '')
+  return token ? value.split(token).join('[redacted]') : value
+}
+
+/**
+ * Delete one channel message. Returns:
+ *   'deleted'      - Telegram confirmed the delete
+ *   'already-gone' - Telegram reports the message no longer exists (verifiable
+ *                    absence → caller releases the row loudly, 2.13.3 rule)
+ * Anything else throws loud with the token redacted.
+ */
+async function telegramDeleteMessage(token, chatId, messageId) {
+  let response
+  try {
+    const form = new FormData()
+    form.append('chat_id', chatId)
+    form.append('message_id', String(messageId))
+    response = await fetch(`https://api.telegram.org/bot${token}/deleteMessage`, {
+      method: 'POST',
+      body: form,
+      cache: 'no-store',
+      credentials: 'omit',
+    })
+  } catch (error) {
+    throw new Error(
+      `Telegram deleteMessage: network error - ${redactTelegramToken(error.message || error, token)}`
+    )
+  }
+
+  const text = await response.text()
+  if (!response.ok) {
+    throw new Error(
+      `Telegram deleteMessage: HTTP ${response.status} - ${redactTelegramToken(text.slice(0, 300), token)}`
+    )
+  }
+
+  let payload
+  try {
+    payload = JSON.parse(text)
+  } catch {
+    throw new Error(
+      `Telegram deleteMessage: invalid JSON response - ${redactTelegramToken(text.slice(0, 200), token)}`
+    )
+  }
+
+  if (payload?.ok) return 'deleted'
+  if (/message to delete not found/i.test(String(payload?.description || ''))) return 'already-gone'
+  throw new Error(
+    `Telegram deleteMessage: ${payload?.error_code || 'error'} ${payload?.description || 'unknown error'}`
+  )
+}
+
+/**
+ * Delete the channel message(s) a trashed row posted to Telegram — the image
+ * and video host copies each carry their own messageId in extra_metadata.
+ * Port of background.deleteTelegramPosts with the same rules:
+ *   - no messageId → no-op (the row never touched the channel)
+ *   - token/channel missing → THROW (row stays; the message ids die with it)
+ *   - Telegram "message to delete not found" = verifiable absence → loud warn
+ *     + release, so an already-deleted post can never trap the row forever
+ *   - anything else → THROW (row stays, retryable; a channel post is never
+ *     orphaned silently — the Bot API also refuses its own posts once they
+ *     age out of its delete window, so the error names that path too)
+ * @param {object} row - raw media_items row (hosts ride extra_metadata)
+ * @param {{telegramBotToken?: string, telegramChannel?: string}} settings
+ * @returns {Promise<{checked: number, deleted: number, alreadyGone: number}>}
+ */
+export async function deleteTelegramPostsForItem(row, settings) {
+  const imageLink = getImageProviderLinks(row)?.telegram
+  const videoLink = getVideoProviderLinks(row)?.telegram
+  const messageIds = [
+    ...new Set(
+      [imageLink?.messageId, videoLink?.messageId]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    ),
+  ]
+  if (messageIds.length === 0) return { checked: 0, deleted: 0, alreadyGone: 0 }
+
+  const token = String(settings?.telegramBotToken || '').trim()
+  const channel = String(settings?.telegramChannel || '').trim()
+  if (!token || !channel) {
+    throw new Error(
+      `Telegram post delete needs the bot token and channel in Settings (missing ${
+        !token ? 'telegram_bot_token' : 'telegram_channel'
+      }). Item kept in trash so the message ids are not lost.`
+    )
+  }
+
+  const chatId = telegramChatId(channel)
+  let deleted = 0
+  let alreadyGone = 0
+  for (const messageId of messageIds) {
+    try {
+      const outcome = await telegramDeleteMessage(token, chatId, messageId)
+      if (outcome === 'already-gone') {
+        alreadyGone += 1
+        console.warn(
+          `[telegram-delete] message ${messageId} already gone from ${chatId} — releasing the row`
+        )
+      } else {
+        deleted += 1
+        console.log(`[telegram-delete] message ${messageId} deleted from ${chatId}`)
+      }
+    } catch (error) {
+      throw new Error(
+        `Telegram post delete failed for message ${messageId}: ${error.message || error}. ` +
+          'Item kept in trash — fix the issue and retry (if the post predates Telegram\'s bot-delete window, delete it manually in the channel, then retry).'
+      )
+    }
+  }
+  return { checked: messageIds.length, deleted, alreadyGone }
 }

@@ -8,7 +8,7 @@ import { StorageManager } from '../utils/storage.js';
 import { DuplicateDetector } from '../utils/duplicate-detector.js';
 import { URLNormalizer } from '../utils/url-normalizer.js';
 import { PixvidUploader, ImgbbUploader, FilemoonUploader, UDropUploader, TeraBoxUploader, TelegramUploader } from '../utils/uploaders.js';
-import { TELEGRAM_LOCAL_MEDIA_PREFIX, fetchTelegramFile } from '../utils/telegramApi.js';
+import { TELEGRAM_LOCAL_MEDIA_PREFIX, fetchTelegramFile, deleteTelegramMessage } from '../utils/telegramApi.js';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig.js';
 import {
   IMAGE_UPLOAD_SERVICES,
@@ -20,6 +20,7 @@ import {
   DEFAULT_VAULT_BLOB_HOST,
 } from '../config/providerCatalog.js';
 import {
+  getImageProviderLinks,
   getImageRetrySourceCandidates,
   getImageUploadService,
   getStrictImageProviderLink,
@@ -34,6 +35,7 @@ import {
   getConfiguredVideoUploadServices,
   getStrictVideoProviderLink,
   getVideoProviderLabel,
+  getVideoProviderLinks,
   getVideoRetrySourceCandidates,
   getVideoUploadService,
   mergeVideoProviderResult,
@@ -2513,6 +2515,55 @@ class ImgVaultServiceWorker {
   }
 
   /**
+   * Delete the channel message(s) a trashed row posted to Telegram — the image
+   * and video host copies each carry their own messageId in extra_metadata
+   * (mirrored in web hostDeletes.deleteTelegramPostsForItem). Same rules as
+   * the vault-blob deletes: no messageId = never touched the channel (no-op),
+   * missing token/channel = THROW (row stays, ids not lost), Telegram's
+   * "message to delete not found" = verifiable absence → loud warn + release
+   * (2.13.3) so an already-deleted post can never trap the row, anything else
+   * = THROW so the post is never orphaned silently.
+   */
+  async deleteTelegramPosts(item) {
+    const imageLink = getImageProviderLinks(item)?.telegram;
+    const videoLink = getVideoProviderLinks(item)?.telegram;
+    const messageIds = [...new Set(
+      [imageLink?.messageId, videoLink?.messageId]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    )];
+    if (messageIds.length === 0) return;
+
+    const settings = await chrome.storage.sync.get(['telegramBotToken', 'telegramChannel']);
+    const token = String(settings?.telegramBotToken || '').trim();
+    const channel = String(settings?.telegramChannel || '').trim();
+    if (!token || !channel) {
+      throw new Error(
+        `Telegram post delete needs the bot token and channel in Settings (missing ${
+          !token ? 'telegramBotToken' : 'telegramChannel'
+        }). Item kept in trash so the message ids are not lost.`
+      );
+    }
+
+    for (const messageId of messageIds) {
+      try {
+        await deleteTelegramMessage({ token, channel, messageId });
+        console.log(`[TG DELETE] message ${messageId} deleted from the channel`);
+      } catch (err) {
+        const message = String(err?.message || err);
+        if (/message to delete not found/i.test(message)) {
+          console.warn(`[TG DELETE] message ${messageId} already gone from the channel — releasing the row`);
+          continue;
+        }
+        throw new Error(
+          `Telegram post delete failed for message ${messageId}: ${message}. ` +
+            "Item kept in trash — fix the issue and retry (if the post predates Telegram's bot-delete window, delete it manually in the channel, then retry)."
+        );
+      }
+    }
+  }
+
+  /**
    * Permanent delete that removes the encrypted vault blob from its host(s)
    * BEFORE dropping the row. A host delete failure throws, so the row (and its
    * blob fields) survive in trash and the user can retry after fixing the
@@ -2523,6 +2574,7 @@ class ImgVaultServiceWorker {
     if (!item) throw new Error('Trashed item not found');
     await this.deleteVaultBlobFiles(item);
     this._invalidateVaultBlobCaches(id);
+    await this.deleteTelegramPosts(item);
     return this.storage.permanentlyDelete(id);
   }
 
