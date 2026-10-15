@@ -132,6 +132,9 @@ export function buildVideoProviderLinkFromResult(result = {}) {
     deleteUrl: pickText(result.deleteUrl),
     thumbnailUrl: pickText(result.thumbnailUrl, result.thumbUrl),
     fileId: pickText(result.fileId, result.filecode),
+    // telegram: the posted message id (delete + integrity listing need it);
+    // pickText drops it for hosts that don't set one.
+    messageId: pickText(result.messageId, result.message_id),
     shortUrl: pickText(result.shortUrl),
     accountId: pickText(result.accountId),
     filename: pickText(result.filename),

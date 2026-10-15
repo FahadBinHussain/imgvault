@@ -1,7 +1,7 @@
 import { getVideoRetrySourceCandidates, getVideoUploadService, mergeVideoProviderResult } from './videoProviderLinks.js';
 import { extractFilemoonFilecode, getFilemoonDirectLink, getFilemoonHlsLink } from './filemoonApi.js';
 import { getFilemoonStreamSource } from './filemoonSpa.js';
-import { FilemoonUploader, UDropUploader, TeraBoxUploader } from './uploaders.js';
+import { FilemoonUploader, UDropUploader, TeraBoxUploader, TelegramUploader } from './uploaders.js';
 import { resolveTeraBoxPlaybackUrl, teraBoxFsIdFromUrl } from './teraBoxApi.js';
 
 const absolute = (url, base) => new URL(url, base).toString();
@@ -12,6 +12,7 @@ const createVideoUploader = (service) => {
   if (service?.uploaderKey === 'filemoonUploader') return new FilemoonUploader();
   if (service?.uploaderKey === 'udropUploader') return new UDropUploader();
   if (service?.uploaderKey === 'teraboxUploader') return new TeraBoxUploader();
+  if (service?.uploaderKey === 'telegramUploader') return new TelegramUploader();
   return null;
 };
 

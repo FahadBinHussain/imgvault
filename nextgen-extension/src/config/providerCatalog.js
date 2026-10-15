@@ -2,7 +2,7 @@
 // metadata + pure helpers live in imgvault-shared/providerCatalog.js (single source of
 // truth — drift guard: tools/check-shared-twins.mjs). This file ONLY binds extension
 // runtime onto the shared entries: uploader classes, upload adapters, vault URL regen.
-import { FilemoonUploader, UDropUploader, TeraBoxUploader } from '../utils/uploaders.js';
+import { FilemoonUploader, UDropUploader, TeraBoxUploader, TelegramUploader } from '../utils/uploaders.js';
 import { resolveTeraBoxPlaybackUrl } from '../utils/teraBoxApi.js';
 import {
   DEFAULT_IMAGE_SOURCE,
@@ -24,6 +24,20 @@ import {
 // per-host extension runtime. uploaderKey stays in the shared metadata (it names the
 // background's uploader instance property); everything here is behavior only.
 const hasText = (value) => String(value || '').trim().length > 0;
+
+// telegram needs BOTH settings (token + channel) and a best-available filename:
+// image uploads arrive as `data` without fileName, videos always carry it.
+const telegramUploadOptions = (settings, data, blob, onProgress, signal) => ({
+  token: settings?.telegramBotToken,
+  channel: settings?.telegramChannel,
+  filename:
+    data?.fileName ||
+    String(data?.filePath || '').split(/[\\/]/).pop() ||
+    (blob?.type?.startsWith('image/') ? 'image' : 'file'),
+  mimeType: data?.mimeType || blob?.type || '',
+  ...(onProgress ? { onProgress } : {}),
+  ...(signal ? { signal } : {}),
+});
 
 const RUNTIME_BY_KEY = {
   pixvid: {
@@ -82,6 +96,13 @@ const RUNTIME_BY_KEY = {
         return url;
       }
     },
+  },
+  telegram: {
+    uploaderClass: TelegramUploader,
+    upload: ({ uploader, blob, settings, data, signal }) =>
+      uploader.upload(blob, telegramUploadOptions(settings, data, blob, null, signal)),
+    uploadWithProgress: ({ uploader, blob, settings, data, onProgress, signal }) =>
+      uploader.uploadWithProgress(blob, telegramUploadOptions(settings, data, blob, onProgress, signal)),
   },
 };
 

@@ -38,7 +38,7 @@ import {
 import {
   getConfiguredVideoUploadServices,
 } from '../utils/videoProviderLinks';
-import { getConfiguredImageUploadServices } from '../config/providerCatalog';
+import { IMAGE_UPLOAD_SERVICES, getConfiguredImageUploadServices } from '../config/providerCatalog';
 import MediaDetailModal from '../components/MediaDetailModal';
 import {
   createVaultConfig,
@@ -840,7 +840,7 @@ export default function VaultPage() {
     // Load host settings for the picker (video + image keys from merged settings).
     try {
       const video = await sendMessage('getVideoHostSettings');
-      const image = await chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey']);
+      const image = await chrome.storage.sync.get(IMAGE_UPLOAD_SERVICES.flatMap((service) => service.apiKeyFields || []));
       setHostSettings({ ...video, ...image });
     } catch (_) {
       // keep previous settings

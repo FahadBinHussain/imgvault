@@ -36,7 +36,7 @@ export default function PopupPage() {
 
   useEffect(() => {
     const loadUploadHostSettings = () => {
-      chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey'], (result) => {
+      chrome.storage.sync.get(IMAGE_UPLOAD_SERVICES.flatMap((service) => service.apiKeyFields || []), (result) => {
         setUploadHostSettings(result || {});
       });
     };
@@ -44,7 +44,7 @@ export default function PopupPage() {
     const handleStorageChange = (changes, areaName) => {
       if (areaName !== 'sync') return;
 
-      const hostKeys = ['pixvidApiKey', 'imgbbApiKey'];
+      const hostKeys = IMAGE_UPLOAD_SERVICES.flatMap((service) => service.apiKeyFields || []);
       if (hostKeys.some((key) => changes[key])) {
         loadUploadHostSettings();
       }

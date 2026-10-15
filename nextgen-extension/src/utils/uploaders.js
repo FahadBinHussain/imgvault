@@ -3,6 +3,19 @@
  * @version 2.0.0
  */
 
+import {
+  TELEGRAM_UPLOAD_MAX_BYTES,
+  assertTelegramUploadSize,
+  deleteTelegramMessage,
+  requireTelegramToken,
+  scrapeTelegramPostUrl,
+  sendTelegramFile,
+  telegramApiBase,
+  telegramChatId,
+  telegramLocalMediaUrl,
+  telegramUploadMethod,
+} from './telegramApi.js';
+
 /**
  * @typedef {Object} UploadResult
  * @property {string} url - Image URL
@@ -1093,6 +1106,162 @@ export class TeraBoxUploader extends BaseUploader {
       apiStatus: info.errno === 0 ? 'success' : 'error',
       apiMessage: info.errmsg || '',
     };
+  }
+}
+
+/**
+ * Telegram uploader (plan-telegram-host.md phase 1)
+ *
+ * Three shapes, decided from the file itself (never a silent fallback):
+ *  - images -> sendDocument (byte-faithful; sendPhoto re-encodes 23122->14074 B),
+ *    read back later through the platform-local /telegram-media/<fileId> route
+ *    (getFile at fetch time, token never stored) => hard 20 MB gate up front.
+ *  - mp4    -> sendVideo -> public CDN directUrl (hotlink, Range 206), scraped
+ *    from the public channel page. If the CDN url never appears the just-posted
+ *    message is removed again and the upload FAILS (no local-path fallback).
+ *  - other  -> sendDocument under the same 20 MB getFile gate.
+ * ~50 MB send cap surfaces as a connection reset OR HTTP 413 -> one loud message.
+ */
+export class TelegramUploader extends BaseUploader {
+  constructor() {
+    super('Telegram');
+  }
+
+  buildProviderResult({ message, channel, filename, method, cdnUrl = '' }) {
+    const field = method === 'sendVideo' ? 'video' : 'document';
+    const messageId = String(message?.message_id || '');
+    const media = message?.[field] || {};
+    const fileId = String(media.file_id || '');
+    if (!fileId) {
+      throw new Error(`Telegram: ${method} returned no file_id (message ${messageId || 'unknown'})`);
+    }
+    if (field === 'video' && !cdnUrl) {
+      throw new Error(`Telegram: video message ${messageId} has no CDN url - refusing to store a half-resolved link`);
+    }
+
+    const chat = String(channel || '').trim().replace(/^@+/, '');
+    const watchUrl = messageId ? `https://t.me/${chat}/${messageId}` : '';
+    const localUrl = telegramLocalMediaUrl(fileId, media.mime_type || '');
+    const filenameOut = filename || media.file_name || '';
+
+    if (field === 'video') {
+      return {
+        watchUrl,
+        displayUrl: watchUrl,
+        directUrl: cdnUrl,
+        thumbUrl: null,
+        deleteUrl: null,
+        fileId,
+        messageId,
+        filename: filenameOut,
+        apiStatus: 'success',
+        apiMessage: '',
+      };
+    }
+
+    // document: image (url = local route, displayUrl = the public post) and
+    // non-mp4 video (directUrl = the same local route, Range-served) in one shape.
+    return {
+      url: localUrl,
+      displayUrl: watchUrl,
+      directUrl: localUrl,
+      watchUrl,
+      thumbUrl: null,
+      deleteUrl: null,
+      fileId,
+      messageId,
+      filename: filenameOut,
+      apiStatus: 'success',
+      apiMessage: '',
+    };
+  }
+
+  async finishUpload({ message, token, channel, filename, method, signal }) {
+    const field = method === 'sendVideo' ? 'video' : 'document';
+    const messageId = String(message?.message_id || '');
+    let cdnUrl = '';
+
+    if (field === 'video') {
+      try {
+        cdnUrl = await scrapeTelegramPostUrl(channel, messageId, { wantMp4: true, signal });
+      } catch (error) {
+        let cleanupNote = '';
+        try {
+          await deleteTelegramMessage({ token, channel, messageId, signal });
+          cleanupNote = `; posted message ${messageId} was removed again so a retry stays clean`;
+        } catch (cleanupError) {
+          cleanupNote = `; cleanup FAILED - message ${messageId} is still on the channel (${cleanupError.message})`;
+        }
+        throw new Error(`${error.message}${cleanupNote}`);
+      }
+    }
+
+    const result = this.buildProviderResult({ message, channel, filename, method, cdnUrl });
+    console.log(`📨 [TELEGRAM] ${method} ok - message ${result.messageId}, fileId ${result.fileId}, directUrl ${result.directUrl || result.url}`);
+    return result;
+  }
+
+  /**
+   * @param {Blob} blob
+   * @param {{token: string, channel: string, filename?: string, mimeType?: string, signal?: AbortSignal}} options
+   */
+  async upload(blob, options = {}) {
+    const { token, channel, filename = 'file', mimeType = '', signal } = options;
+    requireTelegramToken(token);
+    telegramChatId(channel);
+    assertTelegramUploadSize(blob?.size || 0, filename, mimeType);
+
+    const method = telegramUploadMethod(filename, mimeType);
+    const message = await sendTelegramFile({ token, channel, blob, filename, mimeType, method, signal });
+    return this.finishUpload({ message, token, channel, filename, method, signal });
+  }
+
+  /** Page-side XHR variant with real byte progress (same post-send steps). */
+  async uploadWithProgress(blob, options = {}) {
+    const { token, channel, filename = 'file', mimeType = '', onProgress, signal } = options;
+    requireTelegramToken(token);
+    telegramChatId(channel);
+    assertTelegramUploadSize(blob?.size || 0, filename, mimeType);
+
+    const method = telegramUploadMethod(filename, mimeType);
+    const field = method === 'sendVideo' ? 'video' : 'document';
+    const form = new FormData();
+    form.append('chat_id', telegramChatId(channel));
+    form.append('disable_notification', 'true');
+    if (field === 'video') form.append('supports_streaming', 'true');
+    form.append(field, blob, filename || (field === 'video' ? 'video.mp4' : 'file.bin'));
+
+    let response;
+    try {
+      response = await this.xhrUpload(`${telegramApiBase(token)}/${method}`, form, onProgress, signal);
+    } catch (error) {
+      const raw = error?.message || String(error);
+      if (raw === 'Upload aborted') throw new Error(`Telegram ${method}: upload aborted`);
+      // both observed shapes of the same cap (spike: 51 MB = connection reset, then 413)
+      if (raw.startsWith('413')) {
+        throw new Error(
+          `Telegram upload cap: HTTP 413 from ${method} (file: ${filename}, ` +
+          `${Math.round((blob?.size || 0) / (1024 * 1024))} MB). The Bot API tops out near ` +
+          `50 MB per upload - smaller files or another host.`
+        );
+      }
+      if (raw === 'Network error during upload' && (blob?.size || 0) >= TELEGRAM_UPLOAD_MAX_BYTES * 0.9) {
+        throw new Error(
+          `Telegram upload cap: connection dropped mid-send on ${method} (file: ${filename}, ` +
+          `${Math.round((blob?.size || 0) / (1024 * 1024))} MB) - this is the ~50 MB Bot API limit ` +
+          `(it surfaces as a reset OR a 413). Smaller files or another host.`
+        );
+      }
+      throw new Error(`Telegram ${method} failed: ${raw}`);
+    }
+
+    if (!response?.ok) {
+      throw new Error(
+        `Telegram ${method}: ${response?.error_code || 'error'} ${response?.description || 'upload rejected'}`
+      );
+    }
+
+    return this.finishUpload({ message: response.result, token, channel, filename, method, signal });
   }
 }
 

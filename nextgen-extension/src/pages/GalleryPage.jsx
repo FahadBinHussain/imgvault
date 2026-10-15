@@ -21,7 +21,7 @@ import TimelineScrollbar from '../components/TimelineScrollbar';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig';
 import { IMAGE_UPLOAD_SERVICES, filterUploadServicesByKeys, getVaultBlobHostServices, normalizeVaultBlobHostKeys, DEFAULT_VAULT_BLOB_HOST } from '../config/providerCatalog';
-import { FilemoonUploader, UDropUploader, TeraBoxUploader } from '../utils/uploaders';
+import { FilemoonUploader, UDropUploader, TeraBoxUploader, TelegramUploader } from '../utils/uploaders';
 import { encryptBlob, encryptMetadata } from '../utils/vaultCrypto.js';
 import { getVaultMasterKey, importMasterKeyFromB64 } from '../utils/vaultSession.js';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
@@ -56,6 +56,7 @@ const createVideoUploader = (service) => {
   if (service?.uploaderKey === 'filemoonUploader') return new FilemoonUploader();
   if (service?.uploaderKey === 'udropUploader') return new UDropUploader();
   if (service?.uploaderKey === 'teraboxUploader') return new TeraBoxUploader();
+  if (service?.uploaderKey === 'telegramUploader') return new TelegramUploader();
   return null;
 };
 
@@ -1806,7 +1807,7 @@ export default function GalleryPage() {
     const loadUploadHostSettings = async () => {
       try {
         const imageSettings = await new Promise((resolve) => {
-          chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey'], (result) => resolve(result || {}));
+          chrome.storage.sync.get(IMAGE_UPLOAD_SERVICES.flatMap((service) => service.apiKeyFields || []), (result) => resolve(result || {}));
         });
 
         const videoSettings = uploadImageData.isVideo

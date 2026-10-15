@@ -128,6 +128,9 @@ export function buildImageProviderLinkFromResult(result = {}) {
     deleteUrl: pickText(result.deleteUrl),
     thumbnailUrl: pickText(result.thumbnailUrl, result.thumbUrl),
     fileId: pickText(result.fileId, result.filecode),
+    // telegram: the posted message id (delete + integrity listing need it);
+    // pickText drops it for hosts that don't set one.
+    messageId: pickText(result.messageId, result.message_id),
     filename: pickText(result.filename),
     apiStatus: pickText(result.apiStatus),
     apiMessage: pickText(result.apiMessage, result.apiResponse),

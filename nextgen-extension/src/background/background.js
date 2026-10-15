@@ -7,9 +7,11 @@
 import { StorageManager } from '../utils/storage.js';
 import { DuplicateDetector } from '../utils/duplicate-detector.js';
 import { URLNormalizer } from '../utils/url-normalizer.js';
-import { PixvidUploader, ImgbbUploader, FilemoonUploader, UDropUploader, TeraBoxUploader } from '../utils/uploaders.js';
+import { PixvidUploader, ImgbbUploader, FilemoonUploader, UDropUploader, TeraBoxUploader, TelegramUploader } from '../utils/uploaders.js';
+import { TELEGRAM_LOCAL_MEDIA_PREFIX, fetchTelegramFile } from '../utils/telegramApi.js';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig.js';
 import {
+  IMAGE_UPLOAD_SERVICES,
   filterUploadServicesByKeys,
   getConfiguredImageUploadServices,
   getMissingRequiredImageUploadServices,
@@ -105,6 +107,7 @@ class ImgVaultServiceWorker {
     this.filemoonUploader = new FilemoonUploader();
     this.udropUploader = new UDropUploader();
     this.teraboxUploader = new TeraBoxUploader();
+    this.telegramUploader = new TelegramUploader();
     this.activeUploadController = null;
     this.activeNativeDownloadPorts = new Map();
     this.nativeVideoPorts = new Map();
@@ -2343,7 +2346,7 @@ class ImgVaultServiceWorker {
           }
           restored.isVideo = true;
         } else {
-          const settings = await chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey']);
+          const settings = await chrome.storage.sync.get(IMAGE_UPLOAD_SERVICES.flatMap((service) => service.apiKeyFields || []));
           const configured = getConfiguredImageUploadServices(settings);
           const selected = filterUploadServicesByKeys(configured, targetHostKeys || null);
           const services = selected.length > 0 ? selected : configured;
@@ -3448,11 +3451,80 @@ class ImgVaultServiceWorker {
     }
   }
 
+  /**
+   * Serve a Telegram document (images + non-mp4 videos) over the platform-local
+   * /telegram-media/<fileId> route (same-origin in the SW, mirrored by the web
+   * app's Next route). getFile is resolved per request (file_path expires ~1 h);
+   * the token URL exists only inside fetchTelegramFile - never stored, never
+   * returned, never logged. Range passes through so <video> can seek.
+   * Content-Type: the `mt` query param set at upload time wins - the Bot API
+   * file endpoint answers text/plain for many documents, which would break playback.
+   */
+  async handleTelegramMediaRequest(request, fileId, url) {
+    const settings = await chrome.storage.sync.get(['telegramBotToken']);
+    if (!settings?.telegramBotToken) {
+      return new Response(
+        'Telegram bot token is not configured - open the extension Settings and save it under API Keys.',
+        { status: 500, headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
+      );
+    }
+
+    const range = request.headers.get('Range');
+    let response;
+    try {
+      response = await Promise.race([
+        fetchTelegramFile(settings.telegramBotToken, fileId, { range }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('getFile + file fetch timed out after 60s')), 60000)
+        ),
+      ]);
+    } catch (error) {
+      console.error('[Telegram-media] serve failed:', error.message);
+      return new Response(`Telegram media fetch failed: ${error.message}`, {
+        status: 502,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
+    }
+
+    const queryMime = String(url.searchParams.get('mt') || '').trim();
+    const upstreamType = String(response.headers.get('content-type') || '');
+    const contentType =
+      queryMime ||
+      (upstreamType.includes('/') && !upstreamType.startsWith('text/plain')
+        ? upstreamType
+        : 'application/octet-stream');
+
+    const headers = new Headers();
+    headers.set('Content-Type', contentType);
+    headers.set('Cache-Control', 'private, max-age=3600');
+    const acceptRanges = response.headers.get('accept-ranges');
+    if (acceptRanges) headers.set('Accept-Ranges', acceptRanges);
+    const contentLength = response.headers.get('content-length');
+    if (contentLength) headers.set('Content-Length', contentLength);
+    const contentRange = response.headers.get('content-range');
+    if (contentRange) headers.set('Content-Range', contentRange);
+
+    return new Response(response.body, { status: response.status, headers });
+  }
+
   async getMergedVideoHostSettings() {
-    const syncSettings = await chrome.storage.sync.get(['filemoonApiKey', 'udropKey1', 'udropKey2', 'teraboxCookie']);
+    const syncSettings = await chrome.storage.sync.get([
+      'filemoonApiKey',
+      'udropKey1',
+      'udropKey2',
+      'teraboxCookie',
+      'telegramBotToken',
+      'telegramChannel',
+    ]);
     const merged = { ...syncSettings };
 
-    if (merged.filemoonApiKey && merged.udropKey1 && merged.udropKey2) {
+    if (
+      merged.filemoonApiKey &&
+      merged.udropKey1 &&
+      merged.udropKey2 &&
+      merged.telegramBotToken &&
+      merged.telegramChannel
+    ) {
       return merged;
     }
 
@@ -3475,17 +3547,29 @@ class ImgVaultServiceWorker {
         merged.teraboxCookie = firebaseSettings.teraboxCookie;
       }
 
+      if (!merged.telegramBotToken && firebaseSettings?.telegramBotToken) {
+        merged.telegramBotToken = firebaseSettings.telegramBotToken;
+      }
+
+      if (!merged.telegramChannel && firebaseSettings?.telegramChannel) {
+        merged.telegramChannel = firebaseSettings.telegramChannel;
+      }
+
       if (
         (!syncSettings.filemoonApiKey && merged.filemoonApiKey) ||
         (!syncSettings.udropKey1 && merged.udropKey1) ||
         (!syncSettings.udropKey2 && merged.udropKey2) ||
-        (!syncSettings.teraboxCookie && merged.teraboxCookie)
+        (!syncSettings.teraboxCookie && merged.teraboxCookie) ||
+        (!syncSettings.telegramBotToken && merged.telegramBotToken) ||
+        (!syncSettings.telegramChannel && merged.telegramChannel)
       ) {
         await chrome.storage.sync.set({
           ...(merged.filemoonApiKey ? { filemoonApiKey: merged.filemoonApiKey } : {}),
           ...(merged.udropKey1 ? { udropKey1: merged.udropKey1 } : {}),
           ...(merged.udropKey2 ? { udropKey2: merged.udropKey2 } : {}),
           ...(merged.teraboxCookie ? { teraboxCookie: merged.teraboxCookie } : {}),
+          ...(merged.telegramBotToken ? { telegramBotToken: merged.telegramBotToken } : {}),
+          ...(merged.telegramChannel ? { telegramChannel: merged.telegramChannel } : {}),
         });
       }
     } catch (error) {
@@ -3762,7 +3846,7 @@ class ImgVaultServiceWorker {
     try {
       await chrome.storage.local.set({ uploadStatusLogs: [] });
       // Get API keys from storage
-      const settings = await chrome.storage.sync.get(['pixvidApiKey', 'imgbbApiKey']);
+      const settings = await chrome.storage.sync.get(IMAGE_UPLOAD_SERVICES.flatMap((service) => service.apiKeyFields || []));
       const configuredImageServices = getConfiguredImageUploadServices(settings);
       const missingRequiredImageServices = getMissingRequiredImageUploadServices(settings);
 
@@ -5911,6 +5995,19 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   const extensionOrigin = chrome.runtime.getURL('').replace(/\/$/, '');
   if (url.origin !== extensionOrigin) return; // only our own extension origin
+  const tgMatch = url.pathname.match(/^\/telegram-media\/([^/]+)$/);
+  if (tgMatch) {
+    console.log('[Telegram-media] fetch intercepted:', url.pathname, 'range:', event.request.headers.get('range'));
+    event.respondWith(
+      serviceWorker
+        .handleTelegramMediaRequest(event.request, decodeURIComponent(tgMatch[1]), url)
+        .catch((err) => {
+          console.error('[Telegram-media] handler error:', err);
+          return new Response('Telegram media error: ' + err.message, { status: 500 });
+        })
+    );
+    return;
+  }
   const match = url.pathname.match(/^\/vault-stream\/([^/]+)$/);
   if (!match) return;
   console.log('[Vault-stream] fetch intercepted:', url.pathname, 'range:', event.request.headers.get('range'));
