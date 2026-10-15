@@ -23,7 +23,7 @@ const CSS = `
   .iv-top{flex-wrap:nowrap}
   .iv-left{flex:0 1 auto}
   .iv-controls{order:2;flex:1 1 0;justify-content:center}
-  .iv-actions{order:3}
+  .iv-actions{order:3;margin-left:auto}
   .iv-destwrap{order:4;flex:0 0 auto;justify-content:flex-start}
   .iv-divider-a{display:block}
 }
