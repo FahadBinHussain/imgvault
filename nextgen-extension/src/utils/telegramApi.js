@@ -288,3 +288,91 @@ export function telegramLocalMediaUrl(fileId, mimeType = '') {
     ? `${TELEGRAM_LOCAL_MEDIA_PREFIX}${id}?mt=${encodeURIComponent(mime)}`
     : `${TELEGRAM_LOCAL_MEDIA_PREFIX}${id}`;
 }
+
+/**
+ * Enumerate every MEDIA post of the public channel by walking the `t.me/s/`
+ * preview pages (`?before=<oldest id>` walks backward; each post is marked
+ * `data-post="<channel>/<id>"` — the phase-0-proven scrape marker; message-id
+ * attributes do not exist there and silently misreport). Service posts
+ * (joins, "channel created") carry no media and are skipped: an integrity
+ * listing of a MEDIA host must contain media only.
+ *
+ * FAILS LOUD on HTTP/network errors and on the page cap — a truncated listing
+ * would misreport older posts as missing/extra, so it is never cut short
+ * silently. `fresh=` rides every URL because fastly serves `t.me/s/` stale
+ * right after a post (live-learned during the chunk-2 test).
+ *
+ * @returns {Promise<Array<{messageId: string}>>} ascending by message id
+ */
+export async function listTelegramPosts(token, channel, { maxPages = 400, signal, onProgress } = {}) {
+  if (!token) throw new Error('Telegram bot token is not configured. Set it in Settings -> API Keys.');
+  const cleanChannel = String(channel || '').trim().replace(/^@+/, '');
+  if (!cleanChannel) throw new Error('Telegram channel is not configured. Set it in Settings -> API Keys.');
+
+  const prefix = `data-post="${cleanChannel}/`;
+  const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const ids = new Set();
+  let before = '';
+  let exhausted = false;
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    if (signal?.aborted) throw new Error('Telegram channel listing: aborted');
+    const url = `https://t.me/s/${cleanChannel}?${before ? `before=${before}&` : ''}fresh=${Date.now()}`;
+
+    let response;
+    try {
+      response = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0', 'Cache-Control': 'no-cache' },
+        credentials: 'omit',
+        cache: 'no-store',
+        signal,
+      });
+    } catch (err) {
+      throw new Error(`Telegram channel listing: network error - ${err.message || String(err)}`);
+    }
+    if (!response.ok) {
+      throw new Error(
+        `Telegram channel listing: HTTP ${response.status} for t.me/s/${cleanChannel} (channel missing, renamed, or not public?)`
+      );
+    }
+
+    const html = await response.text();
+    const matches = [];
+    const re = new RegExp(`${escapedPrefix}(\\d+)"`, 'g');
+    for (const m of html.matchAll(re)) matches.push({ id: Number(m[1]), index: m.index });
+    if (matches.length === 0) {
+      exhausted = true;
+      break;
+    }
+
+    let pageOldest = null;
+    for (let i = 0; i < matches.length; i += 1) {
+      const segEnd = i + 1 < matches.length ? matches[i + 1].index : html.length;
+      const segment = html.slice(matches[i].index, segEnd);
+      const isMedia =
+        /tgme_widget_message_(photo|video|document|animation|sticker|voice)/.test(segment) ||
+        /cdn\d*\.telesco\.pe/.test(segment);
+      if (pageOldest === null || matches[i].id < pageOldest) pageOldest = matches[i].id;
+      if (!isMedia) continue; // service post — not a media host file
+      ids.add(matches[i].id);
+    }
+    if (onProgress) onProgress({ page, posts: ids.size });
+
+    // `before` is a strict upper bound, so pageOldest must keep decreasing;
+    // a repeat page (server ignored the cursor) means the history is done.
+    if (pageOldest === null || (before !== '' && pageOldest >= Number(before))) {
+      exhausted = true;
+      break;
+    }
+    before = String(pageOldest);
+  }
+
+  if (!exhausted) {
+    throw new Error(
+      `Telegram channel listing hit the ${maxPages}-page cap with more history to read — refusing to return a truncated ` +
+        'integrity list (it would misreport older posts). Raise maxPages or use a dedicated media channel.'
+    );
+  }
+
+  return [...ids].sort((a, b) => a - b).map((id) => ({ messageId: String(id) }));
+}

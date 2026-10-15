@@ -11,6 +11,7 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  Send,
   Settings,
   Shield,
   ShieldAlert,
@@ -51,7 +52,8 @@ import {
   resolveTeraBoxPlaybackUrl,
 } from '../utils/teraBoxApi';
 import { retryVideoHostPageSide } from '../utils/videoRetryPageSide';
-import { getVideoSourceHostOptions } from '../utils/videoProviderLinks';
+import { getVideoProviderLinks, getVideoSourceHostOptions } from '../utils/videoProviderLinks';
+import { deleteTelegramMessage, listTelegramPosts } from '../utils/telegramApi';
 import { flattenSceneConfig } from '../utils/sceneConfig';
 import { UDropUploader, TeraBoxUploader } from '../utils/uploaders';
 
@@ -127,7 +129,7 @@ export default function ResolvePage() {
   const [notice, setNotice] = useState(null);
 
   // ---- UDrop integrity check state ----
-  const [activeTab, setActiveTab] = useState('images'); // 'images' | 'videos'
+  const [activeTab, setActiveTab] = useState('images'); // 'images' | 'videos' | 'scenes' | 'telegram'
   const [videoSubTab, setVideoSubTab] = useState('udrop'); // 'udrop' | 'filemoon' | 'terabox'
   const [udropLoading, setUdropLoading] = useState(false);
   const [udropError, setUdropError] = useState(null);
@@ -191,6 +193,16 @@ export default function ResolvePage() {
   const [teraboxHasChecked, setTeraboxHasChecked] = useState(false);
   const [fixingTeraBox, setFixingTeraBox] = useState({});
   const [resolvingAllTeraBox, setResolvingAllTeraBox] = useState(false);
+
+  // ---- Telegram channel integrity check state (channel-level: crosses image/video) ----
+  const [telegramIntegrity, setTelegramIntegrity] = useState({ found: [], missing: [], extra: [] });
+  const [telegramLoading, setTelegramLoading] = useState(false);
+  const [telegramLoadingMessage, setTelegramLoadingMessage] = useState(null);
+  const [telegramError, setTelegramError] = useState(null);
+  const [telegramFilter, setTelegramFilter] = useState('all');
+  // Empty results are valid — this flag stops the auto-check retriggering forever.
+  const [telegramHasChecked, setTelegramHasChecked] = useState(false);
+  const [deletingTelegramPosts, setDeletingTelegramPosts] = useState({});
 
   const loadSettings = () => {
     setSettingsLoading(true);
@@ -527,6 +539,88 @@ export default function ResolvePage() {
       runTeraBoxIntegrityCheck();
     }
   }, [activeTab, videoSubTab, teraboxLoading, teraboxHasChecked, runTeraBoxIntegrityCheck]);
+
+  const runTelegramIntegrityCheck = useCallback(async () => {
+    const token = settings?.telegramBotToken;
+    const channel = settings?.telegramChannel;
+    if (!hasText(token) || !hasText(channel)) {
+      setTelegramError('Telegram bot token / channel not configured. Go to Settings -> API Keys.');
+      return;
+    }
+    setTelegramLoading(true);
+    setTelegramError(null);
+    setNotice(null);
+    try {
+      const [freshImages, freshVault] = await Promise.all([sendMessage('getImages'), sendMessage('getVaultImages')]);
+      const allItems = [...(freshImages || []), ...(freshVault || [])];
+
+      // Referenced message ids: every live + vaulted item's telegram post.
+      // Trash rows never appear here (getImages filters deleted_at) — house rule.
+      const referencedBy = new Map();
+      for (const item of allItems) {
+        if (!item) continue;
+        const seen = new Set();
+        for (const links of [getImageProviderLinks(item), getVideoProviderLinks(item)]) {
+          const tg = links?.telegram;
+          const msgId = tg ? Number(tg.messageId) : NaN;
+          if (!Number.isFinite(msgId) || seen.has(msgId)) continue;
+          seen.add(msgId);
+          const label = item.pageTitle || item.fileName || item.title || item.file_name || item.id;
+          const list = referencedBy.get(msgId) || [];
+          list.push({ id: item.id, label });
+          referencedBy.set(msgId, list);
+        }
+      }
+
+      const posts = await listTelegramPosts(token, channel, {
+        onProgress: (p) => setTelegramLoadingMessage(`Reading channel history… page ${p.page}, ${p.posts} media posts`),
+      });
+      setTelegramLoadingMessage(null);
+
+      const cleanChannel = String(channel).trim().replace(/^@+/, '');
+      const channelIds = new Set(posts.map((post) => Number(post.messageId)));
+      const toEntry = (msgId, items) => ({
+        messageId: String(msgId),
+        codes: [String(msgId)],
+        pageUrl: `https://t.me/${cleanChannel}/${msgId}`,
+        items,
+      });
+
+      const found = [];
+      const extra = [];
+      for (const msgId of channelIds) {
+        const items = referencedBy.get(msgId);
+        (items ? found : extra).push(toEntry(msgId, items));
+      }
+      const missing = [];
+      for (const [msgId, items] of referencedBy) {
+        if (!channelIds.has(msgId)) missing.push(toEntry(msgId, items));
+      }
+      const byNumericId = (a, b) => Number(a.messageId) - Number(b.messageId);
+      found.sort(byNumericId);
+      missing.sort(byNumericId);
+      extra.sort(byNumericId);
+
+      setTelegramIntegrity({ found, missing, extra });
+      setNotice({
+        type: missing.length > 0 ? 'error' : 'success',
+        message: `Telegram check: ${found.length} found, ${missing.length} broken references, ${extra.length} extra in the channel.`,
+      });
+    } catch (err) {
+      setTelegramLoadingMessage(null);
+      setTelegramError(err.message || String(err));
+      setTelegramIntegrity({ found: [], missing: [], extra: [] });
+    } finally {
+      setTelegramLoading(false);
+      setTelegramHasChecked(true);
+    }
+  }, [settings, sendMessage]);
+
+  useEffect(() => {
+    if (activeTab === 'telegram' && !telegramLoading && !telegramHasChecked) {
+      runTelegramIntegrityCheck();
+    }
+  }, [activeTab, telegramLoading, telegramHasChecked, runTelegramIntegrityCheck]);
 
   const resolveAllVideoHost = useCallback(async (hostKey, targets, label) => {
     if (!targets || targets.length === 0 || resolvingAllTeraBox) return;
@@ -1300,6 +1394,18 @@ export default function ResolvePage() {
           >
             <Box className="h-4 w-4" />
             3D file hosts
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('telegram')}
+            className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+              activeTab === 'telegram'
+                ? 'border-primary bg-primary text-primary-content shadow-sm'
+                : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'
+            }`}
+          >
+            <Send className="h-4 w-4" />
+            Telegram channel
           </button>
         </section>
 
@@ -3288,6 +3394,204 @@ export default function ResolvePage() {
                           )}
                         </div>
                       </div>
+                    </article>
+                  );
+                });
+              })()}
+            </section>
+          </>
+        )}
+
+        {activeTab === 'telegram' && (
+          <>
+            <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                  <Send className="h-4 w-4" />
+                  Telegram integrity
+                </div>
+                <h1 className="text-3xl font-semibold tracking-tight text-base-content">Telegram channel integrity</h1>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Button variant="primary" onClick={runTelegramIntegrityCheck} className="h-10 gap-2 px-3 text-sm" disabled={telegramLoading}>
+                  {telegramLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  {telegramLoading ? 'Checking...' : 'Check channel'}
+                </Button>
+                <Button variant="outline" onClick={() => navigate('/settings')} className="h-10 gap-2 px-3 text-sm">
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Button>
+              </div>
+            </section>
+
+            {telegramError && (
+              <div className="rounded-[var(--radius-box)] border border-red-500/40 bg-red-500/15 px-4 py-3 text-sm text-error">{telegramError}</div>
+            )}
+
+            {notice && activeTab === 'telegram' && (
+              <div className={`rounded-[var(--radius-box)] border px-4 py-3 text-sm font-medium ${notice.type === 'error' ? 'border-red-500/40 bg-red-500/15 text-error' : 'border-green-500/40 bg-green-500/15 text-success'}`}>
+                {notice.message}
+              </div>
+            )}
+
+            <section className="flex flex-wrap gap-2">
+              {[
+                { value: 'all', label: 'All', count: telegramIntegrity.found.length + telegramIntegrity.missing.length + telegramIntegrity.extra.length, tip: 'Every referenced message plus every channel post, counted once.' },
+                { value: 'missing', label: 'Broken references', count: telegramIntegrity.missing.length, tip: 'Saved items whose telegram message id no longer exists in the channel. The post was deleted or the id is wrong.' },
+                { value: 'found', label: 'Found', count: telegramIntegrity.found.length, tip: 'Saved items whose telegram post is still in the channel. Nothing to do.' },
+                { value: 'extra', label: 'Extra in channel', count: telegramIntegrity.extra.length, tip: 'Media posts in the channel that no saved item references. Likely old uploads or duplicates.' },
+              ].map((option) => (
+                <StatChip
+                  key={option.value}
+                  value={option.value}
+                  label={option.label}
+                  count={option.count}
+                  tip={option.tip}
+                  active={telegramFilter === option.value}
+                  onClick={() => setTelegramFilter(option.value)}
+                />
+              ))}
+            </section>
+
+            <section className="grid gap-3">
+              {telegramLoading && (
+                <div className="flex min-h-64 flex-col items-center justify-center gap-2 rounded-[var(--radius-box)] border border-base-300 bg-base-100 text-base-content/60">
+                  <div className="flex items-center">
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Checking Telegram channel...
+                  </div>
+                  {telegramLoadingMessage && (
+                    <div className="text-xs text-base-content/50">{telegramLoadingMessage}</div>
+                  )}
+                </div>
+              )}
+
+              {!telegramLoading && (() => {
+                let displayItems = [];
+                if (telegramFilter === 'all') {
+                  displayItems = [
+                    ...telegramIntegrity.missing.map((i) => ({ ...i, status: 'missing' })),
+                    ...telegramIntegrity.found.map((i) => ({ ...i, status: 'found' })),
+                    ...telegramIntegrity.extra.map((i) => ({ ...i, status: 'extra' })),
+                  ];
+                } else {
+                  displayItems = (telegramIntegrity[telegramFilter] || []).map((i) => ({ ...i, status: telegramFilter }));
+                }
+
+                if (displayItems.length === 0) {
+                  return (
+                    <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-[var(--radius-box)] border border-base-300 bg-base-100 px-4 text-center">
+                      <ShieldCheck className="h-8 w-8 text-success" />
+                      <div>
+                        <h2 className="text-lg font-semibold text-base-content">No items in this view</h2>
+                        <p className="mt-1 text-sm text-base-content/60">
+                          {telegramFilter === 'missing' ? 'Every referenced telegram message exists in the channel.' : 'Nothing to show here.'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return displayItems.map((entry) => {
+                  const { messageId, codes, pageUrl, items, status } = entry;
+
+                  if (status === 'extra') {
+                    return (
+                      <article key={`tg-extra-${messageId}`} className="grid gap-4 rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-3 shadow-sm transition hover:border-amber-500/40 sm:grid-cols-[132px_1fr_auto]">
+                        <div className="flex h-28 items-center justify-center overflow-hidden rounded-[var(--radius-box)] bg-base-200">
+                          <div className="flex flex-col items-center gap-1 text-amber-500/80">
+                            <AlertCircle className="h-8 w-8" />
+                            <span className="text-[10px] font-semibold uppercase tracking-wider">Orphan</span>
+                          </div>
+                        </div>
+                        <div className="min-w-0 space-y-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h2 className="truncate text-base font-semibold text-base-content">Post #{messageId}</h2>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-warning">
+                                <AlertCircle className="h-3 w-3" /> Not in DB
+                              </span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
+                              <span>Codes: {codes.join(', ')}</span>
+                              <a href={pageUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                                Open post <ExternalLink className="h-3 w-3" />
+                              </a>
+                            </div>
+                          </div>
+                          <div className="text-xs text-base-content/70">
+                            This media post exists in the channel but no saved item references it.
+                          </div>
+                        </div>
+                        <div className="flex flex-col justify-between gap-3 sm:w-52">
+                          <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 px-3 py-2 text-xs text-base-content/65">
+                            Message ID: {messageId}
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <Button variant="outline" className="h-9 justify-center gap-2 text-sm" onClick={() => window.open(pageUrl, '_blank')}>
+                              <ExternalLink className="h-4 w-4" />
+                              Open post
+                            </Button>
+                            <Button
+                              variant="outline"
+                              className="h-9 justify-center gap-2 border-red-500/40 text-sm text-error hover:bg-red-500/10"
+                              disabled={Boolean(deletingTelegramPosts[messageId])}
+                              onClick={async () => {
+                                if (!confirm(`Delete post #${messageId} from the Telegram channel? This cannot be undone.`)) return;
+                                setDeletingTelegramPosts((prev) => ({ ...prev, [messageId]: true }));
+                                try {
+                                  await deleteTelegramMessage({ token: settings.telegramBotToken, channel: settings.telegramChannel, messageId });
+                                  setTelegramIntegrity((prev) => ({ ...prev, extra: prev.extra.filter((e) => e.messageId !== messageId) }));
+                                  setNotice({ type: 'success', message: `Deleted post #${messageId} from the channel.` });
+                                } catch (err) {
+                                  setNotice({ type: 'error', message: `Delete failed: ${err.message || err}` });
+                                } finally {
+                                  setDeletingTelegramPosts((prev) => {
+                                    const next = { ...prev };
+                                    delete next[messageId];
+                                    return next;
+                                  });
+                                }
+                              }}
+                            >
+                              {deletingTelegramPosts[messageId] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                              {deletingTelegramPosts[messageId] ? 'Deleting...' : 'Delete'}
+                            </Button>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  }
+
+                  const isBroken = status === 'missing';
+                  return (
+                    <article key={`tg-${status}-${messageId}`} className={`rounded-[var(--radius-box)] border bg-base-100 p-3 shadow-sm ${isBroken ? 'border-red-500/40' : 'border-base-300'}`}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-base font-semibold text-base-content">Post #{messageId}</h2>
+                        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${isBroken ? 'border-red-500/40 bg-red-500/15 text-error' : 'border-green-500/40 bg-green-500/15 text-success'}`}>
+                          {isBroken ? <AlertCircle className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
+                          {isBroken ? 'Broken reference' : 'In channel'}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
+                        <span>Codes: {codes.join(', ')}</span>
+                        <a href={pageUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                          Open post <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </div>
+                      {items && items.length > 0 && (
+                        <div className="mt-2 space-y-1 text-xs text-base-content/70">
+                          {items.map((it) => (
+                            <div key={it.id}>Referenced by: {it.label}</div>
+                          ))}
+                        </div>
+                      )}
+                      {isBroken && (
+                        <div className="mt-2 text-xs text-error">
+                          No media post with this message id exists in the channel — the post was deleted or the id is wrong.
+                        </div>
+                      )}
                     </article>
                   );
                 });
