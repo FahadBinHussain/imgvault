@@ -5,7 +5,7 @@ import {
   Save, Check, Download, Key, Image, Film, HardDrive, Box,
   Cloud, Database, FolderOpen, Settings2, Sparkles,
   ExternalLink, Loader2, Shield, Zap, CheckCircle2, AlertCircle,
-  Eye, EyeOff, Clipboard, ClipboardPaste, Trash2
+  Eye, EyeOff, Clipboard, ClipboardPaste, Trash2, Send
 } from 'lucide-react';
 import { useChromeStorage } from '../hooks/useChromeExtension';
 import GalleryNavbar from '../components/GalleryNavbar';
@@ -248,6 +248,8 @@ export default function SettingsPage() {
   const [udropKey1, setUdropKey1] = useChromeStorage('udropKey1', '', 'sync');
   const [udropKey2, setUdropKey2] = useChromeStorage('udropKey2', '', 'sync');
   const [teraboxCookie, setTeraboxCookie] = useChromeStorage('teraboxCookie', '', 'sync');
+  const [telegramBotToken, setTelegramBotToken] = useChromeStorage('telegramBotToken', '', 'sync');
+  const [telegramChannel, setTelegramChannel] = useChromeStorage('telegramChannel', '', 'sync');
   const [firebaseConfigRaw, setFirebaseConfigRaw] = useChromeStorage('firebaseConfigRaw', '', 'sync');
   const [neonDatabaseUrl, setNeonDatabaseUrl] = useChromeStorage('neonDatabaseUrl', '', 'sync');
   const [defaultGallerySource, setDefaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
@@ -257,6 +259,7 @@ export default function SettingsPage() {
 
   const [f, setF] = useState({
     pixvid: '', imgbb: '', filemoon: '', udrop1: '', udrop2: '', terabox: '',
+    tgToken: '', tgChannel: '',
     firebase: '', neon: '', gallerySrc: 'imgbb', videoSrc: 'filemoon', threeDSrc: 'udrop', dlFolder: '',
   });
   const [saved, setSaved] = useState(false);
@@ -273,11 +276,12 @@ export default function SettingsPage() {
     setF({
       pixvid: pixvidApiKey || '', imgbb: imgbbApiKey || '', filemoon: filemoonApiKey || '',
       udrop1: udropKey1 || '', udrop2: udropKey2 || '', terabox: teraboxCookie || '',
+      tgToken: telegramBotToken || '', tgChannel: telegramChannel || '',
       firebase: firebaseConfigRaw || '',
       neon: neonDatabaseUrl || '', gallerySrc: defaultGallerySource || 'imgbb',
       videoSrc: defaultVideoSource || 'filemoon', threeDSrc: default3DSource || 'udrop', dlFolder: downloadFolder || '',
     });
-  }, [pixvidApiKey, imgbbApiKey, filemoonApiKey, udropKey1, udropKey2, teraboxCookie, firebaseConfigRaw, neonDatabaseUrl, defaultGallerySource, defaultVideoSource, default3DSource, downloadFolder]);
+  }, [pixvidApiKey, imgbbApiKey, filemoonApiKey, udropKey1, udropKey2, teraboxCookie, telegramBotToken, telegramChannel, firebaseConfigRaw, neonDatabaseUrl, defaultGallerySource, defaultVideoSource, default3DSource, downloadFolder]);
 
   useEffect(() => {
     if ((downloadFolder || '').trim()) return;
@@ -313,6 +317,8 @@ export default function SettingsPage() {
           if (!f.udrop1 && cloud.udropKey1?.trim()) { set('udrop1', cloud.udropKey1); setUdropKey1(cloud.udropKey1); up = true; }
           if (!f.udrop2 && cloud.udropKey2?.trim()) { set('udrop2', cloud.udropKey2); setUdropKey2(cloud.udropKey2); up = true; }
           if (!f.terabox && cloud.teraboxCookie?.trim()) { set('terabox', cloud.teraboxCookie); setTeraboxCookie(cloud.teraboxCookie); up = true; }
+          if (!f.tgToken && cloud.telegramBotToken?.trim()) { set('tgToken', cloud.telegramBotToken); setTelegramBotToken(cloud.telegramBotToken); up = true; }
+          if (!f.tgChannel && cloud.telegramChannel?.trim()) { set('tgChannel', cloud.telegramChannel); setTelegramChannel(cloud.telegramChannel); up = true; }
           if (cloud.defaultGallerySource?.trim()) { set('gallerySrc', cloud.defaultGallerySource); setDefaultGallerySource(cloud.defaultGallerySource); up = true; }
           if (cloud.defaultVideoSource?.trim()) { set('videoSrc', cloud.defaultVideoSource); setDefaultVideoSource(cloud.defaultVideoSource); up = true; }
           if (cloud.default3DSource?.trim()) { set('threeDSrc', cloud.default3DSource); setDefault3DSource(cloud.default3DSource); up = true; }
@@ -341,11 +347,12 @@ export default function SettingsPage() {
       await chrome.storage.sync.set({ neonDatabaseUrl: nUrl });
       setPixvidApiKey(f.pixvid); setImgbbApiKey(f.imgbb); setFilemoonApiKey(f.filemoon);
       setUdropKey1(f.udrop1); setUdropKey2(f.udrop2); setTeraboxCookie(f.terabox);
+      setTelegramBotToken(f.tgToken); setTelegramChannel(f.tgChannel);
       setDefaultGallerySource(f.gallerySrc); setDefaultVideoSource(f.videoSrc); setDefault3DSource(f.threeDSrc);
       setDownloadFolder(f.dlFolder); setNeonDatabaseUrl(nUrl);
       try {
         const fc = await new Promise(r => chrome.storage.sync.get(['firebaseConfig'], r)).then(r => r.firebaseConfig);
-        if ((nUrl || fc) && (f.pixvid || f.imgbb || f.filemoon || f.udrop1 || f.udrop2 || f.terabox || f.gallerySrc || f.videoSrc || f.threeDSrc)) {
+        if ((nUrl || fc) && (f.pixvid || f.imgbb || f.filemoon || f.udrop1 || f.udrop2 || f.terabox || f.tgToken || f.tgChannel || f.gallerySrc || f.videoSrc || f.threeDSrc)) {
           setCloudStatus('Syncing...');
           const { StorageManager } = await import('../utils/storage.js');
           const sm = new StorageManager(); await sm.init();
@@ -356,6 +363,8 @@ export default function SettingsPage() {
           if (f.udrop1) s.udropKey1 = f.udrop1;
           if (f.udrop2) s.udropKey2 = f.udrop2;
           if (f.terabox) s.teraboxCookie = f.terabox;
+          if (f.tgToken) s.telegramBotToken = f.tgToken;
+          if (f.tgChannel) s.telegramChannel = f.tgChannel;
           if (f.gallerySrc) s.defaultGallerySource = f.gallerySrc;
           if (f.videoSrc) s.defaultVideoSource = f.videoSrc;
           if (f.threeDSrc) s.default3DSource = f.threeDSrc;
@@ -445,6 +454,14 @@ export default function SettingsPage() {
             <Field label="TeraBox Cookie" icon={HardDrive} hint="Optional. If blank, ImgVault reads your logged-in TeraBox session cookie from the browser automatically. Paste only if you want to override it (e.g. from another device).">
               <input className="s-inp" style={{ fontFamily: "'Outfit', monospace", fontSize: 12 }} type="password" value={f.terabox} onChange={e => set('terabox', e.target.value)} placeholder="ndus=...; browserid=...; lang=..." />
             </Field>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Telegram Bot Token" icon={Send} hint="Bot API token. Never stored in media rows or in a URL.">
+                <input className="s-inp" type="password" value={f.tgToken} onChange={e => set('tgToken', e.target.value)} placeholder="123456789:AA..." />
+              </Field>
+              <Field label="Telegram Channel" icon={Send} hint="Public channel username, no @. The bot must be an admin there (post + delete rights).">
+                <input className="s-inp" type="text" value={f.tgChannel} onChange={e => set('tgChannel', e.target.value)} placeholder="channelusername" />
+              </Field>
+            </div>
             <div className="s-divider" />
             <Field label="Video Download Folder" icon={FolderOpen} hint="Leave blank to auto-detect your Windows Videos folder. Use double backslashes if setting manually.">
               <input className="s-inp" style={{ fontFamily: "'Outfit', monospace", fontSize: 12 }} type="text" value={f.dlFolder} onChange={e => set('dlFolder', e.target.value)} placeholder="C:\Users\You\Videos" />

@@ -36,6 +36,20 @@ export const IMAGE_UPLOAD_SERVICES = [
     thumbUrlField: 'imgbbThumbUrl',
     isConfigured: (settings) => hasText(settings?.imgbbApiKey),
   },
+  {
+    // telegram images are uploaded as DOCUMENTS (byte-faithful; sendPhoto re-encodes —
+    // measured 23122B -> 14074B in the phase-0 spike), so there is no CDN image URL:
+    // the stored link is a platform-local `/telegram-media/<fileId>` path served by the
+    // extension SW / web route through getFile (token never lands in the row or a URL).
+    key: 'telegram',
+    label: 'Telegram',
+    sourceValue: 'telegram',
+    sourceLabel: 'Telegram (Byte-Faithful Document)',
+    apiKeyFields: ['telegramBotToken', 'telegramChannel'],
+    required: false,
+    uploaderKey: 'telegramUploader',
+    isConfigured: (settings) => hasText(settings?.telegramBotToken) && hasText(settings?.telegramChannel),
+  },
 ];
 
 export const VIDEO_UPLOAD_SERVICES = [
@@ -79,6 +93,21 @@ export const VIDEO_UPLOAD_SERVICES = [
     aliasWatchUrlField: 'teraboxUrl',
     vaultBlobHost: true,
     isConfigured: () => true, // cookie auto-reads from browser session
+  },
+  {
+    // mp4/h264 in -> sendVideo -> public CDN url (spike: ACAO *, Range 206, repeated
+    // reads OK, hotlinkable with no token). anything else goes as a document and is
+    // served through the same platform-local `/telegram-media/<fileId>` path as images
+    // (getFile has a real 20 MB gate -> loud error naming it).
+    // NOT a vaultBlobHost yet — that is phase 3a of plan-telegram-host.md.
+    key: 'telegram',
+    label: 'Telegram',
+    sourceValue: 'telegram',
+    sourceLabel: 'Telegram (mp4 Hotlink)',
+    apiKeyFields: ['telegramBotToken', 'telegramChannel'],
+    required: false,
+    uploaderKey: 'telegramUploader',
+    isConfigured: (settings) => hasText(settings?.telegramBotToken) && hasText(settings?.telegramChannel),
   },
 ];
 

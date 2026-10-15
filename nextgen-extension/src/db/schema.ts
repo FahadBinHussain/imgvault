@@ -138,6 +138,8 @@ export const settings = pgTable('settings', {
   filemoonApiKey: text('filemoon_api_key').notNull().default(''),
   udropKey1: text('udrop_key1').notNull().default(''),
   udropKey2: text('udrop_key2').notNull().default(''),
+  telegramBotToken: text('telegram_bot_token').notNull().default(''),
+  telegramChannel: text('telegram_channel').notNull().default(''),
   defaultGallerySource: text('default_gallery_source').notNull().default('imgbb'),
   defaultVideoSource: text('default_video_source').notNull().default('filemoon'),
   default3DSource: text('default_3d_source').notNull().default('udrop'),

@@ -1847,6 +1847,8 @@ export class StorageManager {
           filemoonApiKey: fields.filemoonApiKey?.stringValue || '',
           udropKey1: fields.udropKey1?.stringValue || '',
           udropKey2: fields.udropKey2?.stringValue || '',
+          telegramBotToken: fields.telegramBotToken?.stringValue || '',
+          telegramChannel: fields.telegramChannel?.stringValue || '',
           defaultGallerySource: fields.defaultGallerySource?.stringValue || 'imgbb',
           defaultVideoSource: fields.defaultVideoSource?.stringValue || 'filemoon',
           default3DSource: fields.default3DSource?.stringValue || 'udrop'
@@ -1860,6 +1862,8 @@ export class StorageManager {
       if (settings.filemoonApiKey) mergedSettings.filemoonApiKey = settings.filemoonApiKey;
       if (settings.udropKey1) mergedSettings.udropKey1 = settings.udropKey1;
       if (settings.udropKey2) mergedSettings.udropKey2 = settings.udropKey2;
+      if (settings.telegramBotToken) mergedSettings.telegramBotToken = settings.telegramBotToken;
+      if (settings.telegramChannel) mergedSettings.telegramChannel = settings.telegramChannel;
       if (settings.defaultGallerySource) mergedSettings.defaultGallerySource = settings.defaultGallerySource;
       if (settings.defaultVideoSource) mergedSettings.defaultVideoSource = settings.defaultVideoSource;
       if (settings.default3DSource) mergedSettings.default3DSource = settings.default3DSource;
@@ -1936,6 +1940,8 @@ export class StorageManager {
         filemoonApiKey: fields.filemoonApiKey?.stringValue || '',
         udropKey1: fields.udropKey1?.stringValue || '',
         udropKey2: fields.udropKey2?.stringValue || '',
+        telegramBotToken: fields.telegramBotToken?.stringValue || '',
+        telegramChannel: fields.telegramChannel?.stringValue || '',
         defaultGallerySource: fields.defaultGallerySource?.stringValue || 'imgbb',
         defaultVideoSource: fields.defaultVideoSource?.stringValue || 'filemoon',
         default3DSource: fields.default3DSource?.stringValue || 'udrop',
@@ -2849,10 +2855,13 @@ export class StorageManager {
     await sql`
       insert into public.settings (
         id, pixvid_api_key, imgbb_api_key, filemoon_api_key, udrop_key1, udrop_key2,
+        telegram_bot_token, telegram_channel,
         default_gallery_source, default_video_source, default_3d_source, updated_at
       ) values (
         'config', ${merged.pixvidApiKey || ''}, ${merged.imgbbApiKey || ''}, ${merged.filemoonApiKey || ''},
-        ${merged.udropKey1 || ''}, ${merged.udropKey2 || ''}, ${merged.defaultGallerySource || 'imgbb'},
+        ${merged.udropKey1 || ''}, ${merged.udropKey2 || ''},
+        ${merged.telegramBotToken || ''}, ${merged.telegramChannel || ''},
+        ${merged.defaultGallerySource || 'imgbb'},
         ${merged.defaultVideoSource || 'filemoon'}, ${merged.default3DSource || 'udrop'}, now()
       )
       on conflict (id) do update set
@@ -2861,6 +2870,8 @@ export class StorageManager {
         filemoon_api_key = excluded.filemoon_api_key,
         udrop_key1 = excluded.udrop_key1,
         udrop_key2 = excluded.udrop_key2,
+        telegram_bot_token = excluded.telegram_bot_token,
+        telegram_channel = excluded.telegram_channel,
         default_gallery_source = excluded.default_gallery_source,
         default_video_source = excluded.default_video_source,
         default_3d_source = excluded.default_3d_source,
@@ -2880,6 +2891,8 @@ export class StorageManager {
       filemoonApiKey: row.filemoon_api_key || '',
       udropKey1: row.udrop_key1 || '',
       udropKey2: row.udrop_key2 || '',
+      telegramBotToken: row.telegram_bot_token || '',
+      telegramChannel: row.telegram_channel || '',
       defaultGallerySource: row.default_gallery_source || 'imgbb',
       defaultVideoSource: row.default_video_source || 'filemoon',
       default3DSource: row.default_3d_source || 'udrop',

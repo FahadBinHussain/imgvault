@@ -15,12 +15,14 @@
 export const IMAGE_SOURCE_SETTING_OPTIONS = [
   { value: 'imgbb', label: 'ImgBB' },
   { value: 'pixvid', label: 'Pixvid' },
+  { value: 'telegram', label: 'Telegram (Byte-Faithful Document)' },
 ]
 
 export const VIDEO_SOURCE_SETTING_OPTIONS = [
   { value: 'filemoon', label: 'Filemoon' },
   { value: 'udrop', label: 'UDrop' },
   { value: 'terabox', label: 'TeraBox' },
+  { value: 'telegram', label: 'Telegram (mp4 Hotlink)' },
 ]
 
 export const THREE_D_SOURCE_SETTING_OPTIONS = [
@@ -89,6 +91,26 @@ export const SETTINGS_FIELDS = [
     default: '',
     placeholder: 'ndus=...; browserid=...',
     hint: 'Session cookie used by the extension for TeraBox uploads/resolves.',
+  },
+  {
+    key: 'telegramBotToken',
+    label: 'Telegram Bot Token',
+    type: 'secret',
+    section: 'keys',
+    table: 'telegram_bot_token',
+    default: '',
+    placeholder: '123456789:AA...',
+    hint: 'Bot API token. Never written to media rows and never appears in a stored URL.',
+  },
+  {
+    key: 'telegramChannel',
+    label: 'Telegram Channel',
+    type: 'text',
+    section: 'keys',
+    table: 'telegram_channel',
+    default: '',
+    placeholder: 'channelusername',
+    hint: 'Public channel username (no @). The bot must be an admin there.',
   },
   {
     key: 'neonDatabaseUrl',
