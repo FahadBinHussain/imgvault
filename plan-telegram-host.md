@@ -298,7 +298,45 @@ aligned to siblings: kicker `Telegram integrity`, h1 `Telegram video integrity`,
 missing, image-row ref → in NO bucket and NOT extra, unreferenced post → extra; extra-card
 delete dropped the card and really removed the message; channel + counts back to baseline).
 
+**gap bucket + fix flow (2.15.12):** the restructure shipped three buckets, but the sibling
+tabs also have a fourth - `No <host> URL` (videos never uploaded there), per-card Fix, and a
+bulk `Resolve all to <host> (N)`; telegram had none, so a video that was never uploaded to
+telegram was invisible on the subtab. added the `noUrl` bucket + per-card Fix + bulk button,
+mirroring the siblings exactly. membership is strictly video-only (`isVideo || has telegram
+video ref`; vaulted-encrypted blobs + scenes excluded; link items without a ref skip).
+fix/bulk reuse the same generic machinery as the siblings
+(`retryVideoHostPageSide(item,'telegram',…)` + `updateImage` merge). live-tested: 118 noUrl
+(116 real video rows with no telegram ref + 2 synthetic = exact per-DB oracle; the 85
+vaulted-encrypted videos correctly excluded); Fix(nosrc) fails LOUDLY (`No existing hosted
+video URL is available to retry Telegram.`); Fix(src) really uploads (sendVideo), stores the
+ref, and the card flips to found `Post #24` with `Referenced by: <title>`. chip math: All =
+found + broken + noUrl + extra; bulk targets noUrl + broken.
+
 **live-learned, keep:**
+
+- **the `t.me/s` LISTING page is fastly-cached and can lag a fresh post by minutes** - even
+  with `fresh=` on the url (query params do not reliably bust the edge cache; measured: a
+  throwaway's post page still rendered as alive with marker + video tag + cdn url minutes
+  after `deleteMessage`). a reconciliation fired right after a fix upload can therefore see
+  the just-posted message missing from the listing and misclassify the item as broken - and
+  a false broken card offers a Fix that re-uploads a DUPLICATE. a 2.15.11 attempt to fix it
+  with a bounded listing-wait (6 x 2.5s) still flashed broken (the stale window outlived
+  it) and was replaced in 2.15.12.
+- **the post page is the authoritative existence probe**: `t.me/s/<ch>/<id>` - the same page
+  the uploader itself scrapes for the CDN url. a ref counts as broken only when BOTH the
+  listing lacks it AND its own post page lacks the message. dead refs probe as gone (no
+  marker; verified live against post id 999999999) so nothing gets softened; live posts can
+  never flash broken. verified live 2.15.12: Fix -> chips IMMEDIATELY show Found 3 /
+  Broken 1 (only the dead ref). note the probe inherits the cache staleness in the alive
+  direction (a message deleted while its post page is still edge-cached probes as alive
+  until the cache expires, next check corrects) - the false-broken direction is the one
+  deliberately eliminated.
+- **ext-page fetch of a localhost asset url can be served a synthetic 204** by an unknown
+  profile-level layer (curl + normal pages fine; self-cleared; not conclusively attributed -
+  environment-layer, not app code). test fix flows from a real CDN source url instead, or
+  pre-flight the exact asset url from the ext page before every fix attempt; never debug app
+  code for it.
+
 
 - **Telegram answers "message to delete not found" with HTTP 400 + JSON body**, not 200 +
   `ok:false`. the web helper must parse the body and classify already-gone BEFORE the

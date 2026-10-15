@@ -53,7 +53,7 @@ import {
 } from '../utils/teraBoxApi';
 import { retryVideoHostPageSide } from '../utils/videoRetryPageSide';
 import { getVideoProviderLinks, getVideoSourceHostOptions } from '../utils/videoProviderLinks';
-import { deleteTelegramMessage, listTelegramPosts } from '../utils/telegramApi';
+import { deleteTelegramMessage, listTelegramPosts, scrapeTelegramPostUrl } from '../utils/telegramApi';
 import { flattenSceneConfig } from '../utils/sceneConfig';
 import { UDropUploader, TeraBoxUploader } from '../utils/uploaders';
 
@@ -196,7 +196,7 @@ export default function ResolvePage() {
 
   // ---- Telegram integrity check state (Video hosts subtab — sibling of the
   // ---- other video-host integrity checks; found/missing cover the VIDEO type only) ----
-  const [telegramIntegrity, setTelegramIntegrity] = useState({ found: [], missing: [], extra: [] });
+  const [telegramIntegrity, setTelegramIntegrity] = useState({ found: [], missing: [], noUrl: [], extra: [] });
   const [telegramLoading, setTelegramLoading] = useState(false);
   const [telegramLoadingMessage, setTelegramLoadingMessage] = useState(null);
   const [telegramError, setTelegramError] = useState(null);
@@ -204,6 +204,7 @@ export default function ResolvePage() {
   // Empty results are valid — this flag stops the auto-check retriggering forever.
   const [telegramHasChecked, setTelegramHasChecked] = useState(false);
   const [deletingTelegramPosts, setDeletingTelegramPosts] = useState({});
+  const [fixingTelegram, setFixingTelegram] = useState({});
 
   const loadSettings = () => {
     setSettingsLoading(true);
@@ -555,18 +556,22 @@ export default function ResolvePage() {
       const [freshImages, freshVault] = await Promise.all([sendMessage('getImages'), sendMessage('getVaultImages')]);
       const allItems = [...(freshImages || []), ...(freshVault || [])];
 
-      // This subtab lives under Video hosts, so found/missing judge the VIDEO
-      // type only (2.12.79 rule): scenes belong to the 3D tab, vaulted
-      // encrypted blobs are not host videos. Trash rows never appear at all
-      // (getImages filters deleted_at) — house rule.
+      // This subtab lives under Video hosts, so found/missing/no-url judge the
+      // VIDEO type only (2.12.79 rule, same filter as the UDrop/Filemoon/TeraBox
+      // tabs): scenes belong to the 3D tab, vaulted encrypted blobs are not
+      // host videos, and other rows only count once they carry a telegram
+      // post. Trash rows never appear at all (getImages filters deleted_at).
       //
       // Two reference sets:
       //  - allRefs: every item's telegram post, image or video. Extras compare
       //    against this, so a post an image item still points at is never a
       //    false orphan.
       //  - videoRefs: the video type's posts — the found/missing buckets.
+      // A video with no telegram post lands in noUrl — the gap bucket, same
+      // "never uploaded yet" meaning as the sibling tabs.
       const allRefs = new Set();
       const videoRefs = new Map();
+      const noUrl = [];
       for (const item of allItems) {
         if (!item) continue;
 
@@ -574,15 +579,23 @@ export default function ResolvePage() {
         if (Number.isFinite(imageMsgId)) allRefs.add(imageMsgId);
 
         const videoMsgId = Number(getVideoProviderLinks(item)?.telegram?.messageId);
-        if (!Number.isFinite(videoMsgId)) continue;
-        allRefs.add(videoMsgId);
+        if (Number.isFinite(videoMsgId)) allRefs.add(videoMsgId);
 
         if (isVaultedEncryptedItem(item)) continue;
         if (item.kind === 'scene' || item.spzUrl) continue;
 
-        const label = item.pageTitle || item.fileName || item.title || item.file_name || item.id;
+        const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
+        // A telegram post counts as a host link (mirrors the sibling checks'
+        // host-URL test); a plain video with none is a gap row.
+        if (!isVideo && !Number.isFinite(videoMsgId)) continue;
+
+        if (!Number.isFinite(videoMsgId)) {
+          noUrl.push({ item, codes: [] });
+          continue;
+        }
+
         const list = videoRefs.get(videoMsgId) || [];
-        list.push({ id: item.id, label });
+        list.push(item);
         videoRefs.set(videoMsgId, list);
       }
 
@@ -607,24 +620,46 @@ export default function ResolvePage() {
         if (items) found.push(toEntry(msgId, items));
         else if (!allRefs.has(msgId)) extra.push(toEntry(msgId, undefined));
       }
-      const missing = [];
+      const missingRaw = [];
       for (const [msgId, items] of videoRefs) {
-        if (!channelIds.has(msgId)) missing.push(toEntry(msgId, items));
+        if (!channelIds.has(msgId)) missingRaw.push(toEntry(msgId, items));
+      }
+
+      // The listing page is fastly-cached and can lag a post (or a fix upload)
+      // by minutes - observed live: after a fix the just-posted ref was absent
+      // from the listing for >20s while the post page itself was live since
+      // the uploader's own scrape (the uploader scrapes it for the CDN url).
+      // The post page t.me/s/<ch>/<id> is the authoritative existence probe: a
+      // ref counts as broken only when BOTH the listing and its own post page
+      // lack the message. A dead ref still probes as gone (no marker), so
+      // nothing gets softened - but a live post can never flash as broken
+      // (a false broken card would offer a duplicate re-upload Fix).
+      const missing = [];
+      for (const entry of missingRaw) {
+        let alive = false;
+        try {
+          await scrapeTelegramPostUrl(channel, entry.messageId, { wantMp4: false, attempts: 2 });
+          alive = true;
+        } catch (err) {
+          console.warn(`[telegram] post ${entry.messageId} is neither in the listing nor live on its post page: ${err.message || err}`);
+        }
+        if (alive) found.push(entry);
+        else missing.push(entry);
       }
       const byNumericId = (a, b) => Number(a.messageId) - Number(b.messageId);
       found.sort(byNumericId);
       missing.sort(byNumericId);
       extra.sort(byNumericId);
 
-      setTelegramIntegrity({ found, missing, extra });
+      setTelegramIntegrity({ found, missing, noUrl, extra });
       setNotice({
         type: missing.length > 0 ? 'error' : 'success',
-        message: `Telegram check: ${found.length} found, ${missing.length} broken links, ${extra.length} extra on Telegram.`,
+        message: `Telegram check: ${found.length} found, ${missing.length} broken links, ${noUrl.length} no url, ${extra.length} extra on Telegram.`,
       });
     } catch (err) {
       setTelegramLoadingMessage(null);
       setTelegramError(err.message || String(err));
-      setTelegramIntegrity({ found: [], missing: [], extra: [] });
+      setTelegramIntegrity({ found: [], missing: [], noUrl: [], extra: [] });
     } finally {
       setTelegramLoading(false);
       setTelegramHasChecked(true);
@@ -690,12 +725,13 @@ export default function ResolvePage() {
     if (hostKey === 'terabox') await runTeraBoxIntegrityCheck();
     if (hostKey === 'udrop') await runUdropIntegrityCheck();
     if (hostKey === 'filemoon') await runFilemoonIntegrityCheck();
+    if (hostKey === 'telegram') await runTelegramIntegrityCheck();
     setResolvingAllTeraBox(false);
     setNotice({
       type: failed > 0 ? 'error' : 'success',
       message: `Resolved ${completed}/${targets.length} to ${label}. ${failed} failed.`,
     });
-  }, [resolvingAllTeraBox, sendMessage, runTeraBoxIntegrityCheck, runUdropIntegrityCheck, runFilemoonIntegrityCheck, reloadImages, reloadVaultImages]);
+  }, [resolvingAllTeraBox, sendMessage, runTeraBoxIntegrityCheck, runUdropIntegrityCheck, runFilemoonIntegrityCheck, runTelegramIntegrityCheck, reloadImages, reloadVaultImages]);
 
   const resolveAllTeraBox = useCallback(async () => {
     const targets = [...(teraboxIntegrity.noUrl || []), ...(teraboxIntegrity.missing || [])];
@@ -712,12 +748,24 @@ export default function ResolvePage() {
     await resolveAllVideoHost('filemoon', targets, 'Filemoon');
   }, [filemoonIntegrity, resolveAllVideoHost]);
 
+  const resolveAllTelegram = useCallback(async () => {
+    // missing entries are per message id and carry the referencing items —
+    // each item is its own re-upload target (symmetric with the sibling tabs'
+    // noUrl + missing bulk fixed set).
+    const targets = [
+      ...(telegramIntegrity.noUrl || []),
+      ...(telegramIntegrity.missing || []).flatMap((entry) => (entry.items || []).map((item) => ({ item }))),
+    ];
+    await resolveAllVideoHost('telegram', targets, 'Telegram');
+  }, [telegramIntegrity, resolveAllVideoHost]);
+
   // Run a Fix for a single video, optionally restricted to an explicit source
   // host the video is already on. No hidden fallback chain — if the user picks
   // a source, only that host is used as the download source.
   const runVideoFix = async (item, targetHost, hostSettings, sourceHost, label, recheck) => {
     const setFixing = targetHost === 'terabox' ? setFixingTeraBox
       : targetHost === 'udrop' ? setFixingUdrop
+      : targetHost === 'telegram' ? setFixingTelegram
       : setFixingFilemoon;
     setFixing((prev) => ({ ...prev, [item.id]: true }));
     setFixProgress((prev) => ({ ...prev, [item.id]: { phase: 'download', message: 'Starting...', percent: null } }));
@@ -1281,6 +1329,11 @@ export default function ResolvePage() {
       </span>
     );
   };
+
+  // Telegram Fix targets: noUrl rows are 1 item each; a missing bucket entry is
+  // one message id referencing N items — each item is its own fix target.
+  const telegramFixTargetCount = telegramIntegrity.noUrl.length
+    + telegramIntegrity.missing.reduce((sum, entry) => sum + ((entry.items || []).length), 0);
 
   return (
     <div className="min-h-screen bg-base-200 text-base-content prem-page">
@@ -3429,6 +3482,15 @@ export default function ResolvePage() {
               </div>
 
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Button
+                  variant="primary"
+                  onClick={resolveAllTelegram}
+                  className="h-10 gap-2 px-3 text-sm"
+                  disabled={resolvingAllTeraBox || telegramFixTargetCount === 0}
+                >
+                  {resolvingAllTeraBox ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                  {resolvingAllTeraBox ? 'Resolving...' : `Resolve all to Telegram (${telegramFixTargetCount})`}
+                </Button>
                 <Button variant="primary" onClick={runTelegramIntegrityCheck} className="h-10 gap-2 px-3 text-sm" disabled={telegramLoading}>
                   {telegramLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                   {telegramLoading ? 'Checking...' : 'Check Telegram'}
@@ -3452,9 +3514,10 @@ export default function ResolvePage() {
 
             <section className="flex flex-wrap gap-2">
               {[
-                { value: 'all', label: 'All', count: telegramIntegrity.found.length + telegramIntegrity.missing.length + telegramIntegrity.extra.length, tip: 'Every telegram-touched video plus every unclaimed channel post, counted once.' },
+                { value: 'all', label: 'All', count: telegramIntegrity.found.length + telegramIntegrity.missing.length + telegramIntegrity.noUrl.length + telegramIntegrity.extra.length, tip: 'Every telegram-touched video plus every unclaimed channel post, counted once.' },
                 { value: 'missing', label: 'Broken links', count: telegramIntegrity.missing.length, tip: 'Videos whose telegram post no longer exists in the channel. The post was deleted or the id is wrong.' },
                 { value: 'found', label: 'Found', count: telegramIntegrity.found.length, tip: 'Videos whose telegram post is still in the channel. Nothing to do.' },
+                { value: 'noUrl', label: 'No Telegram URL', count: telegramIntegrity.noUrl.length, tip: 'Saved videos that have no Telegram link at all — they were never uploaded to Telegram.' },
                 { value: 'extra', label: 'Extra on Telegram', count: telegramIntegrity.extra.length, tip: 'Media posts in the channel that no saved item references. Likely old uploads or duplicates.' },
               ].map((option) => (
                 <StatChip
@@ -3488,6 +3551,7 @@ export default function ResolvePage() {
                   displayItems = [
                     ...telegramIntegrity.missing.map((i) => ({ ...i, status: 'missing' })),
                     ...telegramIntegrity.found.map((i) => ({ ...i, status: 'found' })),
+                    ...telegramIntegrity.noUrl.map((i) => ({ ...i, status: 'noUrl' })),
                     ...telegramIntegrity.extra.map((i) => ({ ...i, status: 'extra' })),
                   ];
                 } else {
@@ -3579,6 +3643,83 @@ export default function ResolvePage() {
                     );
                   }
 
+                  if (status === 'noUrl') {
+                    const item = entry.item || {};
+                    const title = item.pageTitle || item.fileName || item.description || 'Untitled';
+                    const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
+                    return (
+                      <article
+                        key={`tg-noUrl-${item.id}`}
+                        className="grid gap-4 rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-3 shadow-sm transition hover:border-primary/25 sm:grid-cols-[132px_1fr_auto]"
+                      >
+                        <div className="flex h-28 items-center justify-center overflow-hidden rounded-[var(--radius-box)] bg-base-200">
+                          {item.linkPreviewImageUrl || item.imgbbThumbUrl ? (
+                            <img
+                              src={item.linkPreviewImageUrl || item.imgbbThumbUrl}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center gap-1 text-base-content/35">
+                              {isVideo ? <Video className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}
+                              <span className="text-[10px] font-semibold uppercase tracking-wider">{isVideo ? 'Video' : 'Media'}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="min-w-0 space-y-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h2 className="truncate text-base font-semibold text-base-content">{title}</h2>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-warning">
+                                <AlertCircle className="h-3 w-3" /> No Telegram URL
+                              </span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
+                              {item.fileName && <span className="truncate">{item.fileName}</span>}
+                              {formatDate(item.createdAt || item.internalAddedTimestamp)}
+                            </div>
+                          </div>
+
+                          <div className="text-xs text-base-content/70">
+                            This video was never uploaded to Telegram — it has no Telegram link stored.
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col justify-between gap-3 sm:w-52">
+                          <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 px-3 py-2 text-xs text-base-content/65">
+                            No Telegram URL stored
+                          </div>
+
+                          <div className="flex flex-col gap-2">
+                            <Button
+                              variant="primary"
+                              className="h-9 justify-center gap-2 text-sm"
+                              disabled={Boolean(fixingTelegram[item.id])}
+                              onClick={() => startVideoFix(item, 'telegram', 'Telegram', runTelegramIntegrityCheck)}
+                            >
+                              {fixingTelegram[item.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                              {fixingTelegram[item.id] ? 'Fixing...' : 'Fix'}
+                            </Button>
+                            {fixProgress[item.id] && (
+                              <div className="flex flex-col gap-1.5">
+                                <div className="text-[11px] leading-tight text-base-content/70">
+                                  {fixProgress[item.id].message || 'Working...'}
+                                </div>
+                                <div className="h-1.5 w-full overflow-hidden rounded-full bg-base-300">
+                                  <div
+                                    className="h-full rounded-full bg-gradient-to-r from-primary-500 to-secondary-500 transition-all duration-300"
+                                    style={{ width: `${Math.max(4, fixProgress[item.id].percent ?? 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  }
+
                   const isBroken = status === 'missing';
                   return (
                     <article key={`tg-${status}-${messageId}`} className={`rounded-[var(--radius-box)] border bg-base-100 p-3 shadow-sm ${isBroken ? 'border-red-500/40' : 'border-base-300'}`}>
@@ -3596,10 +3737,42 @@ export default function ResolvePage() {
                         </a>
                       </div>
                       {items && items.length > 0 && (
-                        <div className="mt-2 space-y-1 text-xs text-base-content/70">
-                          {items.map((it) => (
-                            <div key={it.id}>Referenced by: {it.label}</div>
-                          ))}
+                        <div className="mt-2 space-y-2 text-xs text-base-content/70">
+                          {items.map((it) => {
+                            const referencedLabel = it.pageTitle || it.fileName || it.title || it.file_name || it.id;
+                            if (!isBroken) {
+                              return <div key={it.id}>Referenced by: {referencedLabel}</div>;
+                            }
+                            return (
+                              <div key={it.id} className="space-y-1.5 rounded-[var(--radius-box)] border border-base-300 bg-base-200/40 px-2 py-1.5">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span>Referenced by: {referencedLabel}</span>
+                                  <Button
+                                    variant="outline"
+                                    className="h-7 gap-1.5 px-2 text-xs"
+                                    disabled={Boolean(fixingTelegram[it.id])}
+                                    onClick={() => startVideoFix(it, 'telegram', 'Telegram', runTelegramIntegrityCheck)}
+                                  >
+                                    {fixingTelegram[it.id] ? <Loader2 className="h-3 w-3 animate-spin" /> : <UploadCloud className="h-3 w-3" />}
+                                    {fixingTelegram[it.id] ? 'Fixing...' : 'Fix'}
+                                  </Button>
+                                </div>
+                                {fixProgress[it.id] && (
+                                  <div className="flex flex-col gap-1">
+                                    <div className="text-[11px] leading-tight text-base-content/60">
+                                      {fixProgress[it.id].message || 'Working...'}
+                                    </div>
+                                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-base-300">
+                                      <div
+                                        className="h-full rounded-full bg-gradient-to-r from-primary-500 to-secondary-500 transition-all duration-300"
+                                        style={{ width: `${Math.max(4, fixProgress[it.id].percent ?? 100)}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                       {isBroken && (
