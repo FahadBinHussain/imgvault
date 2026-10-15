@@ -261,6 +261,17 @@ export function getMediaItemKind(item = {}) {
   return MEDIA_KIND_IMAGE;
 }
 
+// Vault rows store only the encrypted placeholders (opaque *.bin name,
+// blanked source/page metadata); the real metadata was captured into
+// encryptedMetadata at vault time and the vault page decrypts it into
+// _decryptedMeta after unlock. Overlay those values so detail views render
+// the same real info the cards/search already use instead of N/A + blob name.
+export function getVaultDisplayItem(item = {}) {
+  const overlay = isPlainObject(item?._decryptedMeta) ? item._decryptedMeta : null;
+  if (!overlay) return item;
+  return { ...item, ...overlay };
+}
+
 export function getBaseFieldKeys(kindOrItem = MEDIA_KIND_IMAGE) {
   const kind = typeof kindOrItem === 'string'
     ? kindOrItem
@@ -328,6 +339,10 @@ export function getTechnicalMetadataEntries(item = {}, options = {}) {
   return Object.entries(item || {})
     .filter(([key, value]) => key !== 'id')
     .filter(([key]) => !excluded.has(key))
+    // Internal display-only markers (_decryptedMeta attached by the vault
+    // page, _isTrash from the trash list) are page state, not document
+    // fields - never render them as raw technical rows.
+    .filter(([key]) => !key.startsWith('_'))
     .filter(([key]) => !omitted.has(key))
     .filter(([, value]) => hasRenderableFieldValue(value))
     .sort(([a], [b]) => a.localeCompare(b));

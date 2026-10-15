@@ -34,6 +34,7 @@ import {
   getMediaItemKind,
   getOverviewEntries,
   getTechnicalMetadataEntries,
+  getVaultDisplayItem,
 } from '@shared/mediaFieldRegistry.js';
 import {
   getConfiguredVideoUploadServices,
@@ -1159,6 +1160,12 @@ export default function VaultPage() {
     </>
   );
 
+  // Vault rows only carry the encrypted placeholder fields (opaque .bin name,
+  // blanked source/page metadata); loadVaultItems decrypts the real info into
+  // _decryptedMeta after unlock. Overlay it for the detail modal so it shows
+  // the same real info the cards/search already use instead of N/A + blob name.
+  const detailItem = getVaultDisplayItem(selectedItem);
+
   return (
     <div className="min-h-screen bg-base-200 text-base-content g-page">
       <style>{vaultGalleryCSS}</style>
@@ -1414,16 +1421,21 @@ export default function VaultPage() {
       <MediaDetailModal
         isOpen={!!selectedItem}
         onClose={closeItemModal}
-        item={selectedItem}
+        item={detailItem}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         isLink={isLinkItem(selectedItem)}
-        overviewEntries={getOverviewEntries(selectedItem, { extraKeys: ['vaultedAt'] })}
-        technicalEntries={getTechnicalMetadataEntries(selectedItem)}
+        overviewEntries={getOverviewEntries(detailItem, { extraKeys: ['vaultedAt'] })}
+        technicalEntries={getTechnicalMetadataEntries(detailItem)}
         technicalLoading={false}
         renderMedia={renderVaultMedia}
         actions={renderVaultActions}
         technicalEmptyText="No extra technical fields on this vault item."
+        overviewNotice={selectedItem?.encryptedMetadata && !selectedItem?._decryptedMeta ? (
+          <div className="rounded-[var(--radius-box)] border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
+            Metadata decryption failed for this item — showing the encrypted placeholder fields. Reload the vault page to retry.
+          </div>
+        ) : null}
       />
 
       <Modal
