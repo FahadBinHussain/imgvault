@@ -621,25 +621,35 @@ async function telegramDeleteMessage(token, chatId, messageId) {
   }
 
   const text = await response.text()
+
+  let payload = null
+  try {
+    payload = JSON.parse(text)
+  } catch {
+    payload = null
+  }
+
+  // Telegram answers logical errors with BOTH a non-2xx status and a JSON
+  // body (proven live: HTTP 400 carrying "message to delete not found"), so
+  // the release classification must run on the parsed body BEFORE the status
+  // check — otherwise an already-deleted post could never release its row.
+  if (payload?.ok) return 'deleted'
+  if (payload && /message to delete not found/i.test(String(payload.description || ''))) {
+    return 'already-gone'
+  }
+
   if (!response.ok) {
     throw new Error(
       `Telegram deleteMessage: HTTP ${response.status} - ${redactTelegramToken(text.slice(0, 300), token)}`
     )
   }
-
-  let payload
-  try {
-    payload = JSON.parse(text)
-  } catch {
+  if (!payload) {
     throw new Error(
       `Telegram deleteMessage: invalid JSON response - ${redactTelegramToken(text.slice(0, 200), token)}`
     )
   }
-
-  if (payload?.ok) return 'deleted'
-  if (/message to delete not found/i.test(String(payload?.description || ''))) return 'already-gone'
   throw new Error(
-    `Telegram deleteMessage: ${payload?.error_code || 'error'} ${payload?.description || 'unknown error'}`
+    `Telegram deleteMessage: ${payload.error_code || 'error'} ${payload.description || 'unknown error'}`
   )
 }
 
