@@ -3185,16 +3185,22 @@ class ImgVaultServiceWorker {
     });
   }
 
-  async startActiveNativeDownload(requestId, url) {
+  async startActiveNativeDownload(requestId, url, sourceUrl = '') {
     const startMessage = `Sending native download request: ${url}`;
+    const previous = await this.getActiveNativeDownloadRecord();
+    const sameRequest = previous && previous.requestId === requestId;
+    // A browser-resolved retry restarts the same request id — keep the logs
+    // and the original page URL so the whole attempt chain stays visible.
+    const keptLogs = sameRequest && Array.isArray(previous.logs) ? previous.logs : [];
     await this.setActiveNativeDownloadRecord({
       requestId,
       url,
+      sourceUrl: sourceUrl || (sameRequest ? previous.sourceUrl || previous.url : '') || url,
       status: 'running',
-      startedAt: Date.now(),
+      startedAt: sameRequest ? previous.startedAt || Date.now() : Date.now(),
       updatedAt: Date.now(),
       lastMessage: startMessage,
-      logs: [this.buildNativeDownloadLogEntry(startMessage)],
+      logs: [this.buildNativeDownloadLogEntry(startMessage), ...keptLogs].slice(0, 300),
     });
   }
 
@@ -3360,7 +3366,7 @@ class ImgVaultServiceWorker {
           if (journalStatus === 'completed') {
             await this.settleNativeDownloadCompleted(
               activeRequestId,
-              current.url || '',
+              current.sourceUrl || current.url || '',
               journal?.file_path || result?.filePath || '',
               journal?.message || 'Download complete (recovered after extension reload)'
             );
@@ -4756,20 +4762,293 @@ class ImgVaultServiceWorker {
     }
   }
 
+  // --- Browser-assisted resolve (SECOND download method) --------------------
+  // Some hosts sit behind a browser challenge: every non-browser request gets
+  // HTTP 403 on the page fetch, while the real browser renders the page fine.
+  // When the native download fails with that exact signature, the extension
+  // resolves the direct media URL out of the rendered page (the user's
+  // already-open tab, otherwise a hidden render tab) and feeds that direct URL
+  // back to yt-dlp. This is a second method and it is ALWAYS announced loudly
+  // in the download log — never silent.
+  isBrowserChallengeFailure(message) {
+    const text = String(message || '');
+    return /unable to download webpage/i.test(text) && /403/.test(text);
+  }
+
+  // yt-dlp expands `%(ext)s`-style fields in the output template but leaves
+  // literal text untouched — a baked-in title must be sanitized here.
+  sanitizeMediaFileNamePart(value, maxLength = 120) {
+    let name = String(value || '')
+      .replace(/[\u0000-\u001f\u007f<>:"/\\|?*%]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/[. ]+$/, '');
+    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(name)) {
+      name = `_${name}`;
+    }
+    return name.slice(0, maxLength).replace(/[. ]+$/, '');
+  }
+
+  // The filename stem of a direct media URL (`name-720p.mp4` -> `name-720p`).
+  mediaBaseName(mediaUrl) {
+    try {
+      const parsed = new URL(mediaUrl);
+      const last = parsed.pathname.split('/').filter(Boolean).pop() || '';
+      return decodeURIComponent(last).replace(/\.[a-z0-9]+$/i, '');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  // Pick the best direct media URL the rendered page exposed: the highest
+  // resolution-tagged mp4 wins, then any mp4, then HLS, then anything else.
+  // Element sources (video/source tags) outrank raw-HTML matches on ties.
+  pickDirectMediaCandidate(scraped) {
+    const normalize = (u) => String(u || '').replace(/&amp;/g, '&').trim();
+    const dedupe = (list) => Array.from(new Set((list || [])
+      .map(normalize)
+      .filter((u) => /^https?:\/\//i.test(u))));
+    const resolutionOf = (u) => {
+      const stem = u.split(/[?#]/)[0];
+      const match = stem.match(/(\d{3,4})p/i);
+      return match ? parseInt(match[1], 10) : 0;
+    };
+    const bestByResolution = (list) => list
+      .slice()
+      .sort((a, b) => resolutionOf(b) - resolutionOf(a))[0] || null;
+
+    const all = dedupe([...(scraped.mediaUrls || []), ...(scraped.htmlUrls || [])]);
+    const mp4 = all.filter((u) => /\.mp4(\?|#|$)/i.test(u));
+    const hls = all.filter((u) => /\.m3u8(\?|#|$)/i.test(u));
+    const other = all.filter((u) => !mp4.includes(u) && !hls.includes(u));
+
+    return bestByResolution(mp4) || bestByResolution(hls) || bestByResolution(other) || null;
+  }
+
+  // A scripting call must never leave the resolve hanging forever — a stuck
+  // allFrames enumeration was observed live on a real page. Fail the attempt
+  // loudly instead of freezing the download record.
+  withResolveTimeout(promise, timeoutMs, label) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`${label} did not finish within ${timeoutMs}ms`));
+      }, timeoutMs);
+      promise.then(
+        (value) => { clearTimeout(timer); resolve(value); },
+        (error) => { clearTimeout(timer); reject(error); }
+      );
+    });
+  }
+
+  // Scrape direct media URLs from a rendered tab. Top frame only — allFrames
+  // enumeration can hang indefinitely on pages with many frames. Retries a
+  // few times because a freshly created render tab may still be booting its
+  // player.
+  async scrapeRenderedMedia(tabId, attempts = 4) {
+    let collected = { title: '', href: '', mediaUrls: [], htmlUrls: [] };
+    let lastScrapeError = '';
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const frames = await this.withResolveTimeout(
+          chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => {
+              try {
+                const mediaUrls = [];
+                const push = (value) => {
+                  if (typeof value === 'string' && value) {
+                    mediaUrls.push(value);
+                  }
+                };
+                document.querySelectorAll('video, audio').forEach((el) => {
+                  if (el.currentSrc) push(el.currentSrc);
+                  if (el.src) push(el.src);
+                  el.querySelectorAll('source').forEach((source) => push(source.src));
+                });
+
+                const html = (document.documentElement ? document.documentElement.outerHTML : '')
+                  .replace(/&amp;/g, '&');
+                const htmlUrls = (html.match(/https?:\/\/[^"'\s<>()]+/g) || [])
+                  .filter((candidate) => /\.(mp4|m3u8|webm|mkv)(\?|#|$)/i.test(candidate));
+
+                return {
+                  href: location.href,
+                  title: document.title || '',
+                  mediaUrls: mediaUrls.slice(0, 200),
+                  htmlUrls: htmlUrls.slice(0, 400),
+                };
+              } catch (error) {
+                return {
+                  href: location.href,
+                  title: document.title || '',
+                  mediaUrls: [],
+                  htmlUrls: [],
+                  scrapeError: String((error && error.message) || error),
+                };
+              }
+            },
+          }),
+          10000,
+          'the media scrape'
+        );
+
+        const results = (frames || []).map((frame) => frame && frame.result).filter(Boolean);
+        collected = {
+          title: results.map((r) => r.title).find((t) => t) || collected.title,
+          href: results.map((r) => r.href).find((h) => h) || collected.href,
+          mediaUrls: results.flatMap((r) => r.mediaUrls || []),
+          htmlUrls: results.flatMap((r) => r.htmlUrls || []),
+        };
+        lastScrapeError = results.map((r) => r.scrapeError).find((e) => e) || lastScrapeError;
+
+        if (collected.mediaUrls.length || collected.htmlUrls.length) {
+          return collected;
+        }
+      } catch (error) {
+        lastScrapeError = String((error && error.message) || error);
+      }
+
+      if (attempt < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    }
+
+    collected.scrapeError = lastScrapeError;
+    return collected;
+  }
+
+  async waitForTabComplete(tabId, timeoutMs = 30000) {
+    const startedAt = Date.now();
+    for (;;) {
+      let info = null;
+      try {
+        info = await chrome.tabs.get(tabId);
+      } catch (_) {
+        return null;
+      }
+      if (info && info.status === 'complete') {
+        return info;
+      }
+      if (Date.now() - startedAt > timeoutMs) {
+        return null;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+
+  async browserResolveDirectMediaUrl(pageUrl, activeRequestId) {
+    const logLine = (message, type = 'info') => this.appendNativeDownloadLog(
+      activeRequestId,
+      `[browser-resolve] ${message}`,
+      type,
+      'system'
+    );
+    const describeUrl = (value) => {
+      try {
+        const parsed = new URL(value);
+        const body = `${parsed.hostname}${parsed.pathname}`.slice(0, 160);
+        return parsed.search ? `${body} (signed query)` : body;
+      } catch (_) {
+        return String(value || '').slice(0, 160);
+      }
+    };
+    const pageKey = (value) => {
+      try {
+        const parsed = new URL(value);
+        return `${parsed.hostname.replace(/^www\./i, '').toLowerCase()}${parsed.pathname.replace(/\/+$/, '').toLowerCase()}`;
+      } catch (_) {
+        return String(value || '').toLowerCase();
+      }
+    };
+    const pageHost = (value) => {
+      try {
+        return new URL(value).hostname.replace(/^www\./i, '').toLowerCase();
+      } catch (_) {
+        return '';
+      }
+    };
+
+    await logLine(
+      'yt-dlp was blocked by a browser challenge (HTTP 403 on the page fetch). Switching to the 2nd method: resolve the direct media URL from the rendered page.',
+      'warning'
+    );
+
+    const targetKey = pageKey(pageUrl);
+    const targetHost = pageHost(pageUrl);
+    const openTabs = await chrome.tabs.query({});
+    let tab = openTabs.find((candidate) => pageKey(candidate.url) === targetKey);
+    if (!tab && targetHost) {
+      tab = openTabs.find((candidate) => {
+        if (pageHost(candidate.url) !== targetHost) {
+          return false;
+        }
+        const candidateKey = pageKey(candidate.url);
+        return candidateKey.startsWith(targetKey) || targetKey.startsWith(candidateKey);
+      });
+    }
+
+    let createdTabId = 0;
+    try {
+      if (tab) {
+        await logLine(`Using the page already open in this browser (tab ${tab.id}).`);
+      } else {
+        await logLine('No open tab for this page — rendering it in a hidden tab.', 'warning');
+        const created = await chrome.tabs.create({ url: pageUrl, active: false });
+        createdTabId = created.id;
+        tab = created;
+
+        const ready = await this.waitForTabComplete(createdTabId, 30000);
+        if (!ready) {
+          throw new Error('the hidden render tab did not finish loading within 30s.');
+        }
+        if (ready.url && !/^https?:/i.test(ready.url)) {
+          throw new Error(`the render was redirected to "${ready.url.slice(0, 160)}" — a browser extension or the site blocked the page load. Open the page where it does load and retry.`);
+        }
+      }
+
+      const scraped = await this.scrapeRenderedMedia(tab.id, createdTabId ? 8 : 4);
+      const picked = this.pickDirectMediaCandidate(scraped);
+      if (!picked) {
+        const seen = (scraped.mediaUrls || []).length + (scraped.htmlUrls || []).length;
+        const scrapeError = scraped.scrapeError ? ` Scrape error: ${scraped.scrapeError}.` : '';
+        throw new Error(`the rendered page exposed no direct media URL (${seen} candidate links seen). Open the video page, start playback, then retry.${scrapeError}`);
+      }
+
+      await logLine(`Resolved direct media URL: ${describeUrl(picked)}`);
+      return { mediaUrl: picked, pageTitle: scraped.title || '' };
+    } finally {
+      if (createdTabId) {
+        try {
+          await chrome.tabs.remove(createdTabId);
+        } catch (_) {
+          // The render tab was already closed.
+        }
+      }
+    }
+  }
+
   /**
    * Handle native host download via native messaging
    * @param {string} url - URL to download
+   * @param {string} requestId
+   * @param {string|null} format
+   * @param {{ outputPathOverride?: string, provenanceUrl?: string, isResolvedRetry?: boolean }} options
    * @returns {Promise<Object>} Download result with file path
    */
-  async handleNativeDownload(url, requestId = '', format = null) {
+  async handleNativeDownload(url, requestId = '', format = null, options = {}) {
     try {
       // console.log(`📥 [NATIVE] Sending download request for: ${url}`);
 
       const downloadFolder = await this.resolveNativeDownloadFolder();
       const cookies = await this.getCookiesForYtDlp(url);
+      // Browser-resolved retries keep the ORIGINAL page URL as provenance so
+      // the pending auto-upload still records where the media came from.
+      const provenanceUrl = options.provenanceUrl || url;
 
       // Generate output path with timestamp
-      const outputPath = `${downloadFolder}\\%(title)s [%(id)s].%(ext)s`;
+      const outputPath = options.outputPathOverride
+        || `${downloadFolder}\\%(title)s [%(id)s].%(ext)s`;
       
       // console.log(`📁 [NATIVE] Download folder: ${downloadFolder}`);
       // console.log(`📝 [NATIVE] Output path template: ${outputPath}`);
@@ -4787,7 +5066,7 @@ class ImgVaultServiceWorker {
       }
       
       const activeRequestId = requestId || `native-download-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-      await this.startActiveNativeDownload(activeRequestId, url);
+      await this.startActiveNativeDownload(activeRequestId, url, provenanceUrl);
 
       return new Promise((resolve, reject) => {
         let responseReceived = false;
@@ -4840,7 +5119,7 @@ class ImgVaultServiceWorker {
             this.cancellingNativeDownloads.delete(activeRequestId);
             this.settleNativeDownloadCompleted(
               activeRequestId,
-              url,
+              provenanceUrl,
               response.filePath || '',
               response.message || 'Download complete'
             )
@@ -4881,6 +5160,60 @@ class ImgVaultServiceWorker {
                   cancelled: true,
                 });
                 return;
+              }
+
+              if (!options.isResolvedRetry && this.isBrowserChallengeFailure(response.message)) {
+                this.cancellingNativeDownloads.delete(activeRequestId);
+                try {
+                  const resolved = await this.browserResolveDirectMediaUrl(provenanceUrl, activeRequestId);
+                  const mediaBase = this.mediaBaseName(resolved.mediaUrl);
+                  const titlePart = this.sanitizeMediaFileNamePart(resolved.pageTitle, 120);
+                  const idPart = this.sanitizeMediaFileNamePart(mediaBase, 60);
+                  const resolvedOutputPath = titlePart
+                    ? `${downloadFolder}\\${titlePart}${idPart ? ` [${idPart}]` : ''}.%(ext)s`
+                    : `${downloadFolder}\\${idPart || `imgvault-${Date.now()}`}.%(ext)s`;
+
+                  await this.appendNativeDownloadLog(
+                    activeRequestId,
+                    '[browser-resolve] Retrying the download with the direct media URL — 2nd method in use.',
+                    'warning',
+                    'system'
+                  );
+                  // A stale failed journal from the first attempt would let a
+                  // reload-time reconcile mis-adopt the failure while the retry
+                  // is still running — clear it before restarting.
+                  await this.cleanupNativeDownloadJournal(activeRequestId);
+
+                  const retryResponse = await this.handleNativeDownload(resolved.mediaUrl, activeRequestId, format, {
+                    isResolvedRetry: true,
+                    outputPathOverride: resolvedOutputPath,
+                    provenanceUrl,
+                  });
+                  resolve(retryResponse);
+                  return;
+                } catch (resolveError) {
+                  const resolveMessage = resolveError?.message || 'browser-resolve failed';
+                  const failedMessage = `Download failed: the site blocked yt-dlp with a browser challenge (HTTP 403), and the 2nd method (browser-resolve) could not recover: ${resolveMessage}`;
+                  await this.finishActiveNativeDownload(activeRequestId, {
+                    status: 'failed',
+                    error: failedMessage,
+                    filePath: '',
+                    lastMessage: failedMessage,
+                  });
+                  await this.appendNativeDownloadLog(
+                    activeRequestId,
+                    response.message || 'Native host download failed',
+                    'error',
+                    'system'
+                  );
+                  await this.appendNativeDownloadLog(activeRequestId, `[browser-resolve] Failed: ${resolveMessage}`, 'error', 'system');
+                  reject({
+                    message: failedMessage,
+                    stdout: response.stdout,
+                    stderr: response.stderr,
+                  });
+                  return;
+                }
               }
 
               this.cancellingNativeDownloads.delete(activeRequestId);
