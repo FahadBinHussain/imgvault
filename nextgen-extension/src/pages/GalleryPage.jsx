@@ -1148,6 +1148,25 @@ export default function GalleryPage() {
     await appendClientUploadLog('Attempting direct video uploads from the extension page...');
 
     try {
+      const shouldIgnoreDuplicate = Boolean(uploadData.ignoreDuplicate || uploadData.ignoreDuplicates);
+      if (!shouldIgnoreDuplicate) {
+        await appendClientUploadLog('🔎 Checking for duplicate videos...');
+        const dupResponse = await sendMessage('checkVideoDuplicate', {
+          fileName: uploadData.fileName || uploadData.fileBlob?.name || getFileNameFromPath(uploadData.filePath || ''),
+          fileSize: uploadData.fileSize || uploadData.fileBlob?.size || 0,
+          sourcePageUrl: uploadData.pageUrl,
+          sourceImageUrl: uploadData.originalSourceUrl || uploadData.imageUrl,
+          sha256: uploadData.sha256 || '',
+        });
+        if (dupResponse?.duplicate) {
+          const dup = dupResponse.duplicate;
+          const error = new Error(`Duplicate video detected: ${dup.matchReason || 'same saved video'}`);
+          error.duplicate = dup;
+          error.allDuplicates = [dup];
+          throw error;
+        }
+      }
+
       const settings = await sendMessage('getVideoHostSettings');
       await appendClientUploadLog(`Video payload ready: ${formatBytes(uploadData.fileSize || uploadData.fileBlob?.size || 0)}.`);
       const configuredServices = getConfiguredVideoUploadServices(settings);
@@ -1174,6 +1193,9 @@ export default function GalleryPage() {
         ...pendingMetaVideo,
         fileName: uploadData.fileName || getFileNameFromPath(uploadData.filePath || '') || 'video.mp4',
       }).catch(async (err) => {
+        if (err?.duplicate) {
+          throw err;
+        }
         await appendClientUploadLog(`[PENDING UPLOAD] Failed to reserve DB item: ${err.message || String(err)}`, 'error');
         return null;
       });
@@ -2124,6 +2146,30 @@ export default function GalleryPage() {
           height: localVideoMetadata.height,
         };
         setUploadMetadata(nextUploadMetadata);
+      }
+
+      if (isVideo) {
+        try {
+          const dupRes = await chrome.runtime.sendMessage({
+            action: 'checkVideoDuplicate',
+            data: {
+              fileName: file.name,
+              fileSize: file.size,
+              sourcePageUrl: finalPageUrl,
+              sourceImageUrl: preservePageUrl && preservePageUrl !== 'Uploaded manually' ? preservePageUrl : '',
+            }
+          });
+          if (dupRes?.success && dupRes.duplicate) {
+            console.log('🚨 Video duplicate detected on file load:', dupRes.duplicate);
+            setDuplicateData({
+              primary: dupRes.duplicate,
+              all: [dupRes.duplicate],
+              fromBatch: false,
+            });
+          }
+        } catch (dupErr) {
+          console.warn('Video duplicate check failed on file load:', dupErr);
+        }
       }
     } catch (error) {
       console.error('Failed to extract metadata:', error);
@@ -3106,7 +3152,11 @@ export default function GalleryPage() {
 
   const openDuplicateMatchInNewTab = (dup) => {
     const candidateUrls = [
+      getPreferredVideoWatchUrl(dup),
       dup?.sourcePageUrl,
+      dup?.udropWatchUrl,
+      dup?.filemoonWatchUrl,
+      dup?.teraboxWatchUrl,
       dup?.originalSourceUrl,
       dup?.sourceImageUrl,
       dup?.pageUrl,
@@ -5327,8 +5377,8 @@ export default function GalleryPage() {
                           </h4>
                           <p className="text-base-content/80 text-sm mb-4">
                             {duplicateData.all && duplicateData.all.length > 1 
-                              ? `This image matches ${duplicateData.all.length} existing gallery/trash item${duplicateData.all.length !== 1 ? 's' : ''}.`
-                              : 'This image already exists in your gallery or trash.'}
+                              ? `This item matches ${duplicateData.all.length} existing gallery/trash item${duplicateData.all.length !== 1 ? 's' : ''}.`
+                              : 'This item already exists in your gallery or trash.'}
                           </p>
                           
                           {/* Show all duplicate images */}
@@ -5353,10 +5403,11 @@ export default function GalleryPage() {
                                     {/* Match badge */}
                                     <div className="absolute top-2 left-2 px-2 py-1 rounded-[var(--radius-box)] bg-base-100/90 border border-warning/40">
                                       <span className="text-xs font-medium text-warning">
-                                        {matchTypes.includes('exact') && '🔐 Exact'}
-                                        {!matchTypes.includes('exact') && matchTypes.includes('context') && '🔗 Same source'}
-                                        {!matchTypes.includes('exact') && !matchTypes.includes('context') && matchTypes.includes('visual') && `👁️ ${visualLabel}`}
-                                        {matchTypes.includes('unknown') && '❓ Unknown'}
+                                        {matchTypes.includes('video') && '🎥 Video duplicate'}
+                                        {!matchTypes.includes('video') && matchTypes.includes('exact') && '🔐 Exact'}
+                                        {!matchTypes.includes('video') && !matchTypes.includes('exact') && matchTypes.includes('context') && '🔗 Same source'}
+                                        {!matchTypes.includes('video') && !matchTypes.includes('exact') && !matchTypes.includes('context') && matchTypes.includes('visual') && `👁️ ${visualLabel}`}
+                                        {!matchTypes.includes('video') && matchTypes.includes('unknown') && '❓ Unknown'}
                                       </span>
                                     </div>
                                     {dup._isTrash && (

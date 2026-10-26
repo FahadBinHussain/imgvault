@@ -1102,6 +1102,7 @@ export class StorageManager {
       .map((url) => this.canonicalizeLinkUrl(url));
     const targetFileName = String(target.fileName || '').trim();
     const targetFileSize = Number(target.fileSize || 0);
+    const targetSha256 = String(target.sha256 || '').trim().toLowerCase();
 
     for (const item of items) {
       if (this.isSystemItem(item) || this.isVaultedItem(item)) continue;
@@ -1117,13 +1118,34 @@ export class StorageManager {
         targetFileSize > 0 &&
         String(item.fileName || '').trim() === targetFileName &&
         Number(item.fileSize || 0) === targetFileSize;
+      const hashMatch =
+        Boolean(targetSha256) &&
+        Boolean(item.sha256) &&
+        String(item.sha256).trim().toLowerCase() === targetSha256;
 
-      if (urlMatch || fileMatch) {
+      if (urlMatch || fileMatch || hashMatch) {
+        let matchReason = 'Duplicate video detected';
+        if (urlMatch && (fileMatch || hashMatch)) {
+          matchReason = 'Same video URL and file contents';
+        } else if (urlMatch) {
+          matchReason = 'Same video source/page URL';
+        } else if (hashMatch) {
+          matchReason = 'Identical video file (SHA-256)';
+        } else if (fileMatch) {
+          matchReason = 'Same video filename and file size';
+        }
+
+        const matchTypes = [];
+        if (urlMatch) matchTypes.push('context');
+        if (fileMatch) matchTypes.push('exact');
+        if (hashMatch) matchTypes.push('exact');
+        matchTypes.push('video');
+
         return {
           ...item,
           matchType: 'video',
-          matchTypes: ['video'],
-          matchReason: urlMatch ? 'Same video source/page URL' : 'Same video filename and file size',
+          matchTypes,
+          matchReason,
         };
       }
     }
@@ -1145,6 +1167,7 @@ export class StorageManager {
         'sourcePageUrl',
         'fileName',
         'fileSize',
+        'sha256',
         'pageTitle',
         'filemoonWatchUrl',
         'filemoonDirectUrl',
@@ -2548,7 +2571,7 @@ export class StorageManager {
     const rows = await sql`
       select
         id, is_video, page_title, source_image_url, source_page_url, file_name,
-        file_size, file_type, filemoon_watch_url, filemoon_direct_url,
+        file_size, file_type, sha256, filemoon_watch_url, filemoon_direct_url,
         udrop_watch_url, udrop_direct_url, deleted_at, extra_metadata
       from public.media_items
       where is_video = true

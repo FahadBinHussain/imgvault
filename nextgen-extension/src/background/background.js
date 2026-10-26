@@ -2855,6 +2855,12 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'checkVideoDuplicate':
+        this.storage.findSavedVideoDuplicate(request.data)
+          .then(duplicate => sendResponse({ success: true, duplicate }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'resolveImagePreview':
         this.fetchImageAsDataUrl(request.imageUrl, request.pageUrl)
           .then(dataUrl => sendResponse({ success: true, dataUrl }))
@@ -5868,6 +5874,22 @@ class ImgVaultServiceWorker {
   // files to it. finalizeUploadedVideo() fills in the host links afterwards.
   async createPendingUpload(data) {
     const fileName = this.extractFileName(data);
+
+    if (!data.ignoreDuplicates && !data.ignoreDuplicate) {
+      const videoDuplicate = await this.storage.findSavedVideoDuplicate({
+        sourcePageUrl: data.pageUrl,
+        sourceImageUrl: data.originalSourceUrl || data.imageUrl,
+        fileName,
+        fileSize: data.fileSize || 0,
+        sha256: data.sha256 || '',
+      });
+      if (videoDuplicate) {
+        const error = new Error(`Duplicate video detected: ${videoDuplicate.matchReason || 'same saved video'}`);
+        error.duplicate = videoDuplicate;
+        error.allDuplicates = [videoDuplicate];
+        throw error;
+      }
+    }
 
     let cleanSourceImageUrl = data.originalSourceUrl || data.imageUrl;
     if (cleanSourceImageUrl && cleanSourceImageUrl.startsWith('data:')) {
