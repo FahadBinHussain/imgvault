@@ -17,6 +17,18 @@ import VaultPage from './pages/VaultPage';
 import ResolvePage from './pages/ResolvePage';
 import './index.css';
 
+if (typeof chrome !== 'undefined' && chrome.runtime?.connect) {
+  try {
+    const keepAlivePort = chrome.runtime.connect({ name: 'imgvault-tab-keepalive' });
+    keepAlivePort.onDisconnect.addListener(() => {
+      console.log('[ImgVault] Extension reloaded. Refreshing tab...');
+      setTimeout(() => {
+        window.location.reload();
+      }, 400);
+    });
+  } catch (_) {}
+}
+
 try {
   const savedTheme = localStorage.getItem('imgvault-theme');
   const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';

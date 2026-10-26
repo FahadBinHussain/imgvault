@@ -1303,6 +1303,12 @@ export default function GalleryPage() {
         ? 'Extension was reloaded or connection was lost. Please refresh this tab (F5) and try again.'
         : (error.message || String(error));
       await appendClientUploadLog(`Direct video upload failed: ${errorMsg}`, 'error');
+      if (isPortClosed) {
+        showToast('Extension reloaded. Reconnecting tab in 1s...', 'warning', 3000);
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      }
       if (pendingItemId) {
         try {
           await sendMessage('deleteImage', { id: pendingItemId });

@@ -22,3 +22,5 @@ if ($buildExit -ne 0) {
 }
 $extId = "cjialghkacooiecjckibhcifilfiibnn"
 Start-Process "msedge" -ArgumentList "chrome-extension://$extId/reload.html"
+Start-Sleep -Milliseconds 800
+Start-Process "msedge" -ArgumentList "chrome-extension://$extId/index.html#/gallery"
