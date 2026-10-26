@@ -6374,12 +6374,6 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   serviceWorker.handleContextMenuClick(info, tab);
 });
 
-chrome.runtime.onConnect.addListener((port) => {
-  if (port.name === 'imgvault-tab-keepalive') {
-    port.onMessage.addListener(() => {});
-  }
-});
-
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // dev self-reload (tools/reload-extension.ps1 -> public/reload.html):
   // Extensions Reloader never re-reads manifest.json, so manifest bumps go
@@ -6389,16 +6383,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request && request.type === 'selfReload') {
     (async () => {
       try {
-        const extUrlPrefix = chrome.runtime.getURL('');
-        const tabs = await chrome.tabs.query({});
-        for (const tab of tabs) {
-          if (tab.url && tab.url.startsWith(extUrlPrefix)) {
-            if (tab.id === sender?.tab?.id) {
-              await chrome.tabs.update(tab.id, { url: 'about:blank' }).catch(() => {});
-            } else {
-              await chrome.tabs.reload(tab.id).catch(() => {});
-            }
-          }
+        if (sender && sender.tab && sender.tab.id !== undefined) {
+          await chrome.tabs.update(sender.tab.id, { url: 'about:blank' }).catch(() => {});
         }
       } catch {}
       chrome.runtime.reload();
