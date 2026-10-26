@@ -1148,6 +1148,14 @@ export default function GalleryPage() {
     await appendClientUploadLog('Attempting direct video uploads from the extension page...');
 
     try {
+      if (!uploadData.sha256 && uploadData.fileBlob && uploadData.fileBlob.size < 100 * 1024 * 1024) {
+        try {
+          const buffer = await uploadData.fileBlob.arrayBuffer();
+          const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+          uploadData.sha256 = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        } catch (_) {}
+      }
+
       const shouldIgnoreDuplicate = Boolean(uploadData.ignoreDuplicate || uploadData.ignoreDuplicates);
       if (!shouldIgnoreDuplicate) {
         await appendClientUploadLog('🔎 Checking for duplicate videos...');
@@ -1158,8 +1166,8 @@ export default function GalleryPage() {
           sourceImageUrl: uploadData.originalSourceUrl || uploadData.imageUrl,
           sha256: uploadData.sha256 || '',
         });
-        if (dupResponse?.duplicate) {
-          const dup = dupResponse.duplicate;
+        const dup = dupResponse?.duplicate || dupResponse;
+        if (dup && typeof dup === 'object' && (dup.id || dup.matchReason)) {
           const error = new Error(`Duplicate video detected: ${dup.matchReason || 'same saved video'}`);
           error.duplicate = dup;
           error.allDuplicates = [dup];
@@ -1193,7 +1201,7 @@ export default function GalleryPage() {
         ...pendingMetaVideo,
         fileName: uploadData.fileName || getFileNameFromPath(uploadData.filePath || '') || 'video.mp4',
       }).catch(async (err) => {
-        if (err?.duplicate) {
+        if (err?.duplicate || err?.message?.toLowerCase().includes('duplicate')) {
           throw err;
         }
         await appendClientUploadLog(`[PENDING UPLOAD] Failed to reserve DB item: ${err.message || String(err)}`, 'error');
@@ -1261,6 +1269,7 @@ export default function GalleryPage() {
       if (pendingItemId) {
         const finalized = await sendMessage('finalizeUploadedVideo', {
           id: pendingItemId,
+          sha256: uploadData.sha256 || '',
           videoUploadResults: uploadResults,
           udropResult: uploadResults.udrop,
           filemoonResult: uploadResults.filemoon,
@@ -1273,8 +1282,11 @@ export default function GalleryPage() {
         return finalized;
       }
 
+      const cleanUploadData = { ...uploadData };
+      delete cleanUploadData.fileBlob;
+      delete cleanUploadData.file;
       const saved = await sendMessage('saveUploadedVideo', {
-        ...uploadData,
+        ...cleanUploadData,
         videoUploadResults: uploadResults,
         udropResult: uploadResults.udrop,
         filemoonResult: uploadResults.filemoon,
@@ -1286,7 +1298,11 @@ export default function GalleryPage() {
       }
       return saved;
     } catch (error) {
-      await appendClientUploadLog(`Direct video upload failed: ${error.message || String(error)}`, 'error');
+      const isPortClosed = error?.message?.includes('message port closed') || error?.message?.includes('context invalidated');
+      const errorMsg = isPortClosed
+        ? 'Extension was reloaded or connection was lost. Please refresh this tab (F5) and try again.'
+        : (error.message || String(error));
+      await appendClientUploadLog(`Direct video upload failed: ${errorMsg}`, 'error');
       if (pendingItemId) {
         try {
           await sendMessage('deleteImage', { id: pendingItemId });
@@ -2149,6 +2165,20 @@ export default function GalleryPage() {
       }
 
       if (isVideo) {
+        let videoSha256 = '';
+        if (file.size && file.size < 100 * 1024 * 1024) {
+          try {
+            const buffer = await file.arrayBuffer();
+            const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+            videoSha256 = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+            if (nextUploadMetadata) {
+              nextUploadMetadata.sha256 = videoSha256;
+              setUploadMetadata({ ...nextUploadMetadata });
+            }
+          } catch (hashErr) {
+            console.warn('Could not compute video SHA-256:', hashErr);
+          }
+        }
         try {
           const dupRes = await chrome.runtime.sendMessage({
             action: 'checkVideoDuplicate',
@@ -2157,13 +2187,15 @@ export default function GalleryPage() {
               fileSize: file.size,
               sourcePageUrl: finalPageUrl,
               sourceImageUrl: preservePageUrl && preservePageUrl !== 'Uploaded manually' ? preservePageUrl : '',
+              sha256: videoSha256,
             }
           });
-          if (dupRes?.success && dupRes.duplicate) {
-            console.log('🚨 Video duplicate detected on file load:', dupRes.duplicate);
+          const duplicate = dupRes?.data || dupRes?.duplicate;
+          if (dupRes?.success && duplicate) {
+            console.log('🚨 Video duplicate detected on file load:', duplicate);
             setDuplicateData({
-              primary: dupRes.duplicate,
-              all: [dupRes.duplicate],
+              primary: duplicate,
+              all: [duplicate],
               fromBatch: false,
             });
           }
@@ -2426,6 +2458,7 @@ export default function GalleryPage() {
       isVideo: Boolean(mediaData?.isVideo),
       is3D: Boolean(mediaData?.is3D || is3DUploadFile(mediaData?.file)),
       fileType: mediaData?.fileType || mediaData?.file?.type || null,
+      sha256: metadata?.sha256 || mediaData?.sha256 || '',
       duration: metadata?.duration ?? null,
       width: metadata?.width ?? null,
       height: metadata?.height ?? null,

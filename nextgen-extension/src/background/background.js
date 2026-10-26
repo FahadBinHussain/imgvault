@@ -2857,7 +2857,7 @@ class ImgVaultServiceWorker {
 
       case 'checkVideoDuplicate':
         this.storage.findSavedVideoDuplicate(request.data)
-          .then(duplicate => sendResponse({ success: true, duplicate }))
+          .then(duplicate => sendResponse({ success: true, data: duplicate, duplicate }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
@@ -3004,7 +3004,12 @@ class ImgVaultServiceWorker {
       case 'createPendingUpload':
         this.createPendingUpload(request.data)
           .then(result => sendResponse({ success: true, data: result }))
-          .catch(error => sendResponse({ success: false, error: error.message }));
+          .catch(error => sendResponse({
+            success: false,
+            error: error.message,
+            duplicate: error.duplicate || null,
+            allDuplicates: error.allDuplicates || null,
+          }));
         return true;
 
       case 'finalizeUploadedVideo':
@@ -3050,7 +3055,8 @@ class ImgVaultServiceWorker {
         return true;
 
       default:
-        console.warn('Unknown action:', action);
+        console.warn('Unknown background action:', action);
+        sendResponse({ success: false, error: `Unknown background action: ${action}` });
         return false;
     }
   }
@@ -5832,6 +5838,7 @@ class ImgVaultServiceWorker {
       fileTypeSource: data.fileTypeSource || 'File object',
       creationDate,
       creationDateSource,
+      sha256: data.sha256 || '',
       duration: Number.isFinite(data.duration) ? data.duration : null,
       width: Number.isFinite(data.width) ? data.width : null,
       height: Number.isFinite(data.height) ? data.height : null,
@@ -5904,6 +5911,7 @@ class ImgVaultServiceWorker {
       fileSize: data.fileSize || 0,
       fileType: data.fileType || data.fileMimeType || '',
       fileTypeSource: data.fileTypeSource || 'File object',
+      sha256: data.sha256 || '',
       duration: Number.isFinite(data.duration) ? data.duration : null,
       width: Number.isFinite(data.width) ? data.width : null,
       height: Number.isFinite(data.height) ? data.height : null,
@@ -5941,6 +5949,9 @@ class ImgVaultServiceWorker {
     };
 
     let merged = { ...current };
+    if (data?.sha256 && !merged.sha256) {
+      merged.sha256 = data.sha256;
+    }
     for (const [providerKey, result] of Object.entries(results)) {
       merged = mergeVideoProviderResult(merged, providerKey, result);
     }
