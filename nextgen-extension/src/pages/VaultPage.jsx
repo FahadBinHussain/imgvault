@@ -3,7 +3,7 @@
  * @version 2.0.0
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -37,9 +37,10 @@ import {
   getVaultDisplayItem,
 } from '@shared/mediaFieldRegistry.js';
 import {
+  IMAGE_UPLOAD_SERVICES,
+  getConfiguredImageUploadServices,
   getConfiguredVideoUploadServices,
-} from '../utils/videoProviderLinks';
-import { IMAGE_UPLOAD_SERVICES, getConfiguredImageUploadServices } from '../config/providerCatalog';
+} from '../config/providerCatalog';
 import MediaDetailModal from '../components/MediaDetailModal';
 import {
   createVaultConfig,

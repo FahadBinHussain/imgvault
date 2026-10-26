@@ -3,7 +3,7 @@
  * @version 2.0.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Settings, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { Button, Input, Textarea, Card, IconButton, Spinner } from '../components/UI';

@@ -3,7 +3,7 @@
  * @version 2.0.0
  */
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -20,19 +20,25 @@ import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import TimelineScrollbar from '../components/TimelineScrollbar';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig';
-import { IMAGE_UPLOAD_SERVICES, filterUploadServicesByKeys, getVaultBlobHostServices, normalizeVaultBlobHostKeys, DEFAULT_VAULT_BLOB_HOST } from '../config/providerCatalog';
+import {
+  IMAGE_UPLOAD_SERVICES,
+  filterUploadServicesByKeys,
+  getVaultBlobHostServices,
+  normalizeVaultBlobHostKeys,
+  DEFAULT_VAULT_BLOB_HOST,
+  getConfiguredVideoUploadServices,
+  getVideoProviderLabel,
+  getVideoUploadService,
+} from '../config/providerCatalog';
 import { FilemoonUploader, UDropUploader, TeraBoxUploader, TelegramUploader } from '../utils/uploaders';
 import { encryptBlob, encryptMetadata } from '../utils/vaultCrypto.js';
 import { getVaultMasterKey, importMasterKeyFromB64 } from '../utils/vaultSession.js';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 import { downloadItemDirect } from '../utils/downloads';
 import {
-  getConfiguredVideoUploadServices,
   getMissingVideoUploadServices,
   getStrictVideoProviderLink,
-  getVideoProviderLabel,
   getVideoProviderLinks,
-  getVideoUploadService,
   hasAnyVideoProviderLink,
   hasVideoProviderLink,
   mergeVideoProviderResult,
