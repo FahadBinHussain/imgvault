@@ -1298,9 +1298,13 @@ export default function GalleryPage() {
       }
       return saved;
     } catch (error) {
+      if (error?.duplicate) {
+        await appendClientUploadLog(`Duplicate video detected: ${error.message || 'same saved video'}`, 'warning');
+        throw error;
+      }
       const isPortClosed = error?.message?.includes('message port closed') || error?.message?.includes('context invalidated');
       const errorMsg = isPortClosed
-        ? 'Extension was reloaded or connection was lost. Please refresh this tab (F5) and try again.'
+        ? `${error.message || String(error)} (Extension service worker disconnected or reloaded. Refresh this tab to reconnect.)`
         : (error.message || String(error));
       await appendClientUploadLog(`Direct video upload failed: ${errorMsg}`, 'error');
       if (pendingItemId) {

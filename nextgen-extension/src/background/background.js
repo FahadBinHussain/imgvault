@@ -6322,6 +6322,15 @@ class ImgVaultServiceWorker {
   }
 }
 
+// Service Worker Lifecycle: activate immediately without waiting for old clients to close
+self.addEventListener('install', () => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
 // Initialize service worker
 const serviceWorker = new ImgVaultServiceWorker();
 
@@ -6330,10 +6339,20 @@ const serviceWorker = new ImgVaultServiceWorker();
 serviceWorker.reconcileStaleNativeDownload();
 
 // Event listeners
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(async () => {
   serviceWorker.init();
   serviceWorker.createContextMenu();
   serviceWorker.refreshActionIconForActiveTab();
+  // Auto-reload existing extension tabs so they immediately reconnect to the fresh service worker
+  try {
+    const extPrefix = chrome.runtime.getURL('');
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (tab.url && tab.url.startsWith(extPrefix) && !tab.url.includes('reload.html')) {
+        chrome.tabs.reload(tab.id).catch(() => {});
+      }
+    }
+  } catch (_) {}
 });
 
 // Create context menu on browser startup
@@ -6377,19 +6396,16 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // dev self-reload (tools/reload-extension.ps1 -> public/reload.html):
   // Extensions Reloader never re-reads manifest.json, so manifest bumps go
-  // through chrome.runtime.reload() here - the real disk re-load. the sender
-  // tab is blanked first so no extension page survives the reload. handled
-  // here, before the serviceWorker delegation, so the big class stays untouched.
+  // through chrome.runtime.reload() here - the real disk re-load.
   if (request && request.type === 'selfReload') {
-    (async () => {
-      try {
-        if (sender && sender.tab && sender.tab.id !== undefined) {
-          await chrome.tabs.update(sender.tab.id, { url: 'about:blank' }).catch(() => {});
-        }
-      } catch {}
-      chrome.runtime.reload();
-    })();
-    return;
+    sendResponse({ ok: true });
+    try {
+      if (sender && sender.tab && sender.tab.id !== undefined) {
+        chrome.tabs.update(sender.tab.id, { url: 'about:blank' }).catch(() => {});
+      }
+    } catch {}
+    chrome.runtime.reload();
+    return true;
   }
   return serviceWorker.handleMessage(request, sender, sendResponse);
 });
