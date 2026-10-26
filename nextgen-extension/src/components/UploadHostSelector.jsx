@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { motion } from 'framer-motion';
 import { Check, Server } from 'lucide-react';
 
 export function reconcileSelectedHostKeys(selectedKeys, services = [], defaultAll = true) {
@@ -28,12 +29,16 @@ export default function UploadHostSelector({
   description = 'All configured hosts are selected by default.',
   defaultAll = true,
 }) {
-  const selectedSet = new Set(selectedKeys);
+  const effectiveSelectedKeys = useMemo(
+    () => reconcileSelectedHostKeys(selectedKeys, services, defaultAll),
+    [selectedKeys, services, defaultAll]
+  );
+  const selectedSet = new Set(effectiveSelectedKeys);
   const allSelected = services.length > 0 && services.every((service) => selectedSet.has(service.key));
 
   const updateSelection = (nextKeys) => {
     if (disabled || !onChange) return;
-    onChange(reconcileSelectedHostKeys(nextKeys, services));
+    onChange(reconcileSelectedHostKeys(nextKeys, services, defaultAll));
   };
 
   const toggleHost = (hostKey) => {
@@ -41,11 +46,11 @@ export default function UploadHostSelector({
 
     if (selectedSet.has(hostKey)) {
       if (selectedSet.size <= 1) return;
-      updateSelection(selectedKeys.filter((key) => key !== hostKey));
+      updateSelection(effectiveSelectedKeys.filter((key) => key !== hostKey));
       return;
     }
 
-    updateSelection([...selectedKeys, hostKey]);
+    updateSelection([...effectiveSelectedKeys, hostKey]);
   };
 
   return (
@@ -53,7 +58,9 @@ export default function UploadHostSelector({
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold text-base-content">
-            <Server className="h-4 w-4 text-primary" />
+            <motion.div whileHover={{ scale: 1.15, rotate: 6 }} className="inline-flex">
+              <Server className="h-4 w-4 text-primary" />
+            </motion.div>
             {title}
           </div>
           {description && (
@@ -113,7 +120,14 @@ export default function UploadHostSelector({
                       : 'border-base-content/20 bg-base-100 text-transparent group-hover/host:border-primary-400 group-hover/host:bg-primary-50'
                   }`}
                 >
-                  <Check className="h-4 w-4" strokeWidth={3} />
+                  <motion.div
+                    initial={false}
+                    animate={{ scale: selected ? [0.6, 1.15, 1] : 0.8, opacity: selected ? 1 : 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="flex items-center justify-center"
+                  >
+                    <Check className="h-4 w-4" strokeWidth={3} />
+                  </motion.div>
                 </span>
               </button>
             );

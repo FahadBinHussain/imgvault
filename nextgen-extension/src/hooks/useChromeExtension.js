@@ -3,7 +3,7 @@
  * @version 2.0.0
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 const DEBUG_CHROME_MESSAGES = false;
 const GALLERY_IMAGES_CACHE_KEY = 'imgvaultGalleryImagesCache';
@@ -45,32 +45,43 @@ const writeGalleryImagesCache = (images) => {
  * @returns {[any, Function, boolean]} [value, setValue, loading]
  */
 export function useChromeStorage(key, defaultValue = null, area = 'sync') {
+  const defaultValueRef = useRef(defaultValue);
+  defaultValueRef.current = defaultValue;
+
   const [value, setValue] = useState(defaultValue);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isCurrent = true;
+
     // Load initial value
     chrome.storage[area].get([key], (result) => {
-      setValue(result[key] ?? defaultValue);
+      if (!isCurrent) return;
+      setValue(result[key] !== undefined ? result[key] : defaultValueRef.current);
       setLoading(false);
     });
 
     // Listen for changes
     const handleChange = (changes, areaName) => {
       if (areaName === area && changes[key]) {
-        setValue(changes[key].newValue ?? defaultValue);
+        setValue(changes[key].newValue !== undefined ? changes[key].newValue : defaultValueRef.current);
       }
     };
 
     chrome.storage.onChanged.addListener(handleChange);
 
     return () => {
+      isCurrent = false;
       chrome.storage.onChanged.removeListener(handleChange);
     };
-  }, [key, area, defaultValue]);
+  }, [key, area]);
 
   const updateValue = useCallback((newValue) => {
-    chrome.storage[area].set({ [key]: newValue });
+    setValue((prev) => {
+      const resolved = typeof newValue === 'function' ? newValue(prev) : newValue;
+      chrome.storage[area].set({ [key]: resolved });
+      return resolved;
+    });
   }, [key, area]);
 
   return [value, updateValue, loading];

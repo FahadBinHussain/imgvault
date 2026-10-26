@@ -200,7 +200,8 @@ export default function VaultPage() {
   const [deletingId, setDeletingId] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showRestorePicker, setShowRestorePicker] = useState(false);
-  const [restoreTargetHostKeys, setRestoreTargetHostKeys, restoreTargetKeysLoading] = useChromeStorage('selectedRestoreHostKeys', [], 'local');
+  const [restoreTargetHostKeysByKind, setRestoreTargetHostKeysByKind] = useChromeStorage('selectedRestoreHostKeysByKind', {}, 'local');
+  const [legacyRestoreTargetHostKeys, setLegacyRestoreTargetHostKeys] = useChromeStorage('selectedRestoreHostKeys', [], 'local');
   const [hostSettings, setHostSettings] = useState(null);
   const [decryptedUrls, setDecryptedUrls] = useState({});
   const [streamFormat, setStreamFormat] = useState({}); // itemId -> { chunked, error? }
@@ -885,7 +886,33 @@ export default function VaultPage() {
         ? getConfiguredVideoUploadServices(hostSettings)
         : getConfiguredImageUploadServices(hostSettings))
     : [];
-  const reconciledRestoreHostKeys = reconcileSelectedHostKeys(restoreTargetHostKeys, restoreConfiguredServices);
+
+  const rawRestoreTargetKeys = useMemo(() => {
+    const kind = restoreItemIsVideo ? 'video' : 'image';
+    const fromKind = restoreTargetHostKeysByKind?.[kind];
+    if (Array.isArray(fromKind) && fromKind.length > 0) {
+      return fromKind;
+    }
+    if (Array.isArray(legacyRestoreTargetHostKeys) && legacyRestoreTargetHostKeys.length > 0) {
+      const matched = reconcileSelectedHostKeys(legacyRestoreTargetHostKeys, restoreConfiguredServices, false);
+      if (matched.length > 0) return matched;
+    }
+    return [];
+  }, [restoreItemIsVideo, restoreTargetHostKeysByKind, legacyRestoreTargetHostKeys, restoreConfiguredServices]);
+
+  const reconciledRestoreHostKeys = useMemo(() => {
+    return reconcileSelectedHostKeys(rawRestoreTargetKeys, restoreConfiguredServices);
+  }, [rawRestoreTargetKeys, restoreConfiguredServices]);
+
+  const handleRestoreTargetHostKeysChange = useCallback((nextKeys) => {
+    const kind = restoreItemIsVideo ? 'video' : 'image';
+    const reconciled = reconcileSelectedHostKeys(nextKeys, restoreConfiguredServices);
+    setRestoreTargetHostKeysByKind((prev) => ({
+      ...(prev && typeof prev === 'object' ? prev : {}),
+      [kind]: reconciled,
+    }));
+    setLegacyRestoreTargetHostKeys(reconciled);
+  }, [restoreItemIsVideo, restoreConfiguredServices, setRestoreTargetHostKeysByKind, setLegacyRestoreTargetHostKeys]);
 
   const deleteVaultItem = async () => {
     if (!selectedItem?.id || deletingId) return;
@@ -1509,7 +1536,7 @@ export default function VaultPage() {
           <UploadHostSelector
             services={restoreConfiguredServices}
             selectedKeys={reconciledRestoreHostKeys}
-            onChange={setRestoreTargetHostKeys}
+            onChange={handleRestoreTargetHostKeysChange}
             disabled={!!restoringId}
             emptyMessage={
               restoreItemIsVideo

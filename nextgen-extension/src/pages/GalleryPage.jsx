@@ -153,6 +153,13 @@ const sortMediaItems = (items, sortMode) => items
   })
   .map(({ item }) => item);
 
+const THREE_D_EXT_RE = /\.(glb|gltf|obj|fbx|stl|spz|3mf|usdz|usd|blend|dae|ply|abc|bvh)$/i;
+const is3DUploadFile = (file) => THREE_D_EXT_RE.test(file?.name || '') || String(file?.type || '').toLowerCase().includes('model/');
+const isSceneConfigFile = (file) => /\.json$/i.test(file?.name || '');
+const isVideoUploadFile = (file) => (
+  Boolean(file?.type?.startsWith('video/')) || /\.(mp4|webm|avi|mov|mkv|m4v)$/i.test(file?.name || '')
+);
+
 export default function GalleryPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -414,7 +421,8 @@ export default function GalleryPage() {
   const [isManualUploadMode, setIsManualUploadMode] = useState(false); // Track if triggered by context menu with no srcUrl
   const [uploadModalMetaTab, setUploadModalMetaTab] = useState('noobs');
   const [uploadHostSettings, setUploadHostSettings] = useState({});
-  const [selectedUploadHostKeys, setSelectedUploadHostKeys, selectedKeysLoading] = useChromeStorage('selectedUploadHostKeys', [], 'local');
+  const [selectedUploadHostKeysByKind, setSelectedUploadHostKeysByKind, keysByKindLoading] = useChromeStorage('selectedUploadHostKeysByKind', {}, 'local');
+  const [legacySelectedUploadHostKeys, setLegacySelectedUploadHostKeys] = useChromeStorage('selectedUploadHostKeys', [], 'local');
   const [uploadToVault, setUploadToVault] = useState(false);
   const [selectedVaultHostKeys, setSelectedVaultHostKeys, vaultHostKeysLoading] = useChromeStorage('selectedVaultHostKeys', [DEFAULT_VAULT_BLOB_HOST], 'local');
   const [vaultLockedForUpload, setVaultLockedForUpload] = useState(false);
@@ -467,27 +475,60 @@ export default function GalleryPage() {
   const batchCancelRequestedRef = useRef(false);
   const batchDuplicateBypassFileRef = useRef(null);
 
+  const currentUploadKind = useMemo(() => {
+    if (is3DMode || uploadImageData?.is3D || (uploadImageData?.file && is3DUploadFile(uploadImageData.file))) {
+      return '3d';
+    }
+    if (uploadImageData?.isVideo || (uploadImageData?.file && isVideoUploadFile(uploadImageData.file))) {
+      return 'video';
+    }
+    return 'image';
+  }, [is3DMode, uploadImageData]);
+
   const configuredUploadServices = useMemo(() => {
-    if (is3DMode) {
+    if (currentUploadKind === '3d') {
       return getConfiguredVideoUploadServices(uploadHostSettings).filter((s) => ['udrop', 'terabox'].includes(s.key));
     }
-    if (uploadImageData?.isVideo) {
+    if (currentUploadKind === 'video') {
       return getConfiguredVideoUploadServices(uploadHostSettings);
     }
 
     return IMAGE_UPLOAD_SERVICES.filter((service) => service.isConfigured(uploadHostSettings));
-  }, [uploadHostSettings, uploadImageData?.isVideo, is3DMode]);
+  }, [uploadHostSettings, currentUploadKind]);
+
+  const effectiveSelectedUploadHostKeys = useMemo(() => {
+    const fromKind = selectedUploadHostKeysByKind?.[currentUploadKind];
+    if (Array.isArray(fromKind) && fromKind.length > 0) {
+      return reconcileSelectedHostKeys(fromKind, configuredUploadServices);
+    }
+    if (Array.isArray(legacySelectedUploadHostKeys) && legacySelectedUploadHostKeys.length > 0) {
+      const matched = reconcileSelectedHostKeys(legacySelectedUploadHostKeys, configuredUploadServices, false);
+      if (matched.length > 0) {
+        return matched;
+      }
+    }
+    return reconcileSelectedHostKeys([], configuredUploadServices);
+  }, [selectedUploadHostKeysByKind, currentUploadKind, legacySelectedUploadHostKeys, configuredUploadServices]);
+
+  const handleUploadHostSelectionChange = useCallback((nextKeys) => {
+    const reconciled = reconcileSelectedHostKeys(nextKeys, configuredUploadServices);
+    setSelectedUploadHostKeysByKind((prev) => ({
+      ...(prev && typeof prev === 'object' ? prev : {}),
+      [currentUploadKind]: reconciled,
+    }));
+    setLegacySelectedUploadHostKeys(reconciled);
+  }, [configuredUploadServices, currentUploadKind, setSelectedUploadHostKeysByKind, setLegacySelectedUploadHostKeys]);
 
   const selectedUploadHostLabel = useMemo(() => {
     const labels = configuredUploadServices
-      .filter((service) => selectedUploadHostKeys.includes(service.key))
+      .filter((service) => effectiveSelectedUploadHostKeys.includes(service.key))
       .map((service) => service.label);
 
     if (labels.length === 0) return 'selected hosts';
     if (labels.length === 1) return labels[0];
     if (labels.length === 2) return labels.join(' and ');
     return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]}`;
-  }, [configuredUploadServices, selectedUploadHostKeys]);
+  }, [configuredUploadServices, effectiveSelectedUploadHostKeys]);
 
   const uploadIsActive = uploading || batchUploadState.active;
   const shouldShowUploadLogPreview = uploadIsActive || uploadAttemptStarted;
@@ -1774,7 +1815,6 @@ export default function GalleryPage() {
     setSelectedCollectionId('');
     setShowCreateCollection(false);
     setNewCollectionName('');
-    setUploadHostSettings({});
     setUploadQueue([]);
     setUploadAttemptStarted(false);
     setBatchUploadState({
@@ -1798,44 +1838,61 @@ export default function GalleryPage() {
   };
 
   useEffect(() => {
-    if (!showUploadModal || !uploadImageData) {
-      return undefined;
-    }
-
     let cancelled = false;
 
-    const loadUploadHostSettings = async () => {
+    const loadSettings = async () => {
       try {
         const imageSettings = await new Promise((resolve) => {
           chrome.storage.sync.get(IMAGE_UPLOAD_SERVICES.flatMap((service) => service.apiKeyFields || []), (result) => resolve(result || {}));
         });
-
-        const videoSettings = uploadImageData.isVideo
-          ? await sendMessage('getVideoHostSettings').catch(() => ({}))
-          : {};
+        const videoSettings = await sendMessage('getVideoHostSettings').catch(() => ({}));
 
         if (!cancelled) {
           setUploadHostSettings({ ...imageSettings, ...videoSettings });
         }
       } catch (error) {
         console.error('Failed to load upload host settings:', error);
-        if (!cancelled) {
-          setUploadHostSettings({});
-        }
       }
     };
 
-    loadUploadHostSettings();
+    loadSettings();
+
+    const handleStorageChange = (changes, areaName) => {
+      if (areaName !== 'sync') return;
+      const hostKeys = IMAGE_UPLOAD_SERVICES.flatMap((service) => service.apiKeyFields || []);
+      if (hostKeys.some((key) => changes[key])) {
+        loadSettings();
+      }
+    };
+
+    chrome.storage.onChanged.addListener(handleStorageChange);
 
     return () => {
       cancelled = true;
+      chrome.storage.onChanged.removeListener(handleStorageChange);
     };
-  }, [showUploadModal, uploadImageData, sendMessage]);
+  }, [sendMessage]);
 
   useEffect(() => {
-    if (configuredUploadServices.length === 0) return;
-    setSelectedUploadHostKeys((current) => reconcileSelectedHostKeys(current, configuredUploadServices));
-  }, [configuredUploadServices]);
+    if (!showUploadModal) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const imageSettings = await new Promise((resolve) => {
+          chrome.storage.sync.get(IMAGE_UPLOAD_SERVICES.flatMap((service) => service.apiKeyFields || []), (result) => resolve(result || {}));
+        });
+        const videoSettings = await sendMessage('getVideoHostSettings').catch(() => ({}));
+        if (!cancelled) {
+          setUploadHostSettings({ ...imageSettings, ...videoSettings });
+        }
+      } catch {
+        // preserve current settings
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showUploadModal, sendMessage]);
 
   useEffect(() => {
     setUploadPreviewSrc(uploadImageData?.srcUrl || '');
@@ -1928,9 +1985,6 @@ export default function GalleryPage() {
     batchDuplicateBypassFileRef.current = null;
   };
 
-  const THREE_D_EXT_RE = /\.(glb|gltf|obj|fbx|stl|spz|3mf|usdz|usd|blend|dae|ply|abc|bvh)$/i;
-  const is3DUploadFile = (file) => THREE_D_EXT_RE.test(file?.name || '') || String(file?.type || '').toLowerCase().includes('model/');
-  const isSceneConfigFile = (file) => /\.json$/i.test(file?.name || '');
   const isSupportedUploadFile = (file) => {
     if (!file) return false;
     if (is3DMode && (is3DUploadFile(file) || isSceneConfigFile(file) || file.type==='image/webp' || /\.webp$/i.test(file.name||''))) return true;
@@ -1938,10 +1992,6 @@ export default function GalleryPage() {
     if (file.type?.startsWith('image/') || file.type?.startsWith('video/')) return true;
     return /\.(png|jpe?g|gif|webp|avif|bmp|svg|mp4|webm|avi|mov|mkv|m4v)$/i.test(file.name || '');
   };
-
-  const isVideoUploadFile = (file) => (
-    file?.type?.startsWith('video/') || /\.(mp4|webm|avi|mov|mkv|m4v)$/i.test(file?.name || '')
-  );
 
   const getSupportedUploadFiles = (fileList) =>
     Array.from(fileList || []).filter(isSupportedUploadFile);
@@ -2521,7 +2571,7 @@ export default function GalleryPage() {
 
   const getSelectedUploadHostKeysOrWarn = () => {
     if (uploadToVault) return [];
-    const selectedHostKeys = reconcileSelectedHostKeys(selectedUploadHostKeys, configuredUploadServices);
+    const selectedHostKeys = reconcileSelectedHostKeys(effectiveSelectedUploadHostKeys, configuredUploadServices);
     if (selectedHostKeys.length === 0) {
       showToast('Select at least one upload host first.', 'warning', 3000);
       return null;
@@ -4598,7 +4648,7 @@ export default function GalleryPage() {
                 </button>
                 <button
                   onClick={() => handleUploadSubmit(false)}
-                  disabled={uploading || batchUploadState.active || !uploadImageData || ((configuredUploadServices.length === 0 || selectedUploadHostKeys.length === 0) && !uploadToVault)}
+                  disabled={uploading || batchUploadState.active || !uploadImageData || ((configuredUploadServices.length === 0 || effectiveSelectedUploadHostKeys.length === 0) && !uploadToVault)}
                   className="px-4 py-2 rounded-[var(--radius-box)] bg-gradient-to-r from-primary-500 to-secondary-500 
                            hover:from-primary-600 hover:to-secondary-600 text-primary-content text-sm font-medium 
                            transition-all disabled:opacity-50 disabled:cursor-not-allowed
@@ -4640,7 +4690,7 @@ export default function GalleryPage() {
                     </div>
                     {sceneSpzFile && sceneTextureFile && sceneConfigFile && (
                       <div className="flex gap-2">
-                        <button onClick={async()=>{ try{ const sel = reconcileSelectedHostKeys(selectedUploadHostKeys, configuredUploadServices); if(sel.length===0){ showToast('Select at least one host (UDrop/TeraBox)', 'warning', 3000); return;} await uploadSceneDirectly({ spzFile: sceneSpzFile, textureFile: sceneTextureFile, configFile: sceneConfigFile, pageTitle: uploadTags?sceneSpzFile.name.replace('.spz',''):sceneSpzFile.name.replace('.spz',''), description: uploadDescription, tags: uploadTags, collectionId: selectedCollectionId, selectedHostKeys: sel }); setSceneSpzFile(null); setSceneTextureFile(null); setSceneConfigFile(null); setShowUploadModal(false); await reload(); showToast('Scene uploaded', 'success', 3000);} catch(e){ showToast(e.message,'error',4000);} }} className="flex-1 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium">Upload Scene (3 files)</button>
+                        <button onClick={async()=>{ try{ const sel = reconcileSelectedHostKeys(effectiveSelectedUploadHostKeys, configuredUploadServices); if(sel.length===0){ showToast('Select at least one host (UDrop/TeraBox)', 'warning', 3000); return;} await uploadSceneDirectly({ spzFile: sceneSpzFile, textureFile: sceneTextureFile, configFile: sceneConfigFile, pageTitle: uploadTags?sceneSpzFile.name.replace('.spz',''):sceneSpzFile.name.replace('.spz',''), description: uploadDescription, tags: uploadTags, collectionId: selectedCollectionId, selectedHostKeys: sel }); setSceneSpzFile(null); setSceneTextureFile(null); setSceneConfigFile(null); setShowUploadModal(false); await reload(); showToast('Scene uploaded', 'success', 3000);} catch(e){ showToast(e.message,'error',4000);} }} className="flex-1 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium">Upload Scene (3 files)</button>
                         <button onClick={()=>{setSceneSpzFile(null); setSceneTextureFile(null); setSceneConfigFile(null);}} className="px-4 py-2 rounded-lg border border-base-300 bg-base-200 text-sm">Clear</button>
                       </div>
                     )}
@@ -4751,13 +4801,13 @@ export default function GalleryPage() {
                           </div>
                           <p className="mt-1 text-xs leading-5 text-base-content/60">{is3DMode ? 'Upload .glb/.gltf/.obj/.fbx/.stl etc to UDrop/TeraBox via direct XHR (no 64MiB limit).' : 'Switch on to upload 3D models (.glb, .obj, .fbx, .stl, .spz).'}</p>
                         </div>
-                        <input type="checkbox" checked={is3DMode} onChange={(e) => { setIs3DMode(e.target.checked); if (e.target.checked) setSelectedUploadHostKeys((prev) => { const f = prev.filter((k) => ['udrop','terabox'].includes(k)); return f.length ? f : [default3DSource === 'terabox' ? 'terabox' : 'udrop']; }); }} disabled={uploading} className="peer sr-only" />
+                        <input type="checkbox" checked={is3DMode} onChange={(e) => setIs3DMode(e.target.checked)} disabled={uploading} className="peer sr-only" />
                         <span aria-hidden="true" className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${is3DMode ? 'bg-cyan-500' : 'bg-base-300'}`}><span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${is3DMode ? 'translate-x-[22px]' : 'translate-x-0.5'}`} /></span>
                       </label>
                     </div>
                   )}
                   {!uploadToVault && (
-                    <UploadHostSelector services={configuredUploadServices} selectedKeys={selectedUploadHostKeys} onChange={setSelectedUploadHostKeys} disabled={uploading} emptyMessage={is3DMode ? 'No 3D hosts configured. Add UDrop keys or log into TeraBox (cookie auto-read).' : uploadImageData?.isVideo ? 'No video hosts are configured. Add Filemoon or UDrop keys in Settings.' : 'No image hosts are configured. Add Pixvid or ImgBB API keys in Settings.'} />
+                    <UploadHostSelector services={configuredUploadServices} selectedKeys={effectiveSelectedUploadHostKeys} onChange={handleUploadHostSelectionChange} disabled={uploading} emptyMessage={is3DMode ? 'No 3D hosts configured. Add UDrop keys or log into TeraBox (cookie auto-read).' : uploadImageData?.isVideo ? 'No video hosts are configured. Add Filemoon or UDrop keys in Settings.' : 'No image hosts are configured. Add Pixvid or ImgBB API keys in Settings.'} />
                   )}
                   {uploadToVault && (
                     <UploadHostSelector services={getVaultBlobHostServices()} selectedKeys={selectedVaultHostKeys} onChange={setSelectedVaultHostKeys} disabled={uploading} title="Vault blob host" description="Where the encrypted .bin blob is stored. Select one or more." defaultAll={false} emptyMessage="No vault blob hosts available." />
@@ -5173,7 +5223,7 @@ export default function GalleryPage() {
                             {is3DMode ? 'Upload .glb/.gltf/.obj/.fbx/.stl etc to UDrop/TeraBox via direct XHR (no 64MiB limit).' : 'Switch on to upload 3D models (.glb, .obj, .fbx, .stl, .spz).'}
                           </p>
                         </div>
-                        <input type="checkbox" checked={is3DMode} onChange={(e) => { setIs3DMode(e.target.checked); if (e.target.checked) { setSelectedUploadHostKeys((prev) => { const filtered = prev.filter((k) => ['udrop','terabox'].includes(k)); return filtered.length ? filtered : [default3DSource === 'terabox' ? 'terabox' : 'udrop']; }); } }} disabled={uploading} className="peer sr-only" />
+                        <input type="checkbox" checked={is3DMode} onChange={(e) => setIs3DMode(e.target.checked)} disabled={uploading} className="peer sr-only" />
                         <span aria-hidden="true" className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${is3DMode ? 'bg-cyan-500' : 'bg-base-300'}`}>
                           <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${is3DMode ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
                         </span>
@@ -5184,8 +5234,8 @@ export default function GalleryPage() {
                   {!uploadToVault && (
                     <UploadHostSelector
                       services={configuredUploadServices}
-                      selectedKeys={selectedUploadHostKeys}
-                      onChange={setSelectedUploadHostKeys}
+                      selectedKeys={effectiveSelectedUploadHostKeys}
+                      onChange={handleUploadHostSelectionChange}
                       disabled={uploading}
                       emptyMessage={
                         is3DMode
@@ -5390,7 +5440,7 @@ export default function GalleryPage() {
                             </button>
                             <button
                               onClick={handleDuplicateUploadAnyway}
-                              disabled={uploading || batchUploadState.active || ((configuredUploadServices.length === 0 || selectedUploadHostKeys.length === 0) && !uploadToVault)}
+                              disabled={uploading || batchUploadState.active || ((configuredUploadServices.length === 0 || effectiveSelectedUploadHostKeys.length === 0) && !uploadToVault)}
                               className="flex-1 px-4 py-2.5 rounded-[var(--radius-box)] bg-warning hover:brightness-95 font-medium 
                                        transition-all disabled:opacity-50 disabled:cursor-not-allowed
                                        shadow-lg hover:shadow-xl text-sm"
