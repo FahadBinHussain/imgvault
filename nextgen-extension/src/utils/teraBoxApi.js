@@ -30,11 +30,25 @@ const userAgent = () =>
 // fallback re-paginates when the dlink comes back empty.
 const _teraBoxFsPathCache = new Map();
 
+export function hasTeraBoxSessionCookie(cookieStr) {
+  return /(?:^|;\s*)ndus=/.test(String(cookieStr || ''));
+}
+
 async function resolveCookie(explicitCookie) {
   const trimmed = String(explicitCookie || '').trim();
-  if (trimmed) return trimmed;
+  if (trimmed) {
+    if (!hasTeraBoxSessionCookie(trimmed)) {
+      console.warn('[teraBoxApi] Explicit teraboxCookie lacks ndus= session token.');
+    }
+    return trimmed;
+  }
   if (typeof chrome !== 'undefined' && chrome.cookies?.getAll) {
     const all = await chrome.cookies.getAll({ domain: 'terabox.com' });
+    const hasNdus = all.some((c) => c.name === 'ndus' && c.value);
+    if (!hasNdus) {
+      console.warn('[teraBoxApi] No ndus session cookie found in browser for terabox.com');
+      return '';
+    }
     // include ALL terabox cookies — captcha solve may set a verification
     // cookie that the old wanted-set filter would drop. fixed 2.11.15.
     const parts = all.map((c) => `${c.name}=${c.value}`);
@@ -172,19 +186,21 @@ async function fetchJsTokenViaHiddenTab(timeoutMs = 15000) {
 }
 
 /**
- * Fetch page-context tokens for write ops (filemanager delete): jsToken +
+ * Fetch page-context tokens for write ops (precreate, create, delete): jsToken +
  * bdstoken + dp-logid, scraped from the /main page's templateData in a hidden
- * tab. Read-only /api/list works with jsToken alone, but filemanager rejects
- * calls without bdstoken (errno -6). Cached ~12h like jsToken.
- * @returns {Promise<{jsToken:string,bdstoken:string,dpLogid:string}>}
+ * tab. Read-only /api/list works with jsToken alone, but write ops reject
+ * calls without bdstoken (errno -6 or errno 4000023 need verify). Cached ~12h.
+ * @returns {Promise<{jsToken:string,bdstoken:string,dpLogid:string,tabCookie?:string}>}
  */
-async function fetchTeraBoxPageContext(cookie, forceFresh = false) {
-  const empty = { jsToken: '', bdstoken: '', dpLogid: '' };
+export async function fetchTeraBoxPageContext(cookie, forceFresh = false) {
+  const empty = { jsToken: '', bdstoken: '', dpLogid: '', tabCookie: '' };
   if (!forceFresh) {
     try {
       const cached = await chrome.storage.local.get(['teraboxPageCtx', 'teraboxPageCtxAt']);
       if (cached?.teraboxPageCtx && Date.now() - (cached.teraboxPageCtxAt || 0) < 1000 * 60 * 60 * 12) {
-        return { ...empty, ...cached.teraboxPageCtx };
+        if (cached.teraboxPageCtx.jsToken && cached.teraboxPageCtx.bdstoken) {
+          return { ...empty, ...cached.teraboxPageCtx };
+        }
       }
     } catch (_) {}
   }
@@ -212,18 +228,26 @@ async function fetchTeraBoxPageContext(cookie, forceFresh = false) {
     try {
       const results = await chrome.scripting.executeScript({
         target: { tabId },
-        func: () => ({
-          jsToken: window.jsToken || '',
-          html: document.documentElement.outerHTML.slice(0, 200000),
-        }),
+        func: () => {
+          const js = window.jsToken || '';
+          const html = document.documentElement?.outerHTML || '';
+          const bd = (html.match(/"bdstoken"\s*:\s*"([^"]+)"/) || [])[1] ||
+                     window.templateData?.bdstoken ||
+                     window.locals?.bdstoken || '';
+          const dp = (html.match(/dp-logid[=:]([^&"'\s<>]+)/) || [])[1] ||
+                     window.templateData?.['dp-logid'] || '';
+          const fnTok = (html.match(/fn\("([A-Za-z0-9]{10,})"\)/) || [])[1] || '';
+          const tabCookie = document.cookie || '';
+          return { jsToken: js || fnTok, bdstoken: bd, dpLogid: dp, tabCookie };
+        },
       });
       const payload = results?.[0]?.result || {};
-      const html = String(payload.html || '');
-      const js = String(payload.jsToken || '');
-      const bd = html.match(/"bdstoken"\s*:\s*"([^"]+)"/)?.[1] || '';
-      const dp = html.match(/dp-logid[=:]([^&"'\s<>]+)/)?.[1] || '';
-      const fnTok = html.match(/fn\("([A-Za-z0-9]{10,})"\)/)?.[1] || '';
-      ctx = { jsToken: js || fnTok, bdstoken: bd, dpLogid: dp };
+      ctx = {
+        jsToken: payload.jsToken || '',
+        bdstoken: payload.bdstoken || '',
+        dpLogid: payload.dpLogid || '',
+        tabCookie: payload.tabCookie || '',
+      };
     } catch (_) {}
     if (ctx.jsToken || ctx.bdstoken) {
       try { await chrome.storage.local.set({ teraboxPageCtx: ctx, teraboxPageCtxAt: Date.now() }); } catch (_) {}

@@ -4728,7 +4728,7 @@ export default function GalleryPage() {
             <div className="flex items-center justify-between w-full">
               <span className="flex items-center gap-2">
                 {is3DMode && <motion.span animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}><Box className="w-5 h-5 text-cyan-500" /></motion.span>}
-                <span>{is3DMode ? (uploadQueue.length > 1 ? `Upload 3D Batch (${uploadQueue.length})` : 'Upload 3D Model') : uploadQueue.length > 1 ? `Upload Batch (${uploadQueue.length})` : 'Upload Image'}</span>
+                <span>{is3DMode ? (uploadQueue.length > 1 ? `Upload 3D Batch (${uploadQueue.length})` : 'Upload 3D Model') : uploadQueue.length > 1 ? `Upload Batch (${uploadQueue.length})` : ((uploadImageData?.isVideo || uploadMetadata?.isVideo) ? 'Upload Video' : 'Upload Image')}</span>
                 {is3DMode && <span className="rounded-full bg-cyan-500 px-2 py-0.5 text-xs font-bold text-white">UDrop • TeraBox</span>}
               </span>
               <div className="flex gap-2">

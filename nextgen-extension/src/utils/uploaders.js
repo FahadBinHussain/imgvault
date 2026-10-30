@@ -15,6 +15,10 @@ import {
   telegramLocalMediaUrl,
   telegramUploadMethod,
 } from './telegramApi.js';
+import {
+  fetchTeraBoxPageContext,
+  hasTeraBoxSessionCookie,
+} from './teraBoxApi.js';
 
 /**
  * @typedef {Object} UploadResult
@@ -643,6 +647,7 @@ export class TeraBoxUploader extends BaseUploader {
     this.channel = 'dubox';
     this.cookie = '';
     this.jsToken = '';
+    this.pageCtx = { jsToken: '', bdstoken: '', dpLogid: '' };
     this.CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB; doubles per 4 GB threshold
   }
 
@@ -650,11 +655,11 @@ export class TeraBoxUploader extends BaseUploader {
     return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
   }
 
-  headers() {
+  headers(base = this.apiBase) {
     return {
       'Cookie': this.cookie,
       'Accept': 'application/json, text/plain, */*',
-      'Referer': `${this.apiBase}/`,
+      'Referer': `${base}/`,
       'User-Agent': this.userAgent(),
       'X-Requested-With': 'XMLHttpRequest',
     };
@@ -667,11 +672,22 @@ export class TeraBoxUploader extends BaseUploader {
   async resolveCookie(explicitCookie) {
     const trimmed = String(explicitCookie || '').trim();
     if (trimmed) {
+      if (!hasTeraBoxSessionCookie(trimmed)) {
+        throw new Error(
+          "Invalid TeraBox cookie in Settings: missing 'ndus=' session token. Please copy your full cookie from terabox.com after logging in."
+        );
+      }
       this.cookie = trimmed;
       return trimmed;
     }
     if (typeof chrome !== 'undefined' && chrome.cookies?.getAll) {
       const all = await chrome.cookies.getAll({ domain: 'terabox.com' });
+      const hasNdus = all.some((c) => c.name === 'ndus' && c.value);
+      if (!hasNdus) {
+        throw new Error(
+          "TeraBox session not found: missing 'ndus' login cookie in Edge. Please log in to TeraBox (https://www.terabox.com) in your browser or paste your cookie in Settings -> API Keys -> TeraBox Cookie."
+        );
+      }
       // include ALL terabox cookies — captcha solve may set a verification
       // cookie that the old wanted-set filter would drop. fixed 2.11.15.
       const parts = all.map((c) => `${c.name}=${c.value}`);
@@ -680,7 +696,7 @@ export class TeraBoxUploader extends BaseUploader {
         return this.cookie;
       }
     }
-    throw new Error('No TeraBox cookie available. Log in to TeraBox or paste the cookie in Settings.');
+    throw new Error('No TeraBox cookie available. Please log in to TeraBox in Edge or paste your cookie in Settings.');
   }
 
   async fetchJsTokenViaHiddenTab(timeoutMs = 15000) {
@@ -874,35 +890,76 @@ export class TeraBoxUploader extends BaseUploader {
     return this.jsToken;
   }
 
-  async apiRequest(pathname, params = {}, body, retried = false) {
+  async apiRequest(pathname, params = {}, body, retried = false, base = this.apiBase) {
+    const ctx = this.pageCtx || {};
+    const effectiveJsToken = ctx.jsToken || this.jsToken;
     const qp = new URLSearchParams({
       app_id: this.appId,
       web: '1',
       channel: this.channel,
       clienttype: '0',
-      ...(this.jsToken ? { jsToken: this.jsToken } : {}),
+      ...(effectiveJsToken ? { jsToken: effectiveJsToken } : {}),
+      ...(ctx.bdstoken ? { bdstoken: ctx.bdstoken } : {}),
+      ...(ctx.dpLogid ? { 'dp-logid': ctx.dpLogid } : {}),
       ...params,
     });
-    const res = await fetch(`${this.apiBase}${pathname}?${qp}`, {
+    const res = await fetch(`${base}${pathname}?${qp}`, {
       method: 'POST',
       headers: body instanceof FormData
-        ? this.headers()
-        : { ...this.headers(), 'Content-Type': 'application/x-www-form-urlencoded' },
+        ? this.headers(base)
+        : { ...this.headers(base), 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
     });
     let json;
     try {
       json = await res.json();
     } catch {
-      throw new Error(`TeraBox ${pathname} returned non-JSON: ${String(res.status)}`);
+      throw new Error(`TeraBox ${pathname} returned non-JSON: ${String(res.status)} on ${base}`);
     }
+
     if (json.errno === 4000023 && !retried) {
-      // stale/invalid jsToken (or need-verify) → force a fresh token from
-      // the hidden tab and retry once (driver behaviour). must bypass the
-      // cache — the cached token may itself be stale (2.11.16).
-      await this.fetchJsToken(true);
-      return this.apiRequest(pathname, params, body, true);
+      // stale/invalid jsToken or bdstoken, or verification required
+      this.pageCtx = await fetchTeraBoxPageContext(this.cookie, true);
+      this.jsToken = this.pageCtx.jsToken || (await this.fetchJsToken(true));
+
+      // Retry on dm.terabox.com first
+      const retryResult = await this.apiRequest(pathname, params, body, true, this.apiBase);
+      if (retryResult && retryResult.errno === 0) return retryResult;
+
+      // If dm fails, try www.terabox.com
+      const wwwResult = await this.apiRequest(pathname, params, body, true, this.tokenBase);
+      if (wwwResult && wwwResult.errno === 0) return wwwResult;
+
+      if (wwwResult?.errno === 4000023 || retryResult?.errno === 4000023) {
+        try {
+          if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+            await chrome.tabs.create({ url: `${this.tokenBase}/main`, active: true });
+          }
+        } catch (_) {}
+        throw new Error(
+          `TeraBox rejected upload: security verification required (errno 4000023: need verify). A verification tab has been opened: please complete any CAPTCHA/security prompt in TeraBox and retry the upload.`
+        );
+      }
+      return wwwResult || retryResult;
     }
+
+    if (json.errno === 4000023 && retried) {
+      try {
+        if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+          await chrome.tabs.create({ url: `${this.tokenBase}/main`, active: true });
+        }
+      } catch (_) {}
+      throw new Error(
+        `TeraBox rejected upload: security verification required (errno 4000023: need verify). A verification tab has been opened: please complete any CAPTCHA/security prompt in TeraBox and retry the upload.`
+      );
+    }
+
+    if (json.errno === -6) {
+      throw new Error(
+        `TeraBox upload failed: user not logged in (errno -6). Please log into TeraBox in Edge or paste a valid session cookie in Settings.`
+      );
+    }
+
     return json;
   }
 
@@ -923,39 +980,59 @@ export class TeraBoxUploader extends BaseUploader {
   }
 
   async locateUpload() {
-    const res = await fetch(`https://dm-data.terabox.com/rest/2.0/pcs/file?method=locateupload`, {
+    let res = await fetch(`https://dm-data.terabox.com/rest/2.0/pcs/file?method=locateupload`, {
       headers: this.headers(),
     });
-    const json = await res.json();
-    if (!json.host) {
+    let json = await res.json();
+    if (!json?.host) {
+      res = await fetch(`https://d.terabox.com/rest/2.0/pcs/file?method=locateupload`, {
+        headers: this.headers(this.tokenBase),
+      });
+      json = await res.json();
+    }
+    if (!json?.host) {
       throw new Error('TeraBox locateupload returned no upload host.');
     }
     return json.host;
   }
 
-  async uploadChunk(host, path, uploadid, partseq, chunkBlob, filename) {
-    const qp = new URLSearchParams({
-      method: 'upload',
-      path,
-      uploadid,
-      partseq: String(partseq),
-      app_id: this.appId,
-      web: '1',
-      channel: this.channel,
-      clienttype: '0',
-    });
-    const form = new FormData();
-    form.append('file', chunkBlob, filename);
-    const res = await fetch(`https://${host}/rest/2.0/pcs/superfile2?${qp}`, {
-      method: 'POST',
-      headers: { 'Cookie': this.cookie, 'User-Agent': this.userAgent() },
-      body: form,
-    });
-    const json = await res.json();
-    if (!json.md5) {
-      throw new Error(`TeraBox chunk ${partseq} upload failed: ${JSON.stringify(json)}`);
+  async uploadChunk(host, path, uploadid, partseq, chunkBlob, filename, signal, retries = 2) {
+    let lastError;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      if (signal?.aborted) throw new Error('Upload aborted');
+      try {
+        const qp = new URLSearchParams({
+          method: 'upload',
+          path,
+          uploadid,
+          partseq: String(partseq),
+          app_id: this.appId,
+          web: '1',
+          channel: this.channel,
+          clienttype: '0',
+        });
+        const form = new FormData();
+        form.append('file', chunkBlob, filename);
+        const res = await fetch(`https://${host}/rest/2.0/pcs/superfile2?${qp}`, {
+          method: 'POST',
+          headers: { 'Cookie': this.cookie, 'User-Agent': this.userAgent() },
+          body: form,
+          signal,
+        });
+        const json = await res.json();
+        if (!json.md5) {
+          throw new Error(`TeraBox chunk ${partseq} upload failed: ${JSON.stringify(json)}`);
+        }
+        return json.md5;
+      } catch (err) {
+        lastError = err;
+        if (signal?.aborted) throw err;
+        if (attempt < retries) {
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        }
+      }
     }
-    return json.md5;
+    throw lastError;
   }
 
   async create(path, size, uploadid, blockList) {
@@ -1043,10 +1120,10 @@ export class TeraBoxUploader extends BaseUploader {
       const path = `/${safeName}`;
 
       await this.resolveCookie(cookie);
-      // fetch a token upfront (cache-first, hidden tab only on miss) so the
-      // first precreate usually succeeds and we don't burn a 4000023 retry +
-      // a hidden tab per item. the 12h storage cache means a whole resolve-all
-      // batch opens at most ONE tab. 2.11.18.
+      // fetch page context upfront from /main (cache-first, hidden tab only on miss)
+      // to supply bdstoken and jsToken for write ops.
+      this.pageCtx = await fetchTeraBoxPageContext(this.cookie);
+      this.jsToken = this.pageCtx.jsToken || '';
       if (!this.jsToken) await this.fetchJsToken();
 
       const size = blob.size;
@@ -1069,7 +1146,7 @@ export class TeraBoxUploader extends BaseUploader {
         const start = i * chunkSize;
         const end = Math.min(start + chunkSize, size);
         const chunk = blob.slice(start, end);
-        const md5 = await this.uploadChunk(host, path, pre.uploadid, i, chunk, safeName);
+        const md5 = await this.uploadChunk(host, path, pre.uploadid, i, chunk, safeName, signal);
         blockList.push(md5);
         uploaded += (end - start);
         if (typeof onProgress === 'function') {
