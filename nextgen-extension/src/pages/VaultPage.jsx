@@ -5,7 +5,7 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   EyeOff,
   KeyRound,
@@ -197,6 +197,7 @@ export default function VaultPage() {
   const [activeTab, setActiveTab] = useState('noobs');
   const [loadedImages, setLoadedImages] = useState(new Set());
   const [toast, setToast] = useState(null);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [restoringId, setRestoringId] = useState('');
   const [deletingId, setDeletingId] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -411,6 +412,75 @@ export default function VaultPage() {
       setTimeout(() => setToast(null), duration);
     }
   };
+
+  // Dropping files on the vault page hands them to the gallery upload modal
+  // with "Upload to Secret Vault" already on; the modal owns the passcode gate.
+  // Refs keep the window listeners from re-registering on every drag render.
+  const dropToastRef = useRef(showToast);
+  dropToastRef.current = showToast;
+  const dropVaultConfigRef = useRef({ loading: configLoading, config: vaultConfig });
+  dropVaultConfigRef.current = { loading: configLoading, config: vaultConfig };
+
+  useEffect(() => {
+    let dragDepth = 0;
+    const hasFiles = (event) => Array.from(event.dataTransfer?.types || []).includes('Files');
+    const isSupportedDropFile = (file) => {
+      if (!file) return false;
+      if (file.type?.startsWith('image/') || file.type?.startsWith('video/')) return true;
+      return /\.(png|jpe?g|gif|webp|avif|bmp|svg|mp4|webm|avi|mov|mkv|m4v)$/i.test(file.name || '');
+    };
+
+    const handleDragEnter = (event) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      dragDepth += 1;
+      setIsDraggingFiles(true);
+    };
+
+    const handleDragOver = (event) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+    };
+
+    const handleDragLeave = () => {
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) setIsDraggingFiles(false);
+    };
+
+    const handleDrop = (event) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      dragDepth = 0;
+      setIsDraggingFiles(false);
+
+      const files = Array.from(event.dataTransfer?.files || []).filter(isSupportedDropFile);
+      if (files.length === 0) {
+        dropToastRef.current('Drop image or video files to add them to the Secret Vault.', 'error', 3500);
+        return;
+      }
+      const { loading: configLoadingNow, config: vaultConfigNow } = dropVaultConfigRef.current;
+      if (!configLoadingNow && !vaultConfigNow) {
+        dropToastRef.current('Create the Secret Vault before uploading into it.', 'warning', 4000);
+        return;
+      }
+
+      navigate('/gallery', {
+        state: { autoOpenUpload: true, uploadToVault: true, droppedUploadFiles: files },
+      });
+    };
+
+    window.addEventListener('dragenter', handleDragEnter);
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('dragleave', handleDragLeave);
+    window.addEventListener('drop', handleDrop);
+
+    return () => {
+      window.removeEventListener('dragenter', handleDragEnter);
+      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener('dragleave', handleDragLeave);
+      window.removeEventListener('drop', handleDrop);
+    };
+  }, [navigate]);
 
   const loadVaultItems = async () => {
     if (!unlocked) return;
@@ -1201,6 +1271,72 @@ export default function VaultPage() {
       <div className="g-grid-bg" />
       <div className="g-orb g-orb-a" />
       <div className="g-orb g-orb-b" />
+      <AnimatePresence>
+        {isDraggingFiles && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[60] pointer-events-none"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/20 via-secondary-500/20 to-primary-500/20 backdrop-blur-sm" />
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
+              className="absolute inset-8"
+            >
+              <motion.div
+                animate={{
+                  boxShadow: [
+                    '0 0 0 4px rgba(139, 92, 246, 0.3), 0 0 40px rgba(139, 92, 246, 0.4)',
+                    '0 0 0 4px rgba(236, 72, 153, 0.3), 0 0 60px rgba(236, 72, 153, 0.4)',
+                    '0 0 0 4px rgba(139, 92, 246, 0.3), 0 0 40px rgba(139, 92, 246, 0.4)',
+                  ],
+                }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                className="h-full w-full rounded-[var(--radius-box)] border-4 border-dashed border-base-content/40"
+              />
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                <motion.div
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.1 }}
+                  className="relative mb-6"
+                >
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.8, 0.5] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                    className="absolute inset-0 rounded-full bg-gradient-to-r from-primary-500 to-secondary-500 blur-3xl"
+                  />
+                  <div className="relative z-10 rounded-full bg-base-100 p-8 shadow-2xl">
+                    <motion.div
+                      animate={{ y: [0, -8, 0], rotate: [0, -4, 4, 0] }}
+                      transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                    >
+                      <LockKeyhole className="h-20 w-20 text-primary-600" />
+                    </motion.div>
+                  </div>
+                </motion.div>
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  <h3 className="mb-3 text-4xl font-bold text-base-content drop-shadow-2xl">
+                    Drop to lock in the vault
+                  </h3>
+                  <p className="text-xl text-base-content/80 drop-shadow-lg">
+                    Release to encrypt and upload into the Secret Vault
+                  </p>
+                </motion.div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <GalleryNavbar
         navigate={navigate}
         images={vaultItems}

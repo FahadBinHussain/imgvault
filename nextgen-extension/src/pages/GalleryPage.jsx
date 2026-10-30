@@ -3442,8 +3442,17 @@ export default function GalleryPage() {
 
   useEffect(() => {
     if (location.state?.autoOpenUpload) {
-      // If a file was provided (from debug page with File System API)
-      if (location.state?.uploadFile) {
+      // Files dropped on the vault page arrive here with the vault switch preset.
+      if (location.state?.droppedUploadFiles?.length) {
+        const files = location.state.droppedUploadFiles;
+        if (location.state?.uploadToVault) {
+          setUploadToVault(true);
+        }
+        loadUploadFiles(files).catch((error) => {
+          showToast(`Could not load dropped files: ${error?.message || String(error)}`, 'error', 5000);
+        });
+      } else if (location.state?.uploadFile) {
+        // If a file was provided (from debug page with File System API)
         const file = location.state.uploadFile;
         console.log('🐛 Debug page upload file received:', file.name);
         
