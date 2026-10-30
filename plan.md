@@ -367,7 +367,8 @@ vault upload
 
 date: 2026-10-10 · originally `plan-telegram-host.md` · diagram: `plan-telegram-flow.html`
 
-**status:** phases 0 + 1 + 2 shipped (2.15.6–2.17.4). phases 3a / 3b / 4 **open**.
+**status:** phases 0 + 1 + 2 + 3a shipped (2.15.6–2.18.0). phases 3b / 4 **open** (both
+optional — 3b only buys telegram vault blobs over the 20 MB getFile cap).
 `[verified 2026-10-30]` telegram is still **not** a vault blob host
 (`packages/shared/providerCatalog.js`: `// NOT a vaultBlobHost yet — that is phase 3a`),
 and `THREE_D_SOURCE_OPTIONS` still filters to `udrop | terabox`.
@@ -429,19 +430,22 @@ decision; it was used as a method reference only.
   the scrape breaks.~~ shipped; a scrape failure also deletes the just-posted message so no
   orphan is left.
 
-### ~~documents (3D spz, anything without a CDN URL)~~ shipped for media, not for 3D
+### ~~documents (3D spz, anything without a CDN URL)~~ shipped for media AND 3D
 - ~~store `fileId`; resolve `getFile` at fetch time; extension SW fetches direct, web goes
   through a server-side proxy; the token never lands in the DB or a client-visible URL.~~
-  shipped (ext proxy + `web/src/app/telegram-media/[fileId]/route.js`). **3D scenes are
-  still not uploadable to telegram** (phase 2).
+  shipped (ext proxy + `web/src/app/telegram-media/[fileId]/route.js`). **3D scenes** shipped
+  with phase 2 (2.17.4).
 
-### vault — ⏳ open (phase 3a)
+### ~~vault — ⏳ open (phase 3a)~~ shipped 2026-10-30 (2.18.0)
 - crypto is unchanged (host sees only ciphertext).
 - ~~upload: existing `encryptAndUploadVaultedBlob` catalog dispatch → `sendDocument`
-  (cloud) …~~ **not wired**: telegram is not in `getVaultBlobHostServices()` because the
-  catalog entry omits `vaultBlobHost: true`.
-- read-back constraint stands: cloud `getFile` ≤ 20 MB → cloud telegram vault blobs would
-  be hard-capped at 20 MB (loud error naming the cap).
+  (cloud) …~~ **wired**: telegram carries `vaultBlobHost: true`, so both vault writers
+  (`background.encryptAndUploadVaultedBlob` and the gallery page-side loop) dispatch it
+  through the shared catalog, and `buildVaultBlobCopy` stores the byte route + the channel
+  `messageId` for it.
+- read-back constraint stands: cloud `getFile` ≤ 20 MB → telegram vault blobs are hard-capped
+  at 20 MB, `assertVaultBlobHostSizes` fails LOUD on the encrypted size before any host is
+  uploaded to, and `getTelegramFileInfo` repeats the cap on every read.
 - bigger blobs → local Bot API server (phase 3b, optional).
 
 ### privacy (loud)
@@ -465,8 +469,14 @@ decision; it was used as a method reference only.
   spz/texture fileId + messageId; `extra` = unreferenced `t.me/s` media posts, 2 per
   scene by design since the API cannot enumerate files). web scene viewer fetches local
   `/telegram-media/` urls same-origin (`/api/media` only proxies absolute urls).
-- **3a — vault via cloud bot (≤ 20 MB) — ⏳ open**: add `telegram` as a vault blob host;
-  `fetchVaultBlobRange` telegram branch + fresh-resolve + loud 20 MB gate.
+- ~~**3a — vault via cloud bot (≤ 20 MB) — ⏳ open**~~ **done 2026-10-30 (2.18.0)**: telegram
+  is a vault blob host. one catalog flag (`vaultBlobHost`) + `vaultLabel`/`vaultMaxBytes`/
+  `vaultCapNote`, so the picker states the cap and `assertVaultBlobHostSizes` pre-flights
+  every selected host on the ENCRYPTED size before the first upload. reads go through the
+  `fetchVaultBlobRange` telegram branch (Bot API `getFile` per range, Range → 206), writes
+  store the byte route + `encryptedBlobMessageId` via the shared `buildVaultBlobCopy`,
+  deletes remove the channel post (the Bot API has no file delete — said out loud), and
+  web got a server-side reader (`telegramServerApi.js`, `WEB_READABLE_VAULT_HOSTS`).
 - **3b — local Bot API server (2000 MB upload, unlimited read) — ⏳ open, OPTIONAL**:
   lifecycle-managed by the Rust native host. buys exactly one thing: telegram vault blobs
   > 20 MB, which udrop/terabox already serve. cut freely; over-cap = loud error, item goes
@@ -773,7 +783,7 @@ everything still actionable, in one place:
 | 3 | ~~"migrate old vault items" button (pre-2.6.0 plaintext vault rows)~~ | vault | **struck 2026-10-30** — never built, won't be; option B is final. legacy rows stay plaintext and now show a `Not encrypted` badge |
 | 4 | scene (spz/texture) encrypted vault support | vault | scenes stay plaintext on their hosts |
 | 5 | ~~telegram 3D (phase 2)~~ | telegram | **done 2.17.4 + 2.17.5** — `threeDHost` flag drives `THREE_D_HOST_KEYS`/options; docs-only textures + 20 MB pair pre-flight; Telegram 3D integrity subtab; local `/telegram-media/` scenes render on web; scene refs now persist (see the `updateImage` extra-key gotcha in AGENTS.md) |
-| 6 | telegram vault host (phase 3a, ≤ 20 MB cloud) | telegram | needs `vaultBlobHost: true` + read branch + loud 20 MB gate |
+| 6 | ~~telegram vault host (phase 3a, ≤ 20 MB cloud)~~ | telegram | **done 2.18.0** — `vaultBlobHost` + `vaultLabel`/`vaultMaxBytes`; shared `assertVaultBlobHostSizes` pre-flight + `buildVaultBlobCopy`; `fetchVaultBlobRange` telegram branch (getFile per range, 206); vault post ids count as referenced in telegram integrity; delete = `deleteMessage` of the blob post (no Bot API file delete, stated loudly); web reads telegram copies server-side via `lib/telegramServerApi.js` |
 | 7 | local Bot API server (phase 3b) | telegram | optional; only buys > 20 MB telegram vault blobs |
 | 8 | telegram bulk library migration (phase 4) | telegram | optional |
 | 9 | `t.me/s` 48h history probe | telegram | untested; channel has no old media |

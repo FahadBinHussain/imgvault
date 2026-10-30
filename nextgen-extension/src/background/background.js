@@ -17,6 +17,8 @@ import {
   getMissingRequiredImageUploadServices,
   getVaultBlobHostServices,
   normalizeVaultBlobHostKeys,
+  assertVaultBlobHostSizes,
+  buildVaultBlobCopy,
   DEFAULT_VAULT_BLOB_HOST,
 } from '../config/providerCatalog.js';
 import {
@@ -1281,6 +1283,10 @@ class ImgVaultServiceWorker {
     const encryptedMetadata = await encryptMetadata(this.vaultMasterKey, metadata);
 
     const targetHosts = normalizeVaultBlobHostKeys(vaultHosts);
+    // Telegram's getFile read-back caps its vault copies at 20 MB — checked on the
+    // ENCRYPTED size, before any host is touched, so an over-cap selection can
+    // never leave half the copies sitting on the other accounts.
+    assertVaultBlobHostSizes(targetHosts, encryptedBlob.size);
 
     if (typeof onProgress === 'function') {
       onProgress({ loaded: 0, total: 1, percent: 50, stage: 'upload' });
@@ -1306,12 +1312,7 @@ class ImgVaultServiceWorker {
       // NOTE: must use the fetch-based upload() here — XHR is not available in
       // the MV3 service worker context (uploadWithProgress uses XMLHttpRequest).
       const result = await service.upload({ uploader, blob: encryptedBlob, settings, data: { fileName: opaqueName } });
-      copies.push({
-        host: targetHost,
-        encryptedBlobUrl: result.watchUrl || result.displayUrl || result.url || '',
-        encryptedBlobWatchUrl: result.watchUrl || result.displayUrl || result.url || '',
-        encryptedBlobFileId: result.fileId || '',
-      });
+      copies.push(buildVaultBlobCopy(targetHost, result));
     }
 
     if (typeof onProgress === 'function') {
@@ -1320,12 +1321,15 @@ class ImgVaultServiceWorker {
 
     const primary = copies[0] || {};
     return {
-      // Durable short URL (watchUrl/displayUrl) as the primary blob URL; the
-      // signed direct download_url can expire, so decrypt always regenerates it
-      // from encryptedBlobFileId when the stored URL 404s.
+      // Durable URL as the primary blob URL: udrop/terabox store the watch page
+      // (their signed download_url expires, so every read regenerates it from
+      // encryptedBlobFileId); telegram stores its platform-local byte route.
       encryptedBlobUrl: primary.encryptedBlobUrl || '',
       encryptedBlobWatchUrl: primary.encryptedBlobWatchUrl || '',
       encryptedBlobFileId: primary.encryptedBlobFileId || '',
+      // telegram deletes its copy by post id; mirrored top-level so a legacy
+      // single-copy row (no encryptedBlobHosts) is still deletable.
+      encryptedBlobMessageId: primary.encryptedBlobMessageId || '',
       encryptedBlobHosts: copies,
       encryptedMetadata,
       encryptedMimeType: blob.type || 'application/octet-stream',
@@ -2141,10 +2145,29 @@ class ImgVaultServiceWorker {
     let lastError = null;
     const failures = [];
     const primaryHost = String(hostCopies[0]?.host || DEFAULT_VAULT_BLOB_HOST).toLowerCase();
+    let telegramSettings = null;
     for (let copyIndex = 0; copyIndex < hostCopies.length; copyIndex += 1) {
       const copy = hostCopies[copyIndex];
       const host = (copy.host || DEFAULT_VAULT_BLOB_HOST).toLowerCase();
       try {
+        // Telegram has no signed URL to regenerate: the Bot API reads a document
+        // back through getFile, which hands out a fresh (token-bearing, ~1h) file
+        // url per call and answers Range with 206 (spike-verified). So the read is
+        // keyed off encryptedBlobFileId and the token url is built and thrown away
+        // inside fetchTelegramFile — never stored, never returned, never logged.
+        // Over 20 MB getFile itself throws naming the cap (phase 3a limit).
+        if (host === 'telegram') {
+          telegramSettings ??= await this.getMergedVideoHostSettings();
+          const token = String(telegramSettings?.telegramBotToken || '').trim();
+          const fileId = String(copy.encryptedBlobFileId || '').trim();
+          if (!token) throw new Error('telegram vault read needs the bot token in Settings → API Keys');
+          if (!fileId) throw new Error('telegram copy has no encryptedBlobFileId — cannot read the blob');
+          const tgResp = await fetchTelegramFile(token, fileId, { range: `bytes=${start}-${end}` });
+          const tgBytes = new Uint8Array(await tgResp.arrayBuffer());
+          const tgOut = tgResp.status === 206 ? tgBytes : tgBytes.slice(start, end + 1);
+          if (copyIndex > 0) this._noteVaultReadFallback(item?.id, { host, primaryHost, failures });
+          return tgOut;
+        }
         // terabox dm-d dlinks are single-use — every byte-range read MUST get
         // its own fresh signed URL (the header read already consumed the page
         // pre-resolved URL, so reusing it re-403s). udrop/other hosts can reuse.
@@ -2539,7 +2562,7 @@ class ImgVaultServiceWorker {
     const copies = Array.isArray(item.encryptedBlobHosts) && item.encryptedBlobHosts.length > 0
       ? item.encryptedBlobHosts
       : (item.encryptedBlobUrl
-        ? [{ host: item.vaultHost || DEFAULT_VAULT_BLOB_HOST, encryptedBlobUrl: item.encryptedBlobUrl, encryptedBlobFileId: item.encryptedBlobFileId || '' }]
+        ? [{ host: item.vaultHost || DEFAULT_VAULT_BLOB_HOST, encryptedBlobUrl: item.encryptedBlobUrl, encryptedBlobFileId: item.encryptedBlobFileId || '', encryptedBlobMessageId: item.encryptedBlobMessageId || '' }]
         : []);
     if (copies.length === 0) return; // plain gallery item — no blob to clean up
 
@@ -2590,6 +2613,39 @@ class ImgVaultServiceWorker {
           }
           await deleteTeraBoxFiles(cookie, [path]);
           console.log(`[VAULT DELETE] terabox blob ${path} deleted (moved to recycle bin)`);
+        } else if (host === 'telegram') {
+          // The Bot API has NO file delete — the only way to remove a vault blob
+          // from the channel is to delete the post it was sent as. That
+          // unreferences the document (no gallery/resolve link points at it any
+          // more); getFile can still resolve the file id until Telegram GCs the
+          // bytes, so this is stated instead of pretending a hard wipe happened.
+          const messageId = String(copy.encryptedBlobMessageId || item.encryptedBlobMessageId || '').trim();
+          if (!messageId) {
+            throw new Error('telegram copy has no encryptedBlobMessageId — the channel post carrying the blob cannot be located without it');
+          }
+          const token = String(settings?.telegramBotToken || '').trim();
+          const channel = String(settings?.telegramChannel || '').trim();
+          if (!token || !channel) {
+            throw new Error(
+              `Telegram bot token/channel not configured (Settings → API Keys, missing ${
+                !token ? 'telegramBotToken' : 'telegramChannel'
+              }). Item kept in trash so the message id is not lost.`
+            );
+          }
+          try {
+            await deleteTelegramMessage({ token, channel, messageId });
+            console.log(`[VAULT DELETE] telegram blob post ${messageId} deleted — the document it carried is now unreferenced (the Bot API has no file delete, so the bytes drop when Telegram GCs them)`);
+          } catch (err) {
+            const message = String(err?.message || err);
+            if (/message to delete not found/i.test(message)) {
+              console.warn(`[VAULT DELETE] telegram message ${messageId} already gone from the channel — releasing the row`);
+              continue;
+            }
+            throw new Error(
+              `telegram post ${messageId} delete failed: ${message}. ` +
+                'Item kept in trash — fix the issue and retry (if the post is older than the bot can delete, delete it in the channel manually, then retry).'
+            );
+          }
         } else {
           throw new Error(`unsupported vault blob host "${host}" — cannot delete the blob`);
         }

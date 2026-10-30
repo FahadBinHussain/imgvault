@@ -496,6 +496,9 @@ export async function deleteTeraBoxFiles(cookie, paths) {
  *   - missing fileId / credentials → THROW (row stays, error names the host)
  *   - TeraBox: root path fast path → recursive search → file verifiably absent
  *     from the account = loud warn + release (2.13.3), a listing error = throw
+ *   - Telegram: deletes the channel POST carrying the blob (no Bot API file
+ *     delete); missing messageId or token/channel = THROW, "message to delete
+ *     not found" = verifiable absence → loud warn + release
  * @param {object} extra - the row's extra_metadata (blob fields live here)
  * @param {{udropKey1?: string, udropKey2?: string, teraboxCookie?: string}} settings
  */
@@ -510,6 +513,7 @@ export async function deleteVaultBlobCopies(extra, settings) {
               host: meta.vaultHost || DEFAULT_VAULT_BLOB_HOST,
               encryptedBlobUrl: meta.encryptedBlobUrl,
               encryptedBlobFileId: meta.encryptedBlobFileId || '',
+              encryptedBlobMessageId: meta.encryptedBlobMessageId || '',
             },
           ]
         : []
@@ -564,6 +568,32 @@ export async function deleteVaultBlobCopies(extra, settings) {
         }
         await deleteTeraBoxFiles(cookie, [path])
         console.log(`[vault-delete] terabox blob ${path} deleted (moved to recycle bin)`)
+      } else if (host === 'telegram') {
+        // The Bot API has NO file delete: removing the channel post is the only
+        // move available. The document stops being referenced by anything in the
+        // library; the bytes leave Telegram only when it GCs them, which is
+        // stated rather than pretending a hard wipe happened.
+        const messageId = String(copy.encryptedBlobMessageId || '').trim()
+        if (!messageId) {
+          throw new Error('telegram copy has no encryptedBlobMessageId — the channel post carrying the blob cannot be located without it')
+        }
+        const token = String(settings?.telegramBotToken || '').trim()
+        const channel = String(settings?.telegramChannel || '').trim()
+        if (!token || !channel) {
+          throw new Error(
+            `Telegram bot token/channel not configured (Settings → API Keys, missing ${
+              !token ? 'telegram_bot_token' : 'telegram_channel'
+            }). Item kept in trash so the message id is not lost.`
+          )
+        }
+        const outcome = await telegramDeleteMessage(token, telegramChatId(channel), messageId)
+        if (outcome === 'already-gone') {
+          console.warn(`[vault-delete] telegram message ${messageId} already gone from the channel — releasing the row`)
+          continue
+        }
+        console.log(
+          `[vault-delete] telegram blob post ${messageId} deleted — the document it carried is now unreferenced (the Bot API has no file delete, so the bytes drop when Telegram GCs them)`
+        )
       } else {
         throw new Error(`unsupported vault blob host "${host}" — cannot delete the blob`)
       }

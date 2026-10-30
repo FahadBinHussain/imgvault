@@ -591,6 +591,24 @@ export default function ResolvePage() {
           if (Number.isFinite(id)) allRefs.add(id);
         });
 
+        // vault blob posts: an encrypted .bin is a channel document like any
+        // other, so its post is live media even though the video buckets skip
+        // vaulted rows. listing it as an orphan would invite a delete that
+        // removes the item's only ciphertext.
+        const vaultCopies = Array.isArray(item.extraMetadata?.encryptedBlobHosts)
+          ? item.extraMetadata.encryptedBlobHosts
+          : [];
+        vaultCopies
+          .filter((copy) => String(copy?.host || '').toLowerCase() === 'telegram')
+          .forEach((copy) => {
+            const id = Number(copy?.encryptedBlobMessageId);
+            if (Number.isFinite(id)) allRefs.add(id);
+          });
+        const mirroredVaultMsgId = Number(
+          item.encryptedBlobMessageId ?? item.extraMetadata?.encryptedBlobMessageId
+        );
+        if (Number.isFinite(mirroredVaultMsgId)) allRefs.add(mirroredVaultMsgId);
+
         if (isVaultedEncryptedItem(item)) continue;
         if (item.kind === 'scene' || item.spzUrl) continue;
 
@@ -3259,6 +3277,11 @@ export default function ResolvePage() {
                                         extra.imageHosts?.telegram?.messageId,
                                         it.videoHosts?.telegram?.messageId,
                                         it.imageHosts?.telegram?.messageId,
+                                        // an item vaulted to telegram since the check
+                                        ...(Array.isArray(extra.encryptedBlobHosts) ? extra.encryptedBlobHosts : [])
+                                          .filter((copy) => String(copy?.host || '').toLowerCase() === 'telegram')
+                                          .map((copy) => copy?.encryptedBlobMessageId),
+                                        it.encryptedBlobMessageId ?? extra.encryptedBlobMessageId,
                                       ];
                                       return ids.some((v) => String(v || '') === messageId);
                                     });

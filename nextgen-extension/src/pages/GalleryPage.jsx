@@ -26,6 +26,8 @@ import {
   filterUploadServicesByKeys,
   getVaultBlobHostServices,
   normalizeVaultBlobHostKeys,
+  assertVaultBlobHostSizes,
+  buildVaultBlobCopy,
   DEFAULT_VAULT_BLOB_HOST,
   THREE_D_HOST_KEYS,
   getConfiguredVideoUploadServices,
@@ -1420,6 +1422,10 @@ export default function GalleryPage() {
       const settings = await sendMessage('getVideoHostSettings');
       const stored = await chrome.storage.local.get('selectedVaultHostKeys');
       const vaultHostKeys = normalizeVaultBlobHostKeys(stored?.selectedVaultHostKeys);
+      // Telegram vault copies stop at the getFile 20 MB read-back cap — checked on
+      // the ENCRYPTED size before the first host is touched, so an over-cap
+      // selection never leaves half the copies uploaded.
+      assertVaultBlobHostSizes(vaultHostKeys, encryptedBlob.size);
 
       const opaqueName = `${Array.from(crypto.getRandomValues(new Uint8Array(16)))
         .map((b) => b.toString(16).padStart(2, '0')).join('')}.bin`;
@@ -1462,12 +1468,7 @@ export default function GalleryPage() {
           signal: uploadController.signal,
         });
 
-        vaultHostCopies.push({
-          host: vaultHost,
-          encryptedBlobUrl: result.watchUrl || result.displayUrl || result.url || '',
-          encryptedBlobWatchUrl: result.watchUrl || result.displayUrl || result.url || '',
-          encryptedBlobFileId: result.fileId || '',
-        });
+        vaultHostCopies.push(buildVaultBlobCopy(vaultHost, result));
       }
 
       const primary = vaultHostCopies[0] || {};
@@ -1475,6 +1476,9 @@ export default function GalleryPage() {
         encryptedBlobUrl: primary.encryptedBlobUrl || '',
         encryptedBlobWatchUrl: primary.encryptedBlobWatchUrl || '',
         encryptedBlobFileId: primary.encryptedBlobFileId || '',
+        // telegram deletes its copy by post id; the mirrored top-level field keeps
+        // a legacy single-copy read (no encryptedBlobHosts) deletable.
+        encryptedBlobMessageId: primary.encryptedBlobMessageId || '',
         encryptedBlobHosts: vaultHostCopies,
         encryptedMetadata,
         encryptedMimeType: blob.type || 'application/octet-stream',

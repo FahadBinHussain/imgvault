@@ -7,12 +7,20 @@
 //
 // Stored `encryptedBlobUrl` is the durable *watch* URL (serves HTML), so a
 // signed download URL must be regenerated from the file id for every read.
+// Telegram is the exception: its copies store the platform-local byte route and
+// the read is a Bot API getFile of the file id (20 MB read-back cap, plan 3a).
+
+import {
+  getTelegramFileInfo,
+  redactTelegramToken,
+  telegramFileBytesUrl,
+} from './telegramServerApi'
 
 const UDROP_API = 'https://www.udrop.com/api/v2'
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
 
-export const WEB_READABLE_VAULT_HOSTS = ['udrop']
+export const WEB_READABLE_VAULT_HOSTS = ['udrop', 'telegram']
 
 export function vaultBlobCopies(extra) {
   const list = Array.isArray(extra?.encryptedBlobHosts) && extra.encryptedBlobHosts.length > 0
@@ -63,6 +71,16 @@ async function resolveCopyUrl(copy, settings) {
   if (copy.host === 'udrop') {
     return resolveUdropDownloadUrl(copy.fileId, settings?.udropKey1, settings?.udropKey2)
   }
+  if (copy.host === 'telegram') {
+    const token = String(settings?.telegramBotToken || '').trim()
+    if (!token) throw new Error('telegram vault copy needs the bot token in Settings → API Keys')
+    if (!copy.fileId) throw new Error('telegram copy has no file id')
+    // getFile hands out a short-lived bytes url that embeds the token: it is
+    // fetched immediately by the caller and never stored, returned, or logged.
+    // Over 20 MB getTelegramFileInfo throws naming the cap (plan 3a limit).
+    const info = await getTelegramFileInfo(token, copy.fileId)
+    return telegramFileBytesUrl(token, info.file_path)
+  }
   if (copy.host === 'terabox') {
     throw new Error('terabox vault copies need the extension (its hidden-tab token scrape cannot run on the server)')
   }
@@ -85,13 +103,18 @@ export async function openVaultCiphertext({ extra, settings, start = null, end =
 
   const primaryHost = copies[0].host
   const failures = []
+  // a telegram read failure can carry the token-bearing file url in its message,
+  // so every failure string recorded here is scrubbed before it can reach a
+  // response header or error body.
+  const telegramToken = String(settings?.telegramBotToken || '').trim()
+  const noteFailure = (text) => failures.push(redactTelegramToken(text, telegramToken))
   for (let copyIndex = 0; copyIndex < copies.length; copyIndex += 1) {
     const copy = copies[copyIndex]
     let url
     try {
       url = await resolveCopyUrl(copy, settings)
     } catch (error) {
-      failures.push(`${copy.host}: ${error.message}`)
+      noteFailure(`${copy.host}: ${error.message}`)
       continue
     }
 
@@ -106,12 +129,12 @@ export async function openVaultCiphertext({ extra, settings, start = null, end =
     try {
       res = await fetch(url, { headers, cache: 'no-store', redirect: 'follow' })
     } catch (error) {
-      failures.push(`${copy.host}: fetch failed (${error.message})`)
+      noteFailure(`${copy.host}: fetch failed (${error.message})`)
       continue
     }
 
     if (!res.ok || !res.body) {
-      failures.push(`${copy.host}: HTTP ${res.status}`)
+      noteFailure(`${copy.host}: HTTP ${res.status}`)
       continue
     }
 

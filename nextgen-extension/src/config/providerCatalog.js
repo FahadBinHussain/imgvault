@@ -19,6 +19,8 @@ import {
   getMissingRequiredImageUploadServices,
   normalizeVaultBlobHostKeys,
   getVaultBlobHostServices as getVaultBlobHostServicesFromCatalog,
+  assertVaultBlobHostSizes,
+  buildVaultBlobCopy,
   getConfiguredServices,
 } from 'imgvault-shared/providerCatalog.js';
 
@@ -126,6 +128,8 @@ export {
   filterUploadServicesByKeys,
   getMissingRequiredImageUploadServices,
   normalizeVaultBlobHostKeys,
+  assertVaultBlobHostSizes,
+  buildVaultBlobCopy,
 };
 
 export function getConfiguredImageUploadServices(settings) {

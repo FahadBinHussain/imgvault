@@ -101,7 +101,6 @@ export const VIDEO_UPLOAD_SERVICES = [
     // reads OK, hotlinkable with no token). anything else goes as a document and is
     // served through the same platform-local `/telegram-media/<fileId>` path as images
     // (getFile has a real 20 MB gate -> loud error naming it).
-    // NOT a vaultBlobHost yet — that is phase 3a of plan-telegram-host.md.
     key: 'telegram',
     label: 'Telegram',
     sourceValue: 'telegram',
@@ -113,6 +112,12 @@ export const VIDEO_UPLOAD_SERVICES = [
     // scene files upload as documents, so the getFile 20 MB read-back gate is the
     // real scene limit - the label says so instead of reusing the mp4 wording.
     threeDLabel: 'Telegram (≤ 20 MB docs)',
+    // phase 3a of plan.md: the encrypted vault .bin is a document too, so the same
+    // getFile gate is the vault cap (20 MB read-back, never a silent partial blob).
+    vaultBlobHost: true,
+    vaultLabel: 'Telegram (≤ 20 MB)',
+    vaultMaxBytes: 20 * 1024 * 1024,
+    vaultCapNote: 'the Bot API reads files back through getFile, which hard-caps at 20 MB',
     isConfigured: (settings) => hasText(settings?.telegramBotToken) && hasText(settings?.telegramChannel),
   },
 ];
@@ -178,11 +183,72 @@ export function getMissingRequiredImageUploadServices(settings) {
  * Marked via `vaultBlobHost: true` on the service def. Filemoon is a video-only
  * host and rejects `.bin` files, so it is NOT a vault blob host — only hosts
  * that accept the opaque encrypted blob are eligible.
+ * Hosts with a vault cap (Telegram's 20 MB getFile gate) show it in their picker
+ * label via `vaultLabel`, same trick `threeDLabel` plays for 3D.
  * @param {Array} [services] catalog entries (callers with runtime bindings pass their enriched list)
  * @returns {Array} services
  */
 export function getVaultBlobHostServices(services = VIDEO_UPLOAD_SERVICES) {
-  return services.filter((service) => service.vaultBlobHost);
+  return services
+    .filter((service) => service.vaultBlobHost)
+    .map((service) => (service.vaultLabel ? { ...service, label: service.vaultLabel } : service));
+}
+
+/**
+ * Pre-flight the vault blob size against every selected host BEFORE the first
+ * upload, so an over-cap host can never leave half the copies sitting on the
+ * other accounts. Fails loudly and names the cap + what to do instead.
+ * @param {string[]} hostKeys selected vault hosts
+ * @param {number} blobSize size in bytes of the ENCRYPTED blob (not the original)
+ * @param {Array} [services] catalog entries
+ */
+export function assertVaultBlobHostSizes(hostKeys, blobSize, services = VIDEO_UPLOAD_SERVICES) {
+  const selected = new Set((hostKeys || []).map((key) => String(key || '').toLowerCase()));
+  // raw defs, not the vaultLabel-mapped list — the message states the cap itself
+  const over = services.filter(
+    (service) =>
+      service.vaultBlobHost &&
+      service.vaultMaxBytes &&
+      selected.has(service.key) &&
+      Number(blobSize) > service.vaultMaxBytes
+  );
+  if (over.length === 0) return;
+
+  const sizeMb = (Number(blobSize) / (1024 * 1024)).toFixed(1);
+  throw new Error(
+    over
+      .map((service) =>
+        `${service.label} cannot store this encrypted blob: ${sizeMb} MiB is over its ` +
+        `${(service.vaultMaxBytes / (1024 * 1024)).toFixed(0)} MiB vault cap ` +
+        `(${service.vaultCapNote}). Unselect it in the Vault blob host picker and ` +
+        `vault to a host without the cap, or keep the original small enough to fit.`)
+      .join('\n')
+  );
+}
+
+/**
+ * Stored copy row for one vault blob host (identical shape on both platforms).
+ * `encryptedBlobUrl` is what the readers fetch: Telegram serves BYTES from its
+ * platform-local `/telegram-media/<fileId>` route and its watchUrl is an HTML
+ * post page, so it takes the direct route; every other host keeps the watch URL
+ * and regenerates a signed download URL per read. `encryptedBlobMessageId` is
+ * Telegram-only and required for deletes — the Bot API has no file delete, only
+ * `deleteMessage` of the post the blob was sent as.
+ * @param {string} host
+ * @param {Object} result upload result from the host's uploader
+ * @returns {{host:string,encryptedBlobUrl:string,encryptedBlobWatchUrl:string,encryptedBlobFileId:string,encryptedBlobMessageId?:string}}
+ */
+export function buildVaultBlobCopy(host, result = {}) {
+  const key = String(host || '').toLowerCase();
+  const watchUrl = result.watchUrl || result.displayUrl || result.url || '';
+  const copy = {
+    host: key,
+    encryptedBlobUrl: key === 'telegram' ? (result.directUrl || result.url || '') : watchUrl,
+    encryptedBlobWatchUrl: watchUrl,
+    encryptedBlobFileId: result.fileId || '',
+  };
+  if (result.messageId) copy.encryptedBlobMessageId = String(result.messageId);
+  return copy;
 }
 
 /**
