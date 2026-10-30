@@ -117,7 +117,7 @@ export const VIDEO_UPLOAD_SERVICES = [
     vaultBlobHost: true,
     vaultLabel: 'Telegram (≤ 20 MB)',
     vaultMaxBytes: 20 * 1024 * 1024,
-    vaultCapNote: 'the Bot API reads files back through getFile, which hard-caps at 20 MB',
+    vaultCapNote: 'the Bot API only reads files back through getFile',
     isConfigured: (settings) => hasText(settings?.telegramBotToken) && hasText(settings?.telegramChannel),
   },
 ];
@@ -219,7 +219,7 @@ export function assertVaultBlobHostSizes(hostKeys, blobSize, services = VIDEO_UP
     over
       .map((service) =>
         `${service.label} cannot store this encrypted blob: ${sizeMb} MiB is over its ` +
-        `${(service.vaultMaxBytes / (1024 * 1024)).toFixed(0)} MiB vault cap ` +
+        `${(service.vaultMaxBytes / (1024 * 1024)).toFixed(0)} MB vault cap ` +
         `(${service.vaultCapNote}). Unselect it in the Vault blob host picker and ` +
         `vault to a host without the cap, or keep the original small enough to fit.`)
       .join('\n')
