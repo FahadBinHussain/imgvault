@@ -145,7 +145,8 @@ vault passcode
   B).** items vaulted after the update are encrypted; items vaulted before it stay
   plaintext on their current providers, hidden behind the passcode gate. **no
   auto-migration on unlock.** a "migrate old vault items" button is a future follow-up.~~
-  — the option-B decision still holds; the migrate button was never built (open item).
+  — the option-B decision holds and is **final (2026-10-30)**; the migrate button was never
+  built and is struck from the roadmap.
 - ~~**restore from vault: DECISION = re-upload via normal providers.** decrypt blob →
   re-upload through the existing uploaders so restored items behave like normal gallery
   items. scenes restore to udrop plaintext.~~ — shipped (`restoreFromVault`, with
@@ -187,8 +188,11 @@ vault passcode
 
 - ~~web vault list-only mode for encrypted items (step 6)~~ — **superseded**: web now decrypts
   for real (2.17.2, see section 1); only web-side *move* remains flag-only ⏳.
-- ~~"migrate old vault items" button for pre-existing plaintext vaulted rows~~ — **still
-  absent** ⏳ (no migration UI anywhere; repo-wide search 2026-10-30).
+- ~~"migrate old vault items" button for pre-existing plaintext vaulted rows~~ — **struck
+  2026-10-30**: never built and will not be. option B (new-encryption-only) is final, so
+  legacy plaintext vault rows stay exactly as they are. the web vault now labels them
+  `Not encrypted` (`isEncrypted = Boolean(item.encryptedBlobUrl)`) instead of pretending,
+  which is the whole requirement.
 - ~~scene (spz/texture) encrypted vault UI~~ — **still absent** ⏳; scenes stay on plaintext
   hosts (option B for scene rows).
 - ~~`SettingsPage` passcode change already re-wraps via `rewrapMasterKey`; the old
@@ -704,13 +708,18 @@ build it there; never hide/drop a field or UI to make them "match".
 
 ## open follow-ups (⏳)
 
-- **extension trash tints — ⏳ OPEN.** `nextgen-extension/src/pages/TrashPage.jsx` still
+- ~~**extension trash tints — ⏳ OPEN.** `nextgen-extension/src/pages/TrashPage.jsx` still
   carries **15** load-bearing daisyui alpha classes (`bg-warning/15`, `bg-error/20`,
   `bg-success/15`, `border-warning/30`, `border-success/40`, `border-error/40`, …) that
   tailwind v3 cannot generate from CSS-var colors — so the banner, confirm boxes and chips
   render with no tint while the web trash (palette alphas) renders correctly.
   `[verified 2026-10-30: 15 occurrences in source, 0 matches in the built dist CSS]`
-  fix = swap to palette alphas on the extension side (+ manifest patch bump + reload).
+  fix = swap to palette alphas on the extension side (+ manifest patch bump + reload).~~
+  **fixed 2.17.1 (2026-10-30)** — the classes were never the bug: daisyui v5 exposes colors
+  as bare CSS vars, so tailwind v3 emitted no `/opacity` variant for **any** daisy color
+  (~750 dead utilities repo-wide). fixed at the source with
+  `oklch(from var(--color-<token>) l c h / <alpha-value>)` tokens in both
+  `nextgen-extension/tailwind.config.js` and `web/tailwind.config.js`. no per-class swaps.
 - **web vault move is flag-only — ⏳ OPEN (narrowed 2026-10-30).** `web/src/app/api/vault/route.js`
   PATCH `action:'move'` sets the vaulted flag and revokes shares; it does not encrypt or
   re-upload. the read half of the parity gap is closed (web now unlocks with the wrapped
@@ -746,9 +755,9 @@ everything still actionable, in one place:
 
 | # | item | plan | notes |
 |---|---|---|---|
-| 1 | extension trash tint fix (15 dead alpha classes) | parity | smallest, purely visual, patch bump + reload |
+| 1 | ~~extension trash tint fix (15 dead alpha classes)~~ | parity | **done 2.17.1** — fixed in the tailwind config (relative-color alpha tokens, both packages), not per-class |
 | 2 | ~~web vault = flag-only / no decryption, extension-encrypted rows look empty~~ | vault | **done 2.17.2** — web creates/unlocks/decrypts with the shared wrapped-master-key crypto + Range blob proxy. leftover: web *move* still flag-only (now warns loudly) |
-| 3 | "migrate old vault items" button (pre-2.6.0 plaintext vault rows) | vault | option B still in force — this is a manual follow-up, never auto-run |
+| 3 | ~~"migrate old vault items" button (pre-2.6.0 plaintext vault rows)~~ | vault | **struck 2026-10-30** — never built, won't be; option B is final. legacy rows stay plaintext and now show a `Not encrypted` badge |
 | 4 | scene (spz/texture) encrypted vault support | vault | scenes stay plaintext on their hosts |
 | 5 | telegram 3D (phase 2) | telegram | add telegram to `THREE_D_SOURCE_OPTIONS` + scene integrity |
 | 6 | telegram vault host (phase 3a, ≤ 20 MB cloud) | telegram | needs `vaultBlobHost: true` + read branch + loud 20 MB gate |
