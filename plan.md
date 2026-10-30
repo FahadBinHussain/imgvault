@@ -117,15 +117,24 @@ vault passcode
 ### ~~settings (`SettingsPage.jsx`)~~
 - ~~no new keys needed for the vault itself (reuse the udrop account; blobs are opaque).~~
 
-### web app (`web/`) — ⏳ still open
-- the web vault page can list vaulted items but **cannot decrypt** (the passcode never
-  leaves the extension). the plan was to mark web vault as "list-only / locked".
-  `[verified 2026-10-30]` **not built** — `web/src/app/vault/page.jsx` has no encryption
-  handling at all; it is a passcode-gated *plaintext* view (sessionStorage passHash flag,
-  no wrapped master key). extension-encrypted rows surface there without a preview.
-  also: web `/api/vault` PATCH `action:'move'` is **flag-only** (marks vaulted + revokes
+### web app (`web/`) — ~~read + decrypt shipped (2.17.2, 2026-10-30)~~; move still flag-only ⏳
+- ~~the web vault page can list vaulted items but **cannot decrypt** (the passcode never
+  leaves the extension). the plan was to mark web vault as "list-only / locked".~~
+  **shipped as real encryption instead**: `vaultCrypto.js` moved to
+  `packages/shared/vaultCrypto.js` (extension keeps a re-export shim, drift-guarded), so web
+  creates/unlocks/re-wraps with the *same* wrapped-master-key config the extension uses;
+  the master key lives only in the tab (sessionStorage `keyB64`). new authenticated routes:
+  `GET /api/vault/blob?id=` (Range proxy that regenerates udrop signed URLs; terabox copies
+  fail loudly because their dlink needs the extension's hidden-tab token scrape) and
+  `GET /api/vault/preview?id=` (ciphertext preview rows). the page decrypts IVG1 blobs one
+  8 MiB chunk at a time over Range requests, decrypts titles/tags from `encryptedMetadata`,
+  and shows encrypted video thumbs from `media_item_previews`; encrypted images show a lock
+  tile (same as the extension) until opened. restore of an encrypted item is refused loudly
+  on web (it needs the master key + an upload path).
+- `web /api/vault` PATCH `action:'move'` is still **flag-only** (marks vaulted + revokes
   shares), it never encrypts or uploads — so a web-side "vault" is not the same security
-  model as the extension's. see section 4 open items.
+  model as the extension's, and it now answers with an explicit `warning` that the gallery
+  turns into a warning toast. see section 4 open items.
 
 ## scope / non-goals
 
@@ -151,7 +160,9 @@ vault passcode
 3. ~~background.js — vaulted upload path, move/restore paths.~~ done
 4. ~~VaultPage + MediaDetailModal — decrypt-on-view, lock clears keys/URLs.~~ done
 5. ~~SettingsPage change-passcode → re-wrap.~~ done
-6. web vault — list-only mode for encrypted items. ⏳ **open**
+6. ~~web vault — list-only mode for encrypted items.~~ **shipped as full decrypt** (2.17.2):
+   shared `vaultCrypto`, wrapped-master-key create/unlock/re-wrap, Range blob proxy,
+   preview store, chunked decrypt-on-open. ⏳ leftover: web-side *move* stays flag-only.
 7. ~~build + manual test on Edge (bump manifest, `pnpm build`, reload), full round-trip:
    upload-encrypt → lock → unlock → decrypt-view → restore.~~ done (2.6.0 onward; reload is
    now `pwsh tools/reload-extension.ps1`, never `start msedge http://reload.extensions`)
@@ -174,8 +185,8 @@ vault passcode
 
 ### ~~not done in v1~~ → current standing of each
 
-- ~~web vault list-only mode for encrypted items (step 6)~~ — **still not built** ⏳
-  (see section 4 open items).
+- ~~web vault list-only mode for encrypted items (step 6)~~ — **superseded**: web now decrypts
+  for real (2.17.2, see section 1); only web-side *move* remains flag-only ⏳.
 - ~~"migrate old vault items" button for pre-existing plaintext vaulted rows~~ — **still
   absent** ⏳ (no migration UI anywhere; repo-wide search 2026-10-30).
 - ~~scene (spz/texture) encrypted vault UI~~ — **still absent** ⏳; scenes stay on plaintext
@@ -700,11 +711,14 @@ build it there; never hide/drop a field or UI to make them "match".
   render with no tint while the web trash (palette alphas) renders correctly.
   `[verified 2026-10-30: 15 occurrences in source, 0 matches in the built dist CSS]`
   fix = swap to palette alphas on the extension side (+ manifest patch bump + reload).
-- **web vault move is flag-only — ⏳ OPEN (parity gap).** `web/src/app/api/vault/route.js`
+- **web vault move is flag-only — ⏳ OPEN (narrowed 2026-10-30).** `web/src/app/api/vault/route.js`
   PATCH `action:'move'` sets the vaulted flag and revokes shares; it does not encrypt or
-  re-upload, so web-"vaulted" items stay readable at their provider URLs and web cannot
-  decrypt extension-encrypted rows. either build the web encryption path or surface a loud
-  "web vault is metadata-only" notice (no silent difference).
+  re-upload. the read half of the parity gap is closed (web now unlocks with the wrapped
+  master key, decrypts metadata/previews/blobs through `/api/vault/blob`), so plaintext
+  web-moved rows are the only remaining silent difference — and they are no longer silent:
+  the PATCH response carries an explicit `warning` and the gallery shows it as a warning toast.
+  closing this fully needs a web upload path (udrop uploader in the browser + CORS), which is
+  a separate build.
 - ~~web cards scene-texture thumb.~~ **done** `[verified 2026-10-30: gallery/page.jsx
   renders firstImageLikeUrl(image?.textureUrl) with a "thumbnail unavailable" note on
   failure]`.
@@ -733,7 +747,7 @@ everything still actionable, in one place:
 | # | item | plan | notes |
 |---|---|---|---|
 | 1 | extension trash tint fix (15 dead alpha classes) | parity | smallest, purely visual, patch bump + reload |
-| 2 | web vault = flag-only / no decryption, extension-encrypted rows look empty | vault | decide: build encryption on web, or a loud "metadata-only" notice |
+| 2 | ~~web vault = flag-only / no decryption, extension-encrypted rows look empty~~ | vault | **done 2.17.2** — web creates/unlocks/decrypts with the shared wrapped-master-key crypto + Range blob proxy. leftover: web *move* still flag-only (now warns loudly) |
 | 3 | "migrate old vault items" button (pre-2.6.0 plaintext vault rows) | vault | option B still in force — this is a manual follow-up, never auto-run |
 | 4 | scene (spz/texture) encrypted vault support | vault | scenes stay plaintext on their hosts |
 | 5 | telegram 3D (phase 2) | telegram | add telegram to `THREE_D_SOURCE_OPTIONS` + scene integrity |

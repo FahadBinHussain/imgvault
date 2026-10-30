@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import {
@@ -14,6 +14,7 @@ import {
   LockKeyhole,
   Search,
   Tag,
+  TriangleAlert,
   UnlockKeyhole,
   X,
 } from 'lucide-react'
@@ -23,11 +24,25 @@ import { getPreferredImageProviderLink } from '@/lib/image-provider-links'
 import { getPreferredVideoProviderLink } from '@/lib/video-provider-links'
 import {
   getMediaItemKind,
-  isTruthyFlag,
 } from '@shared/mediaFieldRegistry.js'
+import {
+  createVaultConfig,
+  decryptMetadata,
+  hashVaultPasscode,
+  rewrapMasterKey,
+  unwrapMasterKey,
+} from 'imgvault-shared/vaultCrypto.js'
+import {
+  clearVaultSession,
+  decryptVaultBlob,
+  exportMasterKeyB64,
+  fetchVaultPreviewUrl,
+  importMasterKeyFromB64,
+  readVaultSession,
+  writeVaultSession,
+} from '@/lib/vaultClient'
 
 const VAULT_CONFIG_KEY = 'secretVaultConfig'
-const VAULT_SESSION_KEY = 'imgvault-vault-unlocked'
 
 async function readJsonSafely(res) {
   const text = await res.text()
@@ -38,22 +53,6 @@ async function readJsonSafely(res) {
   } catch {
     return { error: text }
   }
-}
-
-function bytesToHex(bytes) {
-  return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, '0')).join('')
-}
-
-function makeSalt() {
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  return bytesToHex(bytes)
-}
-
-async function hashVaultPasscode(passcode, salt) {
-  const data = new TextEncoder().encode(`${salt}:${passcode}`)
-  const digest = await crypto.subtle.digest('SHA-256', data)
-  return bytesToHex(new Uint8Array(digest))
 }
 
 function getLocalVaultConfig() {
@@ -105,10 +104,39 @@ function toProxyMediaUrl(url) {
   return `/api/media?url=${encodeURIComponent(url)}`
 }
 
-function VaultGalleryCard({ item, index, viewMode, onClick, preferredProvider = 'imgbb', preferredVideoSource = 'filemoon' }) {
+// Feed a decrypted blob URL into the shared lightbox by blanking every provider
+// link and pointing the plaintext fields at the object URL.
+function toVaultDecryptedItem(item, url) {
+  const kind = getItemKind(item)
+  if (kind === 'video') {
+    return {
+      ...item,
+      videoHosts: {},
+      filemoonWatchUrl: '',
+      filemoonDirectUrl: url,
+      udropWatchUrl: '',
+      udropDirectUrl: url,
+      teraboxUrl: '',
+      _vaultPlaintextUrl: url,
+    }
+  }
+
+  return {
+    ...item,
+    imageHosts: {},
+    pixvidUrl: '',
+    imgbbUrl: '',
+    imgbbThumbUrl: '',
+    sourceImageUrl: url,
+    _vaultPlaintextUrl: url,
+  }
+}
+
+function VaultGalleryCard({ item, index, viewMode, onClick, preferredProvider = 'imgbb', preferredVideoSource = 'filemoon', previewUrl = '' }) {
   const [isLoaded, setIsLoaded] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   const kind = getItemKind(item)
+  const isEncrypted = Boolean(item?.encryptedBlobUrl)
   const imageUrl = getPreferredImageUrl(item, preferredProvider)
   const videoWatchUrl = getPreferredVideoWatchUrl(item, preferredVideoSource)
   const videoDirectUrl = getPreferredVideoDirectUrl(item, preferredVideoSource)
@@ -130,7 +158,21 @@ function VaultGalleryCard({ item, index, viewMode, onClick, preferredProvider = 
         className={`${viewMode === 'list' ? 'w-28 h-24 sm:w-40 sm:h-28 flex-shrink-0' : 'h-auto'} bg-base-100 relative overflow-hidden`}
         style={viewMode !== 'list' && !isLoaded ? { minHeight: '220px' } : undefined}
       >
-        {kind === 'link' ? (
+        {isEncrypted ? (
+          previewUrl ? (
+            <img
+              src={previewUrl}
+              alt={item.pageTitle || 'Encrypted vault item'}
+              className={`block w-full ${viewMode === 'list' ? 'h-full object-cover' : 'h-auto object-cover'} transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+              onLoad={() => setIsLoaded(true)}
+              onError={() => setIsLoaded(true)}
+            />
+          ) : (
+            <div className={`flex w-full items-center justify-center bg-base-200 ${viewMode === 'list' ? 'h-full' : 'aspect-video'}`}>
+              <LockKeyhole className={viewMode === 'list' ? 'h-8 w-8 text-base-content/40' : 'h-10 w-10 text-base-content/40'} />
+            </div>
+          )
+        ) : kind === 'link' ? (
           linkPreviewImage ? (
             <img
               src={linkPreviewImage}
@@ -211,6 +253,20 @@ function VaultGalleryCard({ item, index, viewMode, onClick, preferredProvider = 
 
         <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`} />
 
+        <div className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
+          {isEncrypted ? (
+            <>
+              <LockKeyhole className="h-3 w-3" />
+              Encrypted
+            </>
+          ) : (
+            <>
+              <TriangleAlert className="h-3 w-3" />
+              Not encrypted
+            </>
+          )}
+        </div>
+
         <div
           className={`absolute inset-0 rounded-[var(--radius-box)] transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}
           style={{
@@ -223,7 +279,7 @@ function VaultGalleryCard({ item, index, viewMode, onClick, preferredProvider = 
       {viewMode === 'list' && (
         <div className="p-4 space-y-3 flex-1 flex flex-col justify-center">
           <h3 className="text-sm font-semibold truncate transition-colors duration-300 group-hover:text-primary-400" title={item.pageTitle || 'Untitled'}>
-            {item.pageTitle || item.fileName || item.linkUrl || 'Untitled'}
+            {item.pageTitle || item.originalFileName || item.fileName || item.linkUrl || 'Untitled'}
           </h3>
           <div className="flex items-center gap-2 text-xs text-base-content/65">
             <EyeOff className="w-3.5 h-3.5" />
@@ -304,6 +360,12 @@ export default function VaultPage() {
   const [preferredProvider, setPreferredProvider] = useState('imgbb')
   const [preferredVideoSource, setPreferredVideoSource] = useState('filemoon')
   const [firebaseProjectId, setFirebaseProjectId] = useState('')
+  const [vaultKey, setVaultKey] = useState(null)
+  const [itemPreviews, setItemPreviews] = useState({})
+  const [decryptedMedia, setDecryptedMedia] = useState({})
+  const [decryptState, setDecryptState] = useState(null)
+  const previewUrlsRef = useRef(new Map())
+  const decryptedUrlsRef = useRef(new Map())
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -363,11 +425,24 @@ export default function VaultPage() {
       setVaultConfig(config)
 
       if (config) {
-        try {
-          const session = JSON.parse(sessionStorage.getItem(VAULT_SESSION_KEY) || '{}')
-          setUnlocked(session?.passHash === config.passHash)
-        } catch {
-          setUnlocked(false)
+        // "Unlocked" now means the master key is actually in this tab — a
+        // passHash-only session could not decrypt anything (that was the bug
+        // this replaces: the page said unlocked but every encrypted row was blank).
+        const session = readVaultSession()
+        if (session?.passHash === config.passHash && session?.keyB64) {
+          try {
+            const key = await importMasterKeyFromB64(session.keyB64)
+            if (!cancelled) {
+              setVaultKey(key)
+              setUnlocked(true)
+            }
+          } catch (error) {
+            clearVaultSession()
+            if (!cancelled) {
+              setUnlocked(false)
+              setAuthError(`Stored vault key could not be restored (${error.message}). Unlock with your passcode again.`)
+            }
+          }
         }
       }
 
@@ -382,7 +457,7 @@ export default function VaultPage() {
   }, [status])
 
   const loadVaultItems = useCallback(async () => {
-    if (!unlocked) return
+    if (!unlocked || !vaultKey) return
 
     setLoadingItems(true)
     setMessage('')
@@ -395,18 +470,86 @@ export default function VaultPage() {
         throw new Error(data?.error || 'Failed to load vault items')
       }
 
-      setVaultItems(Array.isArray(data.items) ? data.items : [])
+      const items = Array.isArray(data.items) ? data.items : []
+      const failed = []
+
+      // Encrypted uploads store no plaintext title/tags — decrypt the metadata
+      // envelope so the grid shows real titles and search works.
+      const enriched = await Promise.all(
+        items.map(async (item) => {
+          if (!item.encryptedMetadata) return item
+          try {
+            const meta = await decryptMetadata(vaultKey, item.encryptedMetadata)
+            return {
+              ...item,
+              pageTitle: meta.pageTitle || item.pageTitle || '',
+              description: meta.description || item.description || '',
+              tags: Array.isArray(meta.tags) && meta.tags.length > 0 ? meta.tags : item.tags,
+              originalFileName: meta.originalFileName || meta.fileName || '',
+            }
+          } catch (error) {
+            failed.push(`${item.id} (${error.message || 'decrypt failed'})`)
+            return item
+          }
+        })
+      )
+
+      setVaultItems(enriched)
+
+      if (failed.length > 0) {
+        setMessage(
+          `Could not decrypt metadata for ${failed.length} item(s): ${failed.join(', ')}. Unlock the vault with the passcode used by the extension.`
+        )
+      }
     } catch (error) {
       setMessage(error?.message || 'Failed to load vault items')
       setVaultItems([])
     } finally {
       setLoadingItems(false)
     }
-  }, [unlocked])
+  }, [unlocked, vaultKey])
 
   useEffect(() => {
     loadVaultItems()
   }, [loadVaultItems])
+
+  // Encrypted video thumbnails derive in the extension and are stored as
+  // ciphertext in media_item_previews; decrypt them here. Encrypted images have
+  // no derived preview (same as the extension) and show a lock until opened.
+  useEffect(() => {
+    if (!vaultKey || vaultItems.length === 0) return undefined
+
+    const targets = vaultItems.filter(
+      (item) => item.encryptedBlobUrl && getItemKind(item) === 'video' && !previewUrlsRef.current.has(item.id)
+    )
+    if (targets.length === 0) return undefined
+
+    let cancelled = false
+    const failures = []
+
+    ;(async () => {
+      for (const item of targets) {
+        try {
+          const url = await fetchVaultPreviewUrl(item.id, vaultKey)
+          if (cancelled) {
+            URL.revokeObjectURL(url)
+            return
+          }
+          previewUrlsRef.current.set(item.id, url)
+          setItemPreviews((prev) => ({ ...prev, [item.id]: url }))
+        } catch (error) {
+          failures.push(`${item.id}: ${error.message}`)
+        }
+      }
+      if (!cancelled && failures.length > 0) {
+        setMessage(`Encrypted preview unavailable for ${failures.length} video(s) — ${failures[0]}`)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [vaultItems, vaultKey])
 
   const filteredItems = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -416,6 +559,7 @@ export default function VaultPage() {
       const haystack = [
         item.pageTitle,
         item.description,
+        item.originalFileName,
         item.fileName,
         item.sourcePageUrl,
         item.linkUrl,
@@ -444,7 +588,24 @@ export default function VaultPage() {
     setSelectedIndex(index)
   }, [])
 
+  const selectedIdRef = useRef('')
+  selectedIdRef.current = selectedItem?.id || ''
+
   const handleCloseLightbox = useCallback(() => {
+    const id = selectedIdRef.current
+    if (id) {
+      const url = decryptedUrlsRef.current.get(id)
+      if (url) {
+        URL.revokeObjectURL(url)
+        decryptedUrlsRef.current.delete(id)
+      }
+      setDecryptedMedia((prev) => {
+        if (!(id in prev)) return prev
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+    }
     setMessage('')
     setSelectedItem(null)
     setSelectedIndex(-1)
@@ -456,13 +617,58 @@ export default function VaultPage() {
     setSelectedIndex(index)
   }, [filteredItems])
 
+  // Decrypt the selected encrypted item on demand (chunk-by-chunk over the
+  // server Range proxy), then hand the lightbox a plaintext object URL.
+  useEffect(() => {
+    const item = selectedItem
+    if (!item?.id || !item.encryptedBlobUrl || !vaultKey) return undefined
+    if (decryptedUrlsRef.current.has(item.id)) return undefined
+
+    let cancelled = false
+    setDecryptState({ id: item.id, percent: 0 })
+
+    decryptVaultBlob({
+      id: item.id,
+      mimeType: item.encryptedMimeType || 'application/octet-stream',
+      masterKey: vaultKey,
+      onProgress: (progress) => {
+        if (!cancelled) setDecryptState({ id: item.id, percent: progress.percent ?? 0 })
+      },
+    })
+      .then((blob) => {
+        if (cancelled) return
+        const url = URL.createObjectURL(blob)
+        decryptedUrlsRef.current.set(item.id, url)
+        setDecryptedMedia((prev) => ({ ...prev, [item.id]: url }))
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setMessage(`Could not decrypt this vault item: ${error.message}`)
+      })
+      .finally(() => {
+        if (!cancelled) setDecryptState(null)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedItem, vaultKey])
+
   const handleSaveItemEdits = useCallback(async (itemId, updates) => {
+    // Encrypted items are edited against a synthetic decrypted item whose media
+    // fields hold blob: object URLs — never persist those into the row.
+    const safeUpdates = Object.fromEntries(
+      Object.entries(updates || {}).filter(
+        ([, value]) => typeof value !== 'string' || !value.startsWith('blob:')
+      )
+    )
+
     const res = await fetch('/api/images', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ id: itemId, updates }),
+      body: JSON.stringify({ id: itemId, updates: safeUpdates }),
     })
 
     const data = await readJsonSafely(res)
@@ -471,7 +677,7 @@ export default function VaultPage() {
       throw new Error(data?.error || 'Failed to save metadata changes')
     }
 
-    const updatedItem = data?.image || { id: itemId, ...updates }
+    const updatedItem = data?.image || { id: itemId, ...safeUpdates }
 
     setVaultItems((prevItems) =>
       prevItems.map((item) => (item.id === itemId ? { ...item, ...updatedItem } : item))
@@ -480,6 +686,25 @@ export default function VaultPage() {
     setSelectedItem((prevSelected) =>
       prevSelected?.id === itemId ? { ...prevSelected, ...updatedItem } : prevSelected
     )
+  }, [])
+
+  const activateVaultSession = useCallback(async (config, masterKey) => {
+    const keyB64 = await exportMasterKeyB64(masterKey)
+    writeVaultSession({ passHash: config.passHash, keyB64 })
+    setVaultConfig(config)
+    setVaultKey(masterKey)
+    setUnlocked(true)
+  }, [])
+
+  const persistVaultConfig = useCallback(async (config) => {
+    saveLocalVaultConfig(config)
+    const res = await fetch('/api/vault/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config }),
+    })
+    const data = await readJsonSafely(res)
+    if (!res.ok) throw new Error(data?.error || 'Failed to sync vault config')
   }, [])
 
   const createVault = async (event) => {
@@ -497,35 +722,26 @@ export default function VaultPage() {
       return
     }
 
-    const salt = makeSalt()
-    const passHash = await hashVaultPasscode(passcode, salt)
-    const config = {
-      salt,
-      passHash,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      mode: 'hidden',
-    }
-
-    saveLocalVaultConfig(config)
-
     try {
-      const res = await fetch('/api/vault/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config }),
-      })
-      const data = await readJsonSafely(res)
-      if (!res.ok) throw new Error(data?.error || 'Failed to sync vault config')
-    } catch (error) {
-      setMessage(error?.message || 'Vault created locally, but backend sync failed.')
-    }
+      // createVaultConfig mints a random 256-bit master key and wraps it with a
+      // PBKDF2 key derived from the passcode — the same shape the extension uses,
+      // so either platform can unlock this vault and decrypt its blobs.
+      const base = await createVaultConfig(passcode)
+      const config = {
+        ...base,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        mode: 'hidden',
+      }
 
-    sessionStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ passHash, unlockedAt: Date.now() }))
-    setVaultConfig(config)
-    setUnlocked(true)
-    setPasscode('')
-    setConfirmPasscode('')
+      await persistVaultConfig(config)
+      const masterKey = await unwrapMasterKey(config, passcode)
+      await activateVaultSession(config, masterKey)
+      setPasscode('')
+      setConfirmPasscode('')
+    } catch (error) {
+      setAuthError(error?.message || 'Failed to create the vault')
+    }
   }
 
   const unlockVault = async (event) => {
@@ -541,8 +757,41 @@ export default function VaultPage() {
       return
     }
 
-    sessionStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ passHash, unlockedAt: Date.now() }))
-    setUnlocked(true)
+    let config = vaultConfig
+    let masterKey
+
+    if (!config.wrappedMasterKey) {
+      // Legacy vault (passcode gate only, no wrapped key) — upgrade it to the
+      // encryption model under the same passcode. Existing plaintext vault rows
+      // keep working; new items get encrypted.
+      const upgraded = await createVaultConfig(passcode)
+      config = {
+        ...vaultConfig,
+        kdfSalt: upgraded.kdfSalt,
+        kdfIterations: upgraded.kdfIterations,
+        wrappedMasterKey: upgraded.wrappedMasterKey,
+        vaultVersion: upgraded.vaultVersion,
+      }
+      try {
+        await persistVaultConfig(config)
+      } catch (error) {
+        setAuthError(
+          `This vault predates encryption and the upgrade could not be saved (${error.message}). Unlock is blocked so a fresh key is never written over the shared config.`
+        )
+        return
+      }
+    }
+
+    try {
+      masterKey = await unwrapMasterKey(config, passcode)
+    } catch (error) {
+      setAuthError(
+        `Wrapped vault key could not be unwrapped (${error.message}). The stored config looks corrupted — re-check the passcode or the vault config row.`
+      )
+      return
+    }
+
+    await activateVaultSession(config, masterKey)
     setPasscode('')
   }
 
@@ -580,29 +829,24 @@ export default function VaultPage() {
 
     setChangingPassword(true)
     try {
-      const salt = makeSalt()
-      const passHash = await hashVaultPasscode(newPassword, salt)
-      const updatedAt = new Date().toISOString()
-      const config = {
-        ...vaultConfig,
-        salt,
-        passHash,
+      // re-wraps the master key only — existing blobs are never re-encrypted.
+      const config = await rewrapMasterKey(vaultConfig, currentPassword, newPassword)
+      const updatedConfig = {
+        ...config,
         mode: vaultConfig.mode || 'hidden',
-        updatedAt,
-        passcodeUpdatedAt: updatedAt,
+        createdAt: vaultConfig.createdAt,
+        updatedAt: new Date().toISOString(),
+        passcodeUpdatedAt: new Date().toISOString(),
       }
 
-      const res = await fetch('/api/vault/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config }),
-      })
-      const data = await readJsonSafely(res)
-      if (!res.ok) throw new Error(data?.error || 'Failed to change vault password')
-
-      saveLocalVaultConfig(config)
-      sessionStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ passHash, unlockedAt: Date.now() }))
-      setVaultConfig(config)
+      await persistVaultConfig(updatedConfig)
+      if (vaultKey) {
+        await activateVaultSession(updatedConfig, vaultKey)
+      } else {
+        setVaultConfig(updatedConfig)
+        const masterKey = await unwrapMasterKey(updatedConfig, newPassword)
+        await activateVaultSession(updatedConfig, masterKey)
+      }
       setShowChangePassword(false)
       setCurrentPassword('')
       setNewPassword('')
@@ -616,7 +860,15 @@ export default function VaultPage() {
   }
 
   const lockVault = () => {
-    sessionStorage.removeItem(VAULT_SESSION_KEY)
+    clearVaultSession()
+    previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
+    previewUrlsRef.current.clear()
+    decryptedUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
+    decryptedUrlsRef.current.clear()
+    setItemPreviews({})
+    setDecryptedMedia({})
+    setDecryptState(null)
+    setVaultKey(null)
     setUnlocked(false)
     setVaultItems([])
     setPasscode('')
@@ -625,6 +877,13 @@ export default function VaultPage() {
 
   const restoreItem = async (item) => {
     if (!item?.id || restoringId) return
+
+    if (item.encryptedBlobUrl) {
+      setMessage(
+        'Encrypted vault items can only be restored from the extension — restoring needs the master key to re-upload the plaintext, and the web app has no upload path.'
+      )
+      return
+    }
 
     setRestoringId(item.id)
     setMessage('')
@@ -648,6 +907,24 @@ export default function VaultPage() {
       setRestoringId('')
     }
   }
+
+  const lightboxItems = useMemo(
+    () =>
+      filteredItems.map((item) =>
+        decryptedMedia[item.id] ? toVaultDecryptedItem(item, decryptedMedia[item.id]) : item
+      ),
+    [filteredItems, decryptedMedia]
+  )
+
+  const lightboxItem = selectedItem
+    ? (decryptedMedia[selectedItem.id]
+        ? toVaultDecryptedItem(selectedItem, decryptedMedia[selectedItem.id])
+        : selectedItem)
+    : null
+
+  const lightboxStatus = decryptState && selectedItem && decryptState.id === selectedItem.id
+    ? `Decrypting encrypted vault item… ${decryptState.percent}%`
+    : message
 
   if (status === 'loading' || configLoading) {
     return (
@@ -844,6 +1121,7 @@ export default function VaultPage() {
                               viewMode={viewMode}
                               preferredProvider={preferredProvider}
                               preferredVideoSource={preferredVideoSource}
+                              previewUrl={itemPreviews[item.id] || ''}
                               onClick={() => handleItemClick(item, globalIndex)}
                             />
                           )
@@ -871,6 +1149,7 @@ export default function VaultPage() {
                               viewMode={viewMode}
                               preferredProvider={preferredProvider}
                               preferredVideoSource={preferredVideoSource}
+                              previewUrl={itemPreviews[item.id] || ''}
                               onClick={() => handleItemClick(item, globalIndex)}
                             />
                           )
@@ -888,15 +1167,15 @@ export default function VaultPage() {
 
     {selectedItem && (
       <GalleryLightbox
-        image={selectedItem}
-        images={filteredItems}
+        image={lightboxItem || selectedItem}
+        images={lightboxItems}
         currentIndex={selectedIndex}
         onClose={handleCloseLightbox}
         onNavigate={handleNavigate}
         onSaveEdits={handleSaveItemEdits}
         onRestoreFromVault={restoreItem}
         isRestoringFromVault={restoringId === selectedItem.id}
-        shareStatus={message}
+        shareStatus={lightboxStatus}
         preferredProvider={preferredProvider}
         preferredVideoSource={preferredVideoSource}
         firebaseProjectId={firebaseProjectId}

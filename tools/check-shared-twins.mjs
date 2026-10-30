@@ -38,6 +38,8 @@ const SHIM_ALLOWLIST = {
   ],
   // phase 3b: extension detail modal is a re-export of the canonical packages/ui copy
   'nextgen-extension/src/components/MediaDetailModal.jsx': ['imgvault-ui'],
+  // vault crypto must be byte-identical on extension + web (same blobs, same KDF)
+  'nextgen-extension/src/utils/vaultCrypto.js': ['imgvault-shared/vaultCrypto.js'],
 };
 const SHIM_LINE = /^(export \* from '[^']+';|export \{[^}]+\} from '[^']+';)$/;
 for (const [rel, allowedSources] of Object.entries(SHIM_ALLOWLIST)) {
@@ -73,6 +75,7 @@ const TWIN_BASENAMES = new Set([
   'MediaDetailModal.jsx',
   'Modal.jsx',
   'Spinner.jsx',
+  'vaultCrypto.js',
 ]);
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.next', 'artifacts', 'target', 'coverage']);
 const scan = (dir) => {

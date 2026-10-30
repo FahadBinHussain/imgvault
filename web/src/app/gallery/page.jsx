@@ -1332,10 +1332,15 @@ export default function GalleryPage() {
 
       setImages((prevImages) => prevImages.filter((img) => img.id !== image.id))
       handleCloseLightbox()
+      if (data?.warning) {
+        showToast(data.warning, 'warning', 8000)
+      } else {
+        showToast('Moved to Secret Vault', 'success')
+      }
     } catch (error) {
       setShareStatus(error?.message || 'Failed to move item to vault')
     }
-  }, [handleCloseLightbox])
+  }, [handleCloseLightbox, showToast])
 
   // Escape exits selection mode (the lightbox owns Escape while it is open)
   useEffect(() => {
@@ -1463,7 +1468,12 @@ export default function GalleryPage() {
       } else {
         setImages((prev) => prev.filter((img) => !ids.includes(img.id)))
         setSelectedIds(new Set())
-        showToast(`${ids.length} item${ids.length === 1 ? '' : 's'} moved to vault`, 'success')
+        const warning = results.find((entry) => entry.status === 'fulfilled' && entry.value?.warning)?.value?.warning
+        if (warning) {
+          showToast(warning, 'warning', 8000)
+        } else {
+          showToast(`${ids.length} item${ids.length === 1 ? '' : 's'} moved to vault`, 'success')
+        }
       }
     } finally {
       setIsBulkVaulting(false)

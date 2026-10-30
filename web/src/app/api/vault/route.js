@@ -103,7 +103,15 @@ export async function PATCH(request) {
 
     const [updatedItem] = await db.select().from(mediaItems).where(eq(mediaItems.id, id)).limit(1)
 
-    return Response.json({ item: toClientMediaItem(updatedItem) })
+    return Response.json({
+      item: toClientMediaItem(updatedItem),
+      // Loud parity notice: web has no upload path, so a web-side move only
+      // hides the row — it is NOT encrypted. The extension is where move-to-vault
+      // encrypts and re-uploads. Never let the two look the same.
+      warning: shouldVault
+        ? 'Moved without encryption. The web app cannot encrypt or re-upload blobs, so this item is hidden but still readable at its provider URL — move it from the extension for real encryption.'
+        : null,
+    })
   } catch (error) {
     return Response.json(
       { error: error?.message || 'Failed to update vault item' },
