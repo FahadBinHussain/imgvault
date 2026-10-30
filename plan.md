@@ -744,7 +744,12 @@ unless it is actually missing something.
 - push: token via `Read-VaultSecret` (github.com* pattern), then
   `git push "https://x-access-token:$tok@github.com/FahadBinHussain/imgvault.git" main`.
 - Vercel: token via `Read-VaultSecret` (vercel.com*), project
-  `prj_I3IzduxJsbQCrIbfF7XBZq2qLC83` in team `team_Mei5kaLVoB1zzUAgNmbxDq2R`.
+  `prj_I3IzduxJsbQCrIbfF7XBZq2qLC83` in team `team_Mei5kaLVoB1zzUAgNmbxDq2R`
+  (`bayazid10@gmail.com`, team "qwerty's projects"), production domain
+  `imgvaultt.vercel.app`. **the CLI link belongs at the REPO ROOT**, not in `web/`:
+  the project has `rootDirectory: web`, so `vercel deploy` must run from the root
+  (fixed 2026-10-30 — `web/.vercel` held a dead `prj_hRlsKiTZuw5AV85YXfgeJBztIdjG`
+  / "web" link that 404s in this team, which sent local deploys to the wrong place).
 - psql 5432 is flaky from here — use the Neon HTTP fallback (port 443, `--resolve` to a
   working IP, `Neon-Connection-String` header, single statement per request).
 - settings fields live in `packages/shared/settingsSchema.js`; never hand-edit field lists
