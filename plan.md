@@ -367,7 +367,7 @@ vault upload
 
 date: 2026-10-10 · originally `plan-telegram-host.md` · diagram: `plan-telegram-flow.html`
 
-**status:** phase 0 + phase 1 shipped (2.15.6–2.15.12). phases 2 / 3a / 3b / 4 **open**.
+**status:** phases 0 + 1 + 2 shipped (2.15.6–2.17.4). phases 3a / 3b / 4 **open**.
 `[verified 2026-10-30]` telegram is still **not** a vault blob host
 (`packages/shared/providerCatalog.js`: `// NOT a vaultBlobHost yet — that is phase 3a`),
 and `THREE_D_SOURCE_OPTIONS` still filters to `udrop | terabox`.
@@ -456,10 +456,15 @@ decision; it was used as a method reference only.
 - ~~**1 — host for images + videos**: `TelegramUploader`, `telegramApi.js`,
   providerCatalog entries, settings fields + migration, gallery upload/play on BOTH
   platforms, delete, resolve-page integrity tab.~~ **done 2026-10-15** (2.15.6–2.15.12).
-- **2 — 3D (spz as document + texture as photo) — ⏳ open**: enable telegram in the
-  THREE_D lists (both `THREE_D_SOURCE_OPTIONS` builders, settings options, the
-  `GalleryLightbox` label map) + scene integrity. `[verified 2026-10-30: still udrop |
-  terabox only]`
+- ~~**2 — 3D (spz as document + texture as photo)**~~ **done 2026-10-30 (2.17.4)**:
+  telegram opt-in is one catalog flag (`threeDHost: true`); `THREE_D_SOURCE_OPTIONS` +
+  `THREE_D_HOST_KEYS` are derived from it, so settings/gallery/resolve all pick it up.
+  **texture ships as a document, not a photo** (phase-0 A/B: `sendPhoto` re-encodes) —
+  the `getFile` 20 MB gate is the scene limit, pre-flighted on BOTH files before either
+  uploads. scene integrity has its own Telegram subtab (`sceneFiles.telegram` =
+  spz/texture fileId + messageId; `extra` = unreferenced `t.me/s` media posts, 2 per
+  scene by design since the API cannot enumerate files). web scene viewer fetches local
+  `/telegram-media/` urls same-origin (`/api/media` only proxies absolute urls).
 - **3a — vault via cloud bot (≤ 20 MB) — ⏳ open**: add `telegram` as a vault blob host;
   `fetchVaultBlobRange` telegram branch + fresh-resolve + loud 20 MB gate.
 - **3b — local Bot API server (2000 MB upload, unlimited read) — ⏳ open, OPTIONAL**:
@@ -767,7 +772,7 @@ everything still actionable, in one place:
 | 2 | ~~web vault = flag-only / no decryption, extension-encrypted rows look empty~~ | vault | **done 2.17.2** — web creates/unlocks/decrypts with the shared wrapped-master-key crypto + Range blob proxy. leftover: web *move* still flag-only (now warns loudly) |
 | 3 | ~~"migrate old vault items" button (pre-2.6.0 plaintext vault rows)~~ | vault | **struck 2026-10-30** — never built, won't be; option B is final. legacy rows stay plaintext and now show a `Not encrypted` badge |
 | 4 | scene (spz/texture) encrypted vault support | vault | scenes stay plaintext on their hosts |
-| 5 | telegram 3D (phase 2) | telegram | add telegram to `THREE_D_SOURCE_OPTIONS` + scene integrity |
+| 5 | ~~telegram 3D (phase 2)~~ | telegram | **done 2.17.4** — `threeDHost` flag drives `THREE_D_HOST_KEYS`/options; docs-only textures + 20 MB pair pre-flight; Telegram 3D integrity subtab; local `/telegram-media/` scenes render on web |
 | 6 | telegram vault host (phase 3a, ≤ 20 MB cloud) | telegram | needs `vaultBlobHost: true` + read branch + loud 20 MB gate |
 | 7 | local Bot API server (phase 3b) | telegram | optional; only buys > 20 MB telegram vault blobs |
 | 8 | telegram bulk library migration (phase 4) | telegram | optional |

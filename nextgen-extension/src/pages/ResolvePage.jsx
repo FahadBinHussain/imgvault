@@ -53,7 +53,7 @@ import {
 } from '../utils/teraBoxApi';
 import { retryVideoHostPageSide } from '../utils/videoRetryPageSide';
 import { getVideoProviderLinks, getVideoSourceHostOptions } from '../utils/videoProviderLinks';
-import { deleteTelegramMessage, listTelegramPosts, scrapeTelegramPostUrl } from '../utils/telegramApi';
+import { checkTelegramSceneIntegrity, deleteTelegramMessage, listTelegramPosts, scrapeTelegramPostUrl, telegramLocalMediaUrl } from '../utils/telegramApi';
 import { flattenSceneConfig } from '../utils/sceneConfig';
 import { UDropUploader, TeraBoxUploader } from '../utils/uploaders';
 
@@ -67,6 +67,8 @@ const RESOLVE_RUN_HISTORY_KEY = 'imgvaultResolveRunHistory';
 const RESOLVE_RUN_HISTORY_LIMIT = 12;
 
 const hasText = (value) => typeof value === 'string' && value.trim().length > 0;
+
+const SCENE_HOST_LABELS = { udrop: 'UDrop', terabox: 'TeraBox', telegram: 'Telegram' };
 
 const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || '').trim());
 
@@ -581,6 +583,14 @@ export default function ResolvePage() {
         const videoMsgId = Number(getVideoProviderLinks(item)?.telegram?.messageId);
         if (Number.isFinite(videoMsgId)) allRefs.add(videoMsgId);
 
+        // scene posts: the 3D tab owns their verification, but their ids still
+        // must not show up here as orphan posts (one scene = two documents).
+        const sceneTelegram = item.extraMetadata?.sceneFiles?.telegram || {};
+        [sceneTelegram.spz?.messageId, sceneTelegram.texture?.messageId].forEach((value) => {
+          const id = Number(value);
+          if (Number.isFinite(id)) allRefs.add(id);
+        });
+
         if (isVaultedEncryptedItem(item)) continue;
         if (item.kind === 'scene' || item.spzUrl) continue;
 
@@ -855,6 +865,19 @@ export default function ResolvePage() {
         updates.textureFileSize = textureFile.size;
       }
       if (sceneConfig) updates.configJson = JSON.stringify(sceneConfig);
+      // every host writes the per-host file/post refs - telegram integrity reads
+      // them (it has no watch/direct columns, and message ids are not in the url)
+      updates.extraMetadata = {
+        ...(item.extraMetadata || {}),
+        sceneFiles: {
+          ...(item.extraMetadata?.sceneFiles || {}),
+          host,
+          [host]: {
+            spz: { fileId: spzRes.fileId || '', messageId: spzRes.messageId || '', filename: spzFile.name },
+            ...(texRes ? { texture: { fileId: texRes.fileId || '', messageId: texRes.messageId || '', filename: textureFile.name } } : {}),
+          },
+        },
+      };
 
       await sendMessage('updateImage', { id: item.id, ...updates });
       await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
@@ -881,7 +904,7 @@ export default function ResolvePage() {
         sendMessage('getVideoHostSettings'),
       ]);
       const service = VIDEO_UPLOAD_SERVICES.find((s) => s.key === targetHost);
-      const hostLabel = targetHost === 'terabox' ? 'TeraBox' : 'UDrop';
+      const hostLabel = SCENE_HOST_LABELS[targetHost] || 'UDrop';
       if (!service || !service.isConfigured(hostSettings)) {
         setNotice({ type: 'error', message: `${hostLabel} is not configured. Go to Settings.` });
         return;
@@ -899,18 +922,36 @@ export default function ResolvePage() {
         (freshItem.spzUrl && String(freshItem.spzUrl).includes('terabox.com')) ||
         freshItem.extraMetadata?.sceneFiles?.terabox
       );
+      const hasTelegram = Boolean(
+        freshItem.extraMetadata?.sceneFiles?.telegram ||
+        /^\/telegram-media\//.test(String(freshItem.spzUrl || '')) ||
+        /^\/telegram-media\//.test(String(freshItem.textureUrl || '')) ||
+        freshItem.videoHosts?.telegram || freshItem.extraMetadata?.videoHosts?.telegram
+      );
       let sourceHost = null;
-      if (targetHost === 'terabox' && hasUdrop) sourceHost = 'udrop';
+      if (targetHost === 'telegram' && hasUdrop) sourceHost = 'udrop';
+      else if (targetHost === 'telegram' && hasTerabox) sourceHost = 'terabox';
       else if (targetHost === 'udrop' && hasTerabox) sourceHost = 'terabox';
+      else if (targetHost === 'udrop' && hasTelegram) sourceHost = 'telegram';
+      else if (targetHost === 'terabox' && hasUdrop) sourceHost = 'udrop';
+      else if (targetHost === 'terabox' && hasTelegram) sourceHost = 'telegram';
       else if (hasUdrop) sourceHost = 'udrop';
       else if (hasTerabox) sourceHost = 'terabox';
+      else if (hasTelegram) sourceHost = 'telegram';
       if (!sourceHost) {
         setSceneFixFor({ item: freshItem, host: targetHost });
         return;
       }
       const fetchBlob = async (url, fileId, fileName) => {
         const candidates = [];
-        if (sourceHost === 'terabox') {
+        if (sourceHost === 'telegram') {
+          // stored as a root-relative /telegram-media/<fileId> url; the extension
+          // service worker serves it same-origin (no token, no expiry). When the
+          // url itself is gone the file id rebuilds the same path.
+          const sourceUrl = url || (fileId ? telegramLocalMediaUrl(fileId) : '');
+          if (!sourceUrl) throw new Error(`No Telegram file id or media url is stored for ${fileName || 'scene file'}.`);
+          candidates.push(sourceUrl);
+        } else if (sourceHost === 'terabox') {
           const stableFileId = String(fileId || teraBoxFsIdFromUrl(url) || extractTeraBoxFileId(freshItem) || '').trim();
           if (!stableFileId) throw new Error(`No TeraBox file id is stored for ${fileName || 'scene file'}.`);
           const fresh = await resolveTeraBoxPlaybackUrl(hostSettings?.teraboxCookie || '', stableFileId, fileName || '');
@@ -964,8 +1005,8 @@ export default function ResolvePage() {
       setFixProgress((prev) => ({ ...prev, [freshItem.id]: { phase: 'download', message: `Downloading SPZ from ${sourceHost}...`, percent: null } }));
       const spzFileId = String(freshItem.extraMetadata?.sceneSpzFileId || freshItem.extraMetadata?.sceneFiles?.[sourceHost]?.spz?.fileId || (sourceHost === 'terabox' ? extractTeraBoxFileId(freshItem) : '') || teraBoxFsIdFromUrl(freshItem.spzUrl) || '').trim();
       const texFileId = String(freshItem.extraMetadata?.sceneTextureFileId || freshItem.extraMetadata?.sceneFiles?.[sourceHost]?.texture?.fileId || freshItem.textureFileId || (sourceHost === 'terabox' ? teraBoxFsIdFromUrl(freshItem.textureUrl) : '') || '').trim();
-      const spzFileName = String(freshItem.fileName || freshItem.spzUrl?.split('/').pop()?.split('?')[0] || 'scene.spz');
-      const texFileName = String(freshItem.textureUrl?.split('/').pop()?.split('?')[0] || 'texture.webp');
+      const spzFileName = String(freshItem.extraMetadata?.sceneFiles?.[sourceHost]?.spz?.filename || freshItem.fileName || freshItem.spzUrl?.split('/').pop()?.split('?')[0] || 'scene.spz');
+      const texFileName = String(freshItem.extraMetadata?.sceneFiles?.[sourceHost]?.texture?.filename || freshItem.textureUrl?.split('/').pop()?.split('?')[0] || 'texture.webp');
       let spzBlob = null;
       let texBlob = null;
       try {
@@ -1023,9 +1064,20 @@ export default function ResolvePage() {
       if (sceneConfig) updates.configJson = JSON.stringify(sceneConfig);
       const sceneFiles = {
         ...(freshItem.extraMetadata?.sceneFiles || {}),
+        host: targetHost,
         [targetHost]: {
-          spz: { fileId: spzRes.fileId || spzRes.filecode || '', filename: spzFileName },
-          ...(texRes ? { texture: { fileId: texRes.fileId || texRes.filecode || '', filename: texFileName } } : {}),
+          spz: {
+            fileId: spzRes.fileId || spzRes.filecode || '',
+            messageId: spzRes.messageId || '',
+            filename: spzFileName,
+          },
+          ...(texRes ? {
+            texture: {
+              fileId: texRes.fileId || texRes.filecode || '',
+              messageId: texRes.messageId || '',
+              filename: texFileName,
+            },
+          } : {}),
         },
       };
       updates.extraMetadata = { ...(freshItem.extraMetadata || {}), sceneFiles };
@@ -1033,7 +1085,7 @@ export default function ResolvePage() {
       await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
       sceneUserPickedRef.current = true;
       await runSceneIntegrityCheck(targetHost);
-      setNotice({ type: 'success', message: `Scene fixed on ${hostLabel} for "${freshItem.pageTitle || freshItem.fileName || 'scene'}" — SPZ${texRes ? '+Image' : ''} copied from ${sourceHost}.` });
+      setNotice({ type: 'success', message: `Scene fixed on ${hostLabel} for "${freshItem.pageTitle || freshItem.fileName || 'scene'}" — SPZ${texRes ? '+Image' : ''} copied from ${SCENE_HOST_LABELS[sourceHost] || sourceHost}.` });
     } catch (err) {
       const msg = err?.message || String(err);
       if (/no source|Could not download/i.test(msg)) {
@@ -1072,11 +1124,12 @@ export default function ResolvePage() {
     }
   };
 
-  // ---- 3D Scene integrity helpers (UDrop + Terabox) ----
+  // ---- 3D Scene integrity helpers (UDrop + TeraBox + Telegram) ----
   const checkSceneKeysConfigured = useCallback(() => {
     const udropConfigured = hasText(settings?.udropKey1) && hasText(settings?.udropKey2);
     const teraboxConfigured = true;
-    const configured = udropConfigured || teraboxConfigured;
+    const telegramConfigured = hasText(settings?.telegramBotToken) && hasText(settings?.telegramChannel);
+    const configured = udropConfigured || teraboxConfigured || telegramConfigured;
     setSceneKeysConfigured(configured);
     return configured;
   }, [settings]);
@@ -1086,12 +1139,12 @@ export default function ResolvePage() {
   }, [checkSceneKeysConfigured]);
 
   const runSceneIntegrityCheck = useCallback(async (overrideTab) => {
-    const tab = overrideTab === 'udrop' || overrideTab === 'terabox' ? overrideTab : sceneSubTab;
+    const tab = SCENE_HOST_LABELS[overrideTab] ? overrideTab : sceneSubTab;
     if (tab !== sceneSubTab) setSceneSubTab(tab);
     const seq = ++sceneCheckSeqRef.current;
     if (!checkSceneKeysConfigured()) {
       if (seq !== sceneCheckSeqRef.current) return;
-      setSceneError('No 3D host configured. Add UDrop keys or log into TeraBox.');
+      setSceneError('No 3D host configured. Add UDrop keys, log into TeraBox, or set the Telegram token + channel.');
       setSceneCheckedTab(tab);
       setSceneHasChecked(true);
       return;
@@ -1114,6 +1167,18 @@ export default function ResolvePage() {
         if (!hasText(settings?.udropKey1) || !hasText(settings?.udropKey2)) throw new Error('UDrop keys not configured. Go to Settings.');
         const auth = await authorizeUdrop(settings.udropKey1, settings.udropKey2);
         result = await checkSceneIntegrity(sceneItems, allItems, auth.access_token, auth.account_id);
+      } else if (tab === 'telegram') {
+        if (!hasText(settings?.telegramBotToken) || !hasText(settings?.telegramChannel)) throw new Error('Telegram bot token + channel not configured. Go to Settings.');
+        result = await checkTelegramSceneIntegrity(sceneItems, allItems, {
+          token: settings.telegramBotToken,
+          channel: settings.telegramChannel,
+          onProgress: (p) => {
+            if (seq !== sceneCheckSeqRef.current) return;
+            setSceneLoadingMessage(p.phase === 'listing'
+              ? `Reading channel history… page ${p.page}, ${p.posts} media posts`
+              : `Probing scene file ${p.done}/${p.total}…`);
+          },
+        });
       } else {
         result = await checkTeraBoxSceneIntegrity(sceneItems, allItems, settings.teraboxCookie, (p) => {
           if (seq !== sceneCheckSeqRef.current) return;
@@ -1126,7 +1191,7 @@ export default function ResolvePage() {
       setSceneIntegrity(result);
       setNotice({
         type: result.missing.length > 0 ? 'error' : 'success',
-        message: `${tab === 'udrop' ? 'UDrop' : 'TeraBox'} 3D check: ${result.found.length} found, ${result.missing.length} broken, ${result.noUrl.length} no url, ${result.extra.length} extra.`,
+        message: `${SCENE_HOST_LABELS[tab]} 3D check: ${result.found.length} found, ${result.missing.length} broken, ${result.noUrl.length} no url, ${result.extra.length} extra${tab === 'telegram' ? ' (Telegram counts posts: 2 per scene)' : ''}.`,
       });
     } catch (err) {
       if (seq !== sceneCheckSeqRef.current) return;
@@ -1155,7 +1220,7 @@ export default function ResolvePage() {
   // Once the user picked a subtab manually, their choice wins (no auto-switch).
   useEffect(() => {
     if (activeTab !== 'scenes' || sceneLoading || sceneUserPickedRef.current) return;
-    const targetTab = default3DSource === 'terabox' ? 'terabox' : 'udrop';
+    const targetTab = SCENE_HOST_LABELS[default3DSource] ? default3DSource : 'udrop';
     if (sceneHasChecked && sceneCheckedTab === targetTab) return;
     runSceneIntegrityCheck(targetTab);
   }, [activeTab, sceneLoading, sceneHasChecked, sceneCheckedTab, default3DSource, runSceneIntegrityCheck]);
@@ -1169,6 +1234,8 @@ export default function ResolvePage() {
       setNotice(null);
     }
   }, [sceneSubTab, activeTab]);
+
+  const sceneHostLabel = SCENE_HOST_LABELS[sceneSubTab] || 'UDrop';
 
   const resolveProvider = async (row, service, options = {}) => {
     const { reloadAfter = true, showNotice = true } = options;
@@ -2993,7 +3060,7 @@ export default function ResolvePage() {
                   <Box className="h-4 w-4" />
                   3D Scene integrity
                 </div>
-                <h1 className="text-3xl font-semibold tracking-tight text-base-content">{sceneSubTab === 'udrop' ? 'UDrop scene files (.spz)' : 'TeraBox scene files (.spz)'}</h1>
+                <h1 className="text-3xl font-semibold tracking-tight text-base-content">{sceneHostLabel} scene files (.spz)</h1>
               </div>
 
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -3020,12 +3087,15 @@ export default function ResolvePage() {
               <button type="button" onClick={() => { sceneUserPickedRef.current = true; runSceneIntegrityCheck('terabox'); }} className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${sceneSubTab === 'terabox' ? 'border-primary bg-primary text-primary-content shadow-sm' : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'}`}>
                 <Box className="h-4 w-4" /> TeraBox 3D
               </button>
+              <button type="button" onClick={() => { sceneUserPickedRef.current = true; runSceneIntegrityCheck('telegram'); }} className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${sceneSubTab === 'telegram' ? 'border-primary bg-primary text-primary-content shadow-sm' : 'border-base-300 bg-base-100 text-base-content/70 hover:text-base-content'}`}>
+                <Send className="h-4 w-4" /> Telegram 3D
+              </button>
             </section>
 
 
             {!sceneKeysConfigured && (
               <div className="rounded-[var(--radius-box)] border border-warning/25 bg-warning/10 px-4 py-3 text-sm text-warning">
-                UDrop API keys are not configured. Go to Settings to add them.
+                No 3D host is configured. Add UDrop keys, log into TeraBox, or set the Telegram bot token + channel in Settings.
               </div>
             )}
 
@@ -3048,10 +3118,10 @@ export default function ResolvePage() {
             <section className="flex flex-wrap gap-2">
               {[
                 { value: 'all', label: 'All', count: sceneIntegrity.found.length + sceneIntegrity.missing.length + sceneIntegrity.noUrl.length + sceneIntegrity.extra.length, tip: 'Every saved 3D scene, counted once. This is the full list.' },
-                { value: 'missing', label: 'Broken links', count: sceneIntegrity.missing.length, tip: sceneSubTab === 'terabox' ? 'Scenes whose .spz file was deleted from TeraBox or whose link is broken.' : 'Scenes whose .spz file was deleted from UDrop or whose link is broken.' },
-                { value: 'found', label: 'Found', count: sceneIntegrity.found.length, tip: sceneSubTab === 'terabox' ? 'Scenes with a working .spz file on TeraBox. Nothing to do.' : 'Scenes with a working .spz file on UDrop. Nothing to do.' },
+                { value: 'missing', label: 'Broken links', count: sceneIntegrity.missing.length, tip: `Scenes whose .spz or texture file was deleted from ${sceneHostLabel} or whose link is broken.` },
+                { value: 'found', label: 'Found', count: sceneIntegrity.found.length, tip: `Scenes with working .spz + texture files on ${sceneHostLabel}. Nothing to do.` },
                 { value: 'noUrl', label: 'No scene URL', count: sceneIntegrity.noUrl.length, tip: 'Saved scenes that have no host link at all — they were never uploaded.' },
-                { value: 'extra', label: sceneSubTab === 'terabox' ? 'Extra on TeraBox' : 'Extra on UDrop', count: sceneIntegrity.extra.length, tip: sceneSubTab === 'terabox' ? 'Scene groups (1 .spz + its textures) on TeraBox not linked to any saved scene. Config lives in the DB, so only host files list here.' : 'Scene groups (1 .spz + its textures) on UDrop not linked to any saved scene. Config lives in the DB, so only host files list here.' },
+                { value: 'extra', label: `Extra on ${sceneHostLabel}`, count: sceneIntegrity.extra.length, tip: sceneSubTab === 'telegram' ? 'Channel posts not linked to any saved item. Telegram lists posts, not scene groups — one scene is 2 posts (.spz + texture).' : `Scene groups (1 .spz + its textures) on ${sceneHostLabel} not linked to any saved scene. Config lives in the DB, so only host files list here.` },
               ].map((option) => (
                 <StatChip
                   key={option.value}
@@ -3070,9 +3140,9 @@ export default function ResolvePage() {
                 <div className="flex min-h-64 flex-col items-center justify-center gap-2 rounded-[var(--radius-box)] border border-base-300 bg-base-100 text-base-content/60">
                   <div className="flex items-center">
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Loading {sceneSubTab === 'terabox' ? 'TeraBox' : 'UDrop'} file list...
+                    Loading {sceneHostLabel} file list...
                   </div>
-                  {sceneSubTab === 'terabox' && sceneLoadingMessage && (
+                  {sceneSubTab !== 'udrop' && sceneLoadingMessage && (
                     <div className="text-xs text-base-content/50">{sceneLoadingMessage}</div>
                   )}
                 </div>
@@ -3116,11 +3186,104 @@ export default function ResolvePage() {
 
                   // ---- Extra (orphan) scene groups: .spz + its texture files ----
                   if (status === 'extra') {
+                    if (sceneSubTab === 'telegram') {
+                      // Telegram lists POSTS (ids only), not files: one scene is
+                      // two posts, so an "extra" here is a single post.
+                      const messageId = String(entry.messageId || '');
+                      const delKey = `telegram-${messageId}`;
+                      return (
+                        <article
+                          key={delKey}
+                          className="grid gap-4 rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-3 shadow-sm transition hover:border-warning/25 sm:grid-cols-[132px_1fr_auto]"
+                        >
+                          <div className="flex h-28 items-center justify-center overflow-hidden rounded-[var(--radius-box)] bg-base-200">
+                            <div className="flex flex-col items-center gap-1 text-warning/70">
+                              <AlertCircle className="h-8 w-8" />
+                              <span className="text-[10px] font-semibold uppercase tracking-wider">Orphan</span>
+                            </div>
+                          </div>
+
+                          <div className="min-w-0 space-y-3">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h2 className="truncate text-base font-semibold text-base-content">Post {messageId}</h2>
+                                <span className="inline-flex items-center gap-1 rounded-full border border-warning/20 bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">
+                                  <AlertCircle className="h-3 w-3" /> Not in DB
+                                </span>
+                              </div>
+                              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
+                                <span>Message ID: {messageId}</span>
+                              </div>
+                            </div>
+                            <div className="text-xs text-base-content/70">
+                              This Telegram post is not linked to any saved item. The listing shows post ids only — open the post first, since one scene is 2 posts (.spz + texture).
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col justify-between gap-3 sm:w-52">
+                            <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 px-3 py-2 text-xs text-base-content/65">
+                              Orphaned post
+                            </div>
+                            <div className="flex flex-col gap-2">
+                              {entry.pageUrl && (
+                                <Button variant="outline" className="h-9 justify-center gap-2 text-sm" onClick={() => window.open(entry.pageUrl, '_blank')}>
+                                  <ExternalLink className="h-4 w-4" /> Open post
+                                </Button>
+                              )}
+                              <Button
+                                variant="primary"
+                                className="h-9 justify-center gap-2 text-sm"
+                                disabled={deletingOrphans[delKey]}
+                                onClick={async () => {
+                                  setDeletingOrphans((prev) => ({ ...prev, [delKey]: true }));
+                                  try {
+                                    // pre-flight: re-read the DB and never delete a
+                                    // post some item started referencing since the check
+                                    const [freshImages, freshVault] = await Promise.all([sendMessage('getImages'), sendMessage('getVaultImages')]);
+                                    const referenced = [...(freshImages || []), ...(freshVault || [])].some((it) => {
+                                      if (!it) return false;
+                                      const extra = it.extraMetadata && typeof it.extraMetadata === 'object' ? it.extraMetadata : {};
+                                      const ids = [
+                                        extra.sceneFiles?.telegram?.spz?.messageId,
+                                        extra.sceneFiles?.telegram?.texture?.messageId,
+                                        extra.videoHosts?.telegram?.messageId,
+                                        extra.imageHosts?.telegram?.messageId,
+                                        it.videoHosts?.telegram?.messageId,
+                                        it.imageHosts?.telegram?.messageId,
+                                      ];
+                                      return ids.some((v) => String(v || '') === messageId);
+                                    });
+                                    if (referenced) throw new Error(`Post ${messageId} is linked to an item since the check — re-run Check Scenes. Nothing deleted.`);
+                                    await deleteTelegramMessage({ token: settings?.telegramBotToken, channel: settings?.telegramChannel, messageId });
+                                    setSceneIntegrity((prev) => ({
+                                      ...prev,
+                                      extra: prev.extra.filter((e) => String(e.messageId) !== messageId),
+                                    }));
+                                    setNotice({ type: 'success', message: `Deleted Telegram post ${messageId}.` });
+                                  } catch (err) {
+                                    setNotice({ type: 'error', message: `Failed to delete: ${err.message || err}` });
+                                  } finally {
+                                    setDeletingOrphans((prev) => {
+                                      const next = { ...prev };
+                                      delete next[delKey];
+                                      return next;
+                                    });
+                                  }
+                                }}
+                              >
+                                {deletingOrphans[delKey] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                {deletingOrphans[delKey] ? 'Deleting...' : 'Delete'}
+                              </Button>
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    }
                     const file = entry.file || {};
                     const textureFiles = Array.isArray(entry.textureFiles) ? entry.textureFiles : [];
                     const isStandaloneTexture = Boolean(entry.standaloneTexture);
                     const isTeraTab = sceneSubTab === 'terabox';
-                    const hostLabel = isTeraTab ? 'TeraBox' : 'UDrop';
+                    const hostLabel = sceneHostLabel;
                     const title = file.server_filename || file.name || file.filename || file.file_id || file.fs_id || 'Unknown file';
                     const udropUrl = !isTeraTab ? (file.short_url || file.url || '') : '';
                     const groupKey = isTeraTab
@@ -3303,15 +3466,18 @@ export default function ResolvePage() {
                   const title = item.pageTitle || item.fileName || item.description || 'Untitled';
                   const spzUrl = item.spzUrl || '';
                   const texUrl = item.textureUrl || '';
-                  const sceneUrl = spzUrl || texUrl || '';
-                  const hostLabel = sceneSubTab === 'terabox' ? 'TeraBox' : 'UDrop';
+                  const hostLabel = sceneHostLabel;
                   const spzMatched = entry.spzMatched || null;
                   const texMatched = entry.texMatched || null;
                   const spzCode = entry.spzCode || entry.spzFid || null;
                   const texCode = entry.texCode || entry.texFid || null;
                   const baseName = (u) => String(u || '').split('/').pop().split('?')[0].split('#')[0] || '';
-                  const spzName = baseName(spzUrl) || item.fileName || (spzCode ? String(spzCode) : 'spz');
-                  const texName = baseName(texUrl) || (texCode ? String(texCode) : 'texture');
+                  const spzName = entry.spzFileName || baseName(spzUrl) || item.fileName || (spzCode ? String(spzCode) : 'spz');
+                  const texName = entry.texFileName || baseName(texUrl) || (texCode ? String(texCode) : 'texture');
+                  // telegram's stored urls are extension-local (`/telegram-media/…`)
+                  // and mean nothing outside the app - the public post is the link.
+                  const spzOpenUrl = entry.spzPageUrl || spzUrl;
+                  const texOpenUrl = entry.texPageUrl || texUrl;
 
                   return (
                     <article
@@ -3348,14 +3514,14 @@ export default function ResolvePage() {
                           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
                             {item.fileName && <span className="truncate">{item.fileName}</span>}
                             {formatDate(item.createdAt || item.internalAddedTimestamp)}
-                            {spzUrl && (
-                              <a href={spzUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
-                                SPZ <ExternalLink className="h-3 w-3" />
+                            {spzOpenUrl && (
+                              <a href={spzOpenUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                                {entry.spzPageUrl ? 'SPZ post' : 'SPZ'} <ExternalLink className="h-3 w-3" />
                               </a>
                             )}
-                            {texUrl && (
-                              <a href={texUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
-                                Image <ExternalLink className="h-3 w-3" />
+                            {texOpenUrl && (
+                              <a href={texOpenUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                                {entry.texPageUrl ? 'Texture post' : 'Image'} <ExternalLink className="h-3 w-3" />
                               </a>
                             )}
                           </div>
@@ -3379,6 +3545,11 @@ export default function ResolvePage() {
                             {status === 'missing' && (
                               <div className="text-[11px] text-base-content/50">
                                 {hostLabel} is missing {(!spzMatched && spzUrl ? 'SPZ' : '') + (!spzMatched && !texMatched && spzUrl && texUrl ? ' + ' : '') + (!texMatched && texUrl ? 'Image' : '') || 'a file'} for this scene. Fix re-uploads the pair.
+                              </div>
+                            )}
+                            {status === 'missing' && (entry.reasons || []).length > 0 && (
+                              <div className="space-y-0.5 rounded border border-error/20 bg-error/5 px-2 py-1 font-mono text-[10px] text-error/80">
+                                {entry.reasons.map((reason) => <div key={reason} className="truncate">{reason}</div>)}
                               </div>
                             )}
                             {status === 'noUrl' && (
@@ -3417,20 +3588,20 @@ export default function ResolvePage() {
                         </div>
 
                         <div className="flex flex-col gap-2">
-                          {spzUrl && texUrl ? (
+                          {spzOpenUrl && texOpenUrl ? (
                             <>
-                              <Button variant="outline" className="h-9 justify-center gap-2 text-sm" onClick={() => window.open(spzUrl, '_blank')}>
-                                <ExternalLink className="h-4 w-4" /> Open SPZ
+                              <Button variant="outline" className="h-9 justify-center gap-2 text-sm" onClick={() => window.open(spzOpenUrl, '_blank')}>
+                                <ExternalLink className="h-4 w-4" /> Open {entry.spzPageUrl ? 'SPZ post' : 'SPZ'}
                               </Button>
-                              <Button variant="outline" className="h-9 justify-center gap-2 text-sm" onClick={() => window.open(texUrl, '_blank')}>
-                                <ExternalLink className="h-4 w-4" /> Open Image
+                              <Button variant="outline" className="h-9 justify-center gap-2 text-sm" onClick={() => window.open(texOpenUrl, '_blank')}>
+                                <ExternalLink className="h-4 w-4" /> Open {entry.texPageUrl ? 'texture post' : 'Image'}
                               </Button>
                             </>
-                          ) : sceneUrl ? (
+                          ) : (spzOpenUrl || texOpenUrl) ? (
                             <Button
                               variant="outline"
                               className="h-9 justify-center gap-2 text-sm"
-                              onClick={() => window.open(sceneUrl, '_blank')}
+                              onClick={() => window.open(spzOpenUrl || texOpenUrl, '_blank')}
                             >
                               <ExternalLink className="h-4 w-4" />
                               Open {hostLabel}

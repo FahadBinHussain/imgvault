@@ -22,15 +22,18 @@ import GalleryNavbar from '../components/GalleryNavbar';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig';
 import {
   IMAGE_UPLOAD_SERVICES,
+  VIDEO_UPLOAD_SERVICES,
   filterUploadServicesByKeys,
   getVaultBlobHostServices,
   normalizeVaultBlobHostKeys,
   DEFAULT_VAULT_BLOB_HOST,
+  THREE_D_HOST_KEYS,
   getConfiguredVideoUploadServices,
   getVideoProviderLabel,
   getVideoUploadService,
 } from '../config/providerCatalog';
 import { FilemoonUploader, UDropUploader, TeraBoxUploader, TelegramUploader } from '../utils/uploaders';
+import { assertTelegramUploadSize } from '../utils/telegramApi.js';
 import { encryptBlob, encryptMetadata } from '../utils/vaultCrypto.js';
 import { getVaultMasterKey, importMasterKeyFromB64 } from '../utils/vaultSession.js';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
@@ -65,6 +68,10 @@ const createVideoUploader = (service) => {
   if (service?.uploaderKey === 'telegramUploader') return new TelegramUploader();
   return null;
 };
+
+const THREE_D_HOST_LABEL = VIDEO_UPLOAD_SERVICES.filter((s) => THREE_D_HOST_KEYS.includes(s.key))
+  .map((s) => s.label)
+  .join('/');
 
 const pickText = (...values) => {
   const found = values.find((v) => typeof v === 'string' && v.trim().length > 0);
@@ -493,7 +500,7 @@ export default function GalleryPage() {
 
   const configuredUploadServices = useMemo(() => {
     if (currentUploadKind === '3d') {
-      return getConfiguredVideoUploadServices(uploadHostSettings).filter((s) => ['udrop', 'terabox'].includes(s.key));
+      return getConfiguredVideoUploadServices(uploadHostSettings).filter((s) => THREE_D_HOST_KEYS.includes(s.key));
     }
     if (currentUploadKind === 'video') {
       return getConfiguredVideoUploadServices(uploadHostSettings);
@@ -1499,15 +1506,16 @@ export default function GalleryPage() {
   const upload3DDirectly = async (uploadData) => {
     const uploadController = new AbortController();
     activeVideoUploadControllerRef.current = uploadController;
-    const THREE_D_PROVIDERS = ['udrop', 'terabox'];
     await chrome.storage.local.set({ uploadActive: true, uploadStatus: 'Preparing 3D model upload...', uploadStatusLogs: [] });
     await appendClientUploadLog(`3D payload ready: ${formatBytes(uploadData.fileSize || uploadData.fileBlob?.size || 0)} (${uploadData.fileName})`);
     try {
       const settings = await sendMessage('getVideoHostSettings');
-      const configuredServices = getConfiguredVideoUploadServices(settings).filter((s) => THREE_D_PROVIDERS.includes(s.key));
+      const configuredServices = getConfiguredVideoUploadServices(settings).filter((s) => THREE_D_HOST_KEYS.includes(s.key));
       const selectedServices = filterUploadServicesByKeys(configuredServices, uploadData.selectedHostKeys);
-      if (configuredServices.length === 0) throw new Error('No 3D host is configured (need UDrop or TeraBox).');
-      if (selectedServices.length === 0) throw new Error('Select at least one 3D host (UDrop/TeraBox).');
+      const hostNames = (configuredServices.length ? configuredServices : VIDEO_UPLOAD_SERVICES.filter((s) => THREE_D_HOST_KEYS.includes(s.key)))
+        .map((s) => s.label).join(' / ');
+      if (configuredServices.length === 0) throw new Error(`No 3D host is configured (need ${hostNames}).`);
+      if (selectedServices.length === 0) throw new Error(`Select at least one 3D host (${hostNames}).`);
       const pendingMeta = { ...uploadData, kind: 'scene', isVideo: false, fileType: uploadData.fileType || 'model/gltf-binary', fileMimeType: uploadData.fileType || 'model/gltf-binary' };
       delete pendingMeta.fileBlob;
       delete pendingMeta.file;
@@ -1560,9 +1568,18 @@ export default function GalleryPage() {
           if (svc?.directUrlField) updates[svc.directUrlField] = merged[svc.directUrlField] || '';
           if (svc?.aliasWatchUrlField) updates[svc.aliasWatchUrlField] = merged[svc.aliasWatchUrlField] || '';
         }
-        const extraUpdate = isSpz ? { spzUrl: Object.values(uploadResults)[0]?.url || '' } : {};
+        const spzHostKey = Object.keys(uploadResults)[0] || '';
+        const spzResult = uploadResults[spzHostKey] || {};
+        const extraUpdate = isSpz ? { spzUrl: spzResult.url || '' } : {};
         const finalized = await sendMessage('finalizeUploadedVideo', { id: pendingItemId, videoUploadResults: uploadResults, videoUploadErrors: uploadErrors, ...extraUpdate });
-        if (isSpz) await sendMessage('updateImage', { id: pendingItemId, ...extraUpdate, fileType: uploadData.fileType || 'application/octet-stream', fileName: uploadData.fileName });
+        if (isSpz) {
+          // telegram has no watch/direct columns - its scene integrity reads the
+          // file + post ids out of sceneFiles, so they must be stored here too.
+          const sceneFilesUpdate = spzHostKey === 'telegram'
+            ? { extraMetadata: { sceneFiles: { host: 'telegram', telegram: { spz: { fileId: spzResult.fileId || '', messageId: spzResult.messageId || '', filename: uploadData.fileName } } } } }
+            : {};
+          await sendMessage('updateImage', { id: pendingItemId, ...extraUpdate, ...sceneFilesUpdate, fileType: uploadData.fileType || 'application/octet-stream', fileName: uploadData.fileName });
+        }
         await appendClientUploadLog(`[SAVE 3D] Finalized item with ID: ${finalized.id}`, 'success');
         return finalized;
       }
@@ -1585,10 +1602,18 @@ export default function GalleryPage() {
     await appendClientUploadLog(`Scene payload: spz ${(spzFile.size/1024/1024).toFixed(1)}MB + texture ${(textureFile.size/1024/1024).toFixed(1)}MB`);
     try {
       const settings = await sendMessage('getVideoHostSettings');
-      const allowed = ['udrop','terabox'];
-      const configured = getConfiguredVideoUploadServices(settings).filter(s=>allowed.includes(s.key));
+      const configured = getConfiguredVideoUploadServices(settings).filter((s) => THREE_D_HOST_KEYS.includes(s.key));
       const selected = filterUploadServicesByKeys(configured, selectedHostKeys);
-      if (selected.length===0) throw new Error('Select at least one scene host (UDrop/TeraBox).');
+      const hostNames = (configured.length ? configured : VIDEO_UPLOAD_SERVICES.filter((s) => THREE_D_HOST_KEYS.includes(s.key)))
+        .map((s) => s.threeDLabel || s.label).join(' / ');
+      if (selected.length === 0) throw new Error(`Select at least one scene host (${hostNames}).`);
+      // Telegram uploads scene files as documents, so its getFile 20 MB read-back
+      // gate applies to BOTH files. Check before the first byte goes out - a
+      // mid-pair failure would leave a half-uploaded scene behind.
+      for (const svc of selected.filter((s) => s.key === 'telegram')) {
+        assertTelegramUploadSize(spzFile.size, spzFile.name, spzFile.type);
+        assertTelegramUploadSize(textureFile.size, textureFile.name, textureFile.type);
+      }
       let sceneConfig = null;
       if (configFile) {
         try { sceneConfig = flattenSceneConfig(JSON.parse(await configFile.text())); } catch { sceneConfig = null; }
@@ -1605,9 +1630,8 @@ export default function GalleryPage() {
         }
       }
       const tagsArray = (tags||'').split(',').map(t=>t.trim()).filter(Boolean);
-      // Use SceneUploadDialog path via background but bypass 64MiB by doing direct XHR here instead of sendMessage arrays
-      // Upload spz + texture directly via page XHR to selected host(s)
-      const uploaderFor = (key) => { const svc = selected.find(s=>s.key===key); if(!svc) return null; return new svc.uploaderClass(); };
+      // Upload spz + texture page-side (direct XHR) so a >64MiB scene never goes
+      // through sendMessage arrays.
       const uploadOne = async (blob, name, svc) => {
         const uploader = new svc.uploaderClass();
         return svc.uploadWithProgress({ uploader, blob, settings, data: { fileName: name }, onProgress: async ({loaded,total,percent})=>{
@@ -1622,33 +1646,29 @@ export default function GalleryPage() {
       await appendClientUploadLog(`Uploading texture to ${primarySvc.label}...`);
       const texRes = await uploadOne(textureFile, textureFile.name, primarySvc);
       await appendClientUploadLog(`Saving scene to DB...`);
-      const payload = {
-        spzArray: [], textureArray: [], // not used - we did direct upload
-        spzFileName: spzFile.name, spzFileSize: spzFile.size,
-        textureFileName: textureFile.name, textureFileSize: textureFile.size,
-        textureMimeType: textureFile.type || 'image/webp',
-        sceneConfig, pageTitle: pageTitle || spzFile.name.replace('.spz',''), description, tags: tagsArray, collectionId: collectionId||null, pageUrl: '', fileLastModified: spzFile.lastModified,
-        spzDirectUrl: spzRes.directUrl || spzRes.url || spzRes.watchUrl || '', textureDirectUrl: texRes.directUrl || texRes.url || texRes.watchUrl || '',
-        spzFileId: spzRes.fileId || spzRes.filecode || '', textureFileId: texRes.fileId || texRes.filecode || '',
+      const pageTitleOut = pageTitle || spzFile.name.replace('.spz','');
+      const res = await sendMessage('saveUploadedVideo', { imageUrl: '', pageUrl: '', pageTitle: pageTitleOut, fileName: spzFile.name, fileSize: spzFile.size, fileType: 'model/spz', description, tags: tagsArray, collectionId, isVideo: false, kind: 'scene', videoUploadResults: { [primarySvc.key]: spzRes } });
+      const id = res?.id || res;
+      const spzUrl = spzRes.directUrl || spzRes.url || spzRes.watchUrl || '';
+      const textureUrl = texRes.directUrl || texRes.url || texRes.watchUrl || '';
+      // Persist host file refs for the resolve integrity checks (merge-safe:
+      // buildExtraSeed keeps existing extra keys). Without these the scene
+      // thumbnail shows up as a standalone "extra" orphan (2.12.53).
+      const sceneFiles = {
+        host: primarySvc.key,
+        spz: { fileId: spzRes.fileId || spzRes.filecode || '', filename: spzFile.name, messageId: spzRes.messageId || '' },
+        texture: { fileId: texRes.fileId || texRes.filecode || '', filename: texRes.filename || textureFile.name, messageId: texRes.messageId || '' },
+        // per-host block: startSceneFix writes this shape, and the telegram
+        // integrity check reads file/message ids from it.
+        [primarySvc.key]: {
+          spz: { fileId: spzRes.fileId || spzRes.filecode || '', filename: spzFile.name, messageId: spzRes.messageId || '' },
+          texture: { fileId: texRes.fileId || texRes.filecode || '', filename: texRes.filename || textureFile.name, messageId: texRes.messageId || '' },
+        },
       };
-      // Save via background custom path that accepts direct URLs (avoid large array messaging)
-      const saved = await sendMessage('saveSceneDirect', payload).catch(async ()=>{
-        const res = await sendMessage('saveUploadedVideo', { imageUrl: '', pageUrl: '', pageTitle: payload.pageTitle, fileName: payload.spzFileName, fileSize: payload.spzFileSize, fileType: 'model/spz', description, tags: tagsArray, collectionId, isVideo: false, kind: 'scene', videoUploadResults: { [primarySvc.key]: spzRes } });
-        const id = res?.id || res;
-        const spzUrl = spzRes.directUrl || spzRes.url || spzRes.watchUrl || payload.spzDirectUrl || '';
-        const textureUrl = texRes.directUrl || texRes.url || texRes.watchUrl || payload.textureDirectUrl || '';
-        // Persist host file refs for the resolve integrity checks (merge-safe:
-        // buildExtraSeed keeps existing extra keys). Without these the scene
-        // thumbnail shows up as a standalone "extra" orphan (2.12.53).
-        const sceneFiles = {
-          host: primarySvc.key,
-          spz: { fileId: spzRes.fileId || spzRes.filecode || '', filename: spzFile.name },
-          texture: { fileId: texRes.fileId || texRes.filecode || '', filename: texRes.filename || textureFile.name },
-        };
-        try { await sendMessage('updateImage', { id, spzUrl, textureUrl, configJson: sceneConfig ? JSON.stringify(sceneConfig) : null, kind: 'scene', fileType: 'model/spz', spzFileSize: spzFile.size, textureFileSize: textureFile.size, extraMetadata: { sceneFiles } }); } catch {}        return { id, spzUrl, textureUrl };
-      });
-      await appendClientUploadLog(`Scene saved ${saved.id||''}`, 'success');
-      return saved;
+      // A failed URL write would leave a scene row that can never load — throw.
+      await sendMessage('updateImage', { id, spzUrl, textureUrl, configJson: sceneConfig ? JSON.stringify(sceneConfig) : null, kind: 'scene', fileType: 'model/spz', spzFileSize: spzFile.size, textureFileSize: textureFile.size, extraMetadata: { sceneFiles } });
+      await appendClientUploadLog(`Scene saved ${id||''}`, 'success');
+      return { id, spzUrl, textureUrl };
     } finally {
       if (activeVideoUploadControllerRef.current===uploadController) activeVideoUploadControllerRef.current=null;
       await chrome.storage.local.set({ uploadActive: false });
@@ -4797,7 +4817,7 @@ export default function GalleryPage() {
                   <div className="space-y-4">
                 {is3DMode && (
                   <div className="rounded-[var(--radius-box)] border border-cyan-500/20 bg-cyan-500/5 p-4 space-y-3">
-                    <p className="text-sm font-semibold text-cyan-700 flex items-center gap-2"><Box className="w-4 h-4" /> GSplat scene — needs 3 files (.spz + texture .webp + config .json) — uses UDrop/TeraBox direct</p>
+                    <p className="text-sm font-semibold text-cyan-700 flex items-center gap-2"><Box className="w-4 h-4" /> GSplat scene — needs 3 files (.spz + texture .webp + config .json) — uses {THREE_D_HOST_LABEL} direct</p>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div onClick={()=>spzInputRef.current?.click()} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault(); const f=e.dataTransfer.files[0]; if(f&&f.name.endsWith('.spz')) setSceneSpzFile(f);}} className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${sceneSpzFile?'border-cyan-500 bg-cyan-500/10':'border-base-300 hover:border-cyan-500/50'}`}>
                         <input ref={spzInputRef} type="file" accept=".spz" className="hidden" onChange={e=>{const f=e.target.files[0]; if(f) setSceneSpzFile(f); e.target.value='';}} />
@@ -4814,7 +4834,7 @@ export default function GalleryPage() {
                     </div>
                     {sceneSpzFile && sceneTextureFile && sceneConfigFile && (
                       <div className="flex gap-2">
-                        <button onClick={async()=>{ try{ const sel = reconcileSelectedHostKeys(effectiveSelectedUploadHostKeys, configuredUploadServices); if(sel.length===0){ showToast('Select at least one host (UDrop/TeraBox)', 'warning', 3000); return;} await uploadSceneDirectly({ spzFile: sceneSpzFile, textureFile: sceneTextureFile, configFile: sceneConfigFile, pageTitle: uploadTags?sceneSpzFile.name.replace('.spz',''):sceneSpzFile.name.replace('.spz',''), description: uploadDescription, tags: uploadTags, collectionId: selectedCollectionId, selectedHostKeys: sel }); setSceneSpzFile(null); setSceneTextureFile(null); setSceneConfigFile(null); setShowUploadModal(false); await reload(); showToast('Scene uploaded', 'success', 3000);} catch(e){ showToast(e.message,'error',4000);} }} className="flex-1 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium">Upload Scene (3 files)</button>
+                        <button onClick={async()=>{ try{ const sel = reconcileSelectedHostKeys(effectiveSelectedUploadHostKeys, configuredUploadServices); if(sel.length===0){ showToast(`Select at least one host (${THREE_D_HOST_LABEL})`, 'warning', 3000); return;} await uploadSceneDirectly({ spzFile: sceneSpzFile, textureFile: sceneTextureFile, configFile: sceneConfigFile, pageTitle: uploadTags?sceneSpzFile.name.replace('.spz',''):sceneSpzFile.name.replace('.spz',''), description: uploadDescription, tags: uploadTags, collectionId: selectedCollectionId, selectedHostKeys: sel }); setSceneSpzFile(null); setSceneTextureFile(null); setSceneConfigFile(null); setShowUploadModal(false); await reload(); showToast('Scene uploaded', 'success', 3000);} catch(e){ showToast(e.message,'error',4000);} }} className="flex-1 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium">Upload Scene (3 files)</button>
                         <button onClick={()=>{setSceneSpzFile(null); setSceneTextureFile(null); setSceneConfigFile(null);}} className="px-4 py-2 rounded-lg border border-base-300 bg-base-200 text-sm">Clear</button>
                       </div>
                     )}
@@ -4923,7 +4943,7 @@ export default function GalleryPage() {
                             <p className="text-sm font-medium text-base-content">3D model</p>
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${is3DMode ? 'bg-cyan-500 text-white' : 'bg-base-300 text-base-content/60'}`}>{is3DMode ? 'ON' : 'OFF'}</span>
                           </div>
-                          <p className="mt-1 text-xs leading-5 text-base-content/60">{is3DMode ? 'Upload .glb/.gltf/.obj/.fbx/.stl etc to UDrop/TeraBox via direct XHR (no 64MiB limit).' : 'Switch on to upload 3D models (.glb, .obj, .fbx, .stl, .spz).'}</p>
+                          <p className="mt-1 text-xs leading-5 text-base-content/60">{is3DMode ? `Upload .glb/.gltf/.obj/.fbx/.stl etc to ${THREE_D_HOST_LABEL} via direct XHR (no 64MiB limit).` : 'Switch on to upload 3D models (.glb, .obj, .fbx, .stl, .spz).'}</p>
                         </div>
                         <input type="checkbox" checked={is3DMode} onChange={(e) => setIs3DMode(e.target.checked)} disabled={uploading} className="peer sr-only" />
                         <span aria-hidden="true" className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${is3DMode ? 'bg-cyan-500' : 'bg-base-300'}`}><span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${is3DMode ? 'translate-x-[22px]' : 'translate-x-0.5'}`} /></span>
@@ -5344,7 +5364,7 @@ export default function GalleryPage() {
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${is3DMode ? 'bg-cyan-500 text-white' : 'bg-base-300 text-base-content/60'}`}>{is3DMode ? 'ON' : 'OFF'}</span>
                           </div>
                           <p className="mt-1 text-xs leading-5 text-base-content/60">
-                            {is3DMode ? 'Upload .glb/.gltf/.obj/.fbx/.stl etc to UDrop/TeraBox via direct XHR (no 64MiB limit).' : 'Switch on to upload 3D models (.glb, .obj, .fbx, .stl, .spz).'}
+                            {is3DMode ? `Upload .glb/.gltf/.obj/.fbx/.stl etc to ${THREE_D_HOST_LABEL} via direct XHR (no 64MiB limit).` : 'Switch on to upload 3D models (.glb, .obj, .fbx, .stl, .spz).'}
                           </p>
                         </div>
                         <input type="checkbox" checked={is3DMode} onChange={(e) => setIs3DMode(e.target.checked)} disabled={uploading} className="peer sr-only" />

@@ -108,7 +108,11 @@ export default function SceneViewerPage() {
 
     async function fetchSpz() {
       if (!spzUrl) throw new Error('No scene URL provided')
-      const resp = await fetch(`/api/media?url=${encodeURIComponent(spzUrl)}`)
+      // Telegram scenes store the platform-local route (`/telegram-media/<fileId>`);
+      // /api/media only proxies absolute http(s) URLs, so local paths fetch same-origin.
+      const resp = await fetch(
+        spzUrl.startsWith('/') ? spzUrl : `/api/media?url=${encodeURIComponent(spzUrl)}`
+      )
       if (!resp.ok) {
         const body = (await resp.text()).slice(0, 200)
         throw new Error(`Scene file fetch failed: HTTP ${resp.status} — ${body}`)

@@ -376,3 +376,184 @@ export async function listTelegramPosts(token, channel, { maxPages = 400, signal
 
   return [...ids].sort((a, b) => a - b).map((id) => ({ messageId: String(id) }));
 }
+
+/** Public post page for a channel message (the only token-free link to it). */
+export function telegramPostPageUrl(channel, messageId) {
+  const clean = String(channel || '').trim().replace(/^@+/, '');
+  const id = String(messageId || '').trim();
+  return clean && id ? `https://t.me/${clean}/${id}` : '';
+}
+
+/** fileId out of a platform-local `/telegram-media/<fileId>?mt=` url. */
+export function telegramFileIdFromLocalUrl(url) {
+  const match = String(url || '').match(/^\/telegram-media\/([^/?#]+)/);
+  if (!match) return '';
+  try {
+    return decodeURIComponent(match[1]);
+  } catch (_) {
+    return match[1];
+  }
+}
+
+const isTelegramLocalUrl = (url) => /^\/telegram-media\//.test(String(url || ''));
+
+/**
+ * Telegram scene refs for one item. Telegram stores scenes as two DOCUMENT
+ * posts (spz + texture) whose readable URL is `/telegram-media/<fileId>`; the
+ * ids live in `extraMetadata.sceneFiles.telegram` (written by the scene upload
+ * and the scene Fix), with `videoHosts.telegram` as the legacy spz-only shape.
+ */
+const pickTelegramSceneRefs = (item) => {
+  const extra = item?.extraMetadata && typeof item.extraMetadata === 'object' ? item.extraMetadata : {};
+  const scene = extra.sceneFiles?.telegram && typeof extra.sceneFiles.telegram === 'object'
+    ? extra.sceneFiles.telegram
+    : {};
+  const vh = {
+    ...(extra.videoHosts?.telegram && typeof extra.videoHosts.telegram === 'object' ? extra.videoHosts.telegram : {}),
+    ...(item?.videoHosts?.telegram && typeof item.videoHosts.telegram === 'object' ? item.videoHosts.telegram : {}),
+  };
+  const spz = scene.spz && typeof scene.spz === 'object' ? scene.spz : {};
+  const texture = scene.texture && typeof scene.texture === 'object' ? scene.texture : {};
+  const spzFileId = String(spz.fileId || telegramFileIdFromLocalUrl(item?.spzUrl) || '').trim();
+  const texFileId = String(texture.fileId || telegramFileIdFromLocalUrl(item?.textureUrl) || '').trim();
+  return {
+    spzFileId,
+    texFileId,
+    spzMessageId: String(spz.messageId || vh.messageId || '').trim(),
+    texMessageId: String(texture.messageId || '').trim(),
+    spzName: String(spz.filename || vh.filename || item?.fileName || ''),
+    texName: String(texture.filename || ''),
+    // host-specific ref: a udrop/terabox scene must land in noUrl here, not missing.
+    hasRef: Boolean(
+      scene.spz || scene.texture ||
+      spzFileId || texFileId ||
+      isTelegramLocalUrl(item?.spzUrl) || isTelegramLocalUrl(item?.textureUrl) ||
+      vh.messageId || vh.watchUrl || vh.url
+    ),
+  };
+};
+
+/**
+ * 3D scene integrity check against Telegram — symmetric to the UDrop/TeraBox
+ * scene checks. Two documents per scene (spz + texture) are probed with
+ * getFile: a deleted post or an over-20 MB file is a broken link, while a
+ * network/5xx failure THROWS (an outage is never reported as data loss).
+ *
+ * The channel is enumerable through `t.me/s/` (message ids only), so "extra"
+ * is per POST, not per scene: a healthy scene contributes two posts.
+ *
+ * @param {Array} items – scene DB items
+ * @param {Array} allItems – every DB item; any telegram post they reference is
+ *                           excluded from the extra list
+ * @returns {Promise<{found:[],missing:[],noUrl:[],extra:[]}>}
+ */
+export async function checkTelegramSceneIntegrity(items, allItems, { token, channel, onProgress } = {}) {
+  if (!token) throw new Error('Telegram bot token is not configured. Set it in Settings -> API Keys.');
+  const cleanChannel = String(channel || '').trim().replace(/^@+/, '');
+  if (!cleanChannel) throw new Error('Telegram channel is not configured. Set it in Settings -> API Keys.');
+
+  const refsByItem = new Map();
+  const fileIds = new Set();
+  for (const item of items || []) {
+    if (!item) continue;
+    const refs = pickTelegramSceneRefs(item);
+    refsByItem.set(item.id, refs);
+    if (refs.spzFileId) fileIds.add(refs.spzFileId);
+    if (refs.texFileId) fileIds.add(refs.texFileId);
+  }
+
+  const probe = new Map();
+  const ids = [...fileIds];
+  for (let i = 0; i < ids.length; i += 1) {
+    if (onProgress) onProgress({ phase: 'files', done: i, total: ids.length });
+    const fileId = ids[i];
+    try {
+      const info = await getTelegramFileInfo(token, fileId);
+      probe.set(fileId, { ok: true, info });
+    } catch (err) {
+      const message = err?.message || String(err);
+      // 4xx = the host refusing THIS file id (deleted post, invalid id, over
+      // the getFile gate). Anything else (network, 5xx) aborts the check.
+      if (!/(HTTP )?4\d\d/.test(message)) throw err;
+      console.warn(`[telegram] scene file ${fileId} is not readable: ${message}`);
+      probe.set(fileId, { ok: false, reason: message });
+    }
+  }
+  if (onProgress) onProgress({ phase: 'files', done: ids.length, total: ids.length });
+
+  const found = [];
+  const missing = [];
+  const noUrl = [];
+  for (const item of items || []) {
+    if (!item) continue;
+    const refs = refsByItem.get(item.id);
+    if (!refs || !refs.hasRef) {
+      noUrl.push({ item, codes: [], spzCode: null, texCode: null, spzMatched: null, texMatched: null });
+      continue;
+    }
+    const spzProbe = refs.spzFileId ? probe.get(refs.spzFileId) : null;
+    const texProbe = refs.texFileId ? probe.get(refs.texFileId) : null;
+    const spzMatched = spzProbe?.ok ? { name: refs.spzName || 'scene.spz', file_id: refs.spzFileId } : null;
+    const texMatched = texProbe?.ok ? { name: refs.texName || 'texture.webp', file_id: refs.texFileId } : null;
+    const needsSpz = Boolean(refs.spzFileId);
+    const needsTex = Boolean(refs.texFileId);
+    const spzOk = !needsSpz || Boolean(spzMatched);
+    const texOk = !needsTex || Boolean(texMatched);
+    const reasons = [
+      spzProbe && !spzProbe.ok ? `SPZ: ${spzProbe.reason}` : '',
+      texProbe && !texProbe.ok ? `Image: ${texProbe.reason}` : '',
+      !needsSpz && !needsTex ? 'no file id stored for this scene post' : '',
+    ].filter(Boolean);
+    const entry = {
+      item,
+      codes: [refs.spzFileId, refs.texFileId].filter(Boolean),
+      spzCode: refs.spzFileId || null,
+      texCode: refs.texFileId || null,
+      spzMatched,
+      texMatched,
+      spzFileName: refs.spzName || '',
+      texFileName: refs.texName || '',
+      spzPageUrl: telegramPostPageUrl(cleanChannel, refs.spzMessageId),
+      texPageUrl: telegramPostPageUrl(cleanChannel, refs.texMessageId),
+      reasons,
+    };
+    if (spzOk && texOk && (spzMatched || texMatched)) found.push(entry);
+    else missing.push(entry);
+  }
+
+  // Every telegram post referenced by ANY item (image, video, scene) is never
+  // an orphan — scenes are excluded from the video tab's ref set, so their two
+  // posts must be collected here.
+  const referencedMessageIds = new Set();
+  const addRef = (value) => {
+    const id = Number(value);
+    if (Number.isFinite(id)) referencedMessageIds.add(id);
+  };
+  for (const item of allItems || []) {
+    if (!item) continue;
+    const extra = item?.extraMetadata && typeof item.extraMetadata === 'object' ? item.extraMetadata : {};
+    const scene = extra.sceneFiles?.telegram && typeof extra.sceneFiles.telegram === 'object'
+      ? extra.sceneFiles.telegram
+      : {};
+    addRef(scene.spz?.messageId);
+    addRef(scene.texture?.messageId);
+    for (const bucket of ['videoHosts', 'imageHosts']) {
+      addRef(extra?.[bucket]?.telegram?.messageId);
+      addRef(item?.[bucket]?.telegram?.messageId);
+    }
+  }
+
+  const posts = await listTelegramPosts(token, cleanChannel, {
+    onProgress: (p) => {
+      if (onProgress) onProgress({ phase: 'listing', page: p.page, posts: p.posts });
+    },
+  });
+  const extra = posts
+    .filter((post) => !referencedMessageIds.has(Number(post.messageId)))
+    .map((post) => ({
+      messageId: String(post.messageId),
+      pageUrl: telegramPostPageUrl(cleanChannel, post.messageId),
+    }));
+
+  return { found, missing, noUrl, extra };
+}

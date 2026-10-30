@@ -78,6 +78,7 @@ export const VIDEO_UPLOAD_SERVICES = [
     directUrlField: 'udropDirectUrl',
     aliasWatchUrlField: 'udropUrl',
     vaultBlobHost: true,
+    threeDHost: true,
     isConfigured: (settings) => hasText(settings?.udropKey1) && hasText(settings?.udropKey2),
   },
   {
@@ -92,6 +93,7 @@ export const VIDEO_UPLOAD_SERVICES = [
     directUrlField: 'teraboxDirectUrl',
     aliasWatchUrlField: 'teraboxUrl',
     vaultBlobHost: true,
+    threeDHost: true,
     isConfigured: () => true, // cookie auto-reads from browser session
   },
   {
@@ -107,6 +109,10 @@ export const VIDEO_UPLOAD_SERVICES = [
     apiKeyFields: ['telegramBotToken', 'telegramChannel'],
     required: false,
     uploaderKey: 'telegramUploader',
+    threeDHost: true,
+    // scene files upload as documents, so the getFile 20 MB read-back gate is the
+    // real scene limit - the label says so instead of reusing the mp4 wording.
+    threeDLabel: 'Telegram (≤ 20 MB docs)',
     isConfigured: (settings) => hasText(settings?.telegramBotToken) && hasText(settings?.telegramChannel),
   },
 ];
@@ -129,9 +135,12 @@ export const VIDEO_SOURCE_OPTIONS = VIDEO_UPLOAD_SERVICES.map(({ sourceValue, so
   return a.label.localeCompare(b.label);
 });
 
-export const THREE_D_SOURCE_OPTIONS = VIDEO_UPLOAD_SERVICES.filter(
-  (s) => s.key === 'udrop' || s.key === 'terabox'
-).map(({ sourceValue, sourceLabel }) => ({ value: sourceValue, label: sourceLabel }))
+/** Hosts that can store 3D scene files (.spz + texture). Marketing rule: every
+ *  new 3D host opts in here (threeDHost) — no duplicated key lists in the UI. */
+export const THREE_D_HOST_KEYS = VIDEO_UPLOAD_SERVICES.filter((s) => s.threeDHost).map((s) => s.key);
+
+export const THREE_D_SOURCE_OPTIONS = VIDEO_UPLOAD_SERVICES.filter((s) => s.threeDHost)
+  .map(({ sourceValue, sourceLabel, threeDLabel }) => ({ value: sourceValue, label: threeDLabel || sourceLabel }))
   .sort((a, b) => {
     if (a.value === DEFAULT_3D_SOURCE) return -1;
     if (b.value === DEFAULT_3D_SOURCE) return 1;
