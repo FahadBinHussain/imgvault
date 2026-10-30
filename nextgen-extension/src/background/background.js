@@ -1167,6 +1167,8 @@ class ImgVaultServiceWorker {
    * Only holds while the vault is unlocked; cleared on vaultClearMasterKey.
    */
   async setVaultMasterKey(keyB64) {
+    // A new (or cleared) session must be allowed to re-report fallbacks.
+    this._vaultReadNotified = new Set();
     if (!keyB64) {
       this.vaultMasterKey = null;
       // Cached plaintext must never outlive the key (2.12.85).
@@ -1371,7 +1373,7 @@ class ImgVaultServiceWorker {
    *   [{host, encryptedBlobUrl, encryptedBlobFileId}]; when present, each chunk
    *   fetch tries every copy (redundancy across vault blob hosts).
    */
-  async decryptVaultBlob(url, mimeType = 'application/octet-stream', fileId = '', chunks = [], vaultHost = DEFAULT_VAULT_BLOB_HOST, fileName = '', onProgress = null, hostCopies = null) {
+  async decryptVaultBlob(url, mimeType = 'application/octet-stream', fileId = '', chunks = [], vaultHost = DEFAULT_VAULT_BLOB_HOST, fileName = '', onProgress = null, hostCopies = null, itemId = '') {
     if (!this.vaultMasterKey) {
       throw new Error('Secret Vault is locked. Unlock it before viewing encrypted items.');
     }
@@ -1427,23 +1429,42 @@ class ImgVaultServiceWorker {
 
     const fetchOne = async (chunk, index) => {
       const candidates = candidatesFor(chunk);
+      const primaryHost = String(candidates[0]?.host || '').toLowerCase();
+      const failures = [];
       let lastErr;
-      for (const candidate of candidates) {
+      for (let ci = 0; ci < candidates.length; ci += 1) {
+        const candidate = candidates[ci];
         if (!candidate.url) continue;
+        const served = () => {
+          if (ci > 0) {
+            this._noteVaultReadFallback(itemId, {
+              host: String(candidate.host || '').toLowerCase(),
+              primaryHost,
+              failures,
+            });
+          }
+        };
         // 1) stored URL first
         try {
           const resp = await fetch(candidate.url);
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          return await streamToBlob(resp, chunk.size);
+          const blob = await streamToBlob(resp, chunk.size);
+          served();
+          return blob;
         } catch (_) {
           lastErr = _;
+          failures.push(`${candidate.host}: ${_?.message || _}`);
         }
         // 2) try a regenerated fresh URL for this copy (signed URLs expire)
         try {
           const fresh = await this.resolveVaultDownloadUrl(candidate.url, candidate.fileId, candidate.host, fileName);
           if (fresh && fresh !== candidate.url) {
             const resp = await fetch(fresh);
-            if (resp.ok) return await streamToBlob(resp, chunk.size);
+            if (resp.ok) {
+              const blob = await streamToBlob(resp, chunk.size);
+              served();
+              return blob;
+            }
           }
         } catch (_2) {
           lastErr = _2;
@@ -2028,18 +2049,43 @@ class ImgVaultServiceWorker {
     if (!id || !Array.isArray(copies) || copies.length === 0) {
       throw new Error('Vault item has no blob copies to resolve.');
     }
+    const failures = [];
     const freshCopies = [];
     for (const copy of copies) {
       const host = copy.host || DEFAULT_VAULT_BLOB_HOST;
       const resolveTask = () => this.resolveVaultDownloadUrl(copy.encryptedBlobUrl || '', copy.encryptedBlobFileId || '', host, fileName);
-      const fresh = await Promise.race([
-        host.toLowerCase() === 'terabox' ? this._enqueueTeraBoxResolve(resolveTask) : resolveTask(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error(`${host} resolve timed out`)), timeoutMs)),
-      ]);
-      const url = (fresh && fresh !== copy.encryptedBlobUrl) ? fresh : (copy.encryptedBlobUrl || '');
+      let url = copy.encryptedBlobUrl || '';
+      try {
+        const fresh = await Promise.race([
+          host.toLowerCase() === 'terabox' ? this._enqueueTeraBoxResolve(resolveTask) : resolveTask(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error(`${host} resolve timed out`)), timeoutMs)),
+        ]);
+        if (fresh && fresh !== copy.encryptedBlobUrl) url = fresh;
+      } catch (err) {
+        // One dead copy must not sink the item — the SW gets the rest and the
+        // first healthy one serves. But it is a fallback, so name it.
+        failures.push(`${host}: ${err.message}`);
+      }
       // cache it for the stream handler too, so legacy URL query paths hit it
       (this.vaultStreamUrlCache ||= new Map()).set(`${id}:${host}`, url);
       freshCopies.push({ ...copy, encryptedBlobUrl: url, fresh: true });
+    }
+    if (failures.length === copies.length) {
+      throw new Error(`No vault blob copy could be resolved (${failures.join('; ')})`);
+    }
+    if (failures.length > 0) {
+      const failedHosts = new Set(failures.map((reason) => reason.split(':')[0]));
+      const served = freshCopies.find(
+        (copy) => !failedHosts.has(String(copy.host || DEFAULT_VAULT_BLOB_HOST).toLowerCase())
+      );
+      const primaryHost = String(copies[0]?.host || DEFAULT_VAULT_BLOB_HOST).toLowerCase();
+      if (served && String(served.host || '').toLowerCase() !== primaryHost) {
+        this._noteVaultReadFallback(id, {
+          host: String(served.host || '').toLowerCase(),
+          primaryHost,
+          failures,
+        });
+      }
     }
     return freshCopies;
   }
@@ -2057,9 +2103,46 @@ class ImgVaultServiceWorker {
    * @param {number} end
    * @returns {Promise<Uint8Array>}
    */
+  /**
+   * Announce that a vault read was served by a non-primary copy. The vault
+   * stores the same blob on every selected host; when copy[0] is dead the read
+   * silently rolls onto copy[1] — that is a fallback, and the UI must say so
+   * instead of letting the item look normal. Deduped per item+host so a video's
+   * dozens of Range reads only report once.
+   * @param {string} itemId
+   * @param {{host:string,primaryHost:string,failures:string[]}} info
+   */
+  _noteVaultReadFallback(itemId, info) {
+    if (!itemId) return;
+    const key = `${itemId}:${info.host}`;
+    this._vaultReadNotified ||= new Set();
+    if (this._vaultReadNotified.has(key)) return;
+    if (this._vaultReadNotified.size > 200) this._vaultReadNotified.clear();
+    this._vaultReadNotified.add(key);
+    console.warn(
+      `[Vault] ${itemId} served from secondary host ${info.host} — primary ${info.primaryHost} failed`,
+      info.failures
+    );
+    try {
+      const pending = chrome.runtime.sendMessage({
+        type: 'vaultReadFallback',
+        itemId,
+        host: info.host,
+        primaryHost: info.primaryHost,
+        failures: info.failures,
+      });
+      if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+    } catch (_) {
+      // no extension page open to receive it
+    }
+  }
+
   async fetchVaultBlobRange(item, hostCopies, fileName, start, end) {
     let lastError = null;
-    for (const copy of hostCopies) {
+    const failures = [];
+    const primaryHost = String(hostCopies[0]?.host || DEFAULT_VAULT_BLOB_HOST).toLowerCase();
+    for (let copyIndex = 0; copyIndex < hostCopies.length; copyIndex += 1) {
+      const copy = hostCopies[copyIndex];
       const host = (copy.host || DEFAULT_VAULT_BLOB_HOST).toLowerCase();
       try {
         // terabox dm-d dlinks are single-use — every byte-range read MUST get
@@ -2103,9 +2186,11 @@ class ImgVaultServiceWorker {
         const arr = new Uint8Array(await resp.arrayBuffer());
         // 206 = host honored Range and returned exactly [start,end]; 200 = host
         // ignored Range and returned the full blob → slice the range out.
-        if (resp.status === 206) return arr;
-        return arr.slice(start, end + 1);
+        const out = resp.status === 206 ? arr : arr.slice(start, end + 1);
+        if (copyIndex > 0) this._noteVaultReadFallback(item?.id, { host, primaryHost, failures });
+        return out;
       } catch (err) {
+        failures.push(`${host}: ${err.message}`);
         lastError = err;
       }
     }
@@ -2697,7 +2782,8 @@ class ImgVaultServiceWorker {
           request.data?.vaultHost || DEFAULT_VAULT_BLOB_HOST,
           request.data?.fileName || '',
           null,
-          request.data?.hostCopies || null
+          request.data?.hostCopies || null,
+          request.data?.id || ''
         )
           .then((blob) => sendResponse({ success: true, data: { blob } }))
           .catch(error => sendResponse({ success: false, error: error.message }));

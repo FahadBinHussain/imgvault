@@ -74,19 +74,24 @@ async function resolveCopyUrl(copy, settings) {
  * (the vault stores a copy per selected host) and throws with each host's
  * failure named — never a silent empty body.
  *
- * @returns {Promise<{body: ReadableStream, status: number, contentLength: number, total: number|null, host: string}>}
+ * @returns {Promise<{body: ReadableStream, status: number, contentLength: number,
+ *   total: number|null, host: string, primaryHost: string, copyIndex: number,
+ *   failures: string[]}>} `copyIndex > 0` = the primary copy failed and a
+ *   secondary one served the read.
  */
 export async function openVaultCiphertext({ extra, settings, start = null, end = null }) {
   const copies = vaultBlobCopies(extra)
   if (copies.length === 0) throw new Error('Vault item has no encrypted blob copies')
 
-  const reasons = []
-  for (const copy of copies) {
+  const primaryHost = copies[0].host
+  const failures = []
+  for (let copyIndex = 0; copyIndex < copies.length; copyIndex += 1) {
+    const copy = copies[copyIndex]
     let url
     try {
       url = await resolveCopyUrl(copy, settings)
     } catch (error) {
-      reasons.push(`${copy.host}: ${error.message}`)
+      failures.push(`${copy.host}: ${error.message}`)
       continue
     }
 
@@ -101,25 +106,28 @@ export async function openVaultCiphertext({ extra, settings, start = null, end =
     try {
       res = await fetch(url, { headers, cache: 'no-store', redirect: 'follow' })
     } catch (error) {
-      reasons.push(`${copy.host}: fetch failed (${error.message})`)
+      failures.push(`${copy.host}: fetch failed (${error.message})`)
       continue
     }
 
     if (!res.ok || !res.body) {
-      reasons.push(`${copy.host}: HTTP ${res.status}`)
+      failures.push(`${copy.host}: HTTP ${res.status}`)
       continue
     }
 
     const contentLength = Number(res.headers.get('content-length') || 0)
     const contentRange = res.headers.get('content-range')
     const totalFromRange = contentRange ? Number(contentRange.split('/')[1]) : null
+    // `copyIndex > 0` means the shipped primary copy could not serve this read —
+    // the callers must label that loudly instead of pretending it is normal.
+    const served = { copyIndex, primaryHost, host: copy.host, failures }
 
     if (!ranged) {
-      return { body: res.body, status: 200, contentLength, total: totalFromRange, host: copy.host }
+      return { body: res.body, status: 200, contentLength, total: totalFromRange, ...served }
     }
 
     if (res.status === 206) {
-      return { body: res.body, status: 206, contentLength, total: totalFromRange, host: copy.host }
+      return { body: res.body, status: 206, contentLength, total: totalFromRange, ...served }
     }
 
     // host ignored Range and is sending the whole blob — slice the requested
@@ -130,11 +138,11 @@ export async function openVaultCiphertext({ extra, settings, start = null, end =
       status: 206,
       contentLength: wanted,
       total: contentLength || totalFromRange,
-      host: copy.host,
+      ...served,
     }
   }
 
-  throw new Error(`No readable vault blob copy (${reasons.join('; ')})`)
+  throw new Error(`No readable vault blob copy (${failures.join('; ')})`)
 }
 
 function sliceStream(body, skip, length) {

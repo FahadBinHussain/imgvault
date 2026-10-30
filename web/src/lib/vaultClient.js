@@ -64,6 +64,16 @@ async function readErrorBody(res) {
   }
 }
 
+function readBlobMeta(res) {
+  return {
+    host: res.headers.get('x-vault-blob-host') || '',
+    primaryHost: res.headers.get('x-vault-blob-primary') || '',
+    copyIndex: Number(res.headers.get('x-vault-blob-copy') || 0),
+    fallback: res.headers.get('x-vault-blob-fallback') === '1',
+    failures: res.headers.get('x-vault-blob-failed') || '',
+  }
+}
+
 async function fetchVaultRange(id, start, end) {
   const res = await fetch(`/api/vault/blob?id=${encodeURIComponent(id)}`, {
     headers: { Range: `bytes=${start}-${end}` },
@@ -72,26 +82,44 @@ async function fetchVaultRange(id, start, end) {
   if (!res.ok) {
     throw new Error(await readErrorBody(res))
   }
+  const meta = readBlobMeta(res)
   const bytes = new Uint8Array(await res.arrayBuffer())
   const expected = end - start + 1
   if (bytes.length !== expected) {
     throw new Error(`vault blob range ${start}-${end} returned ${bytes.length} of ${expected} bytes`)
   }
-  return bytes
+  return { bytes, meta }
 }
 
 /**
  * Decrypt a stored encrypted vault blob into a playable Blob.
  * IVG1 blobs are read + decrypted one 8 MiB chunk at a time, so peak memory is
  * a few chunks instead of the whole file; legacy single-shot blobs still work.
+ * `onHostInfo` fires once per read with `{host, primaryHost, failures}` when the
+ * server had to serve from a non-primary copy.
  */
-export async function decryptVaultBlob({ id, mimeType = 'application/octet-stream', masterKey, onProgress }) {
+export async function decryptVaultBlob({
+  id,
+  mimeType = 'application/octet-stream',
+  masterKey,
+  onProgress,
+  onHostInfo,
+}) {
+  let reportedFallback = false
+  const noteMeta = (meta) => {
+    if (reportedFallback || !meta?.fallback) return
+    reportedFallback = true
+    onHostInfo?.(meta)
+  }
+
   const header = await fetchVaultRange(id, 0, VAULT_HEADER_SIZE - 1)
-  const parsed = parseVaultBlobHeader(header)
+  noteMeta(header.meta)
+  const parsed = parseVaultBlobHeader(header.bytes)
 
   if (!parsed) {
     const res = await fetch(`/api/vault/blob?id=${encodeURIComponent(id)}`, { cache: 'no-store' })
     if (!res.ok) throw new Error(await readErrorBody(res))
+    noteMeta(readBlobMeta(res))
     const raw = await res.blob()
     return decryptBlob(masterKey, raw, mimeType, onProgress)
   }
@@ -107,7 +135,8 @@ export async function decryptVaultBlob({ id, mimeType = 'application/octet-strea
       next += 1
       const offset = layout.encryptedChunkOffset(index)
       const length = layout.encryptedChunkLength(index)
-      const ciphertext = await fetchVaultRange(id, offset, offset + length - 1)
+      const { bytes: ciphertext, meta } = await fetchVaultRange(id, offset, offset + length - 1)
+      noteMeta(meta)
       parts[index] = await decryptEncryptedChunk(masterKey, ciphertext)
       done += layout.plainChunkLength(index)
       onProgress?.({

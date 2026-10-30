@@ -197,6 +197,7 @@ export default function VaultPage() {
   const [activeTab, setActiveTab] = useState('noobs');
   const [loadedImages, setLoadedImages] = useState(new Set());
   const [toast, setToast] = useState(null);
+  const [readFallbacks, setReadFallbacks] = useState({}); // itemId -> {host, primaryHost, failures}
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [restoringId, setRestoringId] = useState('');
   const [deletingId, setDeletingId] = useState('');
@@ -383,6 +384,7 @@ export default function VaultPage() {
         }
         setStreamFormat((prev) => ({ ...prev, [selectedItem.id]: { chunked: false } }));
         const result = await sendMessage('vaultDecryptBlob', {
+          id: selectedItem.id,
           url: (freshCopies?.[0]?.encryptedBlobUrl) || selectedItem.encryptedBlobUrl,
           fileId: (freshCopies?.[0]?.encryptedBlobFileId) || selectedItem.encryptedBlobFileId || '',
           chunks: selectedItem.encryptedBlobChunks || [],
@@ -412,6 +414,25 @@ export default function VaultPage() {
       setTimeout(() => setToast(null), duration);
     }
   };
+
+  // The SW broadcasts once per item+host when a read had to roll off the
+  // primary encrypted copy. That is a fallback, so it gets a toast plus a
+  // persistent banner on the item — never a silent normal-looking read.
+  const readToastRef = useRef(showToast);
+  readToastRef.current = showToast;
+  useEffect(() => {
+    const onMessage = (message) => {
+      if (message?.type !== 'vaultReadFallback' || !message.itemId) return;
+      setReadFallbacks((prev) => ({ ...prev, [message.itemId]: message }));
+      readToastRef.current(
+        `Served from ${String(message.host || '').toUpperCase()} — the primary ${String(message.primaryHost || '').toUpperCase()} copy failed`,
+        'warning',
+        8000
+      );
+    };
+    chrome.runtime.onMessage.addListener(onMessage);
+    return () => chrome.runtime.onMessage.removeListener(onMessage);
+  }, []);
 
   // Dropping files on the vault page hands them to the gallery upload modal
   // with "Upload to Secret Vault" already on; the modal owns the passcode gate.
@@ -905,6 +926,7 @@ export default function VaultPage() {
     setUnlocked(false);
     setSelectedItem(null);
     setVaultItems([]);
+    setReadFallbacks({});
     closeChangePasswordModal();
   };
 
@@ -1263,6 +1285,7 @@ export default function VaultPage() {
   // _decryptedMeta after unlock. Overlay it for the detail modal so it shows
   // the same real info the cards/search already use instead of N/A + blob name.
   const detailItem = getVaultDisplayItem(selectedItem);
+  const selectedReadFallback = selectedItem ? readFallbacks[selectedItem.id] : null;
 
   return (
     <div className="min-h-screen bg-base-200 text-base-content g-page">
@@ -1595,11 +1618,26 @@ export default function VaultPage() {
         renderMedia={renderVaultMedia}
         actions={renderVaultActions}
         technicalEmptyText="No extra technical fields on this vault item."
-        overviewNotice={selectedItem?.encryptedMetadata && !selectedItem?._decryptedMeta ? (
-          <div className="rounded-[var(--radius-box)] border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
-            Metadata decryption failed for this item — showing the encrypted placeholder fields. Reload the vault page to retry.
-          </div>
-        ) : null}
+        overviewNotice={
+          (selectedReadFallback || (selectedItem?.encryptedMetadata && !selectedItem?._decryptedMeta)) ? (
+            <>
+              {selectedReadFallback && (
+                <div className="rounded-[var(--radius-box)] border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
+                  <span className="font-semibold">Served from {String(selectedReadFallback.host || '').toUpperCase()}.</span>{' '}
+                  The primary {String(selectedReadFallback.primaryHost || '').toUpperCase()} copy failed
+                  ({Array.isArray(selectedReadFallback.failures) && selectedReadFallback.failures.length > 0
+                    ? selectedReadFallback.failures.join('; ')
+                    : 'no reason reported'}), so this read used a secondary encrypted copy.
+                </div>
+              )}
+              {selectedItem?.encryptedMetadata && !selectedItem?._decryptedMeta && (
+                <div className="rounded-[var(--radius-box)] border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
+                  Metadata decryption failed for this item — showing the encrypted placeholder fields. Reload the vault page to retry.
+                </div>
+              )}
+            </>
+          ) : null
+        }
       />
 
       <Modal

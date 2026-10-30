@@ -14,6 +14,7 @@ import {
   Trash2,
   Download,
   X,
+  TriangleAlert,
 } from 'lucide-react'
 import { MediaDetailModal } from 'imgvault-ui'
 import { downloadFieldViaProxy } from '@/lib/downloads'
@@ -53,6 +54,7 @@ export default function GalleryLightbox({
   onRestoreFromVault,
   isRestoringFromVault = false,
   shareStatus = '',
+  readWarning = '',
   redactedFields = [],
   omittedFields = [],
   preferredProvider = DEFAULT_IMAGE_SOURCE,
@@ -830,11 +832,17 @@ export default function GalleryLightbox({
           )}
         </div>
       ) : null}
-      overviewNotice={saveError || shareStatus || downloadNotice ? (
+      overviewNotice={saveError || readWarning || shareStatus || downloadNotice ? (
         <div className="space-y-2">
           {saveError && (
             <div className="rounded-[var(--radius-box)] border border-error/30 bg-error/10 text-error text-xs p-2">
               {saveError}
+            </div>
+          )}
+          {readWarning && (
+            <div className="flex items-start gap-2 rounded-[var(--radius-box)] border border-warning/40 bg-warning/15 p-2 text-xs text-warning">
+              <TriangleAlert className="mt-px h-4 w-4 shrink-0" />
+              <span className="break-words">{readWarning}</span>
             </div>
           )}
           {shareStatus && (

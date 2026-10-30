@@ -11,6 +11,11 @@ import { openVaultCiphertext } from '@/lib/vaultBlobSource'
 
 const RANGE_RE = /^bytes=(\d+)-(\d+)$/
 
+// Header values are Latin-1 only; provider error text can carry anything.
+function headerText(value, max = 120) {
+  return String(value || '').replace(/[^\x20-\x7E]/g, ' ').slice(0, max)
+}
+
 function parseRange(header) {
   if (!header) return null
   const match = RANGE_RE.exec(header.trim())
@@ -69,18 +74,27 @@ export async function GET(request) {
       .where(eq(settingsTable.id, 'config'))
       .limit(1)
 
-    const { body, status, contentLength, total, host } = await openVaultCiphertext({
-      extra,
-      settings: settingsRow,
-      start: range ? range.start : null,
-      end: range ? range.end : null,
-    })
+    const { body, status, contentLength, total, host, primaryHost, copyIndex, failures } =
+      await openVaultCiphertext({
+        extra,
+        settings: settingsRow,
+        start: range ? range.start : null,
+        end: range ? range.end : null,
+      })
 
     const headers = {
       'Content-Type': 'application/octet-stream',
       'Cache-Control': 'no-store',
       'Accept-Ranges': 'bytes',
-      'X-Vault-Blob-Host': host,
+      'X-Vault-Blob-Host': headerText(host),
+      'X-Vault-Blob-Primary': headerText(primaryHost),
+      'X-Vault-Blob-Copy': String(copyIndex),
+    }
+    if (copyIndex > 0) {
+      // The primary encrypted copy could not serve this read. Say so explicitly
+      // so the UI can label it — a silent fallback is exactly what we refuse.
+      headers['X-Vault-Blob-Fallback'] = '1'
+      headers['X-Vault-Blob-Failed'] = headerText(failures.join('; '), 400)
     }
     if (contentLength > 0) headers['Content-Length'] = String(contentLength)
     if (status === 206) {

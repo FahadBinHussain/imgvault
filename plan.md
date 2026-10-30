@@ -324,9 +324,12 @@ vault upload
 ### decrypt path (VaultPage.jsx, background.js)
 - ~~try udrop first, then TeraBox; show a "slow" indicator on the TeraBox path.~~ shipped,
   but no slow-indicator label (the throttle turned out to be avoidable by dropping the
-  cookie, so there is nothing slow to warn about). **no visible host badge is shown when
+  cookie, so there is nothing slow to warn about). ~~**no visible host badge is shown when
   reading from a secondary copy** — if a read ever silently lands on a non-primary host,
-  that is a missing loud label, worth adding if it comes up.
+  that is a missing loud label, worth adding if it comes up.~~ **added 2.17.3**: the read
+  layer now returns which copy served it (`copyIndex`/`primaryHost`/`failures`), the web
+  proxy turns that into `X-Vault-Blob-Fallback` headers → page banner + lightbox warning,
+  and the extension SW broadcasts `vaultReadFallback` → toast + detail-modal banner.
 
 ## open questions — all resolved
 
@@ -764,4 +767,4 @@ everything still actionable, in one place:
 | 7 | local Bot API server (phase 3b) | telegram | optional; only buys > 20 MB telegram vault blobs |
 | 8 | telegram bulk library migration (phase 4) | telegram | optional |
 | 9 | `t.me/s` 48h history probe | telegram | untested; channel has no old media |
-| 10 | loud host badge when a vault read lands on a non-primary host | terabox | no fallback labeling today if the primary copy is dead |
+| 10 | ~~loud host badge when a vault read lands on a non-primary host~~ | terabox | **done 2.17.3** — `/api/vault/blob` returns copy/host/failure headers, web shows a page banner + lightbox warning, extension SW broadcasts `vaultReadFallback` → toast + detail-modal banner. also fixed `resolveVaultStreamUrls` hard-failing playback on a dead primary resolve |

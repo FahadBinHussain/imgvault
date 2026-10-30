@@ -364,6 +364,7 @@ export default function VaultPage() {
   const [itemPreviews, setItemPreviews] = useState({})
   const [decryptedMedia, setDecryptedMedia] = useState({})
   const [decryptState, setDecryptState] = useState(null)
+  const [readWarning, setReadWarning] = useState(null) // {itemId, host, primaryHost, failures}
   const previewUrlsRef = useRef(new Map())
   const decryptedUrlsRef = useRef(new Map())
 
@@ -633,6 +634,9 @@ export default function VaultPage() {
       masterKey: vaultKey,
       onProgress: (progress) => {
         if (!cancelled) setDecryptState({ id: item.id, percent: progress.percent ?? 0 })
+      },
+      onHostInfo: (meta) => {
+        if (!cancelled) setReadWarning({ itemId: item.id, ...meta })
       },
     })
       .then((blob) => {
@@ -926,6 +930,10 @@ export default function VaultPage() {
     ? `Decrypting encrypted vault item… ${decryptState.percent}%`
     : message
 
+  const lightboxReadWarning = readWarning && readWarning.itemId === selectedItem?.id
+    ? `Served from ${readWarning.host.toUpperCase()} — the primary ${readWarning.primaryHost.toUpperCase()} copy failed (${readWarning.failures || 'no reason reported'}). This read used a secondary encrypted copy.`
+    : ''
+
   if (status === 'loading' || configLoading) {
     return (
       <main className="min-h-screen theme-surface">
@@ -1090,6 +1098,28 @@ export default function VaultPage() {
                 </div>
               )}
 
+              {readWarning && (
+                <div className="mb-6 flex items-start gap-3 rounded-[var(--radius-box)] border border-warning/40 bg-warning/15 p-4 text-sm text-warning">
+                  <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold">Vault read used a secondary host</p>
+                    <p className="mt-1 break-words text-warning/90">
+                      The primary {readWarning.primaryHost.toUpperCase()} copy failed
+                      ({readWarning.failures || 'no reason reported'}), so this read came from{' '}
+                      {readWarning.host.toUpperCase()}. The item still decrypted correctly.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReadWarning(null)}
+                    className="rounded p-1 text-warning/70 transition-colors hover:bg-warning/20 hover:text-warning"
+                    aria-label="Dismiss secondary host notice"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+
               {loadingItems ? (
                 <div className="flex min-h-[35vh] items-center justify-center">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -1176,6 +1206,7 @@ export default function VaultPage() {
         onRestoreFromVault={restoreItem}
         isRestoringFromVault={restoringId === selectedItem.id}
         shareStatus={lightboxStatus}
+        readWarning={lightboxReadWarning}
         preferredProvider={preferredProvider}
         preferredVideoSource={preferredVideoSource}
         firebaseProjectId={firebaseProjectId}
