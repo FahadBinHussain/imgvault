@@ -1749,10 +1749,9 @@ export class StorageManager {
     };
     const updates = {
       extraMetadata: { ...(current.extraMetadata || {}), videoHosts: vh },
-      // top-level copy MUST ride along: fromNeonMediaRow exposes videoHosts
-      // top-level, so buildExtraSeed treats the key as "already merged" and
-      // drops extraMetadata.videoHosts — the mirror URL was silently lost
-      // without this (terabox thumbs never persisted to the web gallery).
+      // top-level copy rides along for the legacy firestore backend: it stores
+      // only the fields named in the update mask, and its readers take
+      // item.videoHosts before extraMetadata.videoHosts.
       videoHosts: vh,
     };
     if (key === 'filemoon') {
@@ -1820,8 +1819,7 @@ export class StorageManager {
         url: String(link.watchUrl || link.directUrl || ''),
       };
       updates.extraMetadata = { ...updates.extraMetadata, videoHosts: vh };
-      // same rule as updateVideoThumbnail: the top-level copy must ride along
-      // or buildExtraSeed drops extraMetadata.videoHosts (stale top-level wins).
+      // top-level copy for the same firestore reason as updateVideoThumbnail.
       updates.videoHosts = vh;
     }
     return this.updateImage(id, updates);
@@ -2838,7 +2836,10 @@ export class StorageManager {
     const rows = await sql`select * from public.media_items where id = ${id} limit 1`;
     if (!rows.length) throw new Error('Image not found');
     const existing = this.fromNeonMediaRow(rows[0]);
-    const payload = this.toNeonMediaPayload({ ...existing, ...updates });
+    // existing rides along so the payload builder can tell what this write
+    // actually changed: the row carries every extra key twice (mirrored
+    // top-level + extraMetadata), so presence alone proves nothing.
+    const payload = this.toNeonMediaPayload({ ...existing, ...updates }, existing);
     await this.upsertMediaRowNeon(id, payload);
     return true;
   }

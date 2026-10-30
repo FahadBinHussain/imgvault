@@ -367,7 +367,7 @@ vault upload
 
 date: 2026-10-10 · originally `plan-telegram-host.md` · diagram: `plan-telegram-flow.html`
 
-**status:** phases 0 + 1 + 2 + 3a shipped (2.15.6–2.18.1), 3a live-verified against the real
+**status:** phases 0 + 1 + 2 + 3a shipped (2.15.6–2.18.2), 3a live-verified against the real
 channel 2026-10-30. phases 3b / 4 **open** (both
 optional — 3b only buys telegram vault blobs over the 20 MB getFile cap).
 `[verified 2026-10-30]` telegram **is** a vault blob host now (`vaultBlobHost: true` +
@@ -798,4 +798,4 @@ everything still actionable, in one place:
 | 8 | telegram bulk library migration (phase 4) | telegram | optional |
 | 9 | `t.me/s` 48h history probe | telegram | untested; channel has no old media |
 | 10 | ~~loud host badge when a vault read lands on a non-primary host~~ | terabox | **done 2.17.3** — `/api/vault/blob` returns copy/host/failure headers, web shows a page banner + lightbox warning, extension SW broadcasts `vaultReadFallback` → toast + detail-modal banner. also fixed `resolveVaultStreamUrls` hard-failing playback on a dead primary resolve |
-| 11 | make `buildExtraSeed` stop shadowing fresh extra-key writes | parity | hazard: an extra key already mirrored top-level by `fromNeonMediaRow` silently wins over `updates.extraMetadata.<key>` (bit `videoHosts`, then `sceneFiles`). scene writers dodge it by sending the key top-level too; the durable fix is in `packages/shared/mediaDbPayload.js` (prefer the incoming extra value when the mirror is untouched since read) — needs both platforms' save paths re-verified |
+| 11 | ~~make `buildExtraSeed` stop shadowing fresh extra-key writes~~ | parity | **done 2.18.2** — the builder now diffs against the row that was read (`updateImageNeon` passes `existing`): a top-level field the caller changed still wins (2.12.1 `isVaulted` rule intact), and an `extraMetadata` key the caller changed now beats the untouched top-level mirror that `fromNeonMediaRow` produces. `toMediaDbPayload` also replaces `merged.imageHosts`/`videoHosts` with a freshly written map, because `normalize*Hosts` merges maps field-by-field (provider columns still merge back in, so nothing is lost). "the caller named it in extraMetadata" alone was NOT enough — `fromNeonMediaRow` hands the whole stored blob back, so that version silently broke un-vaulting. scene/thumbnail dual writes stay, only for the legacy firestore backend; the neon rule "must ride top-level too" is dead. verified: node repro modelling `updateImageNeon` 13/18 → 18/18, plus a live prod run on 2.18.2 (second extra-only write stuck; flag-only un-vault still cleared `extraMetadata.isVaulted`); scratch rows trashed + purged after. web unaffected — only `nextgen-extension/src/utils/storage.js` imports `toMediaDbPayload`, and `web/src/app/api/images/route.js` merges from `current.extraMetadata` directly (no top-level mirror there) |

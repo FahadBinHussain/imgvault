@@ -90,21 +90,47 @@ export function canonicalizeLinkUrl(input = '') {
   }
 }
 
-function buildExtraSeed(source, existing) {
+// Which side of the row did this write actually touch? `fromNeonMediaRow` mirrors
+// every stored extra key top-level AND hands `extraMetadata` back, so both copies
+// always ride along in `source` and neither presence alone means "the caller
+// changed it". The caller has to pass the row it read as `existing` for the delta
+// to mean anything; with no `existing` (create paths) every key is new anyway.
+function getTopLevelWrites(source, existing) {
+  return new Set(
+    Object.keys(source).filter(
+      (key) => key !== 'extraMetadata' && source[key] !== existing[key]
+    )
+  );
+}
+
+function getExtraWrites(source, existing) {
   const sourceExtra = parseObject(source.extraMetadata);
   const existingExtra = parseObject(existing.extraMetadata);
+  const topLevelWrites = getTopLevelWrites(source, existing);
+  const writes = {};
+
+  for (const [key, value] of Object.entries(sourceExtra)) {
+    // a write on the top-level field itself still wins over the extra copy
+    // (2.12.1: `isVaulted: false` has to clear the stale extra flag)
+    if (topLevelWrites.has(key)) continue;
+    if (value === existingExtra[key]) continue;
+    writes[key] = value;
+  }
+
+  return writes;
+}
+
+function buildExtraSeed(source, existing) {
   const mergedWithoutExtra = { ...existing, ...source };
   delete mergedWithoutExtra.extraMetadata;
 
-  const mergedKeys = new Set(Object.keys(mergedWithoutExtra));
-  const extraOnly = Object.fromEntries(
-    Object.entries(sourceExtra).filter(([key]) => !mergedKeys.has(key))
-  );
-
+  // A changed extra key wins over the untouched top-level mirror, or the stale
+  // mirror silently eats the write (bit videoHosts, sceneFiles,
+  // encryptedBlobMessageId).
   return {
-    ...existingExtra,
+    ...parseObject(existing.extraMetadata),
     ...mergedWithoutExtra,
-    ...extraOnly,
+    ...getExtraWrites(source, existing),
   };
 }
 
@@ -117,6 +143,15 @@ export function toMediaDbPayload(source = {}, options = {}) {
   } = options;
   const merged = { ...existing, ...source };
   const extraSeed = buildExtraSeed(source, existing);
+  const extraWrites = getExtraWrites(source, existing);
+
+  // the host maps merge against the row's mirrored map field-by-field, so a
+  // freshly written map must replace that mirror too. The top-level provider
+  // columns still merge back in inside normalize*Hosts.
+  for (const key of ['imageHosts', 'videoHosts']) {
+    if (Object.prototype.hasOwnProperty.call(extraWrites, key)) merged[key] = extraWrites[key];
+  }
+
   const normalized = normalizeMediaItem({
     ...merged,
     extraMetadata: extraSeed,

@@ -893,11 +893,11 @@ export default function ResolvePage() {
       };
       // every host writes the per-host file/post refs - telegram integrity reads
       // them (it has no watch/direct columns, and message ids are not in the url).
-      // sceneFiles ALSO goes top-level: fromNeonMediaRow mirrors every
-      // extra_metadata key onto the item, and buildExtraSeed drops an incoming
-      // extra key when a same-named top-level field exists - without this, a
-      // scene that already had a sceneFiles block kept the stale one (telegram
-      // refs written by Fix vanished, so its own posts listed as extras).
+      // sceneFiles ALSO goes top-level for the legacy firestore backend, which
+      // stores only the fields named in the update mask. neon no longer needs the
+      // duplicate: buildExtraSeed lets this write beat the mirrored top-level key
+      // (before, a scene that already had a sceneFiles block kept the stale one,
+      // so telegram refs listed their own posts as extras).
       updates.sceneFiles = sceneFiles;
       updates.extraMetadata = {
         ...(item.extraMetadata || {}),
@@ -1106,7 +1106,7 @@ export default function ResolvePage() {
         },
       };
       updates.extraMetadata = { ...(freshItem.extraMetadata || {}), sceneFiles };
-      // top-level mirror, same buildExtraSeed shadowing as runSceneFix above.
+      // top-level copy, same firestore reason as runSceneFix above.
       updates.sceneFiles = sceneFiles;
       await sendMessage('updateImage', { id: freshItem.id, ...updates });
       await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);

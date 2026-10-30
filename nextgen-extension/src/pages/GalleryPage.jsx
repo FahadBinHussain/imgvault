@@ -1671,9 +1671,8 @@ export default function GalleryPage() {
         },
       };
       // A failed URL write would leave a scene row that can never load — throw.
-      // sceneFiles is also top-level: fromNeonMediaRow mirrors extra keys onto the
-      // item and buildExtraSeed then treats it as "already merged" and keeps the
-      // stale copy instead of this write.
+      // sceneFiles is also top-level for the legacy firestore backend, whose
+      // readers take the item field before extraMetadata.sceneFiles.
       await sendMessage('updateImage', { id, spzUrl, textureUrl, sceneFiles, configJson: sceneConfig ? JSON.stringify(sceneConfig) : null, kind: 'scene', fileType: 'model/spz', spzFileSize: spzFile.size, textureFileSize: textureFile.size, extraMetadata: { sceneFiles } });
       await appendClientUploadLog(`Scene saved ${id||''}`, 'success');
       return { id, spzUrl, textureUrl };
