@@ -865,18 +865,25 @@ export default function ResolvePage() {
         updates.textureFileSize = textureFile.size;
       }
       if (sceneConfig) updates.configJson = JSON.stringify(sceneConfig);
+      const sceneFiles = {
+        ...(item.extraMetadata?.sceneFiles || {}),
+        host,
+        [host]: {
+          spz: { fileId: spzRes.fileId || '', messageId: spzRes.messageId || '', filename: spzFile.name },
+          ...(texRes ? { texture: { fileId: texRes.fileId || '', messageId: texRes.messageId || '', filename: textureFile.name } } : {}),
+        },
+      };
       // every host writes the per-host file/post refs - telegram integrity reads
-      // them (it has no watch/direct columns, and message ids are not in the url)
+      // them (it has no watch/direct columns, and message ids are not in the url).
+      // sceneFiles ALSO goes top-level: fromNeonMediaRow mirrors every
+      // extra_metadata key onto the item, and buildExtraSeed drops an incoming
+      // extra key when a same-named top-level field exists - without this, a
+      // scene that already had a sceneFiles block kept the stale one (telegram
+      // refs written by Fix vanished, so its own posts listed as extras).
+      updates.sceneFiles = sceneFiles;
       updates.extraMetadata = {
         ...(item.extraMetadata || {}),
-        sceneFiles: {
-          ...(item.extraMetadata?.sceneFiles || {}),
-          host,
-          [host]: {
-            spz: { fileId: spzRes.fileId || '', messageId: spzRes.messageId || '', filename: spzFile.name },
-            ...(texRes ? { texture: { fileId: texRes.fileId || '', messageId: texRes.messageId || '', filename: textureFile.name } } : {}),
-          },
-        },
+        sceneFiles,
       };
 
       await sendMessage('updateImage', { id: item.id, ...updates });
@@ -1081,6 +1088,8 @@ export default function ResolvePage() {
         },
       };
       updates.extraMetadata = { ...(freshItem.extraMetadata || {}), sceneFiles };
+      // top-level mirror, same buildExtraSeed shadowing as runSceneFix above.
+      updates.sceneFiles = sceneFiles;
       await sendMessage('updateImage', { id: freshItem.id, ...updates });
       await Promise.all([reloadImages({ silent: true }), reloadVaultImages()]);
       sceneUserPickedRef.current = true;

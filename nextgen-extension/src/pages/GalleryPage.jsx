@@ -1575,8 +1575,9 @@ export default function GalleryPage() {
         if (isSpz) {
           // telegram has no watch/direct columns - its scene integrity reads the
           // file + post ids out of sceneFiles, so they must be stored here too.
+          const telegramSceneFiles = { host: 'telegram', telegram: { spz: { fileId: spzResult.fileId || '', messageId: spzResult.messageId || '', filename: uploadData.fileName } } };
           const sceneFilesUpdate = spzHostKey === 'telegram'
-            ? { extraMetadata: { sceneFiles: { host: 'telegram', telegram: { spz: { fileId: spzResult.fileId || '', messageId: spzResult.messageId || '', filename: uploadData.fileName } } } } }
+            ? { sceneFiles: telegramSceneFiles, extraMetadata: { sceneFiles: telegramSceneFiles } }
             : {};
           await sendMessage('updateImage', { id: pendingItemId, ...extraUpdate, ...sceneFilesUpdate, fileType: uploadData.fileType || 'application/octet-stream', fileName: uploadData.fileName });
         }
@@ -1666,7 +1667,10 @@ export default function GalleryPage() {
         },
       };
       // A failed URL write would leave a scene row that can never load — throw.
-      await sendMessage('updateImage', { id, spzUrl, textureUrl, configJson: sceneConfig ? JSON.stringify(sceneConfig) : null, kind: 'scene', fileType: 'model/spz', spzFileSize: spzFile.size, textureFileSize: textureFile.size, extraMetadata: { sceneFiles } });
+      // sceneFiles is also top-level: fromNeonMediaRow mirrors extra keys onto the
+      // item and buildExtraSeed then treats it as "already merged" and keeps the
+      // stale copy instead of this write.
+      await sendMessage('updateImage', { id, spzUrl, textureUrl, sceneFiles, configJson: sceneConfig ? JSON.stringify(sceneConfig) : null, kind: 'scene', fileType: 'model/spz', spzFileSize: spzFile.size, textureFileSize: textureFile.size, extraMetadata: { sceneFiles } });
       await appendClientUploadLog(`Scene saved ${id||''}`, 'success');
       return { id, spzUrl, textureUrl };
     } finally {

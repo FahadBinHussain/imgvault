@@ -456,7 +456,7 @@ decision; it was used as a method reference only.
 - ~~**1 — host for images + videos**: `TelegramUploader`, `telegramApi.js`,
   providerCatalog entries, settings fields + migration, gallery upload/play on BOTH
   platforms, delete, resolve-page integrity tab.~~ **done 2026-10-15** (2.15.6–2.15.12).
-- ~~**2 — 3D (spz as document + texture as photo)**~~ **done 2026-10-30 (2.17.4)**:
+- ~~**2 — 3D (spz as document + texture as photo)**~~ **done 2026-10-30 (2.17.4 + 2.17.5)**:
   telegram opt-in is one catalog flag (`threeDHost: true`); `THREE_D_SOURCE_OPTIONS` +
   `THREE_D_HOST_KEYS` are derived from it, so settings/gallery/resolve all pick it up.
   **texture ships as a document, not a photo** (phase-0 A/B: `sendPhoto` re-encodes) —
@@ -772,9 +772,10 @@ everything still actionable, in one place:
 | 2 | ~~web vault = flag-only / no decryption, extension-encrypted rows look empty~~ | vault | **done 2.17.2** — web creates/unlocks/decrypts with the shared wrapped-master-key crypto + Range blob proxy. leftover: web *move* still flag-only (now warns loudly) |
 | 3 | ~~"migrate old vault items" button (pre-2.6.0 plaintext vault rows)~~ | vault | **struck 2026-10-30** — never built, won't be; option B is final. legacy rows stay plaintext and now show a `Not encrypted` badge |
 | 4 | scene (spz/texture) encrypted vault support | vault | scenes stay plaintext on their hosts |
-| 5 | ~~telegram 3D (phase 2)~~ | telegram | **done 2.17.4** — `threeDHost` flag drives `THREE_D_HOST_KEYS`/options; docs-only textures + 20 MB pair pre-flight; Telegram 3D integrity subtab; local `/telegram-media/` scenes render on web |
+| 5 | ~~telegram 3D (phase 2)~~ | telegram | **done 2.17.4 + 2.17.5** — `threeDHost` flag drives `THREE_D_HOST_KEYS`/options; docs-only textures + 20 MB pair pre-flight; Telegram 3D integrity subtab; local `/telegram-media/` scenes render on web; scene refs now persist (see the `updateImage` extra-key gotcha in AGENTS.md) |
 | 6 | telegram vault host (phase 3a, ≤ 20 MB cloud) | telegram | needs `vaultBlobHost: true` + read branch + loud 20 MB gate |
 | 7 | local Bot API server (phase 3b) | telegram | optional; only buys > 20 MB telegram vault blobs |
 | 8 | telegram bulk library migration (phase 4) | telegram | optional |
 | 9 | `t.me/s` 48h history probe | telegram | untested; channel has no old media |
 | 10 | ~~loud host badge when a vault read lands on a non-primary host~~ | terabox | **done 2.17.3** — `/api/vault/blob` returns copy/host/failure headers, web shows a page banner + lightbox warning, extension SW broadcasts `vaultReadFallback` → toast + detail-modal banner. also fixed `resolveVaultStreamUrls` hard-failing playback on a dead primary resolve |
+| 11 | make `buildExtraSeed` stop shadowing fresh extra-key writes | parity | hazard: an extra key already mirrored top-level by `fromNeonMediaRow` silently wins over `updates.extraMetadata.<key>` (bit `videoHosts`, then `sceneFiles`). scene writers dodge it by sending the key top-level too; the durable fix is in `packages/shared/mediaDbPayload.js` (prefer the incoming extra value when the mirror is untouched since read) — needs both platforms' save paths re-verified |
