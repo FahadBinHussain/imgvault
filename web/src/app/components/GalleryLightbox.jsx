@@ -14,7 +14,7 @@ import {
   Trash2,
   Download,
   X,
-  TriangleAlert,
+  AlertTriangle,
 } from 'lucide-react'
 import { MediaDetailModal } from 'imgvault-ui'
 import { downloadFieldViaProxy } from '@/lib/downloads'
@@ -841,7 +841,7 @@ export default function GalleryLightbox({
           )}
           {readWarning && (
             <div className="flex items-start gap-2 rounded-[var(--radius-box)] border border-warning/40 bg-warning/15 p-2 text-xs text-warning">
-              <TriangleAlert className="mt-px h-4 w-4 shrink-0" />
+              <AlertTriangle className="mt-px h-4 w-4 shrink-0" />
               <span className="break-words">{readWarning}</span>
             </div>
           )}

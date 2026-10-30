@@ -14,7 +14,7 @@ import {
   LockKeyhole,
   Search,
   Tag,
-  TriangleAlert,
+  AlertTriangle,
   UnlockKeyhole,
   X,
 } from 'lucide-react'
@@ -261,7 +261,7 @@ function VaultGalleryCard({ item, index, viewMode, onClick, preferredProvider = 
             </>
           ) : (
             <>
-              <TriangleAlert className="h-3 w-3" />
+              <AlertTriangle className="h-3 w-3" />
               Not encrypted
             </>
           )}
@@ -1100,7 +1100,7 @@ export default function VaultPage() {
 
               {readWarning && (
                 <div className="mb-6 flex items-start gap-3 rounded-[var(--radius-box)] border border-warning/40 bg-warning/15 p-4 text-sm text-warning">
-                  <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" />
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold">Vault read used a secondary host</p>
                     <p className="mt-1 break-words text-warning/90">
