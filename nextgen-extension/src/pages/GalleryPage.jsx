@@ -1843,6 +1843,12 @@ export default function GalleryPage() {
 
   // Upload modal handlers
   const openUploadModal = () => {
+    // The vault can be unlocked while the modal is closed, so a lock screen
+    // left over from an earlier attempt must not carry over on reopen.
+    setVaultLockedForUpload(false);
+    setVaultUnlockCode('');
+    setVaultUnlockError('');
+
     if (uploading && uploadImageData) {
       setShowUploadModal(true);
       return;
@@ -1879,6 +1885,9 @@ export default function GalleryPage() {
 
   const closeUploadModal = () => {
     setShowUploadModal(false);
+    setVaultLockedForUpload(false);
+    setVaultUnlockCode('');
+    setVaultUnlockError('');
 
     if (uploading) {
       showToast('Upload will continue in the background. You can reopen the modal to check logs later.', 'info', 3500);
@@ -2762,6 +2771,19 @@ export default function GalleryPage() {
 
     // Vaulted uploads need the vault unlocked. If it's locked, show the lock screen.
     if (uploadToVault) {
+      // An MV3 idle restart wipes the SW's in-memory key while this page still
+      // holds its own copy (e.g. unlocked on the Vault page), so re-arm the SW
+      // before deciding the vault is locked.
+      const pageMasterKey = getVaultMasterKey();
+      if (pageMasterKey) {
+        try {
+          const raw = new Uint8Array(await crypto.subtle.exportKey('raw', pageMasterKey));
+          const keyB64 = btoa(String.fromCharCode(...raw));
+          await sendMessage('vaultSetMasterKey', { keyB64 });
+        } catch (_) {
+          // getVaultStatus below still makes the locked/unlocked decision.
+        }
+      }
       try {
         const status = await sendMessage('getVaultStatus');
         if (status?.configured && !status?.unlocked) {
