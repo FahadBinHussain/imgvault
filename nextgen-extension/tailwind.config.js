@@ -7,6 +7,27 @@ import { fileURLToPath } from 'node:url'
 // only: fast-glob treats Windows backslashes as escape chars and silently matches nothing
 const uiGlob = fileURLToPath(new URL('../packages/ui', import.meta.url)).split('\\').join('/') + '/**/*.{js,jsx}'
 
+// daisyui v5 exposes semantic colors as bare CSS vars (--color-base-100, --color-primary,
+// …), and tailwind v3 only emits `/opacity` variants for colors declared in
+// theme.extend.colors. without these declarations ~750 utilities used across src/ and
+// packages/ui (`text-base-content/70`, `bg-error/10`, `border-warning/40`, …) compile to
+// nothing — which is why the trash banner/confirm tints rendered flat while the web app
+// (palette alphas) looked right. `oklch(from …)` is the same relative-color form the
+// GalleryPage inline CSS already relies on, so it works on every theme.
+const daisyColor = (token) => `oklch(from var(--color-${token}) l c h / <alpha-value>)`
+const DAISY_COLOR_TOKENS = [
+  'base-100', 'base-200', 'base-300', 'base-content',
+  'primary', 'primary-content',
+  'secondary', 'secondary-content',
+  'accent', 'accent-content',
+  'neutral', 'neutral-content',
+  'info', 'info-content',
+  'success', 'success-content',
+  'warning', 'warning-content',
+  'error', 'error-content',
+]
+const daisyColors = Object.fromEntries(DAISY_COLOR_TOKENS.map((t) => [t, daisyColor(t)]))
+
 const DAISYUI_THEMES = [
   'light',
   'dark',
@@ -69,7 +90,9 @@ export default {
         tight: '-0.01em',
       },
       colors: {
+        ...daisyColors,
         primary: {
+          DEFAULT: daisyColor('primary'),
           50: '#f0f5ff',
           100: '#e0eaff',
           200: '#c7d7fe',
@@ -82,6 +105,7 @@ export default {
           900: '#312e81',
         },
         secondary: {
+          DEFAULT: daisyColor('secondary'),
           400: '#f472b6',
           500: '#ec4899',
           600: '#db2777',
