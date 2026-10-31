@@ -120,7 +120,7 @@ vault passcode
 ### ~~settings (`SettingsPage.jsx`)~~
 - ~~no new keys needed for the vault itself (reuse the udrop account; blobs are opaque).~~
 
-### web app (`web/`) — ~~read + decrypt shipped (2.17.2, 2026-10-30)~~; move still flag-only ⏳
+### web app (`web/`) — ~~read + decrypt shipped (2.17.2, 2026-10-30)~~; ~~move still flag-only~~ → encrypted move shipped 2026-10-31
 - ~~the web vault page can list vaulted items but **cannot decrypt** (the passcode never
   leaves the extension). the plan was to mark web vault as "list-only / locked".~~
   **shipped as real encryption instead**: `vaultCrypto.js` moved to
@@ -134,10 +134,25 @@ vault passcode
   and shows encrypted video thumbs from `media_item_previews`; encrypted images show a lock
   tile (same as the extension) until opened. restore of an encrypted item is refused loudly
   on web (it needs the master key + an upload path).
-- `web /api/vault` PATCH `action:'move'` is still **flag-only** (marks vaulted + revokes
+- ~~`web /api/vault` PATCH `action:'move'` is still **flag-only** (marks vaulted + revokes
   shares), it never encrypts or uploads — so a web-side "vault" is not the same security
   model as the extension's, and it now answers with an explicit `warning` that the gallery
-  turns into a warning toast. see section 4 open items.
+  turns into a warning toast. see section 4 open items.~~
+  **closed 2026-10-31 — web moves encrypt for real.** the browser fetches the original
+  through the same-origin `/api/media` proxy, encrypts it in the tab with the master key
+  from sessionStorage (IVG1 `encryptBlob` + `encryptMetadata`, same payload as the
+  extension), and POSTs multipart ciphertext to `POST /api/vault/move`; the server posts
+  the opaque `.bin` to the configured Telegram channel (`sendDocument`) and writes the
+  same row shape the extension writes (`encryptedBlob*`, `vaultHost(s)`, blanks the
+  plaintext columns + extra keys, revokes share links). the master key never leaves the
+  tab. PATCH `action:'move'` is now a 400 pointing at the new route; PATCH restore of an
+  encrypted row is a 400 (web has no upload path). **hard cap: the Vercel request body is
+  4.5 MB**, so the relayed ciphertext must stay under `VAULT_MOVE_MAX_CIPHERTEXT_BYTES`
+  (4.5 MB) — over-cap items fail loudly and are told to move from the extension, which
+  uploads straight to the host. source rules: full-size image URL only (never a
+  thumbnail), videos need a direct byte URL (watch pages serve HTML), HTML responses are
+  refused loudly. live round-trip on prod still pending (needs the Bitwarden vault
+  unlocked for the DB/telegram creds).
 
 ## scope / non-goals
 
@@ -166,7 +181,9 @@ vault passcode
 5. ~~SettingsPage change-passcode → re-wrap.~~ done
 6. ~~web vault — list-only mode for encrypted items.~~ **shipped as full decrypt** (2.17.2):
    shared `vaultCrypto`, wrapped-master-key create/unlock/re-wrap, Range blob proxy,
-   preview store, chunked decrypt-on-open. ⏳ leftover: web-side *move* stays flag-only.
+   preview store, chunked decrypt-on-open. ~~⏳ leftover: web-side *move* stays flag-only.~~
+   **leftover closed 2026-10-31**: web move now encrypts in the tab and relays the
+   ciphertext to Telegram through `POST /api/vault/move` (4.5 MB body cap).
 7. ~~build + manual test on Edge (bump manifest, `pnpm build`, reload), full round-trip:
    upload-encrypt → lock → unlock → decrypt-view → restore.~~ done (2.6.0 onward; reload is
    now `pwsh tools/reload-extension.ps1`, never `start msedge http://reload.extensions`)
@@ -190,7 +207,8 @@ vault passcode
 ### ~~not done in v1~~ → current standing of each
 
 - ~~web vault list-only mode for encrypted items (step 6)~~ — **superseded**: web now decrypts
-  for real (2.17.2, see section 1); only web-side *move* remains flag-only ⏳.
+  for real (2.17.2, see section 1); web-side *move* closed 2026-10-31 (encrypt-in-tab →
+  Telegram relay, 4.5 MB cap).
 - ~~"migrate old vault items" button for pre-existing plaintext vaulted rows~~ — **struck
   2026-10-30**: never built and will not be. option B (new-encryption-only) is final, so
   legacy plaintext vault rows stay exactly as they are. the web vault now labels them
@@ -751,14 +769,16 @@ build it there; never hide/drop a field or UI to make them "match".
   (~750 dead utilities repo-wide). fixed at the source with
   `oklch(from var(--color-<token>) l c h / <alpha-value>)` tokens in both
   `nextgen-extension/tailwind.config.js` and `web/tailwind.config.js`. no per-class swaps.
-- **web vault move is flag-only — ⏳ OPEN (narrowed 2026-10-30).** `web/src/app/api/vault/route.js`
-  PATCH `action:'move'` sets the vaulted flag and revokes shares; it does not encrypt or
-  re-upload. the read half of the parity gap is closed (web now unlocks with the wrapped
-  master key, decrypts metadata/previews/blobs through `/api/vault/blob`), so plaintext
-  web-moved rows are the only remaining silent difference — and they are no longer silent:
-  the PATCH response carries an explicit `warning` and the gallery shows it as a warning toast.
-  closing this fully needs a web upload path (udrop uploader in the browser + CORS), which is
-  a separate build.
+- **~~web vault move is flag-only — OPEN (narrowed 2026-10-30).~~ CLOSED 2026-10-31.**
+  `web/src/app/api/vault/move/route.js` (new) takes the browser-encrypted blob
+  (`lib/vaultMove.js` encrypts in the tab) and relays it to Telegram; the row gets the
+  extension's encrypted shape, plaintext columns/extra keys are blanked, share links are
+  revoked. PATCH `action:'move'` answers 400. the 4.5 MB Vercel body cap is the one real
+  limit: over-cap items are told, loudly, to move from the extension. udrop was not usable
+  as the web upload target — its CORS response header is misspelled
+  (`Access-Control-Allow-Orgin`) and OPTIONS returns no allow headers, so a browser
+  upload is impossible; telegram is the only host with server-side write *and* read.
+  remaining: live prod round trip (blocked on vault unlock for DB/telegram creds).
 - ~~web cards scene-texture thumb.~~ **done** `[verified 2026-10-30: gallery/page.jsx
   renders firstImageLikeUrl(image?.textureUrl) with a "thumbnail unavailable" note on
   failure]`.
@@ -792,7 +812,7 @@ everything still actionable, in one place:
 | # | item | plan | notes |
 |---|---|---|---|
 | 1 | ~~extension trash tint fix (15 dead alpha classes)~~ | parity | **done 2.17.1** — fixed in the tailwind config (relative-color alpha tokens, both packages), not per-class |
-| 2 | ~~web vault = flag-only / no decryption, extension-encrypted rows look empty~~ | vault | **done 2.17.2** — web creates/unlocks/decrypts with the shared wrapped-master-key crypto + Range blob proxy. leftover: web *move* still flag-only (now warns loudly) |
+| 2 | ~~web vault = flag-only / no decryption, extension-encrypted rows look empty~~ | vault | **done 2.17.2 + 2026-10-31** — web creates/unlocks/decrypts with the shared wrapped-master-key crypto + Range blob proxy, and web *move* now encrypts in the tab and relays ciphertext to Telegram via `POST /api/vault/move` (4.5 MB cap → extension for bigger items) |
 | 3 | ~~"migrate old vault items" button (pre-2.6.0 plaintext vault rows)~~ | vault | **struck 2026-10-30** — never built, won't be; option B is final. legacy rows stay plaintext and now show a `Not encrypted` badge |
 | 4 | scene (spz/texture) encrypted vault support | vault | scenes stay plaintext on their hosts |
 | 5 | ~~telegram 3D (phase 2)~~ | telegram | **done 2.17.4 + 2.17.5** — `threeDHost` flag drives `THREE_D_HOST_KEYS`/options; docs-only textures + 20 MB pair pre-flight; Telegram 3D integrity subtab; local `/telegram-media/` scenes render on web; scene refs now persist (see the `updateImage` extra-key gotcha in AGENTS.md) |

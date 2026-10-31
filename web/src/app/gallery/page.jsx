@@ -39,6 +39,7 @@ import GalleryLightbox from '../components/GalleryLightbox'
 import { getStrictImageProviderLink } from '@/lib/image-provider-links'
 import { getStrictVideoProviderLink } from '@/lib/video-provider-links'
 import { downloadItemViaProxy } from '@/lib/downloads'
+import { moveItemToVault } from '@/lib/vaultMove'
 import {
   DEFAULT_IMAGE_SOURCE,
   DEFAULT_VIDEO_SOURCE,
@@ -1312,35 +1313,30 @@ export default function GalleryPage() {
 
   const handleMoveToVault = useCallback(async (image) => {
     if (!image?.id) return
+    const label = image.pageTitle || image.fileName || 'item'
 
     try {
-      setShareStatus('Moving to Secret Vault...')
-
-      const res = await fetch('/api/vault', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ id: image.id, action: 'move' }),
+      setShareStatus(`Encrypting "${label}" for the Secret Vault...`)
+      const data = await moveItemToVault({
+        item: image,
+        preferredImageProvider: preferredProvider,
+        preferredVideoProvider: preferredVideoSource,
       })
-
-      const data = await readJsonSafely(res)
-
-      if (!res.ok) {
-        throw new Error(data?.error || 'Failed to move item to vault')
-      }
 
       setImages((prevImages) => prevImages.filter((img) => img.id !== image.id))
       handleCloseLightbox()
+      setShareStatus('')
       if (data?.warning) {
-        showToast(data.warning, 'warning', 8000)
+        showToast(data.warning, 'warning', 12000)
       } else {
-        showToast('Moved to Secret Vault', 'success')
+        showToast(`"${label}" moved to the Secret Vault (encrypted → ${data?.host || 'vault host'})`, 'success')
       }
     } catch (error) {
-      setShareStatus(error?.message || 'Failed to move item to vault')
+      const message = error?.message || 'Failed to move item to vault'
+      setShareStatus(message)
+      showToast(message, 'error', 10000)
     }
-  }, [handleCloseLightbox, showToast])
+  }, [handleCloseLightbox, preferredProvider, preferredVideoSource, showToast])
 
   // Escape exits selection mode (the lightbox owns Escape while it is open)
   useEffect(() => {
@@ -1440,39 +1436,48 @@ export default function GalleryPage() {
     if (isBulkVaulting) return
     const ids = [...selectedIds]
     if (!ids.length) return
+    const items = ids.map((id) => images.find((img) => img.id === id)).filter(Boolean)
+    if (!items.length) return
 
     setIsBulkVaulting(true)
-    showToast(`Moving ${ids.length} item${ids.length === 1 ? '' : 's'} to the vault...`, 'info')
+    const moved = []
+    const failed = []
+    const warnings = []
     try {
-      const results = await Promise.allSettled(
-        ids.map(async (id) => {
-          const res = await fetch('/api/vault', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, action: 'move' }),
+      // Sequential: each item downloads + encrypts in this tab, and the vault
+      // host is the same channel — parallel uploads buy nothing but memory.
+      for (let i = 0; i < items.length; i += 1) {
+        const item = items[i]
+        showToast(
+          `Encrypting ${i + 1} of ${items.length}: ${item.pageTitle || item.fileName || item.id}`,
+          'info'
+        )
+        try {
+          const data = await moveItemToVault({
+            item,
+            preferredImageProvider: preferredProvider,
+            preferredVideoProvider: preferredVideoSource,
           })
-          const data = await readJsonSafely(res)
-          if (!res.ok) throw new Error(data?.error || 'Failed to move item to vault')
-          return data
-        })
-      )
-      const { okCount, failed } = splitSettled(results, ids)
+          moved.push(item.id)
+          if (data?.warning) warnings.push(data.warning)
+        } catch (error) {
+          failed.push({ id: item.id, message: error?.message || 'Vault move failed' })
+        }
+      }
 
-      if (okCount > 0 && failed.length > 0) {
-        const failedSet = new Set(failed.map((entry) => entry.id))
-        setImages((prev) => prev.filter((img) => !failedSet.has(img.id)))
-        setSelectedIds(failedSet)
-        showToast(`${okCount} moved to vault, ${failed.length} failed: ${failed[0].message.slice(0, 120)}`, 'error')
+      if (moved.length > 0 && failed.length > 0) {
+        setImages((prev) => prev.filter((img) => !moved.includes(img.id)))
+        setSelectedIds(new Set(failed.map((entry) => entry.id)))
+        showToast(`${moved.length} moved to vault, ${failed.length} failed: ${failed[0].message.slice(0, 140)}`, 'error', 10000)
       } else if (failed.length > 0) {
-        showToast(`${failed.length} of ${ids.length} failed: ${failed[0].message.slice(0, 120)}`, 'error')
+        showToast(`${failed.length} of ${items.length} failed: ${failed[0].message.slice(0, 140)}`, 'error', 10000)
       } else {
-        setImages((prev) => prev.filter((img) => !ids.includes(img.id)))
+        setImages((prev) => prev.filter((img) => !moved.includes(img.id)))
         setSelectedIds(new Set())
-        const warning = results.find((entry) => entry.status === 'fulfilled' && entry.value?.warning)?.value?.warning
-        if (warning) {
-          showToast(warning, 'warning', 8000)
+        if (warnings.length) {
+          showToast(`${moved.length} moved to the vault, but: ${warnings[0]}`, 'warning', 12000)
         } else {
-          showToast(`${ids.length} item${ids.length === 1 ? '' : 's'} moved to vault`, 'success')
+          showToast(`${moved.length} item${moved.length === 1 ? '' : 's'} moved to the vault`, 'success')
         }
       }
     } finally {

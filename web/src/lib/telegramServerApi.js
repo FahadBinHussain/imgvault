@@ -1,4 +1,4 @@
-// Server-side Telegram Bot API reader (web twin of the extension's
+// Server-side Telegram Bot API (web twin of the extension's
 // nextgen-extension/src/utils/telegramApi.js — the extension module cannot be
 // imported here because it is browser/SW code).
 //
@@ -9,8 +9,10 @@
 //     this module goes through redactTelegramToken first;
 //   - getFile runs on every read — a cached file_path would 404.
 //
-// Used by the /telegram-media route (gallery + vault copies served to the
-// browser) and by vaultBlobSource (encrypted vault blob range reads).
+// Reads: /telegram-media (gallery + vault copies served to the browser) and
+// vaultBlobSource (encrypted vault blob range reads). Writes: the vault-move
+// route posts the browser-encrypted blob here as an opaque `.bin` document —
+// the same sendDocument shape the extension's vault copies use.
 const TELEGRAM_API = 'https://api.telegram.org';
 
 export const TELEGRAM_GETFILE_MAX_BYTES = 20 * 1024 * 1024; // getFile read-back gate
@@ -126,4 +128,63 @@ export async function fetchTelegramFile(token, fileId, { range = null, timeoutMs
   } finally {
     if (timer) clearTimeout(timer)
   }
+}
+
+/**
+ * Bot API chat_id: a bare channel username answers "chat not found", so it is
+ * @-prefixed; explicit ids (-100…/numeric) pass through unchanged.
+ */
+export function telegramChatId(channel) {
+  const clean = String(channel || '').trim().replace(/^@+/, '')
+  if (!clean) {
+    throw new Error('Telegram channel is not configured. Set it in Settings → API Keys.')
+  }
+  return clean.startsWith('-') || /^\d+$/.test(clean) ? clean : `@${clean}`
+}
+
+/**
+ * Platform-local byte route stored in vault copies (the readers resolve the
+ * file id themselves; this URL is what the extension also stores).
+ */
+export function telegramLocalMediaUrl(fileId, mimeType = '') {
+  const id = encodeURIComponent(String(fileId || '').trim())
+  const mime = String(mimeType || '').trim()
+  return mime ? `/telegram-media/${id}?mt=${encodeURIComponent(mime)}` : `/telegram-media/${id}`
+}
+
+/**
+ * Post the blob to the channel. Same shape as the extension's sendTelegramFile
+ * (vault blobs ride sendDocument with an opaque `.bin` name — getFile reads
+ * them back byte-faithfully). Returns the raw message object.
+ */
+export async function sendTelegramFile({ token, channel, blob, filename, mimeType = '', method = 'sendDocument' }) {
+  requireTelegramToken(token)
+  const chatId = telegramChatId(channel)
+  const field = method === 'sendVideo' ? 'video' : 'document'
+  const form = new FormData()
+  form.append('chat_id', chatId)
+  form.append('disable_notification', 'true')
+  if (field === 'video') form.append('supports_streaming', 'true')
+  form.append(field, blob, filename || (field === 'video' ? 'video.mp4' : 'file.bin'))
+  return telegramCallApi(token, method, form)
+}
+
+/** Remove one channel message (the Bot API has no file delete). Throws loudly. */
+export async function deleteTelegramMessage({ token, channel, messageId }) {
+  requireTelegramToken(token)
+  const chatId = telegramChatId(channel)
+  const cleanId = String(messageId || '').trim()
+  if (!cleanId) throw new Error('Telegram deleteMessage: missing message id')
+  const form = new FormData()
+  form.append('chat_id', chatId)
+  form.append('message_id', cleanId)
+  return telegramCallApi(token, 'deleteMessage', form)
+}
+
+function requireTelegramToken(token) {
+  const clean = String(token || '').trim()
+  if (!clean) {
+    throw new Error('Telegram bot token is not configured. Set it in Settings → API Keys.')
+  }
+  return clean
 }
