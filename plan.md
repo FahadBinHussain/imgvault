@@ -151,8 +151,18 @@ vault passcode
   (4.5 MB) — over-cap items fail loudly and are told to move from the extension, which
   uploads straight to the host. source rules: full-size image URL only (never a
   thumbnail), videos need a direct byte URL (watch pages serve HTML), HTML responses are
-  refused loudly. live round-trip on prod still pending (needs the Bitwarden vault
-  unlocked for the DB/telegram creds).
+  refused loudly. **verified live 2026-10-31 on production `imgvaultt.vercel.app`,
+  27/27 checks**: a minted database session + scratch row, a 78,899 B JPEG encrypted in
+  node with a throwaway key → `POST /api/vault/move` stored telegram message 67 and the
+  row got the full encrypted shape (plaintext columns + extra keys gone); reading back
+  through `/api/vault/blob` returned 78,943 B of ciphertext that decrypted **byte-equal**
+  to the original; 401 without a session, 400 for PATCH `move`, 400 for an already-vaulted
+  row; the telegram post was deleted and every scratch row purged. the real gallery UI was
+  also driven in Edge against a local instance: the first click failed loudly (preferred
+  source ImgBB, scratch row only had a pixvid link — the strict-source rule doing its job),
+  then with both links present "Move to Vault" vaulted the row (telegram post 68, plaintext
+  blanked) and the read-back decrypted byte-equal. local instance + scratch rows + posts
+  cleaned up afterwards.
 
 ## scope / non-goals
 
@@ -778,7 +788,8 @@ build it there; never hide/drop a field or UI to make them "match".
   as the web upload target — its CORS response header is misspelled
   (`Access-Control-Allow-Orgin`) and OPTIONS returns no allow headers, so a browser
   upload is impossible; telegram is the only host with server-side write *and* read.
-  remaining: live prod round trip (blocked on vault unlock for DB/telegram creds).
+  **verified live 2026-10-31** — route E2E 27/27 on prod + browser move in Edge on a local
+  instance, both with byte-equal decrypt read-back; scratch rows/posts cleaned up.
 - ~~web cards scene-texture thumb.~~ **done** `[verified 2026-10-30: gallery/page.jsx
   renders firstImageLikeUrl(image?.textureUrl) with a "thumbnail unavailable" note on
   failure]`.
