@@ -59,6 +59,11 @@ const NATIVE_DOWNLOAD_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 const TAB_NOT_FOCUSED_NOTIFICATION_ID = 'imgvault-native-tab-not-focused';
 const TAB_FOCUSED_NOTIFICATION_ID = 'imgvault-native-tab-focused';
 const ACTIVE_NATIVE_DOWNLOAD_KEY = 'activeNativeDownload';
+// The master key, held for the lifetime of the browser session only.
+// chrome.storage.session survives MV3 idle eviction and dies with the browser,
+// so it is exactly as long-lived as the "unlocked" state the user perceives.
+// Default access level (TRUSTED_CONTEXTS) keeps it out of content scripts.
+const VAULT_MASTER_KEY_SESSION_SLOT = 'vaultMasterKeyB64';
 
 function joinNames(items = []) {
   const names = items.filter(Boolean)
@@ -1165,18 +1170,27 @@ class ImgVaultServiceWorker {
   }
 
   /**
-   * Set the in-memory vault master key (imported from raw bytes sent by the page).
-   * Only holds while the vault is unlocked; cleared on vaultClearMasterKey.
+   * Set the in-memory vault master key (imported from raw bytes sent by the page)
+   * and mirror it into session storage. Only holds while the vault is unlocked;
+   * cleared on vaultClearMasterKey.
    */
   async setVaultMasterKey(keyB64) {
     // A new (or cleared) session must be allowed to re-report fallbacks.
     this._vaultReadNotified = new Set();
     if (!keyB64) {
-      this.vaultMasterKey = null;
-      // Cached plaintext must never outlive the key (2.12.85).
-      this.clearPlaintextCache();
+      await this.clearVaultMasterKey();
       return;
     }
+    await this.importVaultMasterKey(keyB64);
+    await chrome.storage.session.set({ [VAULT_MASTER_KEY_SESSION_SLOT]: keyB64 });
+  }
+
+  /**
+   * Import raw key bytes into memory WITHOUT touching session storage or the
+   * notification dedupe. Self-heal uses this so a worker that napped does not
+   * re-report every fallback it already told the user about.
+   */
+  async importVaultMasterKey(keyB64) {
     const raw = Uint8Array.from(atob(keyB64), (c) => c.charCodeAt(0));
     this.vaultMasterKey = await crypto.subtle.importKey(
       'raw',
@@ -1188,11 +1202,57 @@ class ImgVaultServiceWorker {
   }
 
   /**
+   * Lock from the service worker side: memory, session copy and every plaintext
+   * artifact derived from the key all go together (2.12.85).
+   */
+  async clearVaultMasterKey() {
+    this.vaultMasterKey = null;
+    this._vaultReadNotified = new Set();
+    await chrome.storage.session.remove(VAULT_MASTER_KEY_SESSION_SLOT).catch(() => {});
+    // Cached plaintext must never outlive the key (2.12.85).
+    this.clearPlaintextCache();
+  }
+
+  /**
+   * Rehydrate the master key after an MV3 idle restart.
+   * The key used to live only in worker memory, so ~30s of idle made every vault
+   * action report 'locked' until the page reloaded and re-sent it. Session
+   * storage outlives the eviction, so any gate can heal itself first.
+   * Returns whether the vault is unlocked afterwards.
+   */
+  async ensureVaultMasterKey() {
+    if (this.vaultMasterKey) return true;
+    let keyB64 = null;
+    try {
+      const stored = await chrome.storage.session.get(VAULT_MASTER_KEY_SESSION_SLOT);
+      keyB64 = stored?.[VAULT_MASTER_KEY_SESSION_SLOT];
+    } catch (error) {
+      // no session copy readable = no way to heal; the gates still fail loudly
+      // with "vault is locked", which is the action the user has to take.
+      console.error('[Vault] Could not read the session master key:', error?.message || error);
+      return false;
+    }
+    if (!keyB64) return false;
+    try {
+      await this.importVaultMasterKey(keyB64);
+    } catch (error) {
+      // An unimportable slot means the session copy is garbage; the vault really
+      // is locked, so drop it and let the gates say so instead of retrying it.
+      console.error('[Vault] Session master key could not be imported:', error?.message || error);
+      await this.clearVaultMasterKey();
+      return false;
+    }
+    console.log('[Vault] Master key rehydrated from session storage after worker restart');
+    return true;
+  }
+
+  /**
    * Export the raw master key bytes (base64) so any extension page can hydrate
    * its own in-memory session. The key only lives here while the vault is
    * unlocked, so this is a no-op (null) when locked.
    */
   async getVaultMasterKeyB64() {
+    await this.ensureVaultMasterKey();
     if (!this.vaultMasterKey) return null;
     const raw = new Uint8Array(await crypto.subtle.exportKey('raw', this.vaultMasterKey));
     let binary = '';
@@ -1204,6 +1264,7 @@ class ImgVaultServiceWorker {
    * Vault status for the UI: configured? currently unlocked?
    */
   async getVaultStatus() {
+    await this.ensureVaultMasterKey();
     const config = await this.storage.getVaultConfig().catch(() => null);
     return {
       configured: Boolean(config?.wrappedMasterKey || config?.passHash),
@@ -1267,6 +1328,7 @@ class ImgVaultServiceWorker {
    * @returns {Promise<{encryptedBlobUrl:string, encryptedBlobFileId:string, encryptedMetadata:string, encryptedMimeType:string, encryptedFileName:string, vaultHost:string, vaultHosts:string[], encryptedBlobHosts:Array}>}
    */
   async encryptAndUploadVaultedBlob(blob, metadata = {}, onProgress, vaultHosts = DEFAULT_VAULT_BLOB_HOST) {
+    await this.ensureVaultMasterKey();
     if (!this.vaultMasterKey) {
       throw new Error('Secret Vault is locked. Unlock it before saving encrypted items.');
     }
@@ -1378,6 +1440,7 @@ class ImgVaultServiceWorker {
    *   fetch tries every copy (redundancy across vault blob hosts).
    */
   async decryptVaultBlob(url, mimeType = 'application/octet-stream', fileId = '', chunks = [], vaultHost = DEFAULT_VAULT_BLOB_HOST, fileName = '', onProgress = null, hostCopies = null, itemId = '') {
+    await this.ensureVaultMasterKey();
     if (!this.vaultMasterKey) {
       throw new Error('Secret Vault is locked. Unlock it before viewing encrypted items.');
     }
@@ -1508,6 +1571,7 @@ class ImgVaultServiceWorker {
    * @returns {Promise<Uint8Array>} plaintext bytes for [start, end]
    */
   async fetchVaultPlaintextRange({ id = '', copies = [], fileName = '', start = 0, end = 0 } = {}) {
+    await this.ensureVaultMasterKey();
     if (!this.vaultMasterKey) {
       throw new Error('Vault is locked. Unlock the vault first.');
     }
@@ -1573,6 +1637,7 @@ class ImgVaultServiceWorker {
   }
 
   async probeVaultBlobFormat({ id = '', url, fileId = '', chunks = [], vaultHost = DEFAULT_VAULT_BLOB_HOST, hostCopies = null, fileName = '' } = {}) {
+    await this.ensureVaultMasterKey();
     if (!this.vaultMasterKey) {
       throw new Error('Vault is locked. Unlock the vault first.');
     }
@@ -1805,6 +1870,7 @@ class ImgVaultServiceWorker {
       }];
     }
 
+    await this.ensureVaultMasterKey();
     if (!this.vaultMasterKey) {
       return new Response('Vault is locked. Unlock the vault to stream this item.', { status: 403 });
     }
@@ -2244,6 +2310,7 @@ class ImgVaultServiceWorker {
     if (this.storage.isVaultedItem(current)) {
       return true;
     }
+    await this.ensureVaultMasterKey();
 
     // Encrypted path: vault unlocked.
     if (this.vaultMasterKey) {
@@ -2343,10 +2410,12 @@ class ImgVaultServiceWorker {
     await chrome.storage.local.set({ uploadActive: true, uploadStatusLogs: [], uploadStatus: '🔓 Starting vault restore...' });
     try {
       if (current.encryptedBlobUrl) {
-        // The blob is encrypted — restoring it requires the master key. If the
-        // key is gone (MV3 SW idle restart), FAIL LOUDLY instead of silently
-        // falling into the legacy flag-only restore, which un-vaults the item
-        // without re-uploading any playable URL (real data-availability bug).
+        // The blob is encrypted — restoring it requires the master key. Heal a
+        // napped worker first, and if the key is genuinely gone FAIL LOUDLY
+        // instead of silently falling into the legacy flag-only restore, which
+        // un-vaults the item without re-uploading any playable URL (real
+        // data-availability bug).
+        await this.ensureVaultMasterKey();
         if (!this.vaultMasterKey) {
           throw new Error('Vault is locked. Unlock the vault before restoring this encrypted item.');
         }
@@ -2811,11 +2880,12 @@ class ImgVaultServiceWorker {
         return true;
 
       case 'vaultClearMasterKey':
-        this.vaultMasterKey = null;
-        // Cached plaintext must never outlive the key (2.12.85).
-        this.clearPlaintextCache();
-        sendResponse({ success: true, data: null });
-        return false;
+        // Locking must drop the session copy too, otherwise a napped worker
+        // would heal the key straight back out of storage on the next read.
+        this.clearVaultMasterKey()
+          .then(() => sendResponse({ success: true, data: null }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
 
       case 'getVaultStatus':
         this.getVaultStatus()
@@ -3910,6 +3980,7 @@ class ImgVaultServiceWorker {
     try {
       await chrome.storage.local.set({ uploadStatusLogs: [] });
 
+      await this.ensureVaultMasterKey();
       if (!this.vaultMasterKey) {
         throw new Error('Secret Vault is locked. Unlock it before saving encrypted items.');
       }
