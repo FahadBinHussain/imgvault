@@ -89,8 +89,15 @@ const RUNTIME_BY_KEY = {
     uploaderClass: TeraBoxUploader,
     upload: ({ uploader, blob, settings, data, signal }) =>
       uploader.upload(blob, settings?.teraboxCookie || '', data.fileName || 'video.mp4', signal),
-    uploadWithProgress: ({ uploader, blob, settings, data, onProgress, signal }) =>
-      uploader.uploadWithProgress(blob, settings?.teraboxCookie || '', data.fileName || 'video.mp4', onProgress, signal),
+    uploadWithProgress: ({ uploader, blob, settings, data, onProgress, signal, resumeState, onSessionState }) =>
+      uploader.uploadWithProgress(
+        blob,
+        settings?.teraboxCookie || '',
+        data.fileName || 'video.mp4',
+        onProgress,
+        signal,
+        { resumeState, onSessionState }
+      ),
     vaultDownloadUrl: async ({ url, fileId, fileName, settings }) => {
       try {
         const fresh = await resolveTeraBoxPlaybackUrl(settings?.teraboxCookie || '', fileId, fileName);

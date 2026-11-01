@@ -10,7 +10,7 @@ import {
   Upload, Trash2, Download, X, FolderOpen,
   FileText, Cloud, Link2, Tag, Video, ExternalLink,
   File, Image as ImageIcon, LockKeyhole,
-  Box
+  Box, AlertTriangle, RotateCcw
 } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
 import UploadHostSelector, { reconcileSelectedHostKeys } from '../components/UploadHostSelector';
@@ -62,6 +62,16 @@ import { CachedImg, CachedVideo } from '../components/CachedThumb';
 import SceneViewer from '../components/SceneViewer';
 import MediaDetailModal from '../components/MediaDetailModal';
 import { normalizeVaultVideo } from '../utils/vaultVideoNormalizer.js';
+import {
+  UPLOAD_OWNER,
+  UPLOAD_OWNER_PORT,
+  UPLOAD_RUN_STATUS,
+  describeUploadProgress,
+  describeUploadRun,
+  isTerminalUploadStatus,
+  isUploadRunStalled,
+} from '../utils/uploadRun.js';
+import { cacheUploadFile, getCachedUploadFile, listCachedUploadFiles, removeCachedUploadFile } from '../utils/uploadFileCache.js';
 
 const createVideoUploader = (service) => {
   if (service?.uploaderKey === 'filemoonUploader') return new FilemoonUploader();
@@ -439,6 +449,12 @@ export default function GalleryPage() {
   const [selectedUploadHostKeysByKind, setSelectedUploadHostKeysByKind, keysByKindLoading] = useChromeStorage('selectedUploadHostKeysByKind', {}, 'local');
   const [legacySelectedUploadHostKeys, setLegacySelectedUploadHostKeys] = useChromeStorage('selectedUploadHostKeys', [], 'local');
   const [uploadToVault, setUploadToVault] = useState(false);
+  // The ledger's current run. A run that is still "running" when the gallery
+  // opens means its owner died - the worker settles it as interrupted and
+  // this is how the user is told what was lost and gets a resume button.
+  const [uploadRun] = useChromeStorage('uploadRun', null, 'local');
+  const [resumingUpload, setResumingUpload] = useState(false);
+  const [dismissedRunId, setDismissedRunId] = useState('');
   const [selectedVaultHostKeys, setSelectedVaultHostKeys, vaultHostKeysLoading] = useChromeStorage('selectedVaultHostKeys', [DEFAULT_VAULT_BLOB_HOST], 'local');
   const [vaultLockedForUpload, setVaultLockedForUpload] = useState(false);
   const [vaultUnlockCode, setVaultUnlockCode] = useState('');
@@ -489,6 +505,11 @@ export default function GalleryPage() {
   const activeVideoUploadControllerRef = useRef(null);
   const batchCancelRequestedRef = useRef(false);
   const batchDuplicateBypassFileRef = useRef(null);
+  // Ownership of the running upload: the port keeps the worker informed that
+  // this page is still alive, and the run id lets a finished run release its
+  // cached file.
+  const uploadOwnerPortRef = useRef(null);
+  const activeUploadRunIdRef = useRef(null);
 
   const currentUploadKind = useMemo(() => {
     if (is3DMode || uploadImageData?.is3D || (uploadImageData?.file && is3DUploadFile(uploadImageData.file))) {
@@ -546,6 +567,13 @@ export default function GalleryPage() {
   }, [configuredUploadServices, effectiveSelectedUploadHostKeys]);
 
   const uploadIsActive = uploading || batchUploadState.active;
+  // A run the worker settled as interrupted: its owner (browser, tab or the
+  // worker itself) died mid-transfer. This is the state the gallery used to
+  // have no way to represent - it just kept showing "Uploading..." forever.
+  const interruptedRun = (uploadRun?.status === 'interrupted' && uploadRun.id !== dismissedRunId)
+    ? uploadRun
+    : null;
+  const uploadRunIsStalled = isUploadRunStalled(uploadRun);
   const shouldShowUploadLogPreview = uploadIsActive || uploadAttemptStarted;
   const uploadLogPreviewEntries = shouldShowUploadLogPreview ? uploadLogs : [];
   const hasUploadLogPreview = shouldShowUploadLogPreview && (
@@ -1084,6 +1112,29 @@ export default function GalleryPage() {
     }
   };
 
+  // Free cached upload files that no run refers to any more. The CURRENT run
+  // is always kept - it may be the interrupted one the user still wants to
+  // resume. Anything older than a week is dead weight.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cached = await listCachedUploadFiles();
+        const keepRunId = uploadRun?.id || '';
+        const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        for (const entry of cached) {
+          if (cancelled) return;
+          if (entry.runId === keepRunId) continue;
+          if (entry.cachedAt >= weekAgo) continue;
+          await removeCachedUploadFile(entry.runId).catch(() => {});
+        }
+      } catch (error) {
+        console.warn('[ImgVault] Failed to clean the upload file cache:', error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [uploadRun?.id]);
+
   const getUploadLogColorClass = (type) =>
     type === 'error'
       ? 'bg-error/10 text-error border-error/20'
@@ -1113,6 +1164,95 @@ export default function GalleryPage() {
     };
     const nextLogs = [entry, ...(result.uploadStatusLogs || [])].slice(0, 200);
     await chrome.storage.local.set({ uploadStatusLogs: nextLogs });
+  };
+
+  /**
+   * Hold a runtime port open for as long as this page owns a running upload.
+   *
+   * The worker needs to be able to tell "the tab was closed mid-upload" from
+   * "the upload is fine". A port that drops while the worker is still alive is
+   * that signal, and it settles the run immediately instead of leaving the UI
+   * claiming an upload that cannot be running.
+   */
+  const openUploadOwnerPort = (runId) => {
+    try {
+      const port = chrome.runtime.connect({ name: UPLOAD_OWNER_PORT });
+      port.postMessage({ type: 'uploadOwnerClaim', runId });
+      uploadOwnerPortRef.current = port;
+
+      port.onDisconnect.addListener(() => {
+        if (uploadOwnerPortRef.current !== port) {
+          return;
+        }
+        uploadOwnerPortRef.current = null;
+        // The worker was evicted or the extension was reloaded. Re-claim
+        // ownership so the live run is not mistaken for an abandoned one.
+        if (activeUploadRunIdRef.current) {
+          openUploadOwnerPort(activeUploadRunIdRef.current);
+        }
+      });
+      return port;
+    } catch (error) {
+      console.warn('[ImgVault] Failed to open the upload owner port:', error);
+      return null;
+    }
+  };
+
+  const closeUploadOwnerPort = () => {
+    const port = uploadOwnerPortRef.current;
+    uploadOwnerPortRef.current = null;
+    if (!port) {
+      return;
+    }
+    try {
+      port.disconnect();
+    } catch (_) {}
+  };
+
+  /**
+   * Record that an upload started, and take ownership of it.
+   * @param {Object} init
+   * @returns {Promise<Object|null>} the run record
+   */
+  const beginUploadRun = async ({ kind, hosts, hostKeys, fileName, bytesTotal, source }) => {
+    const run = await sendMessage('uploadRunStarted', {
+      kind,
+      owner: UPLOAD_OWNER.PAGE,
+      hosts: hosts || [],
+      hostKeys: hostKeys || [],
+      fileName: fileName || '',
+      bytesTotal: bytesTotal || 0,
+      source: source || '',
+    });
+    if (run?.id) {
+      activeUploadRunIdRef.current = run.id;
+      openUploadOwnerPort(run.id);
+    }
+    return run;
+  };
+
+  /**
+   * Close the run and release ownership.
+   * @param {string} status - one of UPLOAD_RUN_STATUS
+   * @param {string} summary
+   */
+  const endUploadRun = async (status, summary) => {
+    activeUploadRunIdRef.current = null;
+    closeUploadOwnerPort();
+    await sendMessage('uploadRunFinished', { status, summary });
+  };
+
+  /**
+   * Stamp progress onto the run so the worker can tell a live upload from a
+   * dead one.
+   * @param {Object} patch
+   */
+  const reportUploadRunProgress = async (patch) => {
+    try {
+      await sendMessage('uploadRunProgress', patch);
+    } catch (error) {
+      console.warn('[ImgVault] Failed to report upload progress:', error);
+    }
   };
 
   const formatBytes = (bytes) => {
@@ -1174,6 +1314,9 @@ export default function GalleryPage() {
           sourcePageUrl: uploadData.pageUrl,
           sourceImageUrl: uploadData.originalSourceUrl || uploadData.imageUrl,
           sha256: uploadData.sha256 || '',
+          // The row the interrupted attempt reserved is the same upload, not
+          // a duplicate of it.
+          excludeItemId: uploadData.resumePendingItemId || '',
         });
         const dup = dupResponse?.duplicate || dupResponse;
         if (dup && typeof dup === 'object' && (dup.id || dup.matchReason)) {
@@ -1200,23 +1343,64 @@ export default function GalleryPage() {
         throw new Error('Select at least one configured video host.');
       }
 
+      // Record the run so a crash is reported honestly instead of leaving the
+      // UI stuck on "Uploading..." forever, and so the picked file can be
+      // cached for a later resume.
+      const run = await beginUploadRun({
+        kind: 'video',
+        hosts: selectedServices.map((service) => service.label),
+        hostKeys: selectedServices.map((service) => service.key),
+        fileName: uploadData.fileName || getFileNameFromPath(uploadData.filePath || '') || 'video.mp4',
+        bytesTotal: uploadData.fileBlob?.size || uploadData.fileSize || 0,
+        source: 'local-file',
+      });
+
+      if (run?.id && uploadData.fileBlob) {
+        try {
+          await cacheUploadFile(uploadData.fileBlob, { runId: run.id, fileName: uploadData.fileName || '' });
+        } catch (cacheError) {
+          // The upload itself must not die because the resume cache did not
+          // fit, but the user has to know that a crash cannot be resumed.
+          await appendClientUploadLog(
+            `⚠️ Resume cache unavailable: ${cacheError.message || String(cacheError)}. If this upload is interrupted it cannot be resumed from this file.`,
+            'warning'
+          );
+        }
+      }
+
+      const resumeStates = { ...(uploadData.resumeStates || {}) };
+      let runOutcome = {
+        status: UPLOAD_RUN_STATUS.ERROR,
+        summary: 'Video upload did not finish.',
+      };
+
       // DB-first: reserve the item now so a browser/tab death mid-upload
       // leaves the item in the DB (marked pendingUpload) instead of an
       // unrecoverable orphan file on the host.
       const pendingMetaVideo = { ...uploadData };
       delete pendingMetaVideo.fileBlob;
       delete pendingMetaVideo.file;
-      const pendingReservation = await sendMessage('createPendingUpload', {
-        ...pendingMetaVideo,
-        fileName: uploadData.fileName || getFileNameFromPath(uploadData.filePath || '') || 'video.mp4',
-      }).catch(async (err) => {
-        if (err?.duplicate || err?.message?.toLowerCase().includes('duplicate')) {
-          throw err;
-        }
-        await appendClientUploadLog(`[PENDING UPLOAD] Failed to reserve DB item: ${err.message || String(err)}`, 'error');
-        return null;
-      });
-      const pendingItemId = pendingReservation?.id || null;
+      // A resumed upload re-uses the row the interrupted attempt reserved.
+      // Reserving a second one would leave the first row orphaned AND make
+      // the duplicate check fire on the upload's own reservation.
+      let pendingItemId = uploadData.resumePendingItemId || null;
+      if (pendingItemId) {
+        await appendClientUploadLog(`[PENDING UPLOAD] Re-using DB item ${pendingItemId} from the interrupted upload.`);
+      } else {
+        const pendingReservation = await sendMessage('createPendingUpload', {
+          ...pendingMetaVideo,
+          fileName: uploadData.fileName || getFileNameFromPath(uploadData.filePath || '') || 'video.mp4',
+        }).catch(async (err) => {
+          if (err?.duplicate || err?.message?.toLowerCase().includes('duplicate')) {
+            throw err;
+          }
+          await appendClientUploadLog(`[PENDING UPLOAD] Failed to reserve DB item: ${err.message || String(err)}`, 'error');
+          return null;
+        });
+        pendingItemId = pendingReservation?.id || null;
+      }
+      // Remember it on the run: a later resume has to find the same row.
+      await reportUploadRunProgress({ pendingItemId });
 
       for (const service of selectedServices) {
         const uploader = createVideoUploader(service);
@@ -1243,6 +1427,22 @@ export default function GalleryPage() {
                 : `${service.label} upload progress: ${loadedLabel} sent`;
               await chrome.storage.local.set({ uploadStatus: message });
               await appendClientUploadLog(message);
+              await reportUploadRunProgress({
+                percent,
+                bytesSent: loaded,
+                bytesTotal: total || uploadData.fileBlob?.size || 0,
+                host: service.label,
+              });
+            },
+            // Hosts with a resumable API (TeraBox) get the session state of
+            // the interrupted attempt, so only the missing chunks are sent
+            // again instead of the whole file.
+            resumeState: resumeStates[service.key] || null,
+            onSessionState: async (state) => {
+              resumeStates[service.key] = state;
+              await reportUploadRunProgress({
+                resume: { provider: service.key, ...state },
+              });
             },
             signal: uploadController.signal,
           });
@@ -1288,6 +1488,12 @@ export default function GalleryPage() {
         if (uploadErrors.length > 0) {
           finalized.videoUploadErrors = uploadErrors;
         }
+        runOutcome = {
+          status: uploadErrors.length > 0 ? UPLOAD_RUN_STATUS.WARNING : UPLOAD_RUN_STATUS.SUCCESS,
+          summary: uploadErrors.length > 0
+            ? `Video upload finished with partial success. ${uploadErrors.join(' | ')}`
+            : 'Video upload completed successfully.',
+        };
         return finalized;
       }
 
@@ -1305,6 +1511,12 @@ export default function GalleryPage() {
       if (uploadErrors.length > 0) {
         saved.videoUploadErrors = uploadErrors;
       }
+      runOutcome = {
+        status: uploadErrors.length > 0 ? UPLOAD_RUN_STATUS.WARNING : UPLOAD_RUN_STATUS.SUCCESS,
+        summary: uploadErrors.length > 0
+          ? `Video upload finished with partial success. ${uploadErrors.join(' | ')}`
+          : 'Video upload completed successfully.',
+      };
       return saved;
     } catch (error) {
       if (error?.duplicate) {
@@ -1324,11 +1536,16 @@ export default function GalleryPage() {
           await appendClientUploadLog(`[PENDING UPLOAD] Cleanup of ${pendingItemId} failed: ${cleanupErr.message || String(cleanupErr)}`, 'error');
         }
       }
+      runOutcome = { status: UPLOAD_RUN_STATUS.ERROR, summary: errorMsg };
       throw error;
     } finally {
       if (activeVideoUploadControllerRef.current === uploadController) {
         activeVideoUploadControllerRef.current = null;
       }
+      // Close the run BEFORE the flag is cleared: the run has to be settled
+      // with a real outcome, otherwise the next launch would see a "running"
+      // upload that no longer exists.
+      await endUploadRun(runOutcome.status, runOutcome.summary);
       await chrome.storage.local.set({ uploadActive: false });
     }
   };
@@ -1520,6 +1737,30 @@ export default function GalleryPage() {
         .map((s) => s.label).join(' / ');
       if (configuredServices.length === 0) throw new Error(`No 3D host is configured (need ${hostNames}).`);
       if (selectedServices.length === 0) throw new Error(`Select at least one 3D host (${hostNames}).`);
+
+      const run3d = await beginUploadRun({
+        kind: '3d',
+        hosts: selectedServices.map((service) => service.label),
+        hostKeys: selectedServices.map((service) => service.key),
+        fileName: uploadData.fileName || '',
+        bytesTotal: uploadData.fileBlob?.size || uploadData.fileSize || 0,
+        source: 'local-file',
+      });
+      let runOutcome3d = {
+        status: UPLOAD_RUN_STATUS.ERROR,
+        summary: '3D upload did not finish.',
+      };
+
+      if (run3d?.id && uploadData.fileBlob) {
+        try {
+          await cacheUploadFile(uploadData.fileBlob, { runId: run3d.id, fileName: uploadData.fileName || '' });
+        } catch (cacheError) {
+          await appendClientUploadLog(
+            `⚠️ Resume cache unavailable: ${cacheError.message || String(cacheError)}. An interrupted 3D upload cannot be resumed from this file.`,
+            'warning'
+          );
+        }
+      }
       const pendingMeta = { ...uploadData, kind: 'scene', isVideo: false, fileType: uploadData.fileType || 'model/gltf-binary', fileMimeType: uploadData.fileType || 'model/gltf-binary' };
       delete pendingMeta.fileBlob;
       delete pendingMeta.file;
@@ -1586,16 +1827,20 @@ export default function GalleryPage() {
           await sendMessage('updateImage', { id: pendingItemId, ...extraUpdate, ...sceneFilesUpdate, fileType: uploadData.fileType || 'application/octet-stream', fileName: uploadData.fileName });
         }
         await appendClientUploadLog(`[SAVE 3D] Finalized item with ID: ${finalized.id}`, 'success');
+        runOutcome3d = { status: UPLOAD_RUN_STATUS.SUCCESS, summary: '3D model upload completed successfully.' };
         return finalized;
       }
       const saved = await sendMessage('saveUploadedVideo', { ...pendingMeta, videoUploadResults: uploadResults, videoUploadErrors: uploadErrors });
       await appendClientUploadLog(`[SAVE 3D] Saved with ID: ${saved.id}`, 'success');
+      runOutcome3d = { status: UPLOAD_RUN_STATUS.SUCCESS, summary: '3D model upload completed successfully.' };
       return saved;
     } catch (error) {
       await appendClientUploadLog(`Direct 3D upload failed: ${error.message || String(error)}`, 'error');
+      runOutcome3d = { status: UPLOAD_RUN_STATUS.ERROR, summary: error.message || String(error) };
       throw error;
     } finally {
       if (activeVideoUploadControllerRef.current === uploadController) activeVideoUploadControllerRef.current = null;
+      await endUploadRun(runOutcome3d.status, runOutcome3d.summary);
       await chrome.storage.local.set({ uploadActive: false });
     }
   };
@@ -1612,6 +1857,22 @@ export default function GalleryPage() {
       const hostNames = (configured.length ? configured : VIDEO_UPLOAD_SERVICES.filter((s) => THREE_D_HOST_KEYS.includes(s.key)))
         .map((s) => s.threeDLabel || s.label).join(' / ');
       if (selected.length === 0) throw new Error(`Select at least one scene host (${hostNames}).`);
+
+      // A scene is two files (spz + texture), so there is no single file to
+      // cache for a byte-level resume - the run is still recorded so an
+      // interrupted scene upload is reported instead of spinning forever.
+      const runScene = await beginUploadRun({
+        kind: 'scene',
+        hosts: selected.map((service) => service.threeDLabel || service.label),
+        hostKeys: selected.map((service) => service.key),
+        fileName: spzFile?.name || '',
+        bytesTotal: (spzFile?.size || 0) + (textureFile?.size || 0),
+        source: 'local-file',
+      });
+      let runOutcomeScene = {
+        status: UPLOAD_RUN_STATUS.ERROR,
+        summary: 'Scene upload did not finish.',
+      };
       // Telegram uploads scene files as documents, so its getFile 20 MB read-back
       // gate applies to BOTH files. Check before the first byte goes out - a
       // mid-pair failure would leave a half-uploaded scene behind.
@@ -1675,9 +1936,14 @@ export default function GalleryPage() {
       // readers take the item field before extraMetadata.sceneFiles.
       await sendMessage('updateImage', { id, spzUrl, textureUrl, sceneFiles, configJson: sceneConfig ? JSON.stringify(sceneConfig) : null, kind: 'scene', fileType: 'model/spz', spzFileSize: spzFile.size, textureFileSize: textureFile.size, extraMetadata: { sceneFiles } });
       await appendClientUploadLog(`Scene saved ${id||''}`, 'success');
+      runOutcomeScene = { status: UPLOAD_RUN_STATUS.SUCCESS, summary: 'Scene upload completed successfully.' };
       return { id, spzUrl, textureUrl };
+    } catch (error) {
+      runOutcomeScene = { status: UPLOAD_RUN_STATUS.ERROR, summary: error?.message || String(error) };
+      throw error;
     } finally {
       if (activeVideoUploadControllerRef.current===uploadController) activeVideoUploadControllerRef.current=null;
+      await endUploadRun(runOutcomeScene.status, runOutcomeScene.summary);
       await chrome.storage.local.set({ uploadActive: false });
     }
   };
@@ -2034,12 +2300,99 @@ export default function GalleryPage() {
       }
 
       await chrome.storage.local.set({ uploadActive: false, uploadStatus: '' });
+      await endUploadRun(UPLOAD_RUN_STATUS.CANCELLED, 'Upload cancelled from the gallery.');
       setBatchUploadState((current) => ({ ...current, active: false }));
       showToast('Upload cancelled.', 'warning', 3000);
     } catch (error) {
       console.error('Failed to cancel upload:', error);
       showToast(`Failed to cancel upload: ${error.message || String(error)}`, 'error', 4000);
     }
+  };
+
+  /**
+   * Resume an upload that died with its owner.
+   *
+   * The picked File dies with the page, so the run caches it in IndexedDB
+   * while it uploads. Hosts with a resumable API (TeraBox) also keep their
+   * server-side session, so only the missing chunks are sent again.
+   */
+  const handleResumeInterruptedUpload = async () => {
+    if (!interruptedRun) {
+      return;
+    }
+
+    setResumingUpload(true);
+    try {
+      const file = await getCachedUploadFile(interruptedRun.id);
+      if (!file) {
+        showToast(
+          'The file for that upload is no longer cached - pick the file again to retry.',
+          'warning',
+          6000
+        );
+        return;
+      }
+
+      const resumeStates = {};
+      if (interruptedRun.resume?.provider && interruptedRun.resume.uploadid) {
+        resumeStates[interruptedRun.resume.provider] = interruptedRun.resume;
+        showToast(
+          `Resuming ${describeUploadRun(interruptedRun)}${describeUploadProgress(interruptedRun)} - only the missing chunks are sent again.`,
+          'info',
+          5000
+        );
+      } else {
+        showToast(
+          `Restarting ${describeUploadRun(interruptedRun)}${describeUploadProgress(interruptedRun)} - this host has no resumable session.`,
+          'info',
+          5000
+        );
+      }
+
+      const uploadData = {
+        fileBlob: file,
+        fileName: interruptedRun.fileName || file.name,
+        fileSize: file.size,
+        isVideo: interruptedRun.kind === 'video',
+        selectedHostKeys: interruptedRun.hostKeys || [],
+        resumeStates,
+        // The interrupted attempt's own reserved DB row - re-used, not
+        // duplicated.
+        resumePendingItemId: interruptedRun.pendingItemId || '',
+      };
+
+      if (interruptedRun.kind === 'video') {
+        await uploadVideoDirectly(uploadData);
+      } else if (interruptedRun.kind === '3d') {
+        await upload3DDirectly(uploadData);
+      } else {
+        throw new Error(`Resuming is not supported for ${interruptedRun.kind} uploads. Pick the file again to retry.`);
+      }
+
+      // The old run's cached copy is superseded by the new run.
+      await removeCachedUploadFile(interruptedRun.id).catch(() => {});
+    } catch (error) {
+      console.error('Failed to resume the interrupted upload:', error);
+      showToast(`Resume failed: ${error.message || String(error)}`, 'error', 6000);
+    } finally {
+      setResumingUpload(false);
+    }
+  };
+
+  /**
+   * Drop the interrupted run from the banner and free its cached file.
+   */
+  const dismissInterruptedUpload = async () => {
+    if (!interruptedRun) {
+      return;
+    }
+    try {
+      await removeCachedUploadFile(interruptedRun.id);
+    } catch (error) {
+      console.warn('[ImgVault] Failed to remove the cached upload file:', error);
+    }
+    await chrome.storage.local.set({ uploadRun: null });
+    setDismissedRunId(interruptedRun.id);
   };
 
   const resetBatchUploadState = () => {
@@ -4250,6 +4603,50 @@ export default function GalleryPage() {
 
       <div style={{ height: navbarHeight ? `${navbarHeight + 8}px` : '180px' }} />
 
+      {/* Interrupted upload: the owner died mid-transfer. Say what was lost
+          and offer to pick it back up instead of leaving a frozen
+          "Uploading..." forever. */}
+      {interruptedRun && (
+        <div className="w-full px-3 sm:px-6 lg:pr-16">
+          <motion.div
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="flex flex-col gap-3 rounded-[var(--radius-box)] border border-warning/40 bg-warning/10 p-4 sm:flex-row sm:items-center"
+          >
+            <motion.div
+              animate={{ rotate: [0, -10, 10, -6, 0] }}
+              transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+              className="shrink-0 self-start sm:self-center"
+            >
+              <AlertTriangle className="h-6 w-6 text-warning" />
+            </motion.div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-base-content">Upload interrupted</div>
+              <div className="text-sm text-base-content/70">{interruptedRun.summary}</div>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <Button
+                onClick={handleResumeInterruptedUpload}
+                disabled={resumingUpload || !interruptedRun.hostKeys?.length}
+              >
+                <motion.span
+                  animate={resumingUpload ? { rotate: 360 } : { rotate: 0 }}
+                  transition={resumingUpload ? { duration: 1.1, repeat: Infinity, ease: 'linear' } : { duration: 0.3 }}
+                  className="mr-2 inline-flex"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </motion.span>
+                {resumingUpload ? 'Resuming...' : 'Resume upload'}
+              </Button>
+              <Button variant="ghost" onClick={dismissInterruptedUpload} disabled={resumingUpload}>
+                Dismiss
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* lg:pr-16 reserves the gutter for the fixed timeline rail so cards never sit under it */}
       <div className="w-full px-3 sm:px-6 lg:pr-16">
   <div className="px-0">
@@ -4908,6 +5305,18 @@ export default function GalleryPage() {
                       <span className={`text-2xl ${uploadIsActive ? 'animate-pulse' : ''}`}>{is3DMode ? '📦' : '🖼️'}</span>
                       <div className="flex-1">
                         <div className="text-sm text-primary-200 mb-2"><span>{uploadProgressHeading}</span></div>
+                        {uploadIsActive && uploadRunIsStalled && (
+                          <div className="mb-2 flex items-center gap-2 text-xs text-warning">
+                            <motion.span
+                              animate={{ opacity: [1, 0.35, 1] }}
+                              transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+                              className="inline-flex"
+                            >
+                              <AlertTriangle className="h-3.5 w-3.5" />
+                            </motion.span>
+                            No progress for a while - the transfer may be stalled. Terminate it and retry if it does not move.
+                          </div>
+                        )}
                         {uploadIsActive && (<div className="w-full h-2 bg-base-300 rounded-full overflow-hidden"><div className="h-full bg-gradient-to-r from-primary-500 to-secondary-500 animate-pulse" /></div>)}
                       </div>
                     </div>

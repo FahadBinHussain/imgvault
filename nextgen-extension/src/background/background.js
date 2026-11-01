@@ -54,10 +54,29 @@ import {
   unwrapMasterKey,
   createVaultConfig,
 } from '../utils/vaultCrypto.js';
+import {
+  UPLOAD_OWNER,
+  UPLOAD_OWNER_PORT,
+  UPLOAD_RUN_STATUS,
+  UPLOAD_STALL_WINDOW_MS,
+  archiveUploadRun,
+  describeUploadProgress,
+  describeUploadRun,
+  ensureBrowserSessionId,
+  finishUploadRun,
+  getUploadRun,
+  isTerminalUploadStatus,
+  isUploadRunStalled,
+  rotateBrowserSessionId,
+  settleInterruptedUploadRun,
+  startUploadRun,
+  updateUploadRun,
+} from '../utils/uploadRun.js';
 
 const NATIVE_DOWNLOAD_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 const TAB_NOT_FOCUSED_NOTIFICATION_ID = 'imgvault-native-tab-not-focused';
 const TAB_FOCUSED_NOTIFICATION_ID = 'imgvault-native-tab-focused';
+const UPLOAD_INTERRUPTED_NOTIFICATION_ID = 'imgvault-upload-interrupted';
 const ACTIVE_NATIVE_DOWNLOAD_KEY = 'activeNativeDownload';
 // The master key, held for the lifetime of the browser session only.
 // chrome.storage.session survives MV3 idle eviction and dies with the browser,
@@ -118,7 +137,13 @@ class ImgVaultServiceWorker {
     this.teraboxUploader = new TeraBoxUploader();
     this.telegramUploader = new TelegramUploader();
     this.activeUploadController = null;
+    this.uploadHeartbeatTimer = null;
     this.activeNativeDownloadPorts = new Map();
+    // Pages that own a running upload keep a runtime port open for its
+    // lifetime. When the port drops while the worker is alive, the owner is
+    // gone and the run has to be settled as interrupted instead of being
+    // left showing "Uploading..." forever.
+    this.uploadOwnerPorts = new Map();
     this.nativeVideoPorts = new Map();
     this.cancellingNativeDownloads = new Set();
     this.vaultMasterKey = null;
@@ -2843,6 +2868,36 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'uploadRunStarted':
+        startUploadRun(request.data || {})
+          .then(run => sendResponse({ success: true, data: run }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'uploadRunProgress':
+        updateUploadRun(request.data || {})
+          .then(run => sendResponse({ success: true, data: run }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'uploadRunFinished':
+        finishUploadRun(request.data?.status, request.data?.summary || '')
+          .then(run => sendResponse({ success: true, data: run }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'getUploadRunState':
+        getUploadRun()
+          .then(run => sendResponse({ success: true, data: run }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'reconcileUploadRun':
+        this.reconcileStaleUploadRuns(request.data?.reason || '')
+          .then(run => sendResponse({ success: true, data: run }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'getImages':
         this.storage.getAllImages()
           .then(images => sendResponse({ success: true, data: images }))
@@ -3296,6 +3351,32 @@ class ImgVaultServiceWorker {
   async updateStatusWithLog(message, type = 'info') {
     this.updateStatus(message);
     await this.appendUploadLog(message, type);
+  }
+
+  /**
+   * Keep the run's heartbeat fresh while a transfer is in flight.
+   *
+   * Image uploads do not report byte-level progress, so without this the run
+   * would look stalled for the whole transfer and the watchdog would settle a
+   * perfectly healthy upload.
+   */
+  startUploadHeartbeat() {
+    this.stopUploadHeartbeat();
+    this.uploadHeartbeatTimer = setInterval(() => {
+      updateUploadRun({}).catch((error) => {
+        console.debug('Upload heartbeat failed:', error);
+      });
+    }, 30 * 1000);
+  }
+
+  /**
+   * Stop the heartbeat. Always called from the upload's finally block.
+   */
+  stopUploadHeartbeat() {
+    if (this.uploadHeartbeatTimer) {
+      clearInterval(this.uploadHeartbeatTimer);
+      this.uploadHeartbeatTimer = null;
+    }
   }
 
   buildNativeDownloadLogEntry(message, type = 'info', stream = '') {
@@ -3862,17 +3943,163 @@ class ImgVaultServiceWorker {
   }
 
   async archiveUploadLogRun(status, summary) {
-    const storage = await chrome.storage.local.get(['uploadStatusLogs', 'uploadLogHistory']);
-    const run = {
-      id: `upload-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      timestamp: new Date().toLocaleString(),
+    const run = await getUploadRun();
+    await archiveUploadRun({
+      ...(run || {}),
+      id: run?.id || `upload-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       status,
       summary,
-      logs: storage.uploadStatusLogs || [],
+      completedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  }
+
+  /**
+   * Settle an upload run whose owner died, and say what was lost.
+   *
+   * The upload used to be two flags in storage with no owner and no record of
+   * what was in flight. When the browser (or the tab, or this worker) died
+   * mid-transfer the transport never settled, the `finally` that cleared
+   * `uploadActive` never ran, and the UI came back from a restart showing
+   * "Uploading..." with a frozen log forever. This is the path that closes
+   * that corpse down honestly instead of leaving it spinning.
+   *
+   * @param {Object} run - the run record being settled
+   * @param {string} reason - human readable explanation of what happened
+   * @returns {Promise<Object|null>} the settled run
+   */
+  async settleInterruptedUpload(run, reason) {
+    if (!run || isTerminalUploadStatus(run.status)) {
+      return run || null;
+    }
+
+    const summary = `${reason} Nothing was saved for this upload.`;
+    await this.updateStatusWithLog(`⚠️ ${summary}`, 'warning');
+
+    const settled = await settleInterruptedUploadRun(summary, {
+      interruptedReason: reason,
+      interruptedAt: Date.now(),
+    });
+
+    await this.notifyUploadInterrupted(settled);
+
+    return settled;
+  }
+
+  /**
+   * Reconcile a run that was still marked running when its context died.
+   *
+   * Three independent signals, because no single one covers every death:
+   *   - the browser session id changed -> the browser restarted under the run
+   *   - the owner port is gone while the worker is alive -> the page died
+   *   - the heartbeat stopped -> the request hung (settled as interrupted)
+   *
+   * @param {string} [reason] - override for the interruption reason
+   * @returns {Promise<Object|null>} the run after reconciliation
+   */
+  async reconcileStaleUploadRuns(reason = '') {
+    let run;
+    try {
+      run = await getUploadRun();
+    } catch (error) {
+      console.error('Failed to read the upload run record:', error);
+      return null;
+    }
+
+    if (!run || isTerminalUploadStatus(run.status)) {
+      return run || null;
+    }
+
+    const sessionId = await ensureBrowserSessionId();
+
+    // The browser restarted while this run was live: nothing that was
+    // running in the old browser process can still be running.
+    if (run.sessionId && run.sessionId !== sessionId) {
+      return this.settleInterruptedUpload(
+        run,
+        reason || `The browser was closed while ${describeUploadRun(run)} was still running${describeUploadProgress(run)}.`
+      );
+    }
+
+    // The owning page disconnected while this worker stayed alive. That case
+    // is handled by handleUploadOwnerPort's onDisconnect, which fires the
+    // moment the port drops - it is NOT re-derived here, because this worker
+    // may have just been evicted and woken up with an empty port map while
+    // the page is still uploading.
+    if (isUploadRunStalled(run)) {
+      return this.settleInterruptedUpload(
+        run,
+        reason || `No progress for more than ${Math.round(UPLOAD_STALL_WINDOW_MS / 1000)}s during ${describeUploadRun(run)}${describeUploadProgress(run)}.`
+      );
+    }
+
+    return run;
+  }
+
+  /**
+   * Tell the user that an upload died. A stuck upload that the user has to
+   * discover on their own is the exact failure this feature exists for.
+   * @param {Object} run
+   */
+  async notifyUploadInterrupted(run) {
+    if (!run || !chrome.notifications?.create) {
+      return;
+    }
+    try {
+      await chrome.notifications.create(UPLOAD_INTERRUPTED_NOTIFICATION_ID, {
+        type: 'basic',
+        iconUrl: 'icons/1.png',
+        title: 'ImgVault - upload interrupted',
+        message: `${describeUploadRun(run)}${describeUploadProgress(run)}. Open the gallery to retry.`,
+        priority: 2,
+      });
+    } catch (error) {
+      console.debug('Failed to show the upload-interrupted notification:', error);
+    }
+  }
+
+  /**
+   * Track a page that owns a running upload. The page holds this port open
+   * for the lifetime of the transfer; when it drops, the owner is gone.
+   * @param {chrome.runtime.Port} port
+   */
+  handleUploadOwnerPort(port) {
+    const runId = String(port?.sender?.id ?? '');
+    let ownedRunId = '';
+
+    const onMessage = (message) => {
+      if (message?.type === 'uploadOwnerClaim' && message.runId) {
+        ownedRunId = String(message.runId);
+        this.uploadOwnerPorts.set(ownedRunId, port);
+      }
     };
 
-    const nextHistory = [run, ...(storage.uploadLogHistory || [])].slice(0, 20);
-    await chrome.storage.local.set({ uploadLogHistory: nextHistory });
+    port.onMessage.addListener(onMessage);
+
+    port.onDisconnect.addListener(() => {
+      port.onMessage.removeListener(onMessage);
+      if (!ownedRunId) {
+        return;
+      }
+      this.uploadOwnerPorts.delete(ownedRunId);
+
+      // The page closed mid-transfer. Settle the run so the UI stops
+      // claiming an upload that cannot possibly be running any more.
+      (async () => {
+        try {
+          const run = await getUploadRun();
+          if (!run || run.id !== ownedRunId || isTerminalUploadStatus(run.status)) {
+            return;
+          }
+          await this.settleInterruptedUpload(
+            run,
+            `The gallery tab was closed while ${describeUploadRun(run)} was still running${describeUploadProgress(run)}.`
+          );
+        } catch (error) {
+          console.error('Failed to settle the upload after the owner disconnected:', error);
+        }
+      })();
+    });
   }
 
   async isExtensionUiFocused() {
@@ -3955,6 +4182,7 @@ class ImgVaultServiceWorker {
   async cancelActiveUpload() {
     if (!this.activeUploadController) {
       await chrome.storage.local.set({ uploadActive: false, uploadStatus: '' });
+      await finishUploadRun(UPLOAD_RUN_STATUS.CANCELLED, 'Upload cancelled before it finished.');
       return { cancelled: false };
     }
 
@@ -3962,6 +4190,7 @@ class ImgVaultServiceWorker {
     this.activeUploadController = null;
     await this.updateStatusWithLog('Upload cancelled.', 'warning');
     await chrome.storage.local.set({ uploadActive: false, uploadStatus: '' });
+    await finishUploadRun(UPLOAD_RUN_STATUS.CANCELLED, 'Upload cancelled before it finished.');
     return { cancelled: true };
   }
 
@@ -3976,6 +4205,17 @@ class ImgVaultServiceWorker {
   async handleVaultedUpload(data, kind) {
     const uploadController = new AbortController();
     this.activeUploadController = uploadController;
+
+    await startUploadRun({
+      kind: 'vault',
+      owner: UPLOAD_OWNER.WORKER,
+      hosts: normalizeVaultBlobHostKeys(data.vaultHosts || data.vaultHost || []).map((key) => key),
+      fileName: this.extractFileName(data) || '',
+      bytesTotal: data.fileBlob instanceof Blob ? data.fileBlob.size : 0,
+      source: data.fileBlob instanceof Blob ? 'local-file' : 'url',
+      sourcePageUrl: data.pageUrl || '',
+    });
+    this.startUploadHeartbeat();
 
     try {
       await chrome.storage.local.set({ uploadStatusLogs: [] });
@@ -4057,14 +4297,15 @@ class ImgVaultServiceWorker {
       // must never carry a stale artifact from a previous blob.
       this._invalidateVaultBlobCaches(savedId);
 
-      await this.archiveUploadLogRun('success', 'Encrypted vault upload completed.');
+      await finishUploadRun(UPLOAD_RUN_STATUS.SUCCESS, 'Encrypted vault upload completed.');
 
       return { id: savedId, ...mediaMetadata };
     } catch (error) {
       console.error('Vaulted upload error:', error);
-      await this.archiveUploadLogRun('error', error.message || 'Encrypted vault upload failed.');
+      await finishUploadRun(UPLOAD_RUN_STATUS.ERROR, error.message || 'Encrypted vault upload failed.');
       throw error;
     } finally {
+      this.stopUploadHeartbeat();
       this.activeUploadController = null;
     }
   }
@@ -4132,6 +4373,19 @@ class ImgVaultServiceWorker {
       const settings = await chrome.storage.sync.get(IMAGE_UPLOAD_SERVICES.flatMap((service) => service.apiKeyFields || []));
       const configuredImageServices = getConfiguredImageUploadServices(settings);
       const missingRequiredImageServices = getMissingRequiredImageUploadServices(settings);
+
+      // Record what is running so a crash can be reported honestly instead of
+      // leaving the UI stuck on "Uploading..." with no idea what was lost.
+      await startUploadRun({
+        kind: 'image',
+        owner: UPLOAD_OWNER.WORKER,
+        hosts: configuredImageServices.map((service) => service.label),
+        fileName: data.fileName || '',
+        bytesTotal: data.fileBlob instanceof Blob ? data.fileBlob.size : 0,
+        source: data.fileBlob instanceof Blob ? 'local-file' : 'url',
+        sourcePageUrl: data.pageUrl || '',
+      });
+      this.startUploadHeartbeat();
 
       await this.updateStatusWithLog('📥 Fetching image...');
       
@@ -4356,9 +4610,9 @@ class ImgVaultServiceWorker {
 
       const savedId = await this.storage.saveImage(sanitizedMetadata);
       
-      await this.updateStatusWithLog('✅ Image saved successfully!', 'success');
-      
-      await this.archiveUploadLogRun('success', 'Image upload completed successfully.');
+      await this.updateStatusWithLog('✅ Image saved successfully!');
+
+      await finishUploadRun(UPLOAD_RUN_STATUS.SUCCESS, 'Image upload completed successfully.');
 
       return {
         id: savedId,
@@ -4368,9 +4622,10 @@ class ImgVaultServiceWorker {
       };
     } catch (error) {
       console.error('Upload error:', error);
-      await this.archiveUploadLogRun('error', error.message || 'Image upload failed.');
+      await finishUploadRun(UPLOAD_RUN_STATUS.ERROR, error.message || 'Image upload failed.');
       throw error;
     } finally {
+      this.stopUploadHeartbeat();
       if (this.activeUploadController === uploadController) {
         this.activeUploadController = null;
       }
@@ -4405,6 +4660,17 @@ class ImgVaultServiceWorker {
       if (selectedServices.length === 0) {
         throw new Error('Select at least one configured video host.');
       }
+
+      await startUploadRun({
+        kind: 'video',
+        owner: UPLOAD_OWNER.WORKER,
+        hosts: selectedServices.map((service) => service.label),
+        fileName: this.extractFileName(data) || '',
+        bytesTotal: data.fileBlob instanceof Blob ? data.fileBlob.size : 0,
+        source: data.fileBlob instanceof Blob ? 'local-file' : 'url',
+        sourcePageUrl: data.pageUrl || '',
+      });
+      this.startUploadHeartbeat();
 
       await this.updateStatusWithLog('📥 Fetching video...');
       
@@ -4548,8 +4814,8 @@ class ImgVaultServiceWorker {
       
       await this.updateStatusWithLog('Video saved successfully!', 'success');
       
-      await this.archiveUploadLogRun(
-        uploadErrors.length > 0 ? 'warning' : 'success',
+      await finishUploadRun(
+        uploadErrors.length > 0 ? UPLOAD_RUN_STATUS.WARNING : UPLOAD_RUN_STATUS.SUCCESS,
         uploadErrors.length > 0
           ? `Video upload completed with partial success. ${uploadErrors.join(' | ')}`
           : 'Video upload completed successfully.'
@@ -4561,8 +4827,10 @@ class ImgVaultServiceWorker {
       };
     } catch (error) {
       console.error('Video upload error:', error);
-      await this.archiveUploadLogRun('error', error.message || 'Video upload failed.');
+      await finishUploadRun(UPLOAD_RUN_STATUS.ERROR, error.message || 'Video upload failed.');
       throw error;
+    } finally {
+      this.stopUploadHeartbeat();
     }
   }
 
@@ -6551,6 +6819,12 @@ const serviceWorker = new ImgVaultServiceWorker();
 // context died is stale — settle it as interrupted on startup.
 serviceWorker.reconcileStaleNativeDownload();
 
+// Same idea for uploads. An upload that was still marked running when its
+// context died used to leave the UI stuck on "Uploading..." forever, because
+// nothing ever settled the flag. The run record carries the browser session
+// it started in, so a run from a previous browser session is provably dead.
+serviceWorker.reconcileStaleUploadRuns();
+
 // Event listeners
 chrome.runtime.onInstalled.addListener(async () => {
   serviceWorker.init();
@@ -6569,10 +6843,23 @@ chrome.runtime.onInstalled.addListener(async () => {
 });
 
 // Create context menu on browser startup
-chrome.runtime.onStartup.addListener(() => {
+chrome.runtime.onStartup.addListener(async () => {
+  // A new browser session means every run recorded under the previous one
+  // died with the old browser process. Rotate first, then reconcile, so the
+  // mismatch is visible to the reconciliation.
+  await rotateBrowserSessionId();
+  await serviceWorker.reconcileStaleUploadRuns();
   serviceWorker.init();
   serviceWorker.createContextMenu();
   serviceWorker.refreshActionIconForActiveTab();
+});
+
+// Pages that own a running upload hold a port open for its lifetime, so the
+// worker can tell "the tab was closed mid-upload" from "the upload is fine".
+chrome.runtime.onConnect.addListener((port) => {
+  if (port?.name === UPLOAD_OWNER_PORT) {
+    serviceWorker.handleUploadOwnerPort(port);
+  }
 });
 
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {

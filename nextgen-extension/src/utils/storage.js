@@ -1103,9 +1103,13 @@ export class StorageManager {
     const targetFileName = String(target.fileName || '').trim();
     const targetFileSize = Number(target.fileSize || 0);
     const targetSha256 = String(target.sha256 || '').trim().toLowerCase();
+    // A resumed upload re-uses the DB row the interrupted attempt reserved.
+    // That row is the SAME logical upload, not a duplicate of it.
+    const excludeItemId = String(target.excludeItemId || '').trim();
 
     for (const item of items) {
       if (this.isSystemItem(item) || this.isVaultedItem(item)) continue;
+      if (excludeItemId && String(item.id || '') === excludeItemId) continue;
       const isVideo = this.isTruthyFlag(item.isVideo) || String(item.fileType || '').startsWith('video/');
       if (!isVideo) continue;
 

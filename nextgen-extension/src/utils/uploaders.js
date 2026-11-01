@@ -19,6 +19,12 @@ import {
   fetchTeraBoxPageContext,
   hasTeraBoxSessionCookie,
 } from './teraBoxApi.js';
+import {
+  ABSENT_BLOCK_MD5,
+  assertCompleteBlockList,
+  calculateTeraBoxChunkSize,
+  prepareResumeState,
+} from './teraboxResume.js';
 
 /**
  * @typedef {Object} UploadResult
@@ -629,11 +635,31 @@ export class UDropUploader extends BaseUploader {
 }
 
 /**
+ * @typedef {Object} TeraBoxResumeState
+ * @property {string} uploadid - Server-side upload session id (PCS session key).
+ * @property {string} path - Remote destination path (e.g. `/video.mp4`).
+ * @property {number} size - Size of the file in bytes when the session was opened.
+ * @property {number} chunkSize - Chunk size the session's blocks were cut with.
+ * @property {Array<string|undefined>} blockList - md5 per chunk index; empty entry = never uploaded.
+ */
+
+/**
+ * @typedef {Object} TeraBoxSessionOptions
+ * @property {TeraBoxResumeState|null} [resumeState] - State of an interrupted attempt.
+ * @property {(state: TeraBoxResumeState) => void|Promise<void>} [onSessionState] - Called with the resumable state after every uploaded chunk.
+ */
+
+/**
  * TeraBox Video Uploader
  * Uploads videos to TeraBox using the PCS chunked upload protocol.
  * Auth is the session cookie (ndus + browserid + lang); the cookie can be
  * provided explicitly (settings field) or read live from the browser session
  * via chrome.cookies when empty.
+ *
+ * Resumable: the upload session (uploadid) and the md5 of every accepted
+ * block survive a crash when the caller persists the session state handed to
+ * `onSessionState`. A later attempt resumes on the same server session and
+ * only ships the blocks that are still missing.
  */
 export class TeraBoxUploader extends BaseUploader {
   constructor() {
@@ -649,6 +675,9 @@ export class TeraBoxUploader extends BaseUploader {
     this.jsToken = '';
     this.pageCtx = { jsToken: '', bdstoken: '', dpLogid: '' };
     this.CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB; doubles per 4 GB threshold
+    // md5 the PCS API uses as the "block is absent" sentinel. A REAL md5 in a
+    // block list means "this block is already on the server".
+    this.ABSENT_BLOCK_MD5 = ABSENT_BLOCK_MD5;
   }
 
   userAgent() {
@@ -1062,14 +1091,7 @@ export class TeraBoxUploader extends BaseUploader {
   }
 
   calculateChunkSize(streamSize) {
-    let chunkSize = 4 * 1024 * 1024;
-    let threshold = 4 * 1024 * 1024 * 1024;
-    if (streamSize < chunkSize) return Math.max(streamSize, 1);
-    while (streamSize > threshold) {
-      chunkSize <<= 1;
-      threshold <<= 1;
-    }
-    return chunkSize;
+    return calculateTeraBoxChunkSize(streamSize);
   }
 
   // TeraBox rejects emoji, fullwidth punctuation (｜：（）“”), and overly long
@@ -1106,18 +1128,97 @@ export class TeraBoxUploader extends BaseUploader {
     return name;
   }
 
-  async upload(blob, cookie, filename, signal) {
-    return this._upload(blob, cookie, filename, null, signal);
+  /**
+   * Human readable byte count for error messages (1024 based, like the upload
+   * ledger's formatBytes, but local so the uploader stays self-contained).
+   * @param {number} bytes
+   * @returns {string}
+   */
+  formatBytesForError(bytes) {
+    const value = Number(bytes);
+    if (!Number.isFinite(value) || value <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let index = 0;
+    let scaled = value;
+    while (scaled >= 1024 && index < units.length - 1) {
+      scaled /= 1024;
+      index += 1;
+    }
+    const decimals = scaled >= 100 || index === 0 ? 0 : 1;
+    return `${scaled.toFixed(decimals)} ${units[index]}`;
   }
 
-  async uploadWithProgress(blob, cookie, filename, onProgress, signal) {
-    return this._upload(blob, cookie, filename, onProgress, signal);
+  /**
+   * Validate + normalise a resume state against the file being uploaded.
+   * Fails LOUDLY: when the state does not belong to this file the uploader
+   * refuses to run - the CALLER decides whether to restart from zero.
+   * The logic lives in teraboxResume.js so it can be unit tested in node.
+   * @param {TeraBoxResumeState} resumeState - State of an interrupted attempt
+   * @param {string} path - Remote path this upload writes to
+   * @param {number} size - Size of the blob being uploaded
+   * @param {number} defaultChunkSize - Chunk size this build would use
+   * @returns {{ uploadid: string, chunkSize: number, chunkCount: number, blockList: Array<string|undefined>, presentBytes: number }}
+   */
+  prepareResumeState(resumeState, path, size, defaultChunkSize) {
+    return prepareResumeState(resumeState, path, size, defaultChunkSize);
   }
 
-  async _upload(blob, cookie, filename, onProgress, signal) {
+  /**
+   * The PCS `create` call must carry a COMPLETE block list: a real md5 for
+   * every block, never the "absent" sentinel. Fail loudly rather than create
+   * a broken file.
+   * @param {Array<string|undefined>} blockList - md5 per chunk index
+   * @param {number} chunkCount - Number of blocks the file is cut into
+   * @returns {string[]} the complete block list
+   */
+  assertCompleteBlockList(blockList, chunkCount) {
+    return assertCompleteBlockList(blockList, chunkCount);
+  }
+
+  /**
+   * Upload a video to TeraBox.
+   * @param {Blob} blob - Video blob
+   * @param {string} cookie - TeraBox session cookie
+   * @param {string} filename - File name
+   * @param {AbortSignal} [signal] - Abort signal
+   * @param {TeraBoxSessionOptions} [options] - Resume state / session-state sink
+   * @returns {Promise<UploadResult>}
+   */
+  async upload(blob, cookie, filename, signal, options = {}) {
+    return this._upload(blob, cookie, filename, null, signal, options);
+  }
+
+  /**
+   * Upload a video to TeraBox, reporting per-chunk progress.
+   * @param {Blob} blob - Video blob
+   * @param {string} cookie - TeraBox session cookie
+   * @param {string} filename - File name
+   * @param {(progress: {loaded: number, total: number, percent: number}) => void} onProgress - Progress sink
+   * @param {AbortSignal} [signal] - Abort signal
+   * @param {TeraBoxSessionOptions} [options] - Resume state / session-state sink
+   * @returns {Promise<UploadResult>}
+   */
+  async uploadWithProgress(blob, cookie, filename, onProgress, signal, options = {}) {
+    return this._upload(blob, cookie, filename, onProgress, signal, options);
+  }
+
+  async _upload(blob, cookie, filename, onProgress, signal, options = {}) {
     try {
+      const { resumeState = null, onSessionState = null } = options || {};
       const safeName = this.sanitizeTeraBoxFileName(filename);
       const path = `/${safeName}`;
+
+      const size = blob.size;
+      const defaultChunkSize = this.calculateChunkSize(size);
+      const defaultChunkCount = Math.max(1, Math.ceil(size / defaultChunkSize));
+
+      // A resume is only valid for THIS file. Check it before any network
+      // call - a mismatched state must fail loudly, never silently restart.
+      const resume = resumeState
+        ? this.prepareResumeState(resumeState, path, size, defaultChunkSize)
+        : null;
+      const chunkSize = resume ? resume.chunkSize : defaultChunkSize;
+      const chunkCount = resume ? resume.chunkCount : defaultChunkCount;
 
       await this.resolveCookie(cookie);
       // fetch page context upfront from /main (cache-first, hidden tab only on miss)
@@ -1126,35 +1227,63 @@ export class TeraBoxUploader extends BaseUploader {
       this.jsToken = this.pageCtx.jsToken || '';
       if (!this.jsToken) await this.fetchJsToken();
 
-      const size = blob.size;
-      const chunkSize = this.calculateChunkSize(size);
-      const chunkCount = Math.max(1, Math.ceil(size / chunkSize));
-      const dummyBlock = '5910a591dd8fc18c32a8f3df4fdc1761';
+      const dummyBlock = this.ABSENT_BLOCK_MD5;
       const dummyBlocks = new Array(chunkCount).fill(dummyBlock);
 
-      const pre = await this.precreate(path, size, dummyBlocks);
-      if (pre.return_type === 2) {
-        // rapid upload: file already exists server-side
-        return this._buildResult(path, pre);
+      let uploadid = '';
+      const blockList = resume ? resume.blockList : new Array(chunkCount).fill(undefined);
+      let uploaded = resume ? resume.presentBytes : 0;
+
+      if (resume) {
+        // The server session (uploadid) outlived the crash, so NO second
+        // precreate: the blocks the server already holds stay where they are
+        // and only the missing ones are shipped again.
+        uploadid = resume.uploadid;
+        if (typeof onProgress === 'function') {
+          onProgress({ loaded: uploaded, total: size, percent: Math.round((uploaded / size) * 100) });
+        }
+      } else {
+        const pre = await this.precreate(path, size, dummyBlocks);
+        if (pre.return_type === 2) {
+          // rapid upload: file already exists server-side
+          return this._buildResult(path, pre);
+        }
+        uploadid = String(pre.uploadid || '');
+        if (!uploadid) {
+          throw new Error('TeraBox precreate returned no uploadid.');
+        }
+        // hand the session id to the caller BEFORE any byte goes out, so a
+        // crash right here still leaves a resumable state
+        if (typeof onSessionState === 'function') {
+          await onSessionState({ uploadid, path, size, chunkSize, blockList: [] });
+        }
       }
 
       const host = await this.locateUpload();
-      const blockList = [];
-      let uploaded = 0;
       for (let i = 0; i < chunkCount; i++) {
         if (signal?.aborted) throw new Error('Upload aborted');
         const start = i * chunkSize;
         const end = Math.min(start + chunkSize, size);
+        if (blockList[i]) {
+          // block survived the interrupted attempt - already on the server
+          continue;
+        }
         const chunk = blob.slice(start, end);
-        const md5 = await this.uploadChunk(host, path, pre.uploadid, i, chunk, safeName, signal);
-        blockList.push(md5);
+        const md5 = await this.uploadChunk(host, path, uploadid, i, chunk, safeName, signal);
+        blockList[i] = md5;
         uploaded += (end - start);
         if (typeof onProgress === 'function') {
           onProgress({ loaded: uploaded, total: size, percent: Math.round((uploaded / size) * 100) });
         }
+        if (typeof onSessionState === 'function') {
+          await onSessionState({ uploadid, path, size, chunkSize, blockList: blockList.slice() });
+        }
       }
 
-      const created = await this.create(path, size, pre.uploadid, blockList);
+      // `create` gets a COMPLETE block list: real md5 for every block, the
+      // "absent" sentinel never reaches the server.
+      const completeBlockList = this.assertCompleteBlockList(blockList, chunkCount);
+      const created = await this.create(path, size, uploadid, completeBlockList);
       return this._buildResult(path, created);
     } catch (error) {
       throw new Error(`Failed to upload to TeraBox: ${error.message}`);

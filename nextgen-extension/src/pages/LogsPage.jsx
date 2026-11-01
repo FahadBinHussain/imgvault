@@ -193,9 +193,13 @@ export default function LogsPage() {
                 const statusTone =
                   run.status === 'success'
                     ? 'badge-success'
-                    : run.status === 'partial'
+                    : run.status === 'partial' || run.status === 'warning'
                       ? 'badge-warning'
-                      : 'badge-error';
+                      : run.status === 'interrupted' || run.status === 'stalled'
+                        ? 'badge-warning'
+                        : run.status === 'cancelled'
+                          ? 'badge-ghost'
+                          : 'badge-error';
 
                 return (
                   <div key={run.id} className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/35">
