@@ -66,6 +66,12 @@ struct NativeMessage {
     file_name: Option<String>,
     offset: Option<u64>,
     max_bytes: Option<usize>,
+    file_path: Option<String>,
+    channel: Option<String>,
+    caption: Option<String>,
+    session_path: Option<String>,
+    api_id: Option<String>,
+    api_hash: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -569,6 +575,185 @@ fn rewrite_mirror_url(url: &str) -> String {
     }
 
     url.to_string()
+}
+
+fn handle_telegram_upload(
+    stdout: &mut io::Stdout,
+    request_id: Option<&str>,
+    file_path: &str,
+    channel: &str,
+    caption: Option<&str>,
+    session_path: Option<&str>,
+    api_id: Option<&str>,
+    api_hash: Option<&str>,
+) -> NativeResponse {
+    let app_data = env::var("APPDATA").unwrap_or_default();
+    let default_session = format!(r"{}\mainframe\accounts\telegram\+8801956799504\telegram", app_data);
+    let session = session_path.unwrap_or(&default_session);
+
+    let resolved_api_id = if let Some(id) = api_id.filter(|s| !s.trim().is_empty()) {
+        id.to_string()
+    } else {
+        let path = format!(r"{}\mainframe\accounts\telegram\+8801956799504\api-id.txt", app_data);
+        fs::read_to_string(&path).unwrap_or_else(|_| "27462865".to_string()).trim().to_string()
+    };
+
+    let resolved_api_hash = if let Some(hash) = api_hash.filter(|s| !s.trim().is_empty()) {
+        hash.to_string()
+    } else {
+        let path = format!(r"{}\mainframe\accounts\telegram\+8801956799504\api-hash.txt", app_data);
+        fs::read_to_string(&path).unwrap_or_else(|_| "63358074ffa2262b19f4451497a85b34".to_string()).trim().to_string()
+    };
+
+    let exe_dir = env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf()));
+    let script_path = exe_dir
+        .map(|d| d.join("scripts").join("telegram_upload.py"))
+        .unwrap_or_else(|| PathBuf::from("native-host/scripts/telegram_upload.py"));
+
+    let script_str = if script_path.exists() {
+        script_path.display().to_string()
+    } else {
+        let dev_fallback = PathBuf::from(r"C:\Users\Admin\Downloads\imgvault\native-host\scripts\telegram_upload.py");
+        if dev_fallback.exists() {
+            dev_fallback.display().to_string()
+        } else {
+            return NativeResponse {
+                success: false,
+                event: Some("complete".to_string()),
+                request_id: request_id.map(|s| s.to_string()),
+                message: Some(format!("telegram_upload.py script not found at {:?}", script_path)),
+                line: None,
+                stream: None,
+                file_path: None,
+                stdout: None,
+                stderr: None,
+            };
+        }
+    };
+
+    let mut cmd = Command::new("python");
+    cmd.arg(&script_str)
+        .arg("--session")
+        .arg(session)
+        .arg("--api-id")
+        .arg(&resolved_api_id)
+        .arg("--api-hash")
+        .arg(&resolved_api_hash)
+        .arg("--channel")
+        .arg(channel)
+        .arg("--file")
+        .arg(file_path);
+
+    if let Some(cap) = caption.filter(|s| !s.is_empty()) {
+        cmd.arg("--caption").arg(cap);
+    }
+
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            return NativeResponse {
+                success: false,
+                event: Some("complete".to_string()),
+                request_id: request_id.map(|s| s.to_string()),
+                message: Some(format!("Failed to spawn python uploader: {}", e)),
+                line: None,
+                stream: None,
+                file_path: None,
+                stdout: None,
+                stderr: None,
+            };
+        }
+    };
+
+    let child_stdout = child.stdout.take();
+    let child_stderr = child.stderr.take();
+
+    let mut final_result: Option<String> = None;
+    let mut last_error: Option<String> = None;
+
+    if let Some(out) = child_stdout {
+        let reader = BufReader::new(out);
+        for line_res in reader.lines() {
+            if let Ok(line) = line_res {
+                if let Some(progress) = line.strip_prefix("PROGRESS:") {
+                    let parts: Vec<&str> = progress.split(':').collect();
+                    if parts.len() >= 3 {
+                        let _ = send_native_response(
+                            stdout,
+                            &NativeResponse {
+                                success: true,
+                                event: Some("progress".to_string()),
+                                request_id: request_id.map(|s| s.to_string()),
+                                message: Some(format!("Uploaded {} / {} ({}%)", parts[0], parts[1], parts[2])),
+                                line: Some(line.clone()),
+                                stream: Some("stdout".to_string()),
+                                file_path: None,
+                                stdout: None,
+                                stderr: None,
+                            },
+                        );
+                    }
+                } else if let Some(res) = line.strip_prefix("RESULT:") {
+                    final_result = Some(res.to_string());
+                } else if let Some(err) = line.strip_prefix("ERROR:") {
+                    last_error = Some(err.to_string());
+                }
+            }
+        }
+    }
+
+    let status = child.wait();
+    let stderr_text = child_stderr
+        .map(|err| {
+            let mut buf = String::new();
+            let _ = BufReader::new(err).read_to_string(&mut buf);
+            buf
+        })
+        .unwrap_or_default();
+
+    if let Some(res_json) = final_result {
+        NativeResponse {
+            success: true,
+            event: Some("complete".to_string()),
+            request_id: request_id.map(|s| s.to_string()),
+            message: Some("Telegram upload succeeded".to_string()),
+            line: None,
+            stream: None,
+            file_path: Some(file_path.to_string()),
+            stdout: Some(res_json),
+            stderr: None,
+        }
+    } else {
+        let err_msg = last_error
+            .or_else(|| {
+                if !stderr_text.trim().is_empty() {
+                    Some(stderr_text.trim().to_string())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| format!("Uploader exited with code {:?}", status.ok().and_then(|s| s.code())));
+
+        NativeResponse {
+            success: false,
+            event: Some("complete".to_string()),
+            request_id: request_id.map(|s| s.to_string()),
+            message: Some(err_msg),
+            line: None,
+            stream: None,
+            file_path: None,
+            stdout: None,
+            stderr: Some(stderr_text),
+        }
+    }
 }
 
 fn send_native_response(stdout: &mut io::Stdout, response: &NativeResponse) -> Result<(), String> {
@@ -1613,6 +1798,33 @@ fn handle_native_messaging() {
                                 event: Some("complete".to_string()),
                                 request_id: None,
                                 message: Some("Missing request_id for cancel_download".to_string()),
+                                line: None,
+                                stream: None,
+                                file_path: None,
+                                stdout: None,
+                                stderr: None,
+                            },
+                        }
+                    }
+                    "telegram_upload" => {
+                        match (native_msg.file_path.as_deref(), native_msg.channel.as_deref()) {
+                            (Some(fp), Some(ch)) => {
+                                handle_telegram_upload(
+                                    &mut stdout,
+                                    native_msg.request_id.as_deref(),
+                                    fp,
+                                    ch,
+                                    native_msg.caption.as_deref(),
+                                    native_msg.session_path.as_deref(),
+                                    native_msg.api_id.as_deref(),
+                                    native_msg.api_hash.as_deref(),
+                                )
+                            }
+                            _ => NativeResponse {
+                                success: false,
+                                event: Some("complete".to_string()),
+                                request_id: native_msg.request_id.clone(),
+                                message: Some("Missing file_path or channel for telegram_upload".to_string()),
                                 line: None,
                                 stream: None,
                                 file_path: None,

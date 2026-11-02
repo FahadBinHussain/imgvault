@@ -5,6 +5,7 @@
 
 import {
   TELEGRAM_UPLOAD_MAX_BYTES,
+  TELEGRAM_NATIVE_MAX_BYTES,
   assertTelegramUploadSize,
   deleteTelegramMessage,
   requireTelegramToken,
@@ -14,6 +15,7 @@ import {
   telegramChatId,
   telegramLocalMediaUrl,
   telegramUploadMethod,
+  uploadTelegramNative,
 } from './telegramApi.js';
 import {
   fetchTeraBoxPageContext,
@@ -1500,10 +1502,46 @@ export class TelegramUploader extends BaseUploader {
 
   /** Page-side XHR variant with real byte progress (same post-send steps). */
   async uploadWithProgress(blob, options = {}) {
-    const { token, channel, filename = 'file', mimeType = '', onProgress, signal } = options;
+    const { token, channel, filename = 'file', mimeType = '', filePath, onProgress, signal } = options;
     requireTelegramToken(token);
     telegramChatId(channel);
-    assertTelegramUploadSize(blob?.size || 0, filename, mimeType);
+
+    const size = blob?.size || 0;
+    // Over-50MB videos route through the Rust Native Host MTProto uploader if filePath is available
+    if (size > TELEGRAM_UPLOAD_MAX_BYTES && filePath) {
+      assertTelegramUploadSize(size, filename, mimeType, true);
+      const res = await uploadTelegramNative({
+        filePath,
+        channel,
+        onProgress,
+        signal,
+      });
+
+      const messageId = String(res.messageId);
+      const chat = String(channel || '').trim().replace(/^@+/, '');
+      const watchUrl = messageId ? `https://t.me/${chat}/${messageId}` : '';
+      let cdnUrl = '';
+      try {
+        cdnUrl = await scrapeTelegramPostUrl(channel, messageId, { wantMp4: true, signal });
+      } catch (err) {
+        console.warn(`[telegram-native] Scrape CDN warning for message ${messageId}:`, err);
+      }
+
+      return {
+        watchUrl,
+        displayUrl: watchUrl,
+        directUrl: cdnUrl || watchUrl,
+        thumbUrl: null,
+        deleteUrl: null,
+        fileId: `native-${messageId}`,
+        messageId,
+        filename,
+        apiStatus: 'success',
+        apiMessage: 'Uploaded via native host MTProto',
+      };
+    }
+
+    assertTelegramUploadSize(size, filename, mimeType, false);
 
     const method = telegramUploadMethod(filename, mimeType);
     const field = method === 'sendVideo' ? 'video' : 'document';

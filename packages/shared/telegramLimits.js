@@ -24,6 +24,7 @@
 
 export const TELEGRAM_UPLOAD_MAX_BYTES = 50 * 1024 * 1024; // ~50 MB sendVideo cap
 export const TELEGRAM_GETFILE_MAX_BYTES = 20 * 1024 * 1024; // getFile 20 MB gate
+export const TELEGRAM_NATIVE_MAX_BYTES = 2000 * 1024 * 1024; // 2000 MB (2 GB) native MTProto cap
 
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'avif', 'heic']);
 
@@ -80,10 +81,12 @@ export function telegramUploadSizeCap(filename = '', mimeType = '') {
  *  - sendVideo: 50 MB cap (both failure shapes map to this message)
  *  - sendDocument: 20 MB, because reading it back goes through getFile
  */
-export function assertTelegramUploadSize(bytes, filename = '', mimeType = '') {
+export function assertTelegramUploadSize(bytes, filename = '', mimeType = '', hasNativeHost = false) {
   const size = Number(bytes) || 0;
   const field = telegramUploadField(filename, mimeType);
-  const max = field === 'video' ? TELEGRAM_UPLOAD_MAX_BYTES : TELEGRAM_GETFILE_MAX_BYTES;
+  const max = hasNativeHost
+    ? TELEGRAM_NATIVE_MAX_BYTES
+    : (field === 'video' ? TELEGRAM_UPLOAD_MAX_BYTES : TELEGRAM_GETFILE_MAX_BYTES);
   if (size <= max) return;
 
   if (field === 'video') {

@@ -19,6 +19,7 @@ const TELEGRAM_API = 'https://api.telegram.org';
 import {
   TELEGRAM_GETFILE_MAX_BYTES,
   TELEGRAM_UPLOAD_MAX_BYTES,
+  TELEGRAM_NATIVE_MAX_BYTES,
   assertTelegramUploadSize,
   formatBytesForError,
   telegramUploadField,
@@ -28,6 +29,7 @@ import {
 export {
   TELEGRAM_GETFILE_MAX_BYTES,
   TELEGRAM_UPLOAD_MAX_BYTES,
+  TELEGRAM_NATIVE_MAX_BYTES,
   assertTelegramUploadSize,
   formatBytesForError,
   telegramUploadField,
@@ -518,3 +520,80 @@ export async function checkTelegramSceneIntegrity(items, allItems, { token, chan
 
   return { found, missing, noUrl, extra };
 }
+
+/**
+ * Upload a large file directly via MTProto through the Rust native host (ImgVault-Native-Host).
+ * Used when a video exceeds Telegram's standard 50 MB Bot API ceiling (up to 2,000 MB).
+ */
+export async function uploadTelegramNative({ filePath, channel, caption = '', onProgress, signal } = {}) {
+  if (!filePath) throw new Error('Telegram native upload requires a local filePath.');
+  const cleanChannel = String(channel || '').trim().replace(/^@+/, '');
+  if (!cleanChannel) throw new Error('Telegram native upload requires a valid channel.');
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let port;
+    try {
+      port = chrome.runtime.connectNative('com.imgvault.nativehost');
+    } catch (err) {
+      return reject(new Error(`Failed to connect to native host: ${err.message}`));
+    }
+
+    const finish = (fn, val) => {
+      if (settled) return;
+      settled = true;
+      port.disconnect();
+      fn(val);
+    };
+
+    if (signal) {
+      if (signal.aborted) finish(reject, new Error('Telegram native upload aborted.'));
+      else signal.addEventListener('abort', () => finish(reject, new Error('Telegram native upload aborted.')), { once: true });
+    }
+
+    port.onMessage.addListener((res) => {
+      if (res?.event === 'progress') {
+        if (onProgress && res.line) {
+          const parts = res.line.split(':');
+          if (parts.length >= 4) {
+            const current = parseInt(parts[1], 10) || 0;
+            const total = parseInt(parts[2], 10) || 0;
+            const percent = parseFloat(parts[3]) || 0;
+            onProgress({ current, total, percent, text: res.message });
+          }
+        }
+        return;
+      }
+
+      if (res?.success) {
+        let parsed = {};
+        try {
+          parsed = JSON.parse(res.stdout || '{}');
+        } catch (_) {}
+        finish(resolve, {
+          ok: true,
+          messageId: parsed.messageId,
+          size: parsed.size,
+          date: parsed.date,
+        });
+      } else {
+        finish(reject, new Error(res?.message || 'Native Telegram upload failed.'));
+      }
+    });
+
+    port.onDisconnect.addListener(() => {
+      if (!settled) {
+        const err = chrome.runtime.lastError;
+        finish(reject, new Error(err?.message || 'Native host disconnected unexpectedly during Telegram upload.'));
+      }
+    });
+
+    port.postMessage({
+      action: 'telegram_upload',
+      file_path: filePath,
+      channel: cleanChannel,
+      caption,
+    });
+  });
+}
+

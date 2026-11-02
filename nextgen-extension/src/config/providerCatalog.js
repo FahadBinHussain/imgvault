@@ -33,6 +33,7 @@ const hasText = (value) => String(value || '').trim().length > 0;
 const telegramUploadOptions = (settings, data, blob, onProgress, signal) => ({
   token: settings?.telegramBotToken,
   channel: settings?.telegramChannel,
+  filePath: data?.filePath || '',
   filename:
     data?.fileName ||
     String(data?.filePath || '').split(/[\\/]/).pop() ||

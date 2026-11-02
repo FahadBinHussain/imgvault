@@ -37,7 +37,7 @@ const catalogEntryFor = (hostKey) => {
  * @param {{fileName?: string, mimeType?: string}} [options]
  * @returns {{hostKey: string, maxBytes: number, note: string, label: string}|null}
  */
-export function describeHostUploadLimit(hostKey, { fileName = '', mimeType = '' } = {}) {
+export function describeHostUploadLimit(hostKey, { fileName = '', mimeType = '', hasNativeHost = false } = {}) {
   const key = String(hostKey || '').toLowerCase();
   const service = catalogEntryFor(key);
   if (!service || !service.videoMaxBytes) {
@@ -45,16 +45,17 @@ export function describeHostUploadLimit(hostKey, { fileName = '', mimeType = '' 
   }
   // Telegram is the only host whose cap depends on the FILE TYPE: an mp4 goes
   // out as sendVideo (50 MB), everything else as a document (20 MB read-back
-  // gate). The decision is the shared one, so the pre-flight and the uploader
-  // can never disagree.
+  // gate). With native host available, Telegram can handle up to 2 GB.
   const asVideo = key === 'telegram' && telegramUploadField(fileName, mimeType) === 'video';
-  const maxBytes = asVideo
-    ? (service.videoMp4MaxBytes || service.videoMaxBytes)
-    : service.videoMaxBytes;
+  const maxBytes = key === 'telegram' && hasNativeHost
+    ? (2000 * 1024 * 1024)
+    : (asVideo ? (service.videoMp4MaxBytes || service.videoMaxBytes) : service.videoMaxBytes);
   return {
     hostKey: key,
     maxBytes,
-    note: service.videoCapNote || '',
+    note: key === 'telegram' && hasNativeHost
+      ? 'Native host MTProto upload enabled up to 2 GB'
+      : (service.videoCapNote || ''),
     label: service.label || key,
   };
 }
@@ -67,12 +68,12 @@ export function describeHostUploadLimit(hostKey, { fileName = '', mimeType = '' 
  * @param {{bytes?: number, fileName?: string, mimeType?: string}} [options]
  * @returns {{accepted: Array, rejected: Array<{service: Object, limit: Object, reason: string}>}}
  */
-export function partitionHostsByUploadLimit(services, { bytes = 0, fileName = '', mimeType = '' } = {}) {
+export function partitionHostsByUploadLimit(services, { bytes = 0, fileName = '', mimeType = '', hasNativeHost = false } = {}) {
   const size = Number(bytes) || 0;
   const accepted = [];
   const rejected = [];
   for (const service of services || []) {
-    const limit = describeHostUploadLimit(service?.key, { fileName, mimeType });
+    const limit = describeHostUploadLimit(service?.key, { fileName, mimeType, hasNativeHost });
     if (limit && size > limit.maxBytes) {
       const label = service?.label || service?.key || 'host';
       rejected.push({

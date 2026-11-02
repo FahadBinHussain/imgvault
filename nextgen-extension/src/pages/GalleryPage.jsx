@@ -1430,11 +1430,14 @@ export default function GalleryPage() {
       // used to fail at the very END of the upload - after the other host had
       // already taken the file - and the user only found out from the error
       // message. A resume hit the same gate, so it never fixed anything.
+      // Check if native host is available (supports up to 2 GB for Telegram)
+      const hasNativeHost = Boolean(uploadData.filePath);
       const videoFileName = uploadData.fileName || getFileNameFromPath(uploadData.filePath || '') || 'video.mp4';
       const { accepted: usableServices, rejected: oversizedHosts } = partitionHostsByUploadLimit(selectedServices, {
         bytes: uploadData.fileBlob?.size || uploadData.fileSize || 0,
         fileName: videoFileName,
         mimeType: uploadData.mimeType || uploadData.fileBlob?.type || '',
+        hasNativeHost,
       });
 
       for (const { service, reason } of oversizedHosts) {
