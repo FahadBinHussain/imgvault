@@ -273,6 +273,10 @@ export function locateVideoFrame(moovBytes, ratio = 0.5) {
     : u64(moovBytes, mvhd.dataOff + 24);
 
   let videoTrakSeen = false;
+  // The last track duration that was parsed. It lives OUTSIDE the loop so the
+  // "no usable sample" warning after the loop can still name it - reading the
+  // loop-local `trackDur` there threw a ReferenceError.
+  let lastTrackDur = 0;
   for (const trak of traks) {
     const mdia = findBox(moovBytes, 'mdia', trak.dataOff, trak.dataEnd);
     if (!mdia) { console.warn('[mp4MinFrame] trak: no mdia'); continue; }
@@ -308,6 +312,7 @@ export function locateVideoFrame(moovBytes, ratio = 0.5) {
       ? u32(moovBytes, mdhd.dataOff + 16)
       : u64(moovBytes, mdhd.dataOff + 24);
     const trackDur = dur || duration;
+    lastTrackDur = trackDur;
 
     const targetTick = Math.min(trackDur, Math.max(0, Math.round(trackDur * ratio)));
     const sttsArr = parseStts(moovBytes, stts);
@@ -365,7 +370,7 @@ export function locateVideoFrame(moovBytes, ratio = 0.5) {
     return { offset: range.offset, size: range.size, timescale: ts, sampleDuration, stsdBytes, width, height };
   }
   if (!videoTrakSeen) console.warn('[mp4MinFrame] no video trak found at all');
-  else console.warn(`[mp4MinFrame] video trak seen but no usable sample for ratio=${ratio} (trackDur=${trackDur} traks=${traks.length})`);
+  else console.warn(`[mp4MinFrame] video trak seen but no usable sample for ratio=${ratio} (lastTrackDur=${lastTrackDur} traks=${traks.length})`);
   return null;
 }
 

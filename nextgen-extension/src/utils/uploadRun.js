@@ -67,6 +67,38 @@ export const UPLOAD_HISTORY_LIMIT = 20;
 /** Runtime port name a page-owned upload holds open while it transfers. */
 export const UPLOAD_OWNER_PORT = 'imgvault-upload-owner';
 
+/**
+ * Serialises every read-modify-write of the run record.
+ *
+ * WHY THIS EXISTS: `updateUploadRun` (a progress tick) and `finishUploadRun`
+ * (the run being closed) both do read -> modify -> write on the SAME storage
+ * key, and `chrome.storage` has no compare-and-set. The page's progress
+ * callback is NOT awaited by the uploader (`onProgress(...)` is fire and
+ * forget), so a tick from the last chunk was regularly still in flight when
+ * the upload ended. That tick then wrote its STALE "running" snapshot AFTER
+ * the close, and the run came back to life: the worker later settled a
+ * finished upload as "interrupted" and claimed "Nothing was saved for this
+ * upload" while the item was already in the database.
+ *
+ * Every mutation goes through the worker (the pages only send messages), so
+ * one queue here serialises the writers and a late tick simply finds a
+ * terminal run and does nothing.
+ */
+let uploadRunMutationQueue = Promise.resolve();
+
+/**
+ * Run a task with exclusive access to the run record.
+ * @param {() => Promise<any>} task
+ * @returns {Promise<any>} the task result
+ */
+export function withUploadRunLock(task) {
+  const result = uploadRunMutationQueue.then(() => task());
+  // The queue must survive a rejected task, otherwise one failed write would
+  // wedge every later write behind it.
+  uploadRunMutationQueue = result.then(() => undefined, () => undefined);
+  return result;
+}
+
 export function isTerminalUploadStatus(status) {
   return TERMINAL_UPLOAD_STATUSES.includes(String(status || ''));
 }
@@ -151,89 +183,112 @@ export async function startUploadRun({
   sourcePageUrl = '',
   sessionId = '',
 } = {}) {
-  const session = sessionId || (await ensureBrowserSessionId());
-  const now = Date.now();
-  const run = {
-    id: `upload-run-${now}-${Math.random().toString(36).slice(2, 8)}`,
-    kind,
-    owner,
-    hosts: Array.isArray(hosts) ? hosts.filter(Boolean) : [],
-    hostKeys: Array.isArray(hostKeys) ? hostKeys.filter(Boolean) : [],
-    fileName: fileName || '',
-    bytesTotal: Number(bytesTotal) || 0,
-    bytesSent: 0,
-    percent: null,
-    source,
-    sourcePageUrl,
-    status: UPLOAD_RUN_STATUS.RUNNING,
-    startedAt: now,
-    updatedAt: now,
-    completedAt: 0,
-    sessionId: session,
-    resume: null,
-    summary: '',
-  };
+  return withUploadRunLock(async () => {
+    const session = sessionId || (await ensureBrowserSessionId());
+    const now = Date.now();
+    const run = {
+      id: `upload-run-${now}-${Math.random().toString(36).slice(2, 8)}`,
+      kind,
+      owner,
+      hosts: Array.isArray(hosts) ? hosts.filter(Boolean) : [],
+      hostKeys: Array.isArray(hostKeys) ? hostKeys.filter(Boolean) : [],
+      fileName: fileName || '',
+      bytesTotal: Number(bytesTotal) || 0,
+      bytesSent: 0,
+      percent: null,
+      source,
+      sourcePageUrl,
+      status: UPLOAD_RUN_STATUS.RUNNING,
+      startedAt: now,
+      updatedAt: now,
+      completedAt: 0,
+      sessionId: session,
+      resume: null,
+      summary: '',
+    };
 
-  await chrome.storage.local.set({
-    [UPLOAD_RUN_KEY]: run,
-    uploadActive: true,
+    await chrome.storage.local.set({
+      [UPLOAD_RUN_KEY]: run,
+      uploadActive: true,
+    });
+
+    return run;
   });
-
-  return run;
 }
 
 /**
  * Merge a patch into the live run. Writes are ignored once the run reached a
  * terminal state - a late progress tick from a dying context must not
  * resurrect a finished run.
+ *
+ * The terminal check happens INSIDE the lock, so a tick that was already in
+ * flight when the run closed finds the closed run and does nothing. That is
+ * what stops a finished upload from coming back to life and being reported as
+ * interrupted with nothing saved.
  * @param {Object} patch
  * @returns {Promise<Object|null>} the stored run after the patch, or null
  */
 export async function updateUploadRun(patch = {}) {
-  const run = await getUploadRun();
-  if (!run || isTerminalUploadStatus(run.status)) {
-    return run;
-  }
-  const next = {
-    ...run,
-    ...patch,
-    updatedAt: Date.now(),
-  };
-  await chrome.storage.local.set({ [UPLOAD_RUN_KEY]: next });
-  return next;
+  return withUploadRunLock(async () => {
+    const run = await getUploadRun();
+    if (!run || isTerminalUploadStatus(run.status)) {
+      return run;
+    }
+    const next = {
+      ...run,
+      ...patch,
+      updatedAt: Date.now(),
+    };
+    await chrome.storage.local.set({ [UPLOAD_RUN_KEY]: next });
+    return next;
+  });
 }
 
 /**
  * Close the run with a terminal status and archive it into the log history.
  * @param {string} status - one of UPLOAD_RUN_STATUS
  * @param {string} summary - one line, human readable
+ * @param {Object} [extra] - fields merged into the closed run (savedItemId,
+ *   hostsDone, resumes ...). They are merged BEFORE the status so a late
+ *   caller can never overwrite the terminal status itself.
  * @returns {Promise<Object|null>} the closed run
  */
-export async function finishUploadRun(status, summary = '') {
+export async function finishUploadRun(status, summary = '', extra = {}) {
   if (!isTerminalUploadStatus(status)) {
     throw new Error(`Unknown upload run status "${status}" - refusing to close the run.`);
   }
-  const run = await getUploadRun();
-  if (!run) {
-    return null;
-  }
-  if (isTerminalUploadStatus(run.status)) {
-    return run;
-  }
-  const now = Date.now();
-  const closed = {
-    ...run,
-    status,
-    summary: summary || run.summary || '',
-    completedAt: now,
-    updatedAt: now,
-  };
-  await chrome.storage.local.set({
-    [UPLOAD_RUN_KEY]: closed,
-    uploadActive: false,
+  return withUploadRunLock(async () => {
+    const run = await getUploadRun();
+    if (!run) {
+      return null;
+    }
+    if (isTerminalUploadStatus(run.status)) {
+      return run;
+    }
+    const now = Date.now();
+    // An empty savedItemId must NOT overwrite a real one: the page reports
+    // the saved item through a progress tick, and a later close that carries
+    // an empty id (the upload failed after the item was finalized) would
+    // otherwise erase the truth.
+    const merged = { ...(extra && typeof extra === 'object' ? extra : {}) };
+    if (!String(merged.savedItemId || '').trim()) {
+      delete merged.savedItemId;
+    }
+    const closed = {
+      ...run,
+      ...merged,
+      status,
+      summary: summary || run.summary || '',
+      completedAt: now,
+      updatedAt: now,
+    };
+    await chrome.storage.local.set({
+      [UPLOAD_RUN_KEY]: closed,
+      uploadActive: false,
+    });
+    await archiveUploadRun(closed);
+    return closed;
   });
-  await archiveUploadRun(closed);
-  return closed;
 }
 
 /**
@@ -270,29 +325,61 @@ export async function archiveUploadRun(run) {
  * @returns {Promise<Object|null>} the settled run
  */
 export async function settleInterruptedUploadRun(reason, extra = {}) {
-  const run = await getUploadRun();
-  if (!run) {
-    return null;
-  }
-  if (isTerminalUploadStatus(run.status)) {
-    return run;
-  }
-  const now = Date.now();
-  const summary = reason || 'The upload stopped before it finished.';
-  const closed = {
-    ...run,
-    ...extra,
-    status: UPLOAD_RUN_STATUS.INTERRUPTED,
-    summary,
-    completedAt: now,
-    updatedAt: now,
-  };
-  await chrome.storage.local.set({
-    [UPLOAD_RUN_KEY]: closed,
-    uploadActive: false,
+  return withUploadRunLock(async () => {
+    const run = await getUploadRun();
+    if (!run) {
+      return null;
+    }
+    if (isTerminalUploadStatus(run.status)) {
+      return run;
+    }
+    const now = Date.now();
+    const summary = reason || 'The upload stopped before it finished.';
+    const closed = {
+      ...run,
+      ...(extra && typeof extra === 'object' ? extra : {}),
+      status: UPLOAD_RUN_STATUS.INTERRUPTED,
+      summary,
+      completedAt: now,
+      updatedAt: now,
+    };
+    await chrome.storage.local.set({
+      [UPLOAD_RUN_KEY]: closed,
+      uploadActive: false,
+    });
+    await archiveUploadRun(closed);
+    return closed;
   });
-  await archiveUploadRun(closed);
-  return closed;
+}
+
+/**
+ * The one sentence that says what the user actually lost.
+ *
+ * A run that was settled as interrupted used to always claim "Nothing was
+ * saved for this upload." That was a lie for an upload whose item was already
+ * finalised: the item was in the database with its host links, the banner
+ * said nothing was saved, and the user was told to retry a file they already
+ * had. The run now carries the id of the saved item, so the sentence can
+ * tell the truth.
+ * @param {Object} run
+ * @returns {string}
+ */
+export function describeSavedOutcome(run) {
+  const savedItemId = String(run?.savedItemId || '').trim();
+  if (savedItemId) {
+    return `The item was saved to the gallery (ID ${savedItemId}).`;
+  }
+  const done = Object.keys(run?.hostsDone || {}).filter(Boolean);
+  if (done.length > 0) {
+    // The run stores host KEYS in hostsDone and host LABELS in hosts (the
+    // two arrays are parallel) - the user gets the readable label.
+    const labels = done.map((key) => {
+      const index = (run?.hostKeys || []).indexOf(key);
+      return index >= 0 ? (run?.hosts?.[index] || key) : key;
+    });
+    return `The upload reached ${labels.join(', ')}, but the gallery item was not saved.`;
+  }
+  return 'Nothing was saved for this upload.';
 }
 
 /**

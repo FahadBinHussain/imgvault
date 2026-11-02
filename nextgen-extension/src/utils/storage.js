@@ -1777,6 +1777,7 @@ export class StorageManager {
    * @returns {Promise<boolean>}
    */
   async linkProviderFileToItem(id, providerKey, link) {
+    const current = await this.getImageById(id);
     if (!current) {
       throw new Error('Item not found');
     }

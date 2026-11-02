@@ -72,6 +72,29 @@ import {
   isUploadRunStalled,
 } from '../utils/uploadRun.js';
 import { cacheUploadFile, getCachedUploadFile, listCachedUploadFiles, removeCachedUploadFile } from '../utils/uploadFileCache.js';
+import { partitionHostsByUploadLimit } from '../utils/hostUploadLimits.js';
+
+// How long the page waits for the worker to acknowledge that the upload run
+// is closed. The worker is a message away and the record is one storage key,
+// so this is generous - it only exists so a lost message cannot hang the
+// upload's `finally` block forever.
+const UPLOAD_RUN_CLOSE_TIMEOUT_MS = 15000;
+
+const withTimeout = (promise, ms, label) => new Promise((resolve, reject) => {
+  const timer = setTimeout(() => {
+    reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`));
+  }, ms);
+  Promise.resolve(promise).then(
+    (value) => {
+      clearTimeout(timer);
+      resolve(value);
+    },
+    (error) => {
+      clearTimeout(timer);
+      reject(error);
+    }
+  );
+});
 
 const createVideoUploader = (service) => {
   if (service?.uploaderKey === 'filemoonUploader') return new FilemoonUploader();
@@ -486,6 +509,11 @@ export default function GalleryPage() {
   const texInputRef = useRef(null);
   const cfgInputRef = useRef(null);
   const configReplaceInputRef = useRef(null);
+  // The Ctrl+S shortcut is registered in a keyboard effect that is not
+  // re-created on every render, so it reaches the current upload-submit
+  // handler through this ref. It used to call a `handleSave` that does not
+  // exist anywhere - every Ctrl+S press threw a ReferenceError.
+  const uploadSubmitRef = useRef(null);
   const [replacingSceneConfig, setReplacingSceneConfig] = useState(false);
   
   // Selection mode state
@@ -573,6 +601,16 @@ export default function GalleryPage() {
   const interruptedRun = (uploadRun?.status === 'interrupted' && uploadRun.id !== dismissedRunId)
     ? uploadRun
     : null;
+  // What the interrupted run actually left behind. A run whose item was
+  // already finalised says so - the banner used to claim "nothing was saved"
+  // for an upload whose item was sitting in the gallery, and it offered a
+  // Resume that would upload the file a second time.
+  const interruptedRunSavedItemId = String(interruptedRun?.savedItemId || '');
+  const interruptedRunPendingHosts = (interruptedRun?.hostKeys || [])
+    .map((key, index) => ({ key, label: interruptedRun?.hosts?.[index] || key }))
+    .filter((host) => !interruptedRun?.hostsDone?.[host.key])
+    .map((host) => host.label);
+  const interruptedRunCanResume = interruptedRunPendingHosts.length > 0;
   const uploadRunIsStalled = isUploadRunStalled(uploadRun);
   const shouldShowUploadLogPreview = uploadIsActive || uploadAttemptStarted;
   const uploadLogPreviewEntries = shouldShowUploadLogPreview ? uploadLogs : [];
@@ -1233,13 +1271,37 @@ export default function GalleryPage() {
 
   /**
    * Close the run and release ownership.
+   *
+   * ORDER MATTERS: the worker is told the outcome FIRST, the owner port is
+   * dropped AFTER. A dropped port means "the owner died mid-transfer" to the
+   * worker, so closing it first raced the finish message and could settle a
+   * perfectly good upload as interrupted - while the item sat saved in the
+   * database.
+   *
    * @param {string} status - one of UPLOAD_RUN_STATUS
    * @param {string} summary
+   * @param {Object} [extra] - fields merged into the closed run (savedItemId ...)
    */
-  const endUploadRun = async (status, summary) => {
+  const endUploadRun = async (status, summary, extra = {}) => {
     activeUploadRunIdRef.current = null;
-    closeUploadOwnerPort();
-    await sendMessage('uploadRunFinished', { status, summary });
+    try {
+      await withTimeout(
+        sendMessage('uploadRunFinished', { status, summary, extra }),
+        UPLOAD_RUN_CLOSE_TIMEOUT_MS,
+        'Closing the upload run'
+      );
+    } catch (error) {
+      // Loud, but not fatal: dropping the owner port below still tells the
+      // worker the owner is gone, and the worker then settles the run with a
+      // truthful summary instead of leaving it spinning.
+      console.error('[ImgVault] Failed to close the upload run:', error);
+      await appendClientUploadLog(
+        `⚠️ Could not close the upload run in the worker: ${error.message || String(error)}.`,
+        'warning'
+      ).catch(() => {});
+    } finally {
+      closeUploadOwnerPort();
+    }
   };
 
   /**
@@ -1296,6 +1358,22 @@ export default function GalleryPage() {
 
     await appendClientUploadLog('Attempting direct video uploads from the extension page...');
 
+    // The outcome of the run. It is declared HERE, outside the try block, on
+    // purpose: `let` is block scoped, so a declaration inside the try block is
+    // invisible to the catch and finally blocks. Reading it there threw
+    // "runOutcome is not defined" inside the finally, which meant the run was
+    // NEVER closed - the worker later found a "running" upload that did not
+    // exist and reported the finished upload as interrupted with nothing
+    // saved, while the item sat in the database.
+    let runOutcome = {
+      status: UPLOAD_RUN_STATUS.ERROR,
+      summary: 'Video upload did not finish.',
+    };
+    // Also declared out here: the catch block uses it to remove the reserved
+    // DB row when the upload fails, and a `let` inside the try block is
+    // invisible there.
+    let pendingItemId = null;
+
     try {
       if (!uploadData.sha256 && uploadData.fileBlob && uploadData.fileBlob.size < 100 * 1024 * 1024) {
         try {
@@ -1343,13 +1421,37 @@ export default function GalleryPage() {
         throw new Error('Select at least one configured video host.');
       }
 
+      // Pre-flight the host size caps BEFORE the first byte goes out. A host
+      // that physically cannot store this file (Telegram's getFile gate)
+      // used to fail at the very END of the upload - after the other host had
+      // already taken the file - and the user only found out from the error
+      // message. A resume hit the same gate, so it never fixed anything.
+      const videoFileName = uploadData.fileName || getFileNameFromPath(uploadData.filePath || '') || 'video.mp4';
+      const { accepted: usableServices, rejected: oversizedHosts } = partitionHostsByUploadLimit(selectedServices, {
+        bytes: uploadData.fileBlob?.size || uploadData.fileSize || 0,
+        fileName: videoFileName,
+        mimeType: uploadData.mimeType || uploadData.fileBlob?.type || '',
+      });
+
+      for (const { service, reason } of oversizedHosts) {
+        await appendClientUploadLog(`⚠️ ${reason} Skipping ${service.label} for this upload.`, 'warning');
+        uploadErrors.push(`${service.label}: skipped - ${reason}`);
+        showToast(`${service.label} skipped - ${reason}`, 'warning', 7000);
+      }
+
+      if (usableServices.length === 0) {
+        throw new Error(
+          `No selected video host can take this file. ${oversizedHosts.map((host) => host.reason).join(' | ')}`
+        );
+      }
+
       // Record the run so a crash is reported honestly instead of leaving the
       // UI stuck on "Uploading..." forever, and so the picked file can be
       // cached for a later resume.
       const run = await beginUploadRun({
         kind: 'video',
-        hosts: selectedServices.map((service) => service.label),
-        hostKeys: selectedServices.map((service) => service.key),
+        hosts: usableServices.map((service) => service.label),
+        hostKeys: usableServices.map((service) => service.key),
         fileName: uploadData.fileName || getFileNameFromPath(uploadData.filePath || '') || 'video.mp4',
         bytesTotal: uploadData.fileBlob?.size || uploadData.fileSize || 0,
         source: 'local-file',
@@ -1376,10 +1478,6 @@ export default function GalleryPage() {
       //  - resumes: the resumable session of each host, keyed by provider.
       const hostsDone = { ...(uploadData.hostsDone || {}) };
       const resumes = { ...(uploadData.resumes || {}) };
-      let runOutcome = {
-        status: UPLOAD_RUN_STATUS.ERROR,
-        summary: 'Video upload did not finish.',
-      };
 
       // DB-first: reserve the item now so a browser/tab death mid-upload
       // leaves the item in the DB (marked pendingUpload) instead of an
@@ -1390,7 +1488,7 @@ export default function GalleryPage() {
       // A resumed upload re-uses the row the interrupted attempt reserved.
       // Reserving a second one would leave the first row orphaned AND make
       // the duplicate check fire on the upload's own reservation.
-      let pendingItemId = uploadData.resumePendingItemId || null;
+      pendingItemId = uploadData.resumePendingItemId || null;
       if (pendingItemId) {
         await appendClientUploadLog(`[PENDING UPLOAD] Re-using DB item ${pendingItemId} from the interrupted upload.`);
       } else {
@@ -1409,7 +1507,7 @@ export default function GalleryPage() {
       // Remember it on the run: a later resume has to find the same row.
       await reportUploadRunProgress({ pendingItemId });
 
-      for (const service of selectedServices) {
+      for (const service of usableServices) {
         // A host that already finished before the interruption is NOT
         // uploaded again - its result is reused so the saved item keeps the
         // original link and the host does not get a second copy.
@@ -1512,11 +1610,16 @@ export default function GalleryPage() {
         if (uploadErrors.length > 0) {
           finalized.videoUploadErrors = uploadErrors;
         }
+        // Tell the run that the item EXISTS. If the page dies right here, the
+        // worker has to be able to say "the item was saved" instead of
+        // "nothing was saved".
+        await reportUploadRunProgress({ savedItemId: finalized.id });
         runOutcome = {
           status: uploadErrors.length > 0 ? UPLOAD_RUN_STATUS.WARNING : UPLOAD_RUN_STATUS.SUCCESS,
           summary: uploadErrors.length > 0
             ? `Video upload finished with partial success. ${uploadErrors.join(' | ')}`
             : 'Video upload completed successfully.',
+          savedItemId: finalized.id,
         };
         return finalized;
       }
@@ -1535,11 +1638,13 @@ export default function GalleryPage() {
       if (uploadErrors.length > 0) {
         saved.videoUploadErrors = uploadErrors;
       }
+      await reportUploadRunProgress({ savedItemId: saved.id });
       runOutcome = {
         status: uploadErrors.length > 0 ? UPLOAD_RUN_STATUS.WARNING : UPLOAD_RUN_STATUS.SUCCESS,
         summary: uploadErrors.length > 0
           ? `Video upload finished with partial success. ${uploadErrors.join(' | ')}`
           : 'Video upload completed successfully.',
+        savedItemId: saved.id,
       };
       return saved;
     } catch (error) {
@@ -1569,7 +1674,9 @@ export default function GalleryPage() {
       // Close the run BEFORE the flag is cleared: the run has to be settled
       // with a real outcome, otherwise the next launch would see a "running"
       // upload that no longer exists.
-      await endUploadRun(runOutcome.status, runOutcome.summary);
+      await endUploadRun(runOutcome.status, runOutcome.summary, {
+        savedItemId: runOutcome.savedItemId || '',
+      });
       await chrome.storage.local.set({ uploadActive: false });
     }
   };
@@ -1753,6 +1860,13 @@ export default function GalleryPage() {
     activeVideoUploadControllerRef.current = uploadController;
     await chrome.storage.local.set({ uploadActive: true, uploadStatus: 'Preparing 3D model upload...', uploadStatusLogs: [] });
     await appendClientUploadLog(`3D payload ready: ${formatBytes(uploadData.fileSize || uploadData.fileBlob?.size || 0)} (${uploadData.fileName})`);
+    // Declared outside the try block: a `let` inside the try is invisible to
+    // the catch/finally blocks, and reading it there threw before the run
+    // could be closed.
+    let runOutcome3d = {
+      status: UPLOAD_RUN_STATUS.ERROR,
+      summary: '3D upload did not finish.',
+    };
     try {
       const settings = await sendMessage('getVideoHostSettings');
       const configuredServices = getConfiguredVideoUploadServices(settings).filter((s) => THREE_D_HOST_KEYS.includes(s.key));
@@ -1770,10 +1884,6 @@ export default function GalleryPage() {
         bytesTotal: uploadData.fileBlob?.size || uploadData.fileSize || 0,
         source: 'local-file',
       });
-      let runOutcome3d = {
-        status: UPLOAD_RUN_STATUS.ERROR,
-        summary: '3D upload did not finish.',
-      };
 
       if (run3d?.id && uploadData.fileBlob) {
         try {
@@ -1851,12 +1961,14 @@ export default function GalleryPage() {
           await sendMessage('updateImage', { id: pendingItemId, ...extraUpdate, ...sceneFilesUpdate, fileType: uploadData.fileType || 'application/octet-stream', fileName: uploadData.fileName });
         }
         await appendClientUploadLog(`[SAVE 3D] Finalized item with ID: ${finalized.id}`, 'success');
-        runOutcome3d = { status: UPLOAD_RUN_STATUS.SUCCESS, summary: '3D model upload completed successfully.' };
+        await reportUploadRunProgress({ savedItemId: finalized.id });
+        runOutcome3d = { status: UPLOAD_RUN_STATUS.SUCCESS, summary: '3D model upload completed successfully.', savedItemId: finalized.id };
         return finalized;
       }
       const saved = await sendMessage('saveUploadedVideo', { ...pendingMeta, videoUploadResults: uploadResults, videoUploadErrors: uploadErrors });
       await appendClientUploadLog(`[SAVE 3D] Saved with ID: ${saved.id}`, 'success');
-      runOutcome3d = { status: UPLOAD_RUN_STATUS.SUCCESS, summary: '3D model upload completed successfully.' };
+      await reportUploadRunProgress({ savedItemId: saved.id });
+      runOutcome3d = { status: UPLOAD_RUN_STATUS.SUCCESS, summary: '3D model upload completed successfully.', savedItemId: saved.id };
       return saved;
     } catch (error) {
       await appendClientUploadLog(`Direct 3D upload failed: ${error.message || String(error)}`, 'error');
@@ -1864,7 +1976,7 @@ export default function GalleryPage() {
       throw error;
     } finally {
       if (activeVideoUploadControllerRef.current === uploadController) activeVideoUploadControllerRef.current = null;
-      await endUploadRun(runOutcome3d.status, runOutcome3d.summary);
+      await endUploadRun(runOutcome3d.status, runOutcome3d.summary, { savedItemId: runOutcome3d.savedItemId || '' });
       await chrome.storage.local.set({ uploadActive: false });
     }
   };
@@ -1874,6 +1986,13 @@ export default function GalleryPage() {
     activeVideoUploadControllerRef.current = uploadController;
     await chrome.storage.local.set({ uploadActive: true, uploadStatus: 'Preparing scene upload...', uploadStatusLogs: [] });
     await appendClientUploadLog(`Scene payload: spz ${(spzFile.size/1024/1024).toFixed(1)}MB + texture ${(textureFile.size/1024/1024).toFixed(1)}MB`);
+    // Declared outside the try block: a `let` inside the try is invisible to
+    // the catch/finally blocks, and reading it there threw before the run
+    // could be closed.
+    let runOutcomeScene = {
+      status: UPLOAD_RUN_STATUS.ERROR,
+      summary: 'Scene upload did not finish.',
+    };
     try {
       const settings = await sendMessage('getVideoHostSettings');
       const configured = getConfiguredVideoUploadServices(settings).filter((s) => THREE_D_HOST_KEYS.includes(s.key));
@@ -1893,10 +2012,6 @@ export default function GalleryPage() {
         bytesTotal: (spzFile?.size || 0) + (textureFile?.size || 0),
         source: 'local-file',
       });
-      let runOutcomeScene = {
-        status: UPLOAD_RUN_STATUS.ERROR,
-        summary: 'Scene upload did not finish.',
-      };
       // Telegram uploads scene files as documents, so its getFile 20 MB read-back
       // gate applies to BOTH files. Check before the first byte goes out - a
       // mid-pair failure would leave a half-uploaded scene behind.
@@ -1960,14 +2075,15 @@ export default function GalleryPage() {
       // readers take the item field before extraMetadata.sceneFiles.
       await sendMessage('updateImage', { id, spzUrl, textureUrl, sceneFiles, configJson: sceneConfig ? JSON.stringify(sceneConfig) : null, kind: 'scene', fileType: 'model/spz', spzFileSize: spzFile.size, textureFileSize: textureFile.size, extraMetadata: { sceneFiles } });
       await appendClientUploadLog(`Scene saved ${id||''}`, 'success');
-      runOutcomeScene = { status: UPLOAD_RUN_STATUS.SUCCESS, summary: 'Scene upload completed successfully.' };
+      await reportUploadRunProgress({ savedItemId: id || '' });
+      runOutcomeScene = { status: UPLOAD_RUN_STATUS.SUCCESS, summary: 'Scene upload completed successfully.', savedItemId: id || '' };
       return { id, spzUrl, textureUrl };
     } catch (error) {
       runOutcomeScene = { status: UPLOAD_RUN_STATUS.ERROR, summary: error?.message || String(error) };
       throw error;
     } finally {
       if (activeVideoUploadControllerRef.current===uploadController) activeVideoUploadControllerRef.current=null;
-      await endUploadRun(runOutcomeScene.status, runOutcomeScene.summary);
+      await endUploadRun(runOutcomeScene.status, runOutcomeScene.summary, { savedItemId: runOutcomeScene.savedItemId || '' });
       await chrome.storage.local.set({ uploadActive: false });
     }
   };
@@ -2150,10 +2266,10 @@ export default function GalleryPage() {
       if (!selectedImage && !showUploadModal) toggleSelectionMode();
     },
     [SHORTCUTS.CTRL_S]: (e) => {
-      // Save image if in modal
-      if (selectedImage) {
+      // Save the pending upload
+      if (showUploadModal) {
         e.preventDefault();
-        handleSave();
+        uploadSubmitRef.current?.();
       }
     },
   }, true, [selectedImage, filteredImages, showUploadModal, showDeleteConfirm, selectionMode]);
@@ -3263,6 +3379,11 @@ export default function GalleryPage() {
       }
     }
   };
+
+  // Keep the Ctrl+S shortcut pointed at the current submit handler.
+  useEffect(() => {
+    uploadSubmitRef.current = handleUploadSubmit;
+  });
 
   // Lazy load full image details when nerds tab is clicked
   const loadFullImageDetails = async (imageId) => {
@@ -4664,23 +4785,32 @@ export default function GalleryPage() {
               <AlertTriangle className="h-6 w-6 text-warning" />
             </motion.div>
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold text-base-content">Upload interrupted</div>
+              <div className="text-sm font-semibold text-base-content">
+                {interruptedRunSavedItemId ? 'Upload ended unexpectedly' : 'Upload interrupted'}
+              </div>
               <div className="text-sm text-base-content/70">{interruptedRun.summary}</div>
+              {interruptedRunSavedItemId && (
+                <div className="text-sm text-base-content/70">
+                  The item is in the gallery already - it does not need to be uploaded again.
+                </div>
+              )}
             </div>
             <div className="flex shrink-0 flex-wrap gap-2">
-              <Button
-                onClick={handleResumeInterruptedUpload}
-                disabled={resumingUpload || !interruptedRun.hostKeys?.length}
-              >
-                <motion.span
-                  animate={resumingUpload ? { rotate: 360 } : { rotate: 0 }}
-                  transition={resumingUpload ? { duration: 1.1, repeat: Infinity, ease: 'linear' } : { duration: 0.3 }}
-                  className="mr-2 inline-flex"
+              {interruptedRunCanResume && (
+                <Button
+                  onClick={handleResumeInterruptedUpload}
+                  disabled={resumingUpload || !interruptedRun.hostKeys?.length}
                 >
-                  <RotateCcw className="h-4 w-4" />
-                </motion.span>
-                {resumingUpload ? 'Resuming...' : 'Resume upload'}
-              </Button>
+                  <motion.span
+                    animate={resumingUpload ? { rotate: 360 } : { rotate: 0 }}
+                    transition={resumingUpload ? { duration: 1.1, repeat: Infinity, ease: 'linear' } : { duration: 0.3 }}
+                    className="mr-2 inline-flex"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </motion.span>
+                  {resumingUpload ? 'Resuming...' : `Resume ${interruptedRunPendingHosts.join(', ')}`}
+                </Button>
+              )}
               <Button variant="ghost" onClick={dismissInterruptedUpload} disabled={resumingUpload}>
                 Dismiss
               </Button>

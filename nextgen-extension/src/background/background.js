@@ -62,6 +62,7 @@ import {
   archiveUploadRun,
   describeUploadProgress,
   describeUploadRun,
+  describeSavedOutcome,
   ensureBrowserSessionId,
   finishUploadRun,
   getUploadRun,
@@ -2881,7 +2882,7 @@ class ImgVaultServiceWorker {
         return true;
 
       case 'uploadRunFinished':
-        finishUploadRun(request.data?.status, request.data?.summary || '')
+        finishUploadRun(request.data?.status, request.data?.summary || '', request.data?.extra || {})
           .then(run => sendResponse({ success: true, data: run }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
@@ -3973,12 +3974,18 @@ class ImgVaultServiceWorker {
       return run || null;
     }
 
-    const summary = `${reason} Nothing was saved for this upload.`;
+    // The sentence has to be TRUE. A run whose item was already finalised
+    // must not claim that nothing was saved - that is what made a finished
+    // upload look like a corpse and sent the user back for a file they
+    // already had.
+    const savedOutcome = describeSavedOutcome(run);
+    const summary = `${reason} ${savedOutcome}`;
     await this.updateStatusWithLog(`⚠️ ${summary}`, 'warning');
 
     const settled = await settleInterruptedUploadRun(summary, {
       interruptedReason: reason,
       interruptedAt: Date.now(),
+      savedItemId: run.savedItemId || '',
     });
 
     await this.notifyUploadInterrupted(settled);
@@ -4050,7 +4057,7 @@ class ImgVaultServiceWorker {
         type: 'basic',
         iconUrl: 'icons/1.png',
         title: 'ImgVault - upload interrupted',
-        message: `${describeUploadRun(run)}${describeUploadProgress(run)}. Open the gallery to retry.`,
+        message: `${describeUploadRun(run)}${describeUploadProgress(run)}. ${describeSavedOutcome(run)}`,
         priority: 2,
       });
     } catch (error) {

@@ -149,11 +149,14 @@ async function fetchJsTokenViaHiddenTab(timeoutMs = 15000) {
             target: { tabId },
             func: () => {
               try {
-                const c = typeof code !== 'undefined' ? code : '';
+                // The captcha answer only ever exists in the page, never in
+                // the extension, so the field is submitted only when
+                // something already filled it in.
                 const input = document.getElementById('input');
-                if (input && c) input.value = c;
-                const btn = document.getElementById('confirm');
-                if (btn) btn.click();
+                if (input && input.value) {
+                  const btn = document.getElementById('confirm');
+                  if (btn) btn.click();
+                }
               } catch (_) {}
             },
           });

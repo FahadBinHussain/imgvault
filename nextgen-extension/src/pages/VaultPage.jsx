@@ -951,7 +951,7 @@ export default function VaultPage() {
     try {
       await sendMessage('restoreFromVault', {
         id: selectedItem.id,
-        targetHostKeys: restoreTargetHostKeys,
+        targetHostKeys: reconciledRestoreHostKeys,
       });
       // The item left the vault — its derived preview belongs to the vault
       // view, and the restored gallery card has its own provider thumbnail.
