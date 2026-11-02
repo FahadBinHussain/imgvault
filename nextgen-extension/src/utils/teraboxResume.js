@@ -75,7 +75,7 @@ export function formatBytesForError(bytes) {
  * @param {string} path - Remote path this upload writes to
  * @param {number} size - Size of the blob being uploaded
  * @param {number} defaultChunkSize - Chunk size this build would use
- * @returns {{ uploadid: string, chunkSize: number, chunkCount: number, blockList: Array<string|undefined>, presentBytes: number }}
+ * @returns {{ uploadid: string, chunkSize: number, chunkCount: number, blockList: Array<string|undefined>, presentBytes: number, created: boolean, createdPath: string }}
  */
 export function prepareResumeState(resumeState, path, size, defaultChunkSize) {
   const uploadid = String(resumeState?.uploadid || '').trim();
@@ -128,7 +128,45 @@ export function prepareResumeState(resumeState, path, size, defaultChunkSize) {
     presentBytes += Math.max(0, end - start);
   }
 
-  return { uploadid, chunkSize, chunkCount, blockList, presentBytes };
+  // `created` means the previous attempt already finalised the file (create()
+  // succeeded). A resume must NOT create it a second time - that is how one
+  // interrupted upload ended up as two copies on terabox.
+  const created = Boolean(resumeState?.created);
+  const createdPath = String(resumeState?.createdPath || '').trim();
+
+  return { uploadid, chunkSize, chunkCount, blockList, presentBytes, created, createdPath };
+}
+
+/**
+ * Decide what a resume has to do about `create()`.
+ *
+ * The bug this prevents: a resume where every block is already on the
+ * server used to call create() again, which made a SECOND copy of the video
+ * on terabox (the previous attempt had already created the file).
+ *
+ * @param {Object} params
+ * @param {number} params.presentBytes - Bytes the server already holds
+ * @param {number} params.size - Size of the file being uploaded
+ * @param {boolean} params.created - The previous attempt already ran create()
+ * @param {Object|null} params.existingFile - The file found on the account, if any
+ * @returns {'reuse'|'create'|'abort'} reuse = the file exists, do not create it
+ */
+export function decideResumeCreateAction({ presentBytes = 0, size = 0, created = false, existingFile = null } = {}) {
+  if (Number(presentBytes) < Number(size)) {
+    // Bytes are still missing - upload them, then create the file once.
+    return 'create';
+  }
+  if (existingFile) {
+    // The file is already on the account. Creating it again would duplicate it.
+    return 'reuse';
+  }
+  if (created) {
+    // It was created before but cannot be found now. Refuse to guess.
+    return 'abort';
+  }
+  // Every block is on the server but create() never ran - finishing the
+  // upload means calling create() exactly once.
+  return 'create';
 }
 
 /**

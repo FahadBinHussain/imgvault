@@ -1369,6 +1369,13 @@ export default function GalleryPage() {
       }
 
       const resumeStates = { ...(uploadData.resumeStates || {}) };
+      // Per-host state of the interrupted attempt:
+      //  - hostsDone: hosts that ALREADY finished. A resume must not upload
+      //    to them again - that is how one interrupted upload ended up as two
+      //    copies of the video on terabox.
+      //  - resumes: the resumable session of each host, keyed by provider.
+      const hostsDone = { ...(uploadData.hostsDone || {}) };
+      const resumes = { ...(uploadData.resumes || {}) };
       let runOutcome = {
         status: UPLOAD_RUN_STATUS.ERROR,
         summary: 'Video upload did not finish.',
@@ -1403,6 +1410,17 @@ export default function GalleryPage() {
       await reportUploadRunProgress({ pendingItemId });
 
       for (const service of selectedServices) {
+        // A host that already finished before the interruption is NOT
+        // uploaded again - its result is reused so the saved item keeps the
+        // original link and the host does not get a second copy.
+        if (hostsDone[service.key]) {
+          uploadResults[service.key] = hostsDone[service.key];
+          await appendClientUploadLog(
+            `${service.label} finished before the interruption - reusing that upload instead of uploading the file again.`
+          );
+          hostSucceeded = true;
+          continue;
+        }
         const uploader = createVideoUploader(service);
         if (!uploader) {
           uploadErrors.push(`${service.label}: uploader is not available`);
@@ -1440,13 +1458,19 @@ export default function GalleryPage() {
             resumeState: resumeStates[service.key] || null,
             onSessionState: async (state) => {
               resumeStates[service.key] = state;
+              resumes[service.key] = state;
               await reportUploadRunProgress({
-                resume: { provider: service.key, ...state },
+                resumes: { ...resumes },
               });
             },
             signal: uploadController.signal,
           });
           uploadResults[service.key] = result;
+          // Remember that this host FINISHED. Without this, a resume after a
+          // crash on ANOTHER host re-uploads here as well - which duplicated
+          // the file on terabox.
+          hostsDone[service.key] = result;
+          await reportUploadRunProgress({ hostsDone: { ...hostsDone } });
           await appendClientVideoProviderResultLog(service, result);
           hostSucceeded = true;
         } catch (error) {
@@ -2333,9 +2357,25 @@ export default function GalleryPage() {
         return;
       }
 
-      const resumeStates = {};
-      if (interruptedRun.resume?.provider && interruptedRun.resume.uploadid) {
+      const resumeStates = { ...(interruptedRun.resumes || {}) };
+      // legacy single-session record (older runs kept one provider's state)
+      if (!Object.keys(resumeStates).length && interruptedRun.resume?.provider && interruptedRun.resume.uploadid) {
         resumeStates[interruptedRun.resume.provider] = interruptedRun.resume;
+      }
+      // Hosts that already finished before the interruption. They are NOT
+      // uploaded again - the file is not sent twice and the account does not
+      // get a second copy.
+      const hostsDone = interruptedRun.hostsDone || {};
+      const reusedHosts = Object.keys(hostsDone);
+      const resumedHosts = Object.keys(resumeStates).filter((key) => !hostsDone[key]);
+
+      if (reusedHosts.length > 0) {
+        showToast(
+          `Resuming ${describeUploadRun(interruptedRun)}${describeUploadProgress(interruptedRun)} - ${reusedHosts.join(', ')} already finished and will not be uploaded again.`,
+          'info',
+          6000
+        );
+      } else if (resumedHosts.length > 0) {
         showToast(
           `Resuming ${describeUploadRun(interruptedRun)}${describeUploadProgress(interruptedRun)} - only the missing chunks are sent again.`,
           'info',
@@ -2356,6 +2396,8 @@ export default function GalleryPage() {
         isVideo: interruptedRun.kind === 'video',
         selectedHostKeys: interruptedRun.hostKeys || [],
         resumeStates,
+        resumes: resumeStates,
+        hostsDone,
         // The interrupted attempt's own reserved DB row - re-used, not
         // duplicated.
         resumePendingItemId: interruptedRun.pendingItemId || '',

@@ -7,6 +7,7 @@ import {
   ABSENT_BLOCK_MD5,
   assertCompleteBlockList,
   calculateTeraBoxChunkSize,
+  decideResumeCreateAction,
   prepareResumeState,
 } from './src/utils/teraboxResume.js';
 
@@ -100,6 +101,35 @@ await throwsWith(
   () => assertCompleteBlockList([fullBlockList[0], ABSENT, fullBlockList[2], fullBlockList[3], fullBlockList[4]], chunkCount),
   'cannot be created'
 );
+
+// --- the resume must never create the file twice ------------------------
+// A resume whose blocks are ALL on the server used to call create() again,
+// which made a second copy of the video on terabox.
+const createdState = prepareResumeState(
+  { uploadid: 's', path: '/movie.mp4', size, chunkSize, blockList: fullBlockList, created: true, createdPath: '/movie(1).mp4' },
+  '/movie.mp4',
+  size,
+  chunkSize
+);
+check('a created session is carried through the resume state', createdState.created === true);
+check('the created path is carried through', createdState.createdPath === '/movie(1).mp4', createdState.createdPath);
+
+const notCreatedState = prepareResumeState(
+  { uploadid: 's', path: '/movie.mp4', size, chunkSize, blockList: fullBlockList },
+  '/movie.mp4',
+  size,
+  chunkSize
+);
+check('a session without a create is not marked created', notCreatedState.created === false);
+
+check('missing bytes -> upload them and create the file',
+  decideResumeCreateAction({ presentBytes: 0, size, created: false, existingFile: null }) === 'create');
+check('all bytes present + the file exists -> reuse it, never create it again',
+  decideResumeCreateAction({ presentBytes: size, size, created: true, existingFile: { fs_id: '1' } }) === 'reuse');
+check('all bytes present + no file + never created -> create it once',
+  decideResumeCreateAction({ presentBytes: size, size, created: false, existingFile: null }) === 'create');
+check('all bytes present + no file + it was created before -> refuse to guess',
+  decideResumeCreateAction({ presentBytes: size, size, created: true, existingFile: null }) === 'abort');
 
 // --- a resumed upload reports the real percentage ----------------------
 // The progress of a resumed run must include the blocks that are already on

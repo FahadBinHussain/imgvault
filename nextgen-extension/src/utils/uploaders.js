@@ -23,6 +23,7 @@ import {
   ABSENT_BLOCK_MD5,
   assertCompleteBlockList,
   calculateTeraBoxChunkSize,
+  decideResumeCreateAction,
   prepareResumeState,
 } from './teraboxResume.js';
 
@@ -1090,6 +1091,33 @@ export class TeraBoxUploader extends BaseUploader {
     return json.info[0].dlink;
   }
 
+  /**
+   * Look up a file that already exists on terabox.
+   *
+   * Needed before `create()` on a resume: when every block is already on the
+   * server, the previous attempt may have created the file ALREADY, and
+   * calling create() again makes a SECOND copy of the video on the account.
+   * The size check keeps an unrelated file with the same name from matching.
+   *
+   * @param {string} path - Remote path to look up
+   * @param {number} [size] - Expected size in bytes
+   * @returns {Promise<Object|null>} the filemeta entry, or null when absent
+   */
+  async findExistingFile(path, size) {
+    if (!path) return null;
+    const qp = new URLSearchParams({ target: JSON.stringify([path]), dlink: '1', origin: 'dlna' });
+    try {
+      const res = await fetch(`${this.apiBase}/api/filemetas?${qp}`, { headers: this.headers() });
+      const json = await res.json();
+      const info = json?.info?.[0];
+      if (!info) return null;
+      if (size && Number(info.size) !== Number(size)) return null;
+      return info;
+    } catch (_) {
+      return null;
+    }
+  }
+
   calculateChunkSize(streamSize) {
     return calculateTeraBoxChunkSize(streamSize);
   }
@@ -1283,8 +1311,53 @@ export class TeraBoxUploader extends BaseUploader {
       // `create` gets a COMPLETE block list: real md5 for every block, the
       // "absent" sentinel never reaches the server.
       const completeBlockList = this.assertCompleteBlockList(blockList, chunkCount);
+
+      // A resume where every block is already on the server means the previous
+      // attempt uploaded all the bytes. If it also ran `create()`, the file
+      // EXISTS and calling create() again makes a SECOND copy of the video on
+      // terabox. Look it up first; only create() when it is really missing.
+      if (resume) {
+        const lookupPath = resume.createdPath || path;
+        const existing = resume.presentBytes >= size
+          ? await this.findExistingFile(lookupPath, size)
+          : null;
+        const action = decideResumeCreateAction({
+          presentBytes: resume.presentBytes,
+          size,
+          created: resume.created,
+          existingFile: existing,
+        });
+        if (action === 'reuse') {
+          if (typeof onSessionState === 'function') {
+            await onSessionState({
+              uploadid, path, size, chunkSize, blockList: blockList.slice(),
+              created: true, createdPath: lookupPath,
+            });
+          }
+          return this._buildResult(lookupPath, { errno: 0, ...existing });
+        }
+        if (action === 'abort') {
+          // The file was created but cannot be found any more (deleted from
+          // the account, or the lookup failed). Refuse to guess: uploading
+          // again could leave a second copy behind.
+          throw new Error(
+            `TeraBox already created "${lookupPath}" but it cannot be found on the account any more. Refusing to upload it again - check the account and retry with a fresh upload if the file really is gone.`
+          );
+        }
+      }
+
       const created = await this.create(path, size, uploadid, completeBlockList);
-      return this._buildResult(path, created);
+      const createdPath = String(created?.path || path);
+      const result = await this._buildResult(createdPath, created);
+      // Tell the caller the file now EXISTS, so a later resume knows not to
+      // create it a second time.
+      if (typeof onSessionState === 'function') {
+        await onSessionState({
+          uploadid, path, size, chunkSize, blockList: blockList.slice(),
+          created: true, createdPath,
+        });
+      }
+      return result;
     } catch (error) {
       throw new Error(`Failed to upload to TeraBox: ${error.message}`);
     }
