@@ -353,6 +353,90 @@ export async function settleInterruptedUploadRun(reason, extra = {}) {
 }
 
 /**
+ * The sentence the OLD settle path wrote for every interrupted run.
+ *
+ * It was a lie whenever the upload had actually been saved - the item sat in
+ * the database with its host links while the banner claimed that nothing was
+ * saved, and the user was told to go and upload a file they already had.
+ * @type {string}
+ */
+export const LEGACY_NOTHING_SAVED_SUMMARY = 'Nothing was saved for this upload.';
+
+/**
+ * The outcome sentence is always the LAST sentence of an interrupted run's
+ * summary - it says what the upload left behind ("Nothing was saved...",
+ * "The upload reached TeraBox, but the gallery item was not saved.", "The
+ * item was saved to the gallery (ID ...).").
+ */
+const OUTCOME_SENTENCE_RE = /\s*(Nothing was saved for this upload\.|The upload reached .+?, but the gallery item was not saved\.|The item was saved to the gallery \(ID [^)]+\)\.)$/;
+
+/**
+ * Split an interrupted run's summary into the reason and the outcome
+ * sentence, so the outcome can be replaced with the truth.
+ * @param {string} summary
+ * @returns {{reason: string, outcome: string}}
+ */
+export function splitInterruptedSummary(summary) {
+  const text = String(summary || '').trim();
+  const match = text.match(OUTCOME_SENTENCE_RE);
+  if (!match || match.index === undefined) {
+    return { reason: text, outcome: '' };
+  }
+  return {
+    reason: text.slice(0, match.index).trim(),
+    outcome: match[0].trim(),
+  };
+}
+
+/**
+ * True when a run's stored outcome sentence contradicts its evidence.
+ *
+ * A run settled by the old path always ended with the legacy sentence, even
+ * when the upload had reached a host (or been saved) - the evidence lives in
+ * `savedItemId` / `hostsDone`, the sentence did not. Such a summary has to be
+ * corrected, otherwise it stays on screen forever (the run is terminal, so
+ * nothing ever rewrites it on its own).
+ * @param {Object} run
+ * @returns {boolean}
+ */
+export function needsSavedOutcomeRepair(run) {
+  if (!run || run.status !== UPLOAD_RUN_STATUS.INTERRUPTED) return false;
+  const { outcome } = splitInterruptedSummary(run.summary);
+  if (!outcome) return false;
+  // Already telling the truth - nothing to correct.
+  return !/The item was saved to the gallery \(ID [^)]+\)\./.test(outcome);
+}
+
+/**
+ * The corrected summary for a run whose stored sentence contradicts its
+ * evidence. Returns the run unchanged when there is nothing to correct.
+ *
+ * @param {Object} run
+ * @param {string} [savedItemId] - the gallery item the run actually saved, if
+ *   it is known (the caller can look it up; the run itself may not know).
+ * @returns {Object}
+ */
+export function repairSavedOutcomeSummary(run, savedItemId = '') {
+  if (!run || run.status !== UPLOAD_RUN_STATUS.INTERRUPTED) return run;
+  const { reason, outcome } = splitInterruptedSummary(run.summary);
+  if (!outcome) return run;
+
+  const itemId = String(savedItemId || run.savedItemId || '').trim();
+  const truth = itemId
+    ? `The item was saved to the gallery (ID ${itemId}).`
+    : describeSavedOutcome(run);
+  if (truth === outcome) return run;
+
+  const summary = reason ? `${reason} ${truth}` : truth;
+  if (summary === run.summary) return run;
+  return {
+    ...run,
+    summary,
+    ...(itemId ? { savedItemId: itemId } : {}),
+  };
+}
+
+/**
  * The one sentence that says what the user actually lost.
  *
  * A run that was settled as interrupted used to always claim "Nothing was

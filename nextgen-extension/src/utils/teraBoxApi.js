@@ -9,6 +9,13 @@
 
 import { getVideoProviderLinks } from './videoProviderLinks.js';
 import { MODEL_EXT_RE, SCENE_TEXTURE_EXT_RE } from './udropApi.js';
+import {
+  addTeraBoxRef,
+  classifyTeraBoxFiles,
+  createTeraBoxRefIndex,
+  isTeraBoxFileReferenced,
+  isVaultFolderFile,
+} from 'imgvault-shared/teraboxRefs.js';
 
 const TERABOX_API_BASE = 'https://dm.terabox.com';
 // Only the dm homepage moved to a captcha gate (breaks jsToken scraping), so
@@ -762,7 +769,7 @@ export const teraBoxFsIdFromUrl = (u) => {
     return /^\d+$/.test(last || '') ? last : '';
   } catch (_) { return ''; }
 };
-export function collectTeraBoxRefs(item, idSet, nameSet) {
+export function collectTeraBoxRefs(item, idSet, nameSet, refIndex) {
   if (!item) return;
   let links = {};
   try {
@@ -770,10 +777,29 @@ export function collectTeraBoxRefs(item, idSet, nameSet) {
   } catch (_) {}
   if (item?.videoHosts?.terabox) links = { ...links, ...item.videoHosts.terabox };
   const extraLinks = item?.extraMetadata?.videoHosts?.terabox || {};
-  const addId = (v) => { if (v) idSet.add(String(v)); };
-  const addName = (v) => { if (v) nameSet.add(String(v)); };
-  addId(links.fileId || links.fs_id || extraLinks.fileId || extraLinks.fs_id || item.teraboxFileId || item.textureFileId || item.encryptedBlobFileId);
-  addName(links.filename || extraLinks.filename || item.teraboxFileName || item.fileName);
+  // The index is the source of truth for the orphan scan (it knows WHICH fs_id
+  // a name belongs to); the sets stay for the existing callers.
+  const addId = (v) => {
+    if (!v) return;
+    idSet?.add(String(v));
+    if (refIndex) addTeraBoxRef(refIndex, v, '');
+  };
+  const addName = (v) => {
+    if (!v) return;
+    nameSet?.add(String(v));
+    if (refIndex) addTeraBoxRef(refIndex, '', v);
+  };
+  const addPair = (id, name) => {
+    if (refIndex) {
+      addTeraBoxRef(refIndex, id, name);
+      return;
+    }
+    addId(id);
+    addName(name);
+  };
+  const fileId = links.fileId || links.fs_id || extraLinks.fileId || extraLinks.fs_id || item.teraboxFileId || item.textureFileId || item.encryptedBlobFileId;
+  const fileName = links.filename || extraLinks.filename || item.teraboxFileName || item.fileName;
+  addPair(fileId, fileName);
   for (const u of [
     links.watchUrl, links.directUrl, links.url,
     extraLinks.watchUrl, extraLinks.directUrl, extraLinks.url,
@@ -781,14 +807,12 @@ export function collectTeraBoxRefs(item, idSet, nameSet) {
     item.spzUrl, item.textureUrl,
     item.encryptedBlobUrl, item.extraMetadata?.encryptedBlobUrl,
   ]) {
-    addId(teraBoxFsIdFromUrl(u));
-    addName(baseNameOfTeraBoxUrl(u));
+    addPair(teraBoxFsIdFromUrl(u), baseNameOfTeraBoxUrl(u));
   }
   const sf = item?.extraMetadata?.sceneFiles || {};
   for (const part of [sf.spz, sf.texture]) {
     if (!part) continue;
-    addId(part.fileId);
-    addName(part.filename);
+    addPair(part.fileId, part.filename);
   }
 }
 
@@ -821,6 +845,9 @@ export async function checkTeraBoxIntegrity(items, allItems, cookie, onProgress)
 
   const dbIds = new Set();
   const dbNames = new Set();
+  // The index remembers WHICH fs_id a name belongs to, so a SECOND file with
+  // the same name (a duplicate) is no longer mistaken for the referenced one.
+  const refIndex = createTeraBoxRefIndex();
 
   for (const item of items) {
     if (!item) continue;
@@ -847,6 +874,9 @@ export async function checkTeraBoxIntegrity(items, allItems, cookie, onProgress)
 
     if (fileId) dbIds.add(String(fileId));
     if (fileName) dbNames.add(fileName);
+    // This item claims THIS fs_id under THIS name. Recorded as a pair so a
+    // same-named file with a different fs_id reads as a duplicate.
+    addTeraBoxRef(refIndex, fileId, fileName);
 
     if (matchedFile) {
       found.push({ item, codes: [], matchedFile });
@@ -857,17 +887,28 @@ export async function checkTeraBoxIntegrity(items, allItems, cookie, onProgress)
 
   const referencedIds = new Set();
   const referencedNames = new Set();
-  for (const item of allItems || []) collectTeraBoxRefs(item, referencedIds, referencedNames);
+  for (const item of allItems || []) collectTeraBoxRefs(item, referencedIds, referencedNames, refIndex);
   dbIds.forEach((id) => referencedIds.add(id));
   dbNames.forEach((nm) => referencedNames.add(nm));
-
-  for (const file of files) {
-    const name = String(file.server_filename || '');
-    if (MODEL_EXT_RE.test(name) || SCENE_TEXTURE_EXT_RE.test(name)) continue;
-    if (file.fs_id && referencedIds.has(String(file.fs_id))) continue;
-    if (name && referencedNames.has(name)) continue;
-    extra.push({ file });
+  for (const id of dbIds) refIndex.ids.add(String(id));
+  for (const nm of dbNames) {
+    if (refIndex.names.has(nm)) continue;
+    refIndex.names.add(nm);
+    if (!refIndex.idsByName.has(nm)) refIndex.idsByName.set(nm, new Set());
   }
+
+  const { extra: extraFiles } = classifyTeraBoxFiles(files, refIndex, {
+    shouldSkip: (file) => {
+      const name = String(file.server_filename || '');
+      // Scene files belong to the 3D tab, not the video tab.
+      if (MODEL_EXT_RE.test(name) || SCENE_TEXTURE_EXT_RE.test(name)) return true;
+      // Files outside the folder the vault uploads to belong to another tool
+      // (the gh-mirror bundles, for one) - they are not vault orphans and must
+      // never show up here with a delete button on them.
+      return !isVaultFolderFile(file);
+    },
+  });
+  for (const file of extraFiles) extra.push({ file });
 
   return { found, missing, noUrl, extra };
 }
@@ -989,7 +1030,10 @@ export async function checkTeraBoxSceneIntegrity(items, allItems, cookie, onProg
   // textureUrl (+ sizes) or sceneFiles refs, so those must count too (2.12.53).
   const referencedIds = new Set();
   const referencedNames = new Set();
-  for (const item of allItems || []) collectTeraBoxRefs(item, referencedIds, referencedNames);
+  // Same id<->name index as the video pass, so a duplicate .spz with the same
+  // name is reported as a scene orphan instead of being swallowed by its name.
+  const refIndex = createTeraBoxRefIndex();
+  for (const item of allItems || []) collectTeraBoxRefs(item, referencedIds, referencedNames, refIndex);
 
   const dbIds = new Set();
   const dbNames = new Set();
@@ -1013,11 +1057,13 @@ export async function checkTeraBoxSceneIntegrity(items, allItems, cookie, onProg
     // Keep legacy single-file vars for dbSets
     const fileId = spzFid;
     const fileName = spzName;
-    collectTeraBoxRefs(item, dbIds, dbNames);
+    collectTeraBoxRefs(item, dbIds, dbNames, refIndex);
     if (texFid) dbIds.add(String(texFid));
     if (effectiveTexName) dbNames.add(effectiveTexName);
     if (spzFid) dbIds.add(String(spzFid));
     if (spzName) dbNames.add(spzName);
+    addTeraBoxRef(refIndex, texFid, effectiveTexName);
+    addTeraBoxRef(refIndex, spzFid, spzName);
 
     const hasLink = Boolean(
       links.watchUrl || links.directUrl || links.url ||
@@ -1073,11 +1119,22 @@ export async function checkTeraBoxSceneIntegrity(items, allItems, cookie, onProg
 
   const stemOf = (name) => String(name || '').split('/').pop().replace(/\.[^.]+$/, '').toLowerCase();
   const coreOf = (stem) => String(stem || '').split('_').pop().split('-').pop();
+  for (const id of dbIds) refIndex.ids.add(String(id));
+  for (const nm of dbNames) {
+    if (refIndex.names.has(nm)) continue;
+    refIndex.names.add(nm);
+    if (!refIndex.idsByName.has(nm)) refIndex.idsByName.set(nm, new Set());
+  }
   const isOrphanFile = (file) => {
-    const fid = String(file.fs_id || '');
-    const name = String(file.server_filename || file.name || '');
-    if ((fid && (dbIds.has(fid) || referencedIds.has(fid))) || (name && (dbNames.has(name) || referencedNames.has(name)))) return false;
-    return true;
+    // Files outside the folder the vault uploads to belong to another tool.
+    if (!isVaultFolderFile(file)) return false;
+    // Referenced by fs_id -> linked. Referenced by name only -> linked. A file
+    // whose name IS claimed but whose fs_id is NOT the claimed one is a
+    // duplicate of the referenced file -> an orphan the user can clean up.
+    return !isTeraBoxFileReferenced(
+      { fs_id: file.fs_id, server_filename: file.server_filename || file.name },
+      refIndex
+    );
   };
   const spzOrphans = [];
   const textureOrphans = [];

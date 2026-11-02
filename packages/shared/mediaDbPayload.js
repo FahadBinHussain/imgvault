@@ -120,18 +120,29 @@ function getExtraWrites(source, existing) {
   return writes;
 }
 
-function buildExtraSeed(source, existing) {
+function buildExtraSeed(source, existing, extraMetadataDeletes = []) {
   const mergedWithoutExtra = { ...existing, ...source };
   delete mergedWithoutExtra.extraMetadata;
 
   // A changed extra key wins over the untouched top-level mirror, or the stale
   // mirror silently eats the write (bit videoHosts, sceneFiles,
   // encryptedBlobMessageId).
-  return {
+  const seed = {
     ...parseObject(existing.extraMetadata),
     ...mergedWithoutExtra,
     ...getExtraWrites(source, existing),
   };
+
+  // Explicit deletions run LAST, after the top-level mirror was merged back
+  // in. That order matters: every row stores its extra keys twice (mirrored
+  // top-level + inside extraMetadata), so a caller that removes a key from
+  // `source.extraMetadata` alone would see the stale mirror put it straight
+  // back. Deleting here is the only way to actually drop the key.
+  for (const key of extraMetadataDeletes) {
+    delete seed[key];
+  }
+
+  return seed;
 }
 
 export function toMediaDbPayload(source = {}, options = {}) {
@@ -140,9 +151,18 @@ export function toMediaDbPayload(source = {}, options = {}) {
     fallbackTimestamp = null,
     forceDeleted = false,
     ensureExtraMetadata = null,
+    // Extra-metadata keys the caller wants GONE from the stored row. Without
+    // this there is no way to remove an extra key at all: the payload builder
+    // merges the row's mirrored top-level copy back over the extra copy, so a
+    // key the caller removed from `extraMetadata` comes straight back (this
+    // is what kept `pendingUpload` alive on finished uploads).
+    extraMetadataDeletes = [],
   } = options;
+  const deletes = Array.isArray(extraMetadataDeletes)
+    ? extraMetadataDeletes.filter((key) => typeof key === 'string' && key)
+    : [];
   const merged = { ...existing, ...source };
-  const extraSeed = buildExtraSeed(source, existing);
+  const extraSeed = buildExtraSeed(source, existing, deletes);
   const extraWrites = getExtraWrites(source, existing);
 
   // the host maps merge against the row's mirrored map field-by-field, so a

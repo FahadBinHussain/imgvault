@@ -1694,22 +1694,34 @@ export class StorageManager {
    * Update image metadata
    * @param {string} id - Image document ID
    * @param {Object} updates - Fields to update
+   * @param {Object} [options] - { extraMetadataDeletes: string[] } - extra
+   *   metadata keys that must be REMOVED from the stored row. The row mirrors
+   *   every extra key top-level as well, so removing a key from
+   *   `updates.extraMetadata` alone would not remove it.
    * @returns {Promise<boolean>} Success status
    */
-  async updateImage(id, updates) {
+  async updateImage(id, updates, options = {}) {
     await this.ensureInitialized();
     if (this.backend === 'neon') {
-      return this.updateImageNeon(id, updates);
+      return this.updateImageNeon(id, updates, options);
     }
 
     try {
-      const fieldPaths = Object.keys(updates);
+      const deletes = Array.isArray(options.extraMetadataDeletes)
+        ? options.extraMetadataDeletes.filter((key) => typeof key === 'string' && key)
+        : [];
+      // Firestore deletes a field by writing null, so the mirrored top-level
+      // copy has to be nulled explicitly - it is not part of `extraMetadata`.
+      const firestoreUpdates = deletes.length > 0
+        ? { ...updates, ...Object.fromEntries(deletes.map((key) => [key, null])) }
+        : updates;
+      const fieldPaths = Object.keys(firestoreUpdates);
       const url = this.buildUrl(`images/${id}`, {
         'updateMask.fieldPaths': fieldPaths
       });
-      
-      const firestoreData = this.toFirestoreDoc(updates);
-      
+
+      const firestoreData = this.toFirestoreDoc(firestoreUpdates);
+
       const response = await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -2321,10 +2333,11 @@ export class StorageManager {
     };
   }
 
-  toNeonMediaPayload(imageData = {}, existing = {}) {
+  toNeonMediaPayload(imageData = {}, existing = {}, options = {}) {
     return toMediaDbPayload(imageData, {
       existing,
       ensureExtraMetadata: (extraMetadata, { kind }) => ensureAiMetadataContainer(extraMetadata, kind),
+      extraMetadataDeletes: options.extraMetadataDeletes || [],
     });
   }
 
@@ -2836,7 +2849,7 @@ export class StorageManager {
     return true;
   }
 
-  async updateImageNeon(id, updates) {
+  async updateImageNeon(id, updates, options = {}) {
     const sql = this.ensureNeonReady();
     const rows = await sql`select * from public.media_items where id = ${id} limit 1`;
     if (!rows.length) throw new Error('Image not found');
@@ -2844,9 +2857,121 @@ export class StorageManager {
     // existing rides along so the payload builder can tell what this write
     // actually changed: the row carries every extra key twice (mirrored
     // top-level + extraMetadata), so presence alone proves nothing.
-    const payload = this.toNeonMediaPayload({ ...existing, ...updates }, existing);
+    const payload = this.toNeonMediaPayload({ ...existing, ...updates }, existing, options);
     await this.upsertMediaRowNeon(id, payload);
     return true;
+  }
+
+  /**
+   * Repair rows whose "pending upload" flag survived finalisation.
+   *
+   * WHY THIS EXISTS: the flag marks a row that was reserved BEFORE the bytes
+   * left the browser, so the resolve page can offer to recover an orphaned
+   * host file. The finalisation write was supposed to clear it, but the row
+   * stores its extra keys twice (mirrored top-level + inside extraMetadata)
+   * and the payload builder merged the stale mirror straight back in - so the
+   * flag outlived the upload.
+   *
+   * A row that carries video host links was finalised (the host links are
+   * written in the same write that clears the flag), so its flag is
+   * objectively wrong. Leaving it in place is not cosmetic: the resolve page
+   * matches an orphaned host file to a pending row BY NAME, so a finished item
+   * that still claims "pending" makes the page offer to "recover" a file that
+   * is already linked - that is how one video ended up on TeraBox twice.
+   *
+   * Only rows that carry host links are touched. A row that is still really
+   * pending (no host links at all) keeps its flag - that is the recovery
+   * affordance working as intended.
+   * @returns {Promise<Array<{id: string, file_name: string}>>} the repaired rows
+   */
+  async clearStalePendingUploadFlagsNeon() {
+    // The repair that calls this runs while the worker is starting up, before
+    // the Neon client exists - without this the update would fail with
+    // "Neon DB not configured".
+    await this.ensureInitialized();
+    const sql = this.ensureNeonReady();
+    const rows = await sql`
+      update public.media_items
+      set extra_metadata = extra_metadata
+            - 'pendingUpload'
+            - 'pendingUploadStartedAt'
+            - 'pendingUploadFileName',
+          updated_at = now()
+      where deleted_at is null
+        and (extra_metadata->>'pendingUpload') = 'true'
+        and (
+          (
+            (extra_metadata->'videoHosts') is not null
+            and (extra_metadata->'videoHosts') <> '{}'::jsonb
+          )
+          or coalesce(filemoon_watch_url, '') <> ''
+          or coalesce(udrop_watch_url, '') <> ''
+        )
+      returning id, file_name
+    `;
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  /**
+   * Find the gallery item an interrupted upload run actually saved.
+   *
+   * WHY THIS EXISTS: a run that was settled by the OLD path always ended with
+   * "Nothing was saved for this upload." - even for an upload whose item was
+   * already in the database with its host links. The run carried the file
+   * name and the size, so the item can be found again and the message
+   * corrected to the truth.
+   *
+   * The match is deliberately narrow: the newest non-trashed video row with
+   * the same file name, narrowed further by the file size, and by the source
+   * page when the run carried one.
+   * @param {Object} target - { fileName, fileSize, sourcePageUrl }
+   * @returns {Promise<Object|null>} the item, or null
+   */
+  async findVideoItemForRun(target = {}) {
+    // The repair that calls this runs while the worker is starting up, before
+    // the Neon client exists - without this the lookup would fail with
+    // "Neon DB not configured".
+    await this.ensureInitialized();
+    const sql = this.ensureNeonReady();
+    const fileName = String(target.fileName || '').trim();
+    if (!fileName) return null;
+
+    const rows = await sql`
+      select id, page_title, file_name, file_size, source_page_url, internal_added_timestamp, extra_metadata
+      from public.media_items
+      where is_video = true
+        and deleted_at is null
+        and file_name = ${fileName}
+        and (
+          (
+            (extra_metadata->'videoHosts') is not null
+            and (extra_metadata->'videoHosts') <> '{}'::jsonb
+          )
+          or coalesce(filemoon_watch_url, '') <> ''
+          or coalesce(udrop_watch_url, '') <> ''
+        )
+      order by internal_added_timestamp desc
+      limit 10
+    `;
+
+    const candidates = (Array.isArray(rows) ? rows : []).map((row) => this.fromNeonMediaRow(row));
+    if (candidates.length === 0) return null;
+
+    const fileSize = Number(target.fileSize) || 0;
+    const bySize = fileSize > 0
+      ? candidates.filter((item) => Number(item.fileSize || 0) === fileSize)
+      : [];
+    const pool = bySize.length > 0 ? bySize : candidates;
+
+    const sourcePageUrl = String(target.sourcePageUrl || '').trim();
+    if (sourcePageUrl) {
+      const byUrl = pool.find(
+        (item) => String(item.sourcePageUrl || '').trim() === sourcePageUrl
+      );
+      if (byUrl) return byUrl;
+    }
+
+    return pool[0] || null;
   }
 
   async getVaultConfigNeon() {

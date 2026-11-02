@@ -15,16 +15,29 @@
 // the same sendDocument shape the extension's vault copies use.
 const TELEGRAM_API = 'https://api.telegram.org';
 
-export const TELEGRAM_GETFILE_MAX_BYTES = 20 * 1024 * 1024; // getFile read-back gate
-export const TELEGRAM_TIMEOUT_MS = 60000;
+// The caps live in packages/shared, which the extension reads from too. This
+// file used to carry its own copy of the getFile cap and the byte formatter
+// WITHOUT the sendVideo cap - so the two platforms enforced different limits
+// for the same host. One source of truth, both platforms.
+import {
+  TELEGRAM_GETFILE_MAX_BYTES,
+  TELEGRAM_UPLOAD_MAX_BYTES,
+  formatBytesForError,
+  telegramUploadField,
+  telegramUploadMethod,
+  telegramUploadSizeCap,
+} from 'imgvault-shared/telegramLimits.js';
 
-export function formatBytesForError(bytes) {
-  if (!Number.isFinite(bytes)) return 'unknown size';
-  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${bytes} B`;
-}
+export {
+  TELEGRAM_GETFILE_MAX_BYTES,
+  TELEGRAM_UPLOAD_MAX_BYTES,
+  formatBytesForError,
+  telegramUploadField,
+  telegramUploadMethod,
+  telegramUploadSizeCap,
+};
+
+export const TELEGRAM_TIMEOUT_MS = 60000;
 
 /** The token rides the request URL — it must never reach error text. */
 export function redactTelegramToken(text, token) {

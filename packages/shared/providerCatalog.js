@@ -118,6 +118,14 @@ export const VIDEO_UPLOAD_SERVICES = [
     vaultLabel: 'Telegram (≤ 20 MB)',
     vaultMaxBytes: 20 * 1024 * 1024,
     vaultCapNote: 'the Bot API only reads files back through getFile',
+    // The REGULAR video path (not the vault path): an mp4 goes out as
+    // sendVideo (50 MB cap), everything else as a document (20 MB getFile
+    // read-back gate). packages/shared/hostUploadLimits.js reads these, so
+    // every platform enforces the same cap - and a 900 MB file is refused
+    // BEFORE the first byte goes out instead of failing at the end.
+    videoMaxBytes: 20 * 1024 * 1024,
+    videoMp4MaxBytes: 50 * 1024 * 1024,
+    videoCapNote: 'the Bot API reads files back through getFile, which stops at 20 MB; mp4 videos are capped at 50 MB by sendVideo',
     isConfigured: (settings) => hasText(settings?.telegramBotToken) && hasText(settings?.telegramChannel),
   },
 ];

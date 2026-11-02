@@ -36,6 +36,12 @@ const SHIM_ALLOWLIST = {
     'imgvault-shared/videoProviderLinks.js',
     '../config/providerCatalog.js',
   ],
+  // host size caps: one set of numbers for every platform
+  'nextgen-extension/src/utils/hostUploadLimits.js': ['imgvault-shared/hostUploadLimits.js'],
+  'web/src/lib/hostUploadLimits.js': ['imgvault-shared/hostUploadLimits.js'],
+  // the pending-upload reservation flags: the flag decides whether the
+  // resolve page offers to re-upload a file that is already saved
+  'nextgen-extension/src/utils/pendingUpload.js': ['imgvault-shared/pendingUpload.js'],
   // phase 3b: extension detail modal is a re-export of the canonical packages/ui copy
   'nextgen-extension/src/components/MediaDetailModal.jsx': ['imgvault-ui'],
   // vault crypto must be byte-identical on extension + web (same blobs, same KDF)
@@ -76,6 +82,12 @@ const TWIN_BASENAMES = new Set([
   'Modal.jsx',
   'Spinner.jsx',
   'vaultCrypto.js',
+  // host size caps + telegram limits + terabox ref matching: the numbers that
+  // used to drift between the extension and the web
+  'hostUploadLimits.js',
+  'telegramLimits.js',
+  'teraboxRefs.js',
+  'pendingUpload.js',
 ]);
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.next', 'artifacts', 'target', 'coverage']);
 const scan = (dir) => {
@@ -110,6 +122,32 @@ scan(root);
     for (const marker of ['sourceLabel:', 'vaultBlobHost:']) {
       if (src.includes(marker)) {
         fail(`${rel} re-defines catalog metadata (${marker}) — metadata belongs in packages/shared/providerCatalog.js`);
+      }
+    }
+  }
+}
+
+// 5. the telegram caps live in packages/shared only - both platform clients
+//    read them there. They used to carry their own copies and had already
+//    drifted (the web knew only the getFile cap, not the sendVideo one).
+{
+  const CLIENTS = [
+    { rel: 'nextgen-extension/src/utils/telegramApi.js', source: 'imgvault-shared/telegramLimits.js' },
+    { rel: 'web/src/lib/telegramServerApi.js', source: 'imgvault-shared/telegramLimits.js' },
+  ];
+  for (const { rel, source } of CLIENTS) {
+    const path = join(root, rel);
+    if (!existsSync(path)) {
+      fail(`${rel} missing`);
+      continue;
+    }
+    const src = readFileSync(path, 'utf8');
+    if (!src.includes(`from '${source}'`)) {
+      fail(`${rel} must import the telegram limits from '${source}'`);
+    }
+    for (const marker of ['TELEGRAM_GETFILE_MAX_BYTES =', 'TELEGRAM_UPLOAD_MAX_BYTES =', 'function formatBytesForError']) {
+      if (src.includes(marker)) {
+        fail(`${rel} re-defines the telegram limits (${marker}) — they belong in packages/shared/telegramLimits.js`);
       }
     }
   }

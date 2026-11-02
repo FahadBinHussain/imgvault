@@ -31,6 +31,7 @@ import {
 import { extractFilemoonFilecode, getFilemoonDirectLink, getFilemoonHlsLink } from '../utils/filemoonApi.js';
 import { getFilemoonStreamSource } from '../utils/filemoonSpa.js';
 import { resolveTeraBoxThumbnail, resolveTeraBoxPlaybackUrl, resolveTeraBoxFilePath, deleteTeraBoxFiles, listAllTeraBoxFiles, teraBoxFsIdFromUrl } from '../utils/teraBoxApi.js';
+import { PENDING_UPLOAD_EXTRA_KEYS, withoutPendingUploadFlags } from '../utils/pendingUpload.js';
 import { deleteUdropFile } from '../utils/udropApi.js';
 import { flattenSceneConfig } from '../utils/sceneConfig.js';
 import {
@@ -57,6 +58,7 @@ import {
 import {
   UPLOAD_OWNER,
   UPLOAD_OWNER_PORT,
+  UPLOAD_RUN_KEY,
   UPLOAD_RUN_STATUS,
   UPLOAD_STALL_WINDOW_MS,
   archiveUploadRun,
@@ -68,6 +70,8 @@ import {
   getUploadRun,
   isTerminalUploadStatus,
   isUploadRunStalled,
+  needsSavedOutcomeRepair,
+  repairSavedOutcomeSummary,
   rotateBrowserSessionId,
   settleInterruptedUploadRun,
   startUploadRun,
@@ -2899,6 +2903,12 @@ class ImgVaultServiceWorker {
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
+      case 'repairUploadState':
+        this.repairUploadState({ force: Boolean(request.data?.force) })
+          .then(data => sendResponse({ success: true, data }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
       case 'getImages':
         this.storage.getAllImages()
           .then(images => sendResponse({ success: true, data: images }))
@@ -4013,8 +4023,17 @@ class ImgVaultServiceWorker {
       return null;
     }
 
-    if (!run || isTerminalUploadStatus(run.status)) {
-      return run || null;
+    if (!run) {
+      return null;
+    }
+
+    // A run that is ALREADY terminal can still carry a summary that
+    // contradicts its own evidence: the old settle path wrote "Nothing was
+    // saved for this upload." even for an upload whose item was in the
+    // database with its host links. Nothing would ever rewrite it - the run
+    // is closed - so the correction happens here.
+    if (isTerminalUploadStatus(run.status)) {
+      return this.repairInterruptedUploadSummary(run);
     }
 
     const sessionId = await ensureBrowserSessionId();
@@ -4041,6 +4060,123 @@ class ImgVaultServiceWorker {
     }
 
     return run;
+  }
+
+  /**
+   * Correct an interrupted run whose stored summary contradicts its evidence.
+   *
+   * The old settle path wrote "Nothing was saved for this upload." for every
+   * interrupted run - including the ones whose item was already in the
+   * gallery with its host links. The run is terminal, so nothing ever
+   * rewrote the sentence and the gallery kept showing a lie (and offered a
+   * Resume for a file that was already saved).
+   *
+   * The truth comes from the run itself: its saved item id, or the gallery
+   * row the run's file name and size point at.
+   * @param {Object} run - the terminal run record
+   * @returns {Promise<Object>} the corrected run
+   */
+  async repairInterruptedUploadSummary(run) {
+    if (!run || !needsSavedOutcomeRepair(run)) {
+      return run || null;
+    }
+
+    let savedItemId = String(run.savedItemId || '');
+    if (!savedItemId) {
+      try {
+        const saved = await this.storage.findVideoItemForRun({
+          fileName: run.fileName || '',
+          fileSize: Number(run.bytesTotal) || 0,
+          sourcePageUrl: run.sourcePageUrl || '',
+        });
+        savedItemId = String(saved?.id || '');
+      } catch (error) {
+        // The lookup failed - say so loudly, but still correct the sentence
+        // with what the run itself knows.
+        console.error('[UPLOAD RUN] Could not look up the saved item for the interrupted run:', error);
+        await this.updateStatusWithLog(
+          `⚠️ Could not check whether the interrupted upload was saved: ${error.message || String(error)}`,
+          'error'
+        );
+      }
+    }
+
+    const repaired = repairSavedOutcomeSummary(run, savedItemId);
+    if (repaired.summary === run.summary) {
+      return run;
+    }
+
+    const next = {
+      ...repaired,
+      updatedAt: Date.now(),
+    };
+    await chrome.storage.local.set({ [UPLOAD_RUN_KEY]: next });
+    await archiveUploadRun(next);
+    await this.updateStatusWithLog(`ℹ️ Upload message corrected: ${next.summary}`, 'info');
+    return next;
+  }
+
+  /**
+   * Clear the "pending upload" flag from rows that were finalised anyway.
+   *
+   * The flag marks a row that was reserved BEFORE the bytes left the browser,
+   * so the resolve page can offer to recover an orphaned host file. The
+   * finalisation write was supposed to clear it, but the row stores its extra
+   * keys twice and the stale mirror survived - so finished items kept
+   * claiming "pending".
+   *
+   * That is not cosmetic: the resolve page matches an orphaned host file to a
+   * pending row BY NAME, so a finished item that still says "pending" makes
+   * the page offer to "recover" a file that is already linked - which is how
+   * one video ended up on TeraBox twice.
+   *
+   * Only rows that carry video host links are touched: those were finalised
+   * (the host links are written in the same write that clears the flag). A
+   * row that is still really pending keeps its flag - that recovery path
+   * keeps working.
+   * @returns {Promise<Array>} the repaired rows
+   */
+  async repairStalePendingUploadFlags({ force = false } = {}) {
+    try {
+      const guard = await chrome.storage.local.get('pendingUploadFlagRepairAt');
+      const last = Number(guard?.pendingUploadFlagRepairAt) || 0;
+      if (!force && Date.now() - last < 24 * 60 * 60 * 1000) {
+        return [];
+      }
+      const rows = await this.storage.clearStalePendingUploadFlagsNeon();
+      await chrome.storage.local.set({ pendingUploadFlagRepairAt: Date.now() });
+      if (Array.isArray(rows) && rows.length > 0) {
+        await this.updateStatusWithLog(
+          `ℹ️ Cleared the stale "pending upload" flag on ${rows.length} finished item(s). ` +
+          'The resolve page no longer offers to re-upload a file that is already saved.',
+          'info'
+        );
+      }
+      return rows;
+    } catch (error) {
+      console.error('[PENDING UPLOAD REPAIR] failed:', error);
+      await this.updateStatusWithLog(
+        `⚠️ Could not clear the stale "pending upload" flags: ${error.message || String(error)}`,
+        'error'
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Run both startup repairs on demand.
+   *
+   * The repairs normally run when the worker starts up. They are also
+   * reachable from the page, so a user can re-run them after changing
+   * something (and so the outcome can be checked without restarting the
+   * browser).
+   * @param {Object} [options] - { force } skips the once-a-day guard
+   * @returns {Promise<Object>} what was repaired
+   */
+  async repairUploadState(options = {}) {
+    const run = await this.reconcileStaleUploadRuns();
+    const repaired = await this.repairStalePendingUploadFlags({ force: Boolean(options.force) });
+    return { run, repaired };
   }
 
   /**
@@ -6444,17 +6580,27 @@ class ImgVaultServiceWorker {
       merged = mergeVideoProviderResult(merged, providerKey, result);
     }
 
-    const extraMetadata = {
-      ...(merged.extraMetadata && typeof merged.extraMetadata === 'object' ? merged.extraMetadata : {}),
-    };
-    delete extraMetadata.pendingUpload;
-    delete extraMetadata.pendingUploadStartedAt;
-    delete extraMetadata.pendingUploadFileName;
+    const extraMetadata = withoutPendingUploadFlags(
+      merged.extraMetadata && typeof merged.extraMetadata === 'object' ? merged.extraMetadata : {}
+    );
+    // The row mirrors every extra key top-level as well, so the mirrored copy
+    // has to go too - otherwise the payload builder merges the stale mirror
+    // back over the cleaned extra copy and the flag survives finalisation.
+    // A surviving flag is not cosmetic: the resolve page matches an orphaned
+    // host file to a pending row BY NAME, so a finished item that still says
+    // "pending" offers to "recover" a file that is already linked.
+    for (const key of PENDING_UPLOAD_EXTRA_KEYS) {
+      delete merged[key];
+    }
 
-    await this.storage.updateImage(id, {
-      ...merged,
-      extraMetadata,
-    });
+    await this.storage.updateImage(
+      id,
+      {
+        ...merged,
+        extraMetadata,
+      },
+      { extraMetadataDeletes: PENDING_UPLOAD_EXTRA_KEYS }
+    );
 
     await this.appendUploadLog(`[FINALIZE UPLOAD] Linked host URLs to item ${id}.`, 'success');
     return { id, ...merged, extraMetadata };
@@ -6830,7 +6976,22 @@ serviceWorker.reconcileStaleNativeDownload();
 // context died used to leave the UI stuck on "Uploading..." forever, because
 // nothing ever settled the flag. The run record carries the browser session
 // it started in, so a run from a previous browser session is provably dead.
-serviceWorker.reconcileStaleUploadRuns();
+// Rows that were finalised but still carry the "pending upload" flag make
+// the resolve page offer to re-upload a file that is already saved - that is
+// how one video ended up on TeraBox twice. The flag is cleared for the rows
+// that provably were finalised (they carry their host links).
+//
+// The two repairs run in SEQUENCE: they both append to the upload log, and
+// two concurrent read-modify-write writes on chrome.storage.local lose one
+// of the two entries.
+(async () => {
+  try {
+    await serviceWorker.reconcileStaleUploadRuns();
+    await serviceWorker.repairStalePendingUploadFlags();
+  } catch (error) {
+    console.error('[STARTUP REPAIR] failed:', error);
+  }
+})();
 
 // Event listeners
 chrome.runtime.onInstalled.addListener(async () => {

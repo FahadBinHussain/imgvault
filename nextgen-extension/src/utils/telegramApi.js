@@ -13,26 +13,30 @@
 //     built at fetch time and thrown away).
 const TELEGRAM_API = 'https://api.telegram.org';
 
-export const TELEGRAM_UPLOAD_MAX_BYTES = 50 * 1024 * 1024; // ~50 MB send cap
-export const TELEGRAM_GETFILE_MAX_BYTES = 20 * 1024 * 1024; // getFile 20 MB gate
-export const TELEGRAM_LOCAL_MEDIA_PREFIX = '/telegram-media/';
+// The limits themselves live in packages/shared (the web app reads the SAME
+// numbers from there - a cap only one platform knows is a cap only one
+// platform enforces). This module owns the browser-side API calls.
+import {
+  TELEGRAM_GETFILE_MAX_BYTES,
+  TELEGRAM_UPLOAD_MAX_BYTES,
+  assertTelegramUploadSize,
+  formatBytesForError,
+  telegramUploadField,
+  telegramUploadMethod,
+} from 'imgvault-shared/telegramLimits.js';
 
-const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'avif', 'heic']);
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const extensionOf = (filename = '') => {
-  const base = String(filename).split('/').pop().split('?')[0];
-  const dot = base.lastIndexOf('.');
-  return dot > -1 ? base.slice(dot + 1).toLowerCase() : '';
+export {
+  TELEGRAM_GETFILE_MAX_BYTES,
+  TELEGRAM_UPLOAD_MAX_BYTES,
+  assertTelegramUploadSize,
+  formatBytesForError,
+  telegramUploadField,
+  telegramUploadMethod,
 };
 
-export function formatBytesForError(bytes) {
-  if (!Number.isFinite(bytes)) return 'unknown size';
-  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${bytes} B`;
-}
+export const TELEGRAM_LOCAL_MEDIA_PREFIX = '/telegram-media/';
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export function requireTelegramToken(token) {
   const clean = String(token || '').trim();
@@ -53,49 +57,6 @@ export function telegramChatId(channel) {
 
 export function telegramApiBase(token) {
   return `${TELEGRAM_API}/bot${requireTelegramToken(token)}`;
-}
-
-/**
- * `video` for the h264/hotlink path, `document` for everything else.
- * images are ALWAYS documents - byte fidelity wins over the recompressed
- * photo CDN variant (that is the whole phase-0 image decision).
- */
-export function telegramUploadField(filename = '', mimeType = '') {
-  const ext = extensionOf(filename);
-  if (ext === 'mp4') return 'video';
-  if (IMAGE_EXTENSIONS.has(ext)) return 'document';
-  // only mp4 gets the hotlink path - the spike proved other containers arrive as
-  // a `document` with no CDN mp4, so video/webm + .mkv + .mov all stay documents.
-  if (String(mimeType || '').toLowerCase() === 'video/mp4') return 'video';
-  return 'document';
-}
-
-export function telegramUploadMethod(filename = '', mimeType = '') {
-  return telegramUploadField(filename, mimeType) === 'video' ? 'sendVideo' : 'sendDocument';
-}
-
-/**
- * Gate BEFORE the upload, so an unserveable item is never created.
- *  - sendVideo: 50 MB cap (both failure shapes map to this message)
- *  - sendDocument: 20 MB, because reading it back goes through getFile
- */
-export function assertTelegramUploadSize(bytes, filename = '', mimeType = '') {
-  const size = Number(bytes) || 0;
-  const field = telegramUploadField(filename, mimeType);
-  const max = field === 'video' ? TELEGRAM_UPLOAD_MAX_BYTES : TELEGRAM_GETFILE_MAX_BYTES;
-  if (size <= max) return;
-
-  if (field === 'video') {
-    throw new Error(
-      `Telegram upload cap: ${formatBytesForError(size)} is over the ${formatBytesForError(max)} ` +
-      `Bot API limit (file: ${filename || 'video.mp4'}). Larger videos need another host.`
-    );
-  }
-  throw new Error(
-    `Telegram getFile gate: ${formatBytesForError(size)} is over the ${formatBytesForError(max)} ` +
-    `getFile limit (file: ${filename || 'file'}), so this upload could never be read back. ` +
-    `Keep files at or under 20 MB for Telegram or use another host.`
-  );
 }
 
 function formFromEntries(entries) {

@@ -610,7 +610,11 @@ export default function GalleryPage() {
     .map((key, index) => ({ key, label: interruptedRun?.hosts?.[index] || key }))
     .filter((host) => !interruptedRun?.hostsDone?.[host.key])
     .map((host) => host.label);
-  const interruptedRunCanResume = interruptedRunPendingHosts.length > 0;
+  // A run whose item was already saved must NOT offer a Resume: the banner
+  // says the item is in the gallery, and resuming would push a SECOND copy
+  // of the same file to the host that never finished.
+  const interruptedRunCanResume = interruptedRunPendingHosts.length > 0
+    && !interruptedRunSavedItemId;
   const uploadRunIsStalled = isUploadRunStalled(uploadRun);
   const shouldShowUploadLogPreview = uploadIsActive || uploadAttemptStarted;
   const uploadLogPreviewEntries = shouldShowUploadLogPreview ? uploadLogs : [];
