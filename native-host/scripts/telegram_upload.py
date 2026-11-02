@@ -19,7 +19,9 @@ async def upload_file(session_path, api_id, api_hash, channel, file_path, captio
     if not os.path.isfile(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
 
-    client = TelegramClient(session_path, int(api_id), str(api_hash))
+    clean_api_id = int(str(api_id).strip().lstrip("\ufeff"))
+    clean_api_hash = str(api_hash).strip().lstrip("\ufeff")
+    client = TelegramClient(session_path, clean_api_id, clean_api_hash)
     await client.connect()
 
     if not await client.is_user_authorized():
