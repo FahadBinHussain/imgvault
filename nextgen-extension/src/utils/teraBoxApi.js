@@ -16,6 +16,61 @@ const TERABOX_API_BASE = 'https://dm.terabox.com';
 // where the PCS API actually works). Fixed in 2.11.8.
 const TERABOX_TOKEN_BASE = 'https://www.terabox.com';
 
+// --- token refresh single-flight + backoff ------------------------------
+// Scraping a token means a REAL navigation in a hidden tab (a fetch() from
+// the extension gets bounced to /simple-verify). The gallery resolves a
+// thumbnail per terabox video, and every one of those goes through
+// authorizeTeraBox -> fetchJsToken. Without a guard, N items that miss the
+// 12h token cache each open their OWN tab - which is why opening the gallery
+// in the morning flashed a burst of terabox tabs that closed again.
+//
+// Three guards, together:
+//   1. single-flight - concurrent misses share ONE scrape (one tab)
+//   2. negative backoff - a scrape that found nothing is not retried for
+//      every following item (persisted, so a worker restart keeps it)
+//   3. force-refresh cooldown - the errno 4000023 path forces a fresh token
+//      BYPASSING the cache; that is rate limited to one tab per window
+const JS_TOKEN_SCRAPE_BACKOFF_MS = 5 * 60 * 1000;
+const JS_TOKEN_FORCE_REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
+const TOKEN_SCRAPE_FAILED_AT_KEY = 'teraboxTokenScrapeFailedAt';
+const TOKEN_FORCE_REFRESH_AT_KEY = 'teraboxTokenForceRefreshAt';
+
+let _jsTokenScrapeInFlight = null;
+let _pageCtxScrapeInFlight = null;
+
+/**
+ * Read a timestamp marker from local storage (0 when unset).
+ * @param {string} key
+ * @returns {Promise<number>}
+ */
+async function readMarker(key) {
+  try {
+    const stored = await chrome.storage.local.get(key);
+    return Number(stored?.[key]) || 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+/**
+ * Write a timestamp marker to local storage.
+ * @param {string} key
+ * @param {number} value
+ */
+async function writeMarker(key, value) {
+  try {
+    await chrome.storage.local.set({ [key]: value });
+  } catch (_) {}
+}
+
+// Thumbnail resolution lists the WHOLE root folder per item. On a gallery
+// open that is one full paginated listing per terabox video - and each
+// listing can trigger a token refresh, which opens a tab. Cache the listing
+// for a short window: a thumbnail is cosmetic, so a slightly stale one is
+// harmless, and the gallery open drops from N listings to one.
+const TERABOX_THUMB_LISTING_TTL_MS = 60 * 1000;
+const _teraBoxThumbListingCache = new Map();
+
 const hasText = (value) => typeof value === 'string' && value.trim().length > 0;
 
 const userAgent = () =>
@@ -186,25 +241,12 @@ async function fetchJsTokenViaHiddenTab(timeoutMs = 15000) {
 }
 
 /**
- * Fetch page-context tokens for write ops (precreate, create, delete): jsToken +
- * bdstoken + dp-logid, scraped from the /main page's templateData in a hidden
- * tab. Read-only /api/list works with jsToken alone, but write ops reject
- * calls without bdstoken (errno -6 or errno 4000023 need verify). Cached ~12h.
- * @returns {Promise<{jsToken:string,bdstoken:string,dpLogid:string,tabCookie?:string}>}
+ * Scrape the page context (jsToken + bdstoken + dp-logid) in a hidden tab.
+ * Split out of fetchTeraBoxPageContext so that function can single-flight it.
+ * @returns {Promise<{jsToken:string,bdstoken:string,dpLogid:string,tabCookie:string}>}
  */
-export async function fetchTeraBoxPageContext(cookie, forceFresh = false) {
+async function scrapeTeraBoxPageContextInTab() {
   const empty = { jsToken: '', bdstoken: '', dpLogid: '', tabCookie: '' };
-  if (!forceFresh) {
-    try {
-      const cached = await chrome.storage.local.get(['teraboxPageCtx', 'teraboxPageCtxAt']);
-      if (cached?.teraboxPageCtx && Date.now() - (cached.teraboxPageCtxAt || 0) < 1000 * 60 * 60 * 12) {
-        if (cached.teraboxPageCtx.jsToken && cached.teraboxPageCtx.bdstoken) {
-          return { ...empty, ...cached.teraboxPageCtx };
-        }
-      }
-    } catch (_) {}
-  }
-  if (typeof chrome === 'undefined' || !chrome.tabs?.create || !chrome.scripting?.executeScript) return empty;
   let tabId = null;
   try {
     const tab = await chrome.tabs.create({ url: `${TERABOX_TOKEN_BASE}/main`, active: false, pinned: false });
@@ -251,14 +293,56 @@ export async function fetchTeraBoxPageContext(cookie, forceFresh = false) {
     } catch (_) {}
     if (ctx.jsToken || ctx.bdstoken) {
       try { await chrome.storage.local.set({ teraboxPageCtx: ctx, teraboxPageCtxAt: Date.now() }); } catch (_) {}
+      await writeMarker(TOKEN_SCRAPE_FAILED_AT_KEY, 0);
+    } else {
+      await writeMarker(TOKEN_SCRAPE_FAILED_AT_KEY, Date.now());
+      console.warn('[teraBoxApi] Could not scrape the terabox page context - suppressing further token tabs for 5 minutes.');
     }
     return ctx;
   } catch (_) {
+    await writeMarker(TOKEN_SCRAPE_FAILED_AT_KEY, Date.now());
     return empty;
   } finally {
     if (tabId != null) {
       try { await chrome.tabs.remove(tabId); } catch (_) {}
     }
+  }
+}
+
+/**
+ * Fetch page-context tokens for write ops (precreate, create, delete): jsToken +
+ * bdstoken + dp-logid, scraped from the /main page's templateData in a hidden
+ * tab. Read-only /api/list works with jsToken alone, but write ops reject
+ * calls without bdstoken (errno -6 or errno 4000023 need verify). Cached ~12h.
+ * @returns {Promise<{jsToken:string,bdstoken:string,dpLogid:string,tabCookie?:string}>}
+ */
+export async function fetchTeraBoxPageContext(cookie, forceFresh = false) {
+  const empty = { jsToken: '', bdstoken: '', dpLogid: '', tabCookie: '' };
+  if (!forceFresh) {
+    try {
+      const cached = await chrome.storage.local.get(['teraboxPageCtx', 'teraboxPageCtxAt']);
+      if (cached?.teraboxPageCtx && Date.now() - (cached.teraboxPageCtxAt || 0) < 1000 * 60 * 60 * 12) {
+        if (cached.teraboxPageCtx.jsToken && cached.teraboxPageCtx.bdstoken) {
+          return { ...empty, ...cached.teraboxPageCtx };
+        }
+      }
+    } catch (_) {}
+    // A scrape that found nothing must not be repeated for every caller.
+    const failedAt = await readMarker(TOKEN_SCRAPE_FAILED_AT_KEY);
+    if (failedAt && Date.now() - failedAt < JS_TOKEN_SCRAPE_BACKOFF_MS) {
+      return empty;
+    }
+  }
+  if (typeof chrome === 'undefined' || !chrome.tabs?.create || !chrome.scripting?.executeScript) return empty;
+  // Single-flight: one tab for all concurrent callers.
+  if (_pageCtxScrapeInFlight) {
+    return _pageCtxScrapeInFlight;
+  }
+  _pageCtxScrapeInFlight = scrapeTeraBoxPageContextInTab();
+  try {
+    return await _pageCtxScrapeInFlight;
+  } finally {
+    _pageCtxScrapeInFlight = null;
   }
 }
 
@@ -281,26 +365,53 @@ async function fetchJsToken(cookie, forceFresh = false) {
         return cached.teraboxJsToken;
       }
     } catch (_) {}
+    // A scrape that just came back empty is not retried for every following
+    // item - that is what turned one gallery open into a burst of tabs.
+    const failedAt = await readMarker(TOKEN_SCRAPE_FAILED_AT_KEY);
+    if (failedAt && Date.now() - failedAt < JS_TOKEN_SCRAPE_BACKOFF_MS) {
+      return '';
+    }
   }
-  let token = await fetchJsTokenViaHiddenTab();
-  if (token) return token;
-  // last resort: bare fetch (may still hit simple-verify, but try)
-  let res;
-  try {
-    res = await fetch(`${TERABOX_TOKEN_BASE}/`, {
-      credentials: 'omit',
-      headers: { 'User-Agent': userAgent() },
-    });
-  } catch (_) {
+
+  // Single-flight: concurrent misses share ONE scrape (one tab).
+  if (_jsTokenScrapeInFlight) {
+    return _jsTokenScrapeInFlight;
+  }
+
+  _jsTokenScrapeInFlight = (async () => {
+    let token = await fetchJsTokenViaHiddenTab();
+    if (token) {
+      await writeMarker(TOKEN_SCRAPE_FAILED_AT_KEY, 0);
+      return token;
+    }
+    // last resort: bare fetch (may still hit simple-verify, but try)
+    let res;
+    try {
+      res = await fetch(`${TERABOX_TOKEN_BASE}/`, {
+        credentials: 'omit',
+        headers: { 'User-Agent': userAgent() },
+      });
+    } catch (_) {
+      await writeMarker(TOKEN_SCRAPE_FAILED_AT_KEY, Date.now());
+      return '';
+    }
+    const html = await res.text();
+    const m = html.match(/function%20fn%28a%29%7Bwindow\.jsToken%20%3D%20a%7D%3Bfn%28%22([^%"]+)%22%29/);
+    if (m?.[1]) {
+      try { await chrome.storage.local.set({ teraboxJsToken: m[1], teraboxJsTokenAt: Date.now() }); } catch (_) {}
+      await writeMarker(TOKEN_SCRAPE_FAILED_AT_KEY, 0);
+      return m[1];
+    }
+    await writeMarker(TOKEN_SCRAPE_FAILED_AT_KEY, Date.now());
+    console.warn('[teraBoxApi] Could not scrape a terabox jsToken - suppressing further token tabs for 5 minutes.');
     return '';
+  })();
+
+  try {
+    return await _jsTokenScrapeInFlight;
+  } finally {
+    _jsTokenScrapeInFlight = null;
   }
-  const html = await res.text();
-  const m = html.match(/function%20fn%28a%29%7Bwindow\.jsToken%20%3D%20a%7D%3Bfn%28%22([^%"]+)%22%29/);
-  if (m?.[1]) {
-    try { await chrome.storage.local.set({ teraboxJsToken: m[1], teraboxJsTokenAt: Date.now() }); } catch (_) {}
-    return m[1];
-  }
-  return '';
 }
 
 /**
@@ -369,6 +480,20 @@ async function request(cookie, jsToken, pathname, params = {}, retried = false) 
   if (json.errno === 4000023 && !retried) {
     // stale/invalid jsToken (or need-verify) → force a fresh token from the
     // hidden tab (bypass cache) and retry once (driver behaviour).
+    //
+    // The forced scrape opens a REAL tab. Doing that on every request turned
+    // one gallery open into a burst of terabox tabs (the gallery resolves a
+    // thumbnail per terabox video), so it is rate limited: one forced refresh
+    // per cooldown window, and the rest fail with the errno instead of
+    // flashing another tab.
+    const lastForce = await readMarker(TOKEN_FORCE_REFRESH_AT_KEY);
+    if (lastForce && Date.now() - lastForce < JS_TOKEN_FORCE_REFRESH_COOLDOWN_MS) {
+      console.warn(
+        `[teraBoxApi] TeraBox answered errno 4000023 and a forced token refresh already ran ${Math.round((Date.now() - lastForce) / 1000)}s ago - not opening another tab.`
+      );
+      return json;
+    }
+    await writeMarker(TOKEN_FORCE_REFRESH_AT_KEY, Date.now());
     const fresh = await fetchJsToken(cookie, true);
     if (fresh) return request(cookie, fresh, pathname, params, true);
   }
@@ -510,7 +635,21 @@ export async function resolveTeraBoxThumbnail(explicitCookie, fsId) {
     return '';
   }
   if (!auth) return '';
-  const entries = await listTeraBoxFolderSafe(auth);
+
+  // One listing for the whole batch of thumbnails. The gallery resolves a
+  // thumbnail per terabox video, and each listing is a full paginated walk of
+  // the root folder - which also meant one token resolution per video.
+  const cacheKey = String(explicitCookie || '').trim() || '__browser_session__';
+  let entries = null;
+  const cached = _teraBoxThumbListingCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < TERABOX_THUMB_LISTING_TTL_MS) {
+    entries = cached.entries;
+  }
+  if (!entries) {
+    entries = await listTeraBoxFolderSafe(auth);
+    _teraBoxThumbListingCache.set(cacheKey, { at: Date.now(), entries });
+  }
+
   for (const entry of entries) {
     if (entry.isdir === 1) continue;
     if (String(entry.fs_id) !== target) continue;
