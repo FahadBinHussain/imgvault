@@ -183,6 +183,21 @@ export async function fetchTelegramFile(token, fileId, { range = null, signal } 
  * - there is no silent fallback to a token URL.
  */
 export async function scrapeTelegramPostUrl(channel, messageId, { wantMp4 = true, attempts = 4, signal } = {}) {
+  const media = await scrapeTelegramPostMedia(channel, messageId, { attempts, signal });
+  if (wantMp4) {
+    if (media.mp4Url) return media.mp4Url;
+    throw new Error(
+      `Telegram scrape: no MP4 CDN url for ${channel}/${messageId} after ${attempts} attempt(s)`
+    );
+  }
+  return media.mp4Url || media.posterUrl || '';
+}
+
+/**
+ * Scrapes both video stream URL and poster thumbnail URL from a Telegram channel post.
+ * Returns { mp4Url: string, posterUrl: string }
+ */
+export async function scrapeTelegramPostMedia(channel, messageId, { attempts = 4, signal } = {}) {
   const cleanChannel = String(channel || '').trim().replace(/^@+/, '');
   const marker = `data-post="${cleanChannel}/${messageId}"`;
   const pageUrl = `https://t.me/s/${cleanChannel}/${messageId}`;
@@ -215,18 +230,18 @@ export async function scrapeTelegramPostUrl(channel, messageId, { wantMp4 = true
     const end = html.indexOf('data-post=', start + marker.length);
     const segment = html.slice(start, end > start ? end : html.length);
     const urls = segment.match(/https:\/\/cdn\d*\.telesco\.pe\/[^\s"'<>\\]+/g) || [];
-    const mp4 = urls.find((url) => url.includes('.mp4'));
-    if (wantMp4) {
-      if (mp4) return mp4;
-      lastReason = urls.length ? `post has media but no .mp4 among ${urls.length} cdn url(s)` : 'no cdn url in post segment';
-      continue;
+    const mp4Url = urls.find((url) => url.includes('.mp4')) || '';
+    // Telegram video preview posters are images on telesco.pe (without .mp4) or background-image styles
+    const posterUrl = urls.find((url) => !url.includes('.mp4')) || '';
+
+    if (mp4Url || posterUrl) {
+      return { mp4Url, posterUrl };
     }
-    if (urls[0]) return urls[0];
-    lastReason = 'no cdn url in post segment';
+    lastReason = 'no cdn urls found in post segment';
   }
 
   throw new Error(
-    `Telegram scrape: no CDN url for ${cleanChannel}/${messageId} after ${attempts} attempt(s) ` +
+    `Telegram scrape: no media CDN url for ${cleanChannel}/${messageId} after ${attempts} attempt(s) ` +
     `(${pageUrl}). last reason: ${lastReason}`
   );
 }

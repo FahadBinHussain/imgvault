@@ -10,6 +10,7 @@ import {
   deleteTelegramMessage,
   requireTelegramToken,
   scrapeTelegramPostUrl,
+  scrapeTelegramPostMedia,
   sendTelegramFile,
   telegramApiBase,
   telegramChatId,
@@ -1086,14 +1087,19 @@ export class TeraBoxUploader extends BaseUploader {
     return json;
   }
 
-  async getDownloadLink(path) {
+  async getFileMeta(path) {
     const qp = new URLSearchParams({ target: JSON.stringify([path]), dlink: '1', origin: 'dlna' });
     const res = await fetch(`${this.apiBase}/api/filemetas?${qp}`, { headers: this.headers() });
     const json = await res.json();
-    if (json.errno !== 0 || !json.info?.[0]?.dlink) {
-      return '';
+    if (json.errno !== 0 || !json.info?.[0]) {
+      return null;
     }
-    return json.info[0].dlink;
+    return json.info[0];
+  }
+
+  async getDownloadLink(path) {
+    const meta = await this.getFileMeta(path);
+    return meta?.dlink || '';
   }
 
   /**
@@ -1370,8 +1376,11 @@ export class TeraBoxUploader extends BaseUploader {
 
   async _buildResult(path, info) {
     let dlink = '';
+    let thumbUrl = '';
     try {
-      dlink = await this.getDownloadLink(path);
+      const meta = await this.getFileMeta(path);
+      dlink = meta?.dlink || '';
+      thumbUrl = meta?.thumbs?.url3 || meta?.thumbs?.url2 || meta?.thumbs?.url1 || meta?.thumbs?.icon || '';
     } catch (_) {
       // keep fallback page URL
     }
@@ -1382,8 +1391,8 @@ export class TeraBoxUploader extends BaseUploader {
       displayUrl: dlink || fallbackUrl,
       watchUrl: dlink || fallbackUrl,
       directUrl: dlink,
-      thumbUrl: null,
-      thumbnailUrl: null,
+      thumbUrl: thumbUrl || null,
+      thumbnailUrl: thumbUrl || null,
       deleteUrl: null,
       fileId: fsId,
       filename: path.split('/').pop(),
@@ -1411,7 +1420,7 @@ export class TelegramUploader extends BaseUploader {
     super('Telegram');
   }
 
-  buildProviderResult({ message, channel, filename, method, cdnUrl = '' }) {
+  buildProviderResult({ message, channel, filename, method, cdnUrl = '', posterUrl = '' }) {
     const field = method === 'sendVideo' ? 'video' : 'document';
     const messageId = String(message?.message_id || '');
     const media = message?.[field] || {};
@@ -1433,7 +1442,8 @@ export class TelegramUploader extends BaseUploader {
         watchUrl,
         displayUrl: watchUrl,
         directUrl: cdnUrl,
-        thumbUrl: null,
+        thumbUrl: posterUrl || null,
+        thumbnailUrl: posterUrl || null,
         deleteUrl: null,
         fileId,
         messageId,
@@ -1450,7 +1460,8 @@ export class TelegramUploader extends BaseUploader {
       displayUrl: watchUrl,
       directUrl: localUrl,
       watchUrl,
-      thumbUrl: null,
+      thumbUrl: posterUrl || null,
+      thumbnailUrl: posterUrl || null,
       deleteUrl: null,
       fileId,
       messageId,
@@ -1464,10 +1475,13 @@ export class TelegramUploader extends BaseUploader {
     const field = method === 'sendVideo' ? 'video' : 'document';
     const messageId = String(message?.message_id || '');
     let cdnUrl = '';
+    let posterUrl = '';
 
     if (field === 'video') {
       try {
-        cdnUrl = await scrapeTelegramPostUrl(channel, messageId, { wantMp4: true, signal });
+        const postMedia = await scrapeTelegramPostMedia(channel, messageId, { attempts: 4, signal });
+        cdnUrl = postMedia.mp4Url;
+        posterUrl = postMedia.posterUrl;
       } catch (error) {
         let cleanupNote = '';
         try {
@@ -1480,7 +1494,7 @@ export class TelegramUploader extends BaseUploader {
       }
     }
 
-    const result = this.buildProviderResult({ message, channel, filename, method, cdnUrl });
+    const result = this.buildProviderResult({ message, channel, filename, method, cdnUrl, posterUrl });
     console.log(`📨 [TELEGRAM] ${method} ok - message ${result.messageId}, fileId ${result.fileId}, directUrl ${result.directUrl || result.url}`);
     return result;
   }
@@ -1521,8 +1535,11 @@ export class TelegramUploader extends BaseUploader {
       const chat = String(channel || '').trim().replace(/^@+/, '');
       const watchUrl = messageId ? `https://t.me/${chat}/${messageId}` : '';
       let cdnUrl = '';
+      let posterUrl = '';
       try {
-        cdnUrl = await scrapeTelegramPostUrl(channel, messageId, { wantMp4: true, signal });
+        const postMedia = await scrapeTelegramPostMedia(channel, messageId, { attempts: 4, signal });
+        cdnUrl = postMedia.mp4Url;
+        posterUrl = postMedia.posterUrl;
       } catch (err) {
         console.warn(`[telegram-native] Scrape CDN warning for message ${messageId}:`, err);
       }
@@ -1531,7 +1548,8 @@ export class TelegramUploader extends BaseUploader {
         watchUrl,
         displayUrl: watchUrl,
         directUrl: cdnUrl || watchUrl,
-        thumbUrl: null,
+        thumbUrl: posterUrl || null,
+        thumbnailUrl: posterUrl || null,
         deleteUrl: null,
         fileId: `native-${messageId}`,
         messageId,

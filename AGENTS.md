@@ -2,6 +2,14 @@
 
 chrome extension (mv3, no build for ext itself; vite build outputs to `dist/`) + tauri rust native host for yt-dlp downloads.
 
+- **video thumbnail & preview capture at upload time for all hosts (2.19.7, 2026-11-02)**: Eliminates fragile, delayed, and expiring lazy-thumbnail lookups across gallery sessions.
+  **(1) upload-time frame extraction**: Added `captureVideoSnapshotBlob(videoBlob, 1.0)` in `src/utils/videoSnapshot.js`. Uses an offscreen `<video>` and `<canvas>` to grab a crisp 640px JPEG snapshot (~25 KB) during direct upload and saves it to local IndexedDB (`poster-<id>`). 0 background daemons, 0 MB idle RAM.
+  **(2) instant provider posters**:
+    - **Telegram**: Updated `scrapeTelegramPostMedia` in `src/utils/telegramApi.js` to extract both the `.mp4` stream and public `telesco.pe` poster image directly from the post segment. Stored as `videoHosts.telegram.thumbnailUrl`.
+    - **TeraBox**: `_buildResult` in `src/utils/uploaders.js` now reads the `thumbs` payload (`url3`/`url2`/`icon`) from `/api/filemetas` right upon upload completion and populates `videoHosts.terabox.thumbnailUrl`.
+  **(3) gallery instant rendering**: Card preview resolves the local poster or provider thumbnail immediately, completely avoiding the background scrape and tab spawning loops.
+  verified: extension clean build via `pnpm build`, manifest bumped to `2.19.7`, reloaded via `tools/reload-extension.ps1`.
+
 - **telegram large video uploads (> 50 MB up to 2 GB) supported via native host MTProto (2.19.6, 2026-11-02)**: Telegram Bot API hard-caps `sendVideo` at 50 MB, skipping larger videos.
   **(1) native host MTProto runner**: Added `telegram_upload` action to `ImgVault-Native-Host.exe` (`main.rs`) and `native-host/scripts/telegram_upload.py`. When a video exceeds 50 MB and a local `filePath` is present, the extension delegates the upload to the native host over native messaging. It uses the user's local Telethon session (`client.send_file(supports_streaming=True)`) to upload files up to 2,000 MB directly to Telegram cloud.
   **(2) zero idle footprint**: 0 MB idle RAM, 0 background daemons. The Python upload process spawns on-demand, streams byte-level progress lines to the extension, outputs the message JSON on completion, and exits immediately.

@@ -73,6 +73,8 @@ import {
 } from '../utils/uploadRun.js';
 import { cacheUploadFile, getCachedUploadFile, listCachedUploadFiles, removeCachedUploadFile } from '../utils/uploadFileCache.js';
 import { partitionHostsByUploadLimit } from '../utils/hostUploadLimits.js';
+import { captureVideoSnapshotBlob } from '../utils/videoSnapshot.js';
+import { setCachedThumb } from '../utils/thumbCache.js';
 
 // How long the page waits for the worker to acknowledge that the upload run
 // is closed. The worker is a message away and the record is one storage key,
@@ -1514,6 +1516,16 @@ export default function GalleryPage() {
       // Remember it on the run: a later resume has to find the same row.
       await reportUploadRunProgress({ pendingItemId });
 
+      // Capture 1-frame snapshot at upload time so preview is instantly available
+      let localSnapshotBlob = null;
+      if (uploadData.fileBlob instanceof Blob) {
+        try {
+          localSnapshotBlob = await captureVideoSnapshotBlob(uploadData.fileBlob, 1.0);
+        } catch (snapErr) {
+          console.warn('[uploadVideoDirectly] Snapshot capture skipped:', snapErr?.message || snapErr);
+        }
+      }
+
       for (const service of usableServices) {
         // A host that already finished before the interruption is NOT
         // uploaded again - its result is reused so the saved item keeps the
@@ -1613,6 +1625,11 @@ export default function GalleryPage() {
           filemoonResult: uploadResults.filemoon,
           videoUploadErrors: uploadErrors,
         });
+        if (localSnapshotBlob) {
+          try {
+            await setCachedThumb(`poster-${finalized.id}`, localSnapshotBlob);
+          } catch (_) {}
+        }
         await appendClientUploadLog(`[SAVE VIDEO] Finalized item with ID: ${finalized.id}`, 'success');
         if (uploadErrors.length > 0) {
           finalized.videoUploadErrors = uploadErrors;
@@ -1641,6 +1658,11 @@ export default function GalleryPage() {
         filemoonResult: uploadResults.filemoon,
         videoUploadErrors: uploadErrors,
       });
+      if (localSnapshotBlob && saved?.id) {
+        try {
+          await setCachedThumb(`poster-${saved.id}`, localSnapshotBlob);
+        } catch (_) {}
+      }
       await appendClientUploadLog(`[SAVE VIDEO] Saved successfully with ID: ${saved.id}`, 'success');
       if (uploadErrors.length > 0) {
         saved.videoUploadErrors = uploadErrors;
