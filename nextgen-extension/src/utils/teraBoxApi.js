@@ -743,6 +743,107 @@ export async function resolveTeraBoxPlaybackUrl(explicitCookie, fsId, fileName =
   return String(json.info[0].dlink);
 }
 
+export const TERABOX_DOMAINS_RE = /(^|\.)(terabox\.com|1024tera\.com|teraboxapp\.com|freeterabox\.com|tibibox\.com|4funbox\.com|mirrobox\.com|nephobox\.com)$/i;
+
+export function isTeraBoxHost(hostname = '') {
+  return TERABOX_DOMAINS_RE.test(String(hostname || '').trim());
+}
+
+export function isTeraBoxUrl(url = '') {
+  try {
+    return isTeraBoxHost(new URL(url).hostname);
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Resolve a TeraBox web URL (play/video, sharing/link, or folder path) to a
+ * direct, currently-valid DLNA dlink and clean file metadata.
+ *
+ * @param {string} url - TeraBox page URL
+ * @param {string} [explicitCookie]
+ * @returns {Promise<{mediaUrl: string, fileName: string, pageTitle: string, fsId: string, size: number, path: string}|null>}
+ */
+export async function resolveTeraBoxDownloadTarget(url, explicitCookie = '') {
+  if (!url || typeof url !== 'string') return null;
+
+  let path = '';
+  let fsId = '';
+  try {
+    const parsed = new URL(url);
+    if (parsed.searchParams.has('path')) {
+      path = parsed.searchParams.get('path') || '';
+    }
+    if (parsed.searchParams.has('fidlist')) {
+      try {
+        const list = JSON.parse(parsed.searchParams.get('fidlist') || '[]');
+        if (Array.isArray(list) && list[0]) fsId = String(list[0]);
+      } catch (_) {}
+    }
+    if (!fsId && parsed.searchParams.has('fs_id')) {
+      fsId = parsed.searchParams.get('fs_id') || '';
+    }
+    if (!fsId && parsed.searchParams.has('file_id')) {
+      fsId = parsed.searchParams.get('file_id') || '';
+    }
+    if (!fsId) {
+      fsId = teraBoxFsIdFromUrl(url);
+    }
+  } catch (_) {
+    return null;
+  }
+
+  if (!path && fsId) {
+    path = await resolveTeraBoxFilePath(explicitCookie, fsId);
+  }
+
+  if (!path) {
+    try {
+      const parsed = new URL(url);
+      const last = (parsed.pathname || '').split('/').filter(Boolean).pop();
+      if (last && /\.(mp4|mkv|webm|mov|m4v|avi|ts)$/i.test(last)) {
+        path = await resolveTeraBoxFilePath(explicitCookie, '', decodeURIComponent(last));
+      }
+    } catch (_) {}
+  }
+
+  if (!path) {
+    return null;
+  }
+
+  let auth;
+  try {
+    auth = await authorizeTeraBox(explicitCookie);
+  } catch (err) {
+    throw new Error(`TeraBox auth failed: ${err.message || err}`);
+  }
+  if (!auth) {
+    throw new Error('No TeraBox session cookie found. Log in to TeraBox or set the cookie in Settings.');
+  }
+
+  const json = await request(auth.cookie, auth.jsToken, '/api/filemetas', {
+    target: JSON.stringify([path]),
+    dlink: '1',
+    origin: 'dlna',
+  });
+
+  if (!json || json.errno !== 0 || !Array.isArray(json.info) || !json.info[0]?.dlink) {
+    throw new Error(`TeraBox /api/filemetas returned no dlink (errno=${json?.errno ?? 'unknown'}) for path: ${path}`);
+  }
+
+  const info = json.info[0];
+  const serverFilename = String(info.server_filename || path.split('/').pop() || 'terabox-video.mp4');
+  return {
+    mediaUrl: String(info.dlink),
+    fileName: serverFilename,
+    pageTitle: serverFilename.replace(/\.[a-z0-9]+$/i, ''),
+    fsId: String(info.fs_id || fsId || ''),
+    size: Number(info.size || info.file_size || 0),
+    path: String(info.path || path),
+  };
+}
+
 /**
  * Every way an item can point at a TeraBox file: provider links (incl. the
  * nested extraMetadata copy), legacy columns, dlink ?fid= segments, scene

@@ -86,6 +86,7 @@ function getVideoPreview(url) {
     const isFacebookHost = host === 'facebook.com' ||
       host === 'www.facebook.com' ||
       host === 'm.facebook.com';
+    const isTeraBox = /(^|\.)(terabox\.com|1024tera\.com|teraboxapp\.com|freeterabox\.com|tibibox\.com|4funbox\.com|mirrobox\.com|nephobox\.com)$/i.test(host);
 
     let videoId = '';
 
@@ -137,6 +138,20 @@ function getVideoPreview(url) {
           thumbnailUrl: '',
         };
       }
+    }
+
+    if (isTeraBox) {
+      let fileName = parsedUrl.searchParams.get('path') || '';
+      if (fileName) {
+        fileName = fileName.split('/').filter(Boolean).pop() || '';
+      }
+      return {
+        siteLabel: 'TeraBox',
+        title: fileName ? `TeraBox: ${fileName}` : 'TeraBox video detected',
+        subtitle: fileName || parsedUrl.pathname,
+        href: url,
+        thumbnailUrl: '',
+      };
     }
 
     return {
