@@ -2,6 +2,9 @@
 
 chrome extension (mv3, no build for ext itself; vite build outputs to `dist/`) + tauri rust native host for yt-dlp downloads.
 
+- **gallery white-screen crash resolved by removing undefined log setter (2.19.10, 2026-11-06)**: Opening the gallery resulted in an empty white screen caused by an unhandled `ReferenceError: setClientUploadLogs is not defined` inside `GalleryPage.jsx` when clearing upload state. Replaced all 4 invocations with `chrome.storage.local.set({ uploadStatusLogs: [] })`. Verified via `test-no-undefined-refs.mjs` (64 files passing).
+  verified: extension clean build via `pnpm build`, manifest bumped to `2.19.10`, reloaded via `tools/reload-extension.ps1`.
+
 - **system notification click brings browser window to foreground & activates gallery (2.19.9, 2026-11-06)**: Clicking the desktop notification (e.g. `Tab not in focus. Auto-upload is paused...`) while switched to another app did nothing because `chrome.notifications.onClicked` was not registered.
   **(1) notification click handler**: Added `chrome.notifications.onClicked` listener in `src/background/background.js` that clears the notification, calls `openOrFocusApp('/gallery')`, and triggers `resumePendingAutoUploadOnFocus()`.
   **(2) window foreground focus**: In `openOrFocusApp`, ensured `chrome.windows.update(tab.windowId, { focused: true })` is called across both existing-tab and newly-created-tab code paths so OS window focus properly switches back to Edge.

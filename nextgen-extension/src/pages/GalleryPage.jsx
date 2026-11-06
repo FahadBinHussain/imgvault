@@ -3391,7 +3391,7 @@ export default function GalleryPage() {
       resetBatchUploadState();
       setActiveUploadQueueIndex(0);
       setUploadImageData(null);
-      setClientUploadLogs([]);
+      chrome.storage.local.set({ uploadStatusLogs: [] }).catch(() => {});
       setUploadAttemptStarted(false);
       chrome.storage.local.remove('pendingAutoUpload').catch(() => {});
 
@@ -4062,7 +4062,7 @@ export default function GalleryPage() {
         
         // Process the file and open modal
         const processFile = async () => {
-          setClientUploadLogs([]);
+          chrome.storage.local.set({ uploadStatusLogs: [] }).catch(() => {});
           setDuplicateData(null);
           setUploadAttemptStarted(false);
           await processMediaFile(file, 'debug://upload', 'Debug Upload');
@@ -4078,7 +4078,7 @@ export default function GalleryPage() {
         // Auto-load file using saved directory handle
         console.log('🐛 [AUTO-LOAD] Starting auto-load for:', location.state.downloadFilePath);
         setPendingDownloadSourceUrl(String(location.state.downloadSourceUrl || '').trim());
-        setClientUploadLogs([]);
+        chrome.storage.local.set({ uploadStatusLogs: [] }).catch(() => {});
         setDuplicateData(null);
         setUploadAttemptStarted(false);
         setShowUploadModal(true);
@@ -4153,7 +4153,7 @@ export default function GalleryPage() {
       } else {
         // Just open the upload modal (for native download without file path)
         console.log('🐛 Auto-opening upload modal after download');
-        setClientUploadLogs([]);
+        chrome.storage.local.set({ uploadStatusLogs: [] }).catch(() => {});
         setDuplicateData(null);
         setUploadAttemptStarted(false);
         setShowUploadModal(true);
