@@ -531,6 +531,8 @@ export default function GalleryPage() {
   const [showFolderPrompt, setShowFolderPrompt] = useState(false);
   const [pendingDownloadFile, setPendingDownloadFile] = useState(null);
   const [pendingDownloadSourceUrl, setPendingDownloadSourceUrl] = useState('');
+  const processedAutoUploadIdsRef = useRef(new Set());
+  const isLoadingDownloadedFileRef = useRef(false);
   const uploadPreviewUrlRef = useRef(null);
   const activeVideoUploadControllerRef = useRef(null);
   const batchCancelRequestedRef = useRef(false);
@@ -3388,6 +3390,10 @@ export default function GalleryPage() {
       setUploadQueue([]);
       resetBatchUploadState();
       setActiveUploadQueueIndex(0);
+      setUploadImageData(null);
+      setClientUploadLogs([]);
+      setUploadAttemptStarted(false);
+      chrome.storage.local.remove('pendingAutoUpload').catch(() => {});
 
       await Promise.all([reload(), reloadCollections()]);
       const mediaType = uploadData.isVideo ? 'Video' : 'Image';
@@ -3972,6 +3978,13 @@ export default function GalleryPage() {
           return;
         }
 
+        const autoUploadKey = pendingAutoUpload.id || `${pendingAutoUpload.downloadFilePath || ''}_${pendingAutoUpload.createdAt || ''}`;
+        if (processedAutoUploadIdsRef.current.has(autoUploadKey)) {
+          await chrome.storage.local.remove('pendingAutoUpload');
+          return;
+        }
+
+        await chrome.storage.local.remove('pendingAutoUpload');
         navigate(location.pathname, { replace: true, state: pendingAutoUpload });
       } catch (error) {
         console.error('Failed to hydrate pending auto-upload state:', error);
@@ -3989,9 +4002,18 @@ export default function GalleryPage() {
 
       try {
         const { pendingAutoUpload } = await chrome.storage.local.get('pendingAutoUpload');
-        if (pendingAutoUpload?.autoOpenUpload && !pendingAutoUpload?.pausedUntilFocus) {
-          navigate(location.pathname, { replace: true, state: pendingAutoUpload });
+        if (!pendingAutoUpload?.autoOpenUpload || pendingAutoUpload?.pausedUntilFocus) {
+          return;
         }
+
+        const autoUploadKey = pendingAutoUpload.id || `${pendingAutoUpload.downloadFilePath || ''}_${pendingAutoUpload.createdAt || ''}`;
+        if (processedAutoUploadIdsRef.current.has(autoUploadKey)) {
+          await chrome.storage.local.remove('pendingAutoUpload');
+          return;
+        }
+
+        await chrome.storage.local.remove('pendingAutoUpload');
+        navigate(location.pathname, { replace: true, state: pendingAutoUpload });
       } catch (error) {
         console.error('Failed to retry pending auto-upload hydration:', error);
       }
@@ -4014,6 +4036,16 @@ export default function GalleryPage() {
 
   useEffect(() => {
     if (location.state?.autoOpenUpload) {
+      const autoUploadKey = location.state.id || `${location.state.downloadFilePath || ''}_${location.state.createdAt || ''}`;
+      if (autoUploadKey && processedAutoUploadIdsRef.current.has(autoUploadKey)) {
+        chrome.storage.local.remove('pendingAutoUpload').catch(() => {});
+        navigate(location.pathname, { replace: true, state: {} });
+        return;
+      }
+      if (autoUploadKey) {
+        processedAutoUploadIdsRef.current.add(autoUploadKey);
+      }
+
       // Files dropped on the vault page arrive here with the vault switch preset.
       if (location.state?.droppedUploadFiles?.length) {
         const files = location.state.droppedUploadFiles;
@@ -4030,6 +4062,9 @@ export default function GalleryPage() {
         
         // Process the file and open modal
         const processFile = async () => {
+          setClientUploadLogs([]);
+          setDuplicateData(null);
+          setUploadAttemptStarted(false);
           await processMediaFile(file, 'debug://upload', 'Debug Upload');
           setIsLocalUpload(true);
           setShowUploadModal(true);
@@ -4043,9 +4078,14 @@ export default function GalleryPage() {
         // Auto-load file using saved directory handle
         console.log('🐛 [AUTO-LOAD] Starting auto-load for:', location.state.downloadFilePath);
         setPendingDownloadSourceUrl(String(location.state.downloadSourceUrl || '').trim());
+        setClientUploadLogs([]);
+        setDuplicateData(null);
+        setUploadAttemptStarted(false);
         setShowUploadModal(true);
         
         const loadDownloadedFile = async () => {
+          if (isLoadingDownloadedFileRef.current) return;
+          isLoadingDownloadedFileRef.current = true;
           try {
             const fileName = getFileNameFromPath(location.state.downloadFilePath);
             const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -4104,6 +4144,8 @@ export default function GalleryPage() {
             setPendingDownloadFile(location.state.downloadFilePath);
             setShowFolderPrompt(true);
             showToast('Select the download folder to finish loading the downloaded file.', 'warning', 4000);
+          } finally {
+            isLoadingDownloadedFileRef.current = false;
           }
         };
         
@@ -4111,6 +4153,9 @@ export default function GalleryPage() {
       } else {
         // Just open the upload modal (for native download without file path)
         console.log('🐛 Auto-opening upload modal after download');
+        setClientUploadLogs([]);
+        setDuplicateData(null);
+        setUploadAttemptStarted(false);
         setShowUploadModal(true);
         showToast('✅ Download complete! Please select the downloaded file to upload.', 'info', 4000);
       }

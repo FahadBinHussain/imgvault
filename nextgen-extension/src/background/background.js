@@ -3631,7 +3631,9 @@ class ImgVaultServiceWorker {
   // response and by journal adoption after an extension reload.
   async settleNativeDownloadCompleted(activeRequestId, url, filePath, message = 'Download complete') {
     const focused = await this.isExtensionUiFocused();
+    const handoffId = activeRequestId || ('pau-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
     const pendingAutoUpload = {
+      id: handoffId,
       autoOpenUpload: true,
       downloadFilePath: filePath || '',
       downloadSourceUrl: url,
@@ -4310,8 +4312,13 @@ class ImgVaultServiceWorker {
         return;
       }
 
+      const current = (await chrome.storage.local.get('pendingAutoUpload'))?.pendingAutoUpload;
+      if (!current?.autoOpenUpload || !current?.pausedUntilFocus) {
+        return;
+      }
+
       const nextPending = {
-        ...pendingAutoUpload,
+        ...current,
         pausedUntilFocus: false,
         resumedAt: Date.now(),
       };

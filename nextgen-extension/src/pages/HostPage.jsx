@@ -476,6 +476,7 @@ export default function HostPage() {
         }
 
         navigating = true;
+        await chrome.storage.local.remove('pendingAutoUpload');
         if (pendingAutoUpload.pausedUntilFocus) {
           addLog('Tab focused. Resuming auto-upload handoff...', 'success');
           const resumedPayload = {
@@ -483,7 +484,6 @@ export default function HostPage() {
             pausedUntilFocus: false,
             resumedAt: Date.now(),
           };
-          await chrome.storage.local.set({ pendingAutoUpload: resumedPayload });
           navigate('/gallery', { state: resumedPayload });
           return;
         }

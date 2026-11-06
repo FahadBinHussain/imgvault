@@ -1110,6 +1110,7 @@ export class StorageManager {
     for (const item of items) {
       if (this.isSystemItem(item) || this.isVaultedItem(item)) continue;
       if (excludeItemId && String(item.id || '') === excludeItemId) continue;
+      if (item.extraMetadata?.pendingUpload === true || item.extraMetadata?.pendingUpload === 'true' || item.pendingUpload) continue;
       const isVideo = this.isTruthyFlag(item.isVideo) || String(item.fileType || '').startsWith('video/');
       if (!isVideo) continue;
 
@@ -2591,6 +2592,7 @@ export class StorageManager {
         udrop_watch_url, udrop_direct_url, deleted_at, extra_metadata
       from public.media_items
       where is_video = true
+        and (extra_metadata->>'pendingUpload' is null or extra_metadata->>'pendingUpload' != 'true')
       order by internal_added_timestamp desc
     `;
     const items = rows.map((row) => {
