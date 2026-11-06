@@ -230,6 +230,11 @@ class ImgVaultServiceWorker {
     }
 
     const tab = await chrome.tabs.create({ url: targetUrl, active: true });
+    if (tab?.windowId) {
+      try {
+        await chrome.windows.update(tab.windowId, { focused: true });
+      } catch (_) {}
+    }
     return tab?.id || null;
   }
 
@@ -7168,6 +7173,18 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 chrome.windows.onFocusChanged.addListener(async () => {
   await serviceWorker.resumePendingAutoUploadOnFocus();
 });
+
+if (chrome.notifications?.onClicked) {
+  chrome.notifications.onClicked.addListener(async (notificationId) => {
+    try {
+      if (notificationId) {
+        await chrome.notifications.clear(notificationId).catch(() => {});
+      }
+    } catch (_) {}
+    await serviceWorker.openOrFocusApp('/gallery');
+    await serviceWorker.resumePendingAutoUploadOnFocus();
+  });
+}
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   serviceWorker.handleContextMenuClick(info, tab);
