@@ -21,4 +21,15 @@ if ($buildExit -ne 0) {
   exit $buildExit
 }
 $extId = "cjialghkacooiecjckibhcifilfiibnn"
-Start-Process "msedge" -ArgumentList "chrome-extension://$extId/reload.html"
+$cdpPortFile = Join-Path $env:LOCALAPPDATA 'Microsoft\Edge\User Data\DevToolsActivePort'
+if (Test-Path $cdpPortFile) {
+  try {
+    $script = "cdp('Target.createTarget', url='chrome-extension://$extId/reload.html', background=True)"
+    $script | browser-use | Out-Null
+    Write-Host "Triggered extension reload via CDP background target." -ForegroundColor Green
+  } catch {
+    Start-Process "msedge" -ArgumentList "chrome-extension://$extId/reload.html"
+  }
+} else {
+  Start-Process "msedge" -ArgumentList "chrome-extension://$extId/reload.html"
+}
