@@ -31,6 +31,7 @@ import {
 import { extractFilemoonFilecode, getFilemoonDirectLink, getFilemoonHlsLink } from '../utils/filemoonApi.js';
 import { getFilemoonStreamSource } from '../utils/filemoonSpa.js';
 import { resolveTeraBoxThumbnail, resolveTeraBoxPlaybackUrl, resolveTeraBoxFilePath, deleteTeraBoxFiles, listAllTeraBoxFiles, teraBoxFsIdFromUrl, isTeraBoxUrl, isTeraBoxHost, resolveTeraBoxDownloadTarget } from '../utils/teraBoxApi.js';
+import { isSunoUrl, resolveSunoDownloadTarget } from '../utils/sunoApi.js';
 import { PENDING_UPLOAD_EXTRA_KEYS, withoutPendingUploadFlags } from '../utils/pendingUpload.js';
 import { deleteUdropFile } from '../utils/udropApi.js';
 import { flattenSceneConfig } from '../utils/sceneConfig.js';
@@ -5429,6 +5430,12 @@ class ImgVaultServiceWorker {
     return /unsupported url/i.test(text) || /unable to download webpage/i.test(text) || /403/.test(text) || /400/.test(text);
   }
 
+  isSunoUnsupportedFailure(url, message) {
+    if (!isSunoUrl(url)) return false;
+    const text = String(message || '');
+    return /liability/i.test(text) || /not supported/i.test(text) || /unsupported/i.test(text) || /unable to download/i.test(text) || /403/.test(text) || /400/.test(text);
+  }
+
   // yt-dlp expands `%(ext)s`-style fields in the output template but leaves
   // literal text untouched — a baked-in title must be sanitized here.
   sanitizeMediaFileNamePart(value, maxLength = 120) {
@@ -5679,6 +5686,29 @@ class ImgVaultServiceWorker {
     throw new Error('Could not resolve a direct media URL from TeraBox. Ensure the video file exists in your TeraBox account.');
   }
 
+  async resolveSunoMediaUrl(pageUrl, activeRequestId) {
+    const logLine = (text, type = 'info') =>
+      this.appendNativeDownloadLog(
+        activeRequestId,
+        text,
+        type,
+        'system'
+      );
+
+    await logLine(
+      'yt-dlp has no native extractor for Suno (Liability/Unsupported URL). Switching to the 2nd method: resolve the direct media URL via Suno API.',
+      'warning'
+    );
+
+    const direct = await resolveSunoDownloadTarget(pageUrl);
+    if (!direct?.mediaUrl) {
+      throw new Error(`Could not resolve direct media URL from Suno for: ${pageUrl}`);
+    }
+
+    await logLine(`Resolved Suno direct download via API: ${direct.pageTitle} (${direct.fsId})`);
+    return direct;
+  }
+
   async browserResolveDirectMediaUrl(pageUrl, activeRequestId) {
     const logLine = (message, type = 'info') => this.appendNativeDownloadLog(
       activeRequestId,
@@ -5906,14 +5936,18 @@ class ImgVaultServiceWorker {
 
               const isChallengeFail = this.isBrowserChallengeFailure(response.message);
               const isTeraBoxFail = this.isTeraBoxUnsupportedFailure(provenanceUrl, response.message);
+              const isSunoFail = this.isSunoUnsupportedFailure(provenanceUrl, response.message);
 
-              if (!options.isResolvedRetry && (isChallengeFail || isTeraBoxFail)) {
+              if (!options.isResolvedRetry && (isChallengeFail || isTeraBoxFail || isSunoFail)) {
                 this.cancellingNativeDownloads.delete(activeRequestId);
                 const isTb = isTeraBoxFail || isTeraBoxUrl(provenanceUrl);
+                const isSuno = isSunoFail || isSunoUrl(provenanceUrl);
                 try {
-                  const resolved = isTb
-                    ? await this.resolveTeraBoxMediaUrl(provenanceUrl, activeRequestId)
-                    : await this.browserResolveDirectMediaUrl(provenanceUrl, activeRequestId);
+                  const resolved = isSuno
+                    ? await this.resolveSunoMediaUrl(provenanceUrl, activeRequestId)
+                    : (isTb
+                        ? await this.resolveTeraBoxMediaUrl(provenanceUrl, activeRequestId)
+                        : await this.browserResolveDirectMediaUrl(provenanceUrl, activeRequestId));
 
                   const mediaBase = resolved.fileName || this.mediaBaseName(resolved.mediaUrl);
                   const titlePart = this.sanitizeMediaFileNamePart(resolved.pageTitle || mediaBase, 120);
@@ -5922,11 +5956,15 @@ class ImgVaultServiceWorker {
                     ? `${downloadFolder}\\${titlePart}${idPart ? ` [${idPart}]` : ''}.%(ext)s`
                     : `${downloadFolder}\\${idPart || `imgvault-${Date.now()}`}.%(ext)s`;
 
+                  const methodLabel = isSuno
+                    ? '[suno-resolve] Retrying the download with direct media URL (Suno CDN) — 2nd method in use.'
+                    : (isTb
+                        ? '[terabox-resolve] Retrying the download with direct media URL (dlna crack) — 2nd method in use.'
+                        : '[browser-resolve] Retrying the download with the direct media URL — 2nd method in use.');
+
                   await this.appendNativeDownloadLog(
                     activeRequestId,
-                    isTb
-                      ? '[terabox-resolve] Retrying the download with direct media URL (dlna crack) — 2nd method in use.'
-                      : '[browser-resolve] Retrying the download with the direct media URL — 2nd method in use.',
+                    methodLabel,
                     'warning',
                     'system'
                   );
@@ -5943,10 +5981,13 @@ class ImgVaultServiceWorker {
                   resolve(retryResponse);
                   return;
                 } catch (resolveError) {
-                  const resolveMessage = resolveError?.message || (isTb ? 'terabox-resolve failed' : 'browser-resolve failed');
-                  const failedMessage = isTb
-                    ? `Download failed: yt-dlp has no native extractor for TeraBox (Unsupported URL), and the 2nd method (terabox-resolve) could not recover: ${resolveMessage}`
-                    : `Download failed: the site blocked yt-dlp with a browser challenge (HTTP 403), and the 2nd method (browser-resolve) could not recover: ${resolveMessage}`;
+                  const fallbackEngine = isSuno ? 'suno-resolve' : (isTb ? 'terabox-resolve' : 'browser-resolve');
+                  const resolveMessage = resolveError?.message || `${fallbackEngine} failed`;
+                  const failedMessage = isSuno
+                    ? `Download failed: yt-dlp has no native extractor for Suno (Liability/Unsupported URL), and the 2nd method (suno-resolve) could not recover: ${resolveMessage}`
+                    : (isTb
+                        ? `Download failed: yt-dlp has no native extractor for TeraBox (Unsupported URL), and the 2nd method (terabox-resolve) could not recover: ${resolveMessage}`
+                        : `Download failed: the site blocked yt-dlp with a browser challenge (HTTP 403), and the 2nd method (browser-resolve) could not recover: ${resolveMessage}`);
                   await this.finishActiveNativeDownload(activeRequestId, {
                     status: 'failed',
                     error: failedMessage,
@@ -5959,7 +6000,7 @@ class ImgVaultServiceWorker {
                     'error',
                     'system'
                   );
-                  await this.appendNativeDownloadLog(activeRequestId, `[${isTb ? 'terabox-resolve' : 'browser-resolve'}] Failed: ${resolveMessage}`, 'error', 'system');
+                  await this.appendNativeDownloadLog(activeRequestId, `[${fallbackEngine}] Failed: ${resolveMessage}`, 'error', 'system');
                   reject({
                     message: failedMessage,
                     stdout: response.stdout,
