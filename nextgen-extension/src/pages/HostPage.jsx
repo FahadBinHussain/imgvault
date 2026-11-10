@@ -4,6 +4,7 @@ import { Cable, RotateCw, Download, CheckCircle2, AlertCircle, Activity } from '
 import PremiumBackground from '../components/PremiumBackground';
 import GalleryNavbar from '../components/GalleryNavbar';
 import { Button, Input } from '../components/UI';
+import { extractSunoSongId } from '../utils/sunoApi.js';
 
 function toNetscapeCookieLine(cookie) {
   const domain = cookie.domain || '';
@@ -67,7 +68,7 @@ function summarizeActiveDownloadMessage(message = '') {
     return 'Download timed out while waiting for the native host.';
   }
 
-  return raw.split(/\r?\n/)[0].slice(0, 180);
+  return raw.split(/\r?\n/)[0].slice(0, 420);
 }
 
 function getVideoPreview(url) {
@@ -149,6 +150,17 @@ function getVideoPreview(url) {
         siteLabel: 'TeraBox',
         title: fileName ? `TeraBox: ${fileName}` : 'TeraBox video detected',
         subtitle: fileName || parsedUrl.pathname,
+        href: url,
+        thumbnailUrl: '',
+      };
+    }
+
+    const sunoSongId = extractSunoSongId(url);
+    if (sunoSongId) {
+      return {
+        siteLabel: 'Suno',
+        title: 'Suno song detected',
+        subtitle: sunoSongId,
         href: url,
         thumbnailUrl: '',
       };
