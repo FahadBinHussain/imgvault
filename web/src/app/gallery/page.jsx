@@ -38,7 +38,7 @@ import { Modal } from 'imgvault-ui'
 import AppNavbar from '../components/AppNavbar'
 import GalleryLightbox from '../components/GalleryLightbox'
 import { getStrictImageProviderLink } from '@/lib/image-provider-links'
-import { getStrictVideoProviderLink } from '@/lib/video-provider-links'
+import { getStrictVideoProviderLink, getPlayableVideoProviderLink } from '@/lib/video-provider-links'
 import { downloadItemViaProxy } from '@/lib/downloads'
 import { moveItemToVault } from '@/lib/vaultMove'
 import {
@@ -78,11 +78,11 @@ function getItemKind(item) {
 }
 
 function getVideoWatchUrl(item, preferredVideoSource = DEFAULT_VIDEO_SOURCE) {
-  return getStrictVideoProviderLink(item, preferredVideoSource, 'watchUrl')
+  return getPlayableVideoProviderLink(item, preferredVideoSource, 'watchUrl').url
 }
 
 function getVideoDirectUrl(item, preferredVideoSource = DEFAULT_VIDEO_SOURCE) {
-  return getStrictVideoProviderLink(item, preferredVideoSource, 'directUrl')
+  return getPlayableVideoProviderLink(item, preferredVideoSource, 'directUrl').url
 }
 
 function getLinkPreviewImage(item, preferredProvider = DEFAULT_IMAGE_SOURCE) {

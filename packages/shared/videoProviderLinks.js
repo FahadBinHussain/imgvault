@@ -80,6 +80,51 @@ export function getPreferredVideoProviderLink(item, preferredProvider = DEFAULT_
   return '';
 }
 
+/**
+ * The link a player can actually use, plus the host that serves it.
+ *
+ * The preferred source stays the first choice, but an item can live on a host
+ * the preferred source does not have - a song uploaded to Telegram only, for
+ * example. "No playable host link" was then true about the PREFERRED host,
+ * not about the file, and the player refused a file that was sitting right
+ * there (the extension modal showed exactly that on a telegram-only song).
+ *
+ * The host that answers is returned so the UI can name it. The preferred
+ * source is never silently swapped for another one - the caller shows
+ * `sourceLabel` whenever `isPreferred` is false.
+ *
+ * @param {Object} item
+ * @param {string} [preferredProvider]
+ * @param {string} [field] 'directUrl' | 'watchUrl'
+ * @returns {{url:string, sourceKey:string, sourceLabel:string, isPreferred:boolean}}
+ */
+export function getPlayableVideoProviderLink(item = {}, preferredProvider = DEFAULT_VIDEO_SOURCE, field = 'directUrl') {
+  const links = getVideoProviderLinks(item);
+  const preferred = String(preferredProvider || '').trim().toLowerCase();
+  const orderedKeys = [
+    preferred,
+    ...VIDEO_UPLOAD_SERVICES.map((service) => service.key).filter((key) => key !== preferred),
+  ];
+
+  for (const key of orderedKeys) {
+    if (!key) continue;
+    const link = links[key];
+    if (!link) continue;
+    const fallback = field === 'watchUrl' ? link.directUrl : field === 'thumbnailUrl' ? '' : link.watchUrl;
+    const url = pickText(link[field], fallback);
+    if (!url) continue;
+    const service = getVideoUploadService(key);
+    return {
+      url,
+      sourceKey: key,
+      sourceLabel: service?.label || key,
+      isPreferred: key === preferred,
+    };
+  }
+
+  return { url: '', sourceKey: '', sourceLabel: '', isPreferred: false };
+}
+
 export function getMissingVideoUploadServices(item) {
   return VIDEO_UPLOAD_SERVICES.filter((service) => !hasVideoProviderLink(item, service.key));
 }

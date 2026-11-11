@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { MediaDetailModal } from 'imgvault-ui'
 import { downloadFieldViaProxy } from '@/lib/downloads'
-import { getStrictVideoProviderLink } from '@/lib/video-provider-links'
+import { getPlayableVideoProviderLink } from '@/lib/video-provider-links'
 import { getStrictImageProviderLink } from '@/lib/image-provider-links'
 import {
   DEFAULT_IMAGE_SOURCE,
@@ -135,10 +135,10 @@ export default function GalleryLightbox({
   }
   const isFilemoonHtmlUrl = (url) => typeof url === 'string' && /filemoon\.sx\/(?:d|e)\//i.test(url)
   const getVideoWatchUrl = (item) => (
-    getStrictVideoProviderLink(item, preferredVideoSource, 'watchUrl')
+    getPlayableVideoProviderLink(item, preferredVideoSource, 'watchUrl').url
   )
   const getVideoDirectUrl = (item) => (
-    getStrictVideoProviderLink(item, preferredVideoSource, 'directUrl')
+    getPlayableVideoProviderLink(item, preferredVideoSource, 'directUrl').url
   )
   const getGalleryImageUrl = (item) => (
     getStrictImageProviderLink(item, preferredProvider, 'url') ||
@@ -158,6 +158,13 @@ export default function GalleryLightbox({
     if (directUrl) return { type: 'video', src: directUrl }
     if (isFilemoonHtmlUrl(watchUrl)) return { type: 'iframe', src: watchUrl }
     if (watchUrl) return { type: 'watch', src: watchUrl }
+    // the preferred host has no link for this item - play the host that
+    // actually holds the file and name it, instead of showing "no playable
+    // source" for a file that is right there
+    const playable = getPlayableVideoProviderLink(item, preferredVideoSource, 'directUrl')
+    if (playable.url) {
+      return { type: 'video', src: playable.url, sourceKey: playable.sourceKey, sourceLabel: playable.sourceLabel, isPreferred: playable.isPreferred }
+    }
     return null
   }
   const hostLabel = { filemoon: 'Filemoon', udrop: 'UDrop', terabox: 'TeraBox' }[preferredVideoSource] || preferredVideoSource
@@ -276,6 +283,10 @@ export default function GalleryLightbox({
   const modalVideoSource = currentKind === 'video' && !videoSourceFailed ? getModalVideoSource(image) : null
   const currentVideoWatchUrl = getVideoWatchUrl(image)
   const currentVideoDirectUrl = getVideoDirectUrl(image)
+  // a song (or a video) can live on a host the preferred source does not
+  // have - play the host that actually holds the file and name it
+  const playableMedia = getPlayableVideoProviderLink(image, preferredVideoSource, 'directUrl')
+  const songAudioUrl = currentVideoDirectUrl || playableMedia.url || ''
   const currentLinkPreview = toProxyMediaUrl(getLinkPreviewImage(image))
 
   useEffect(() => {
@@ -987,26 +998,35 @@ export default function GalleryLightbox({
                     <span className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500/90 text-white">
                       <Music className="h-5 w-5" />
                     </span>
-                    <div className="min-w-0">
+                    <div className="min-0">
                       <p className="truncate text-sm font-semibold text-base-content/85">
                         {image?.pageTitle || image?.fileName || 'Song'}
                       </p>
                       <p className="text-xs text-base-content/55">Saved song</p>
                     </div>
                   </div>
-                  {currentVideoDirectUrl ? (
-                    <audio
-                      key={currentVideoDirectUrl}
-                      src={currentVideoDirectUrl}
-                      controls
-                      preload="metadata"
-                      className="w-full max-w-[560px]"
-                      onLoadedData={() => setIsLoading(false)}
-                      onError={() => {
-                        setVideoSourceFailed(true)
-                        setIsLoading(false)
-                      }}
-                    />
+                  {songAudioUrl ? (
+                    <>
+                      <audio
+                        key={songAudioUrl}
+                        src={songAudioUrl}
+                        controls
+                        preload="metadata"
+                        className="w-full max-w-[560px]"
+                        onLoadedData={() => setIsLoading(false)}
+                        onError={() => {
+                          setVideoSourceFailed(true)
+                          setIsLoading(false)
+                        }}
+                      />
+                      {playableMedia.sourceLabel && (
+                        <p className="text-xs text-base-content/55">
+                          {playableMedia.isPreferred
+                            ? `Playing from ${playableMedia.sourceLabel}`
+                            : `Playing from ${playableMedia.sourceLabel} — ${hostLabel} has no link for this song`}
+                        </p>
+                      )}
+                    </>
                   ) : (
                     <p className="text-sm font-semibold text-base-content/75">
                       No playable source for this song

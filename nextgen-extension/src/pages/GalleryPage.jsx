@@ -43,6 +43,7 @@ import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
 import { downloadItemDirect } from '../utils/downloads';
 import {
   getMissingVideoUploadServices,
+  getPlayableVideoProviderLink,
   getStrictVideoProviderLink,
   getVideoProviderLinks,
   hasAnyVideoProviderLink,
@@ -955,7 +956,9 @@ export default function GalleryPage() {
     ? `https://console.firebase.google.com/u/1/project/${encodeURIComponent(firebaseProjectId)}/firestore/databases/-default-/data/~2F${encodeURIComponent(firestoreCollectionName)}~2F${encodeURIComponent(selectedImage.id)}?view=panel-view`
     : '';
   const getPreferredVideoWatchUrl = (item) => {
-    return getStrictVideoProviderLink(item, defaultVideoSource, 'watchUrl');
+    // the preferred host first, but never "no link" for a file that exists on
+    // another host - the modal names the host it actually plays from
+    return getPlayableVideoProviderLink(item, defaultVideoSource, 'watchUrl').url;
   };
 
   const getFileNameFromPath = (filePath = '') => {
@@ -1078,29 +1081,50 @@ export default function GalleryPage() {
     throw new DOMException('A requested file or directory could not be found at the time an operation was processed.', 'NotFoundError');
   };
   const getPreferredVideoDirectUrl = (item) => {
-    return getStrictVideoProviderLink(item, defaultVideoSource, 'directUrl');
+    // the preferred host first, but never "no link" for a file that exists on
+    // another host (a song uploaded to telegram only, for example)
+    return getPlayableVideoProviderLink(item, defaultVideoSource, 'directUrl').url;
   };
   const isLikelyVideoUrl = (url) => typeof url === 'string' && /\.(mp4|webm|mov|m4v|mkv|avi|ogv)(?:[?#].*)?$/i.test(url.trim());
   const getVideoPosterUrl = (item) => {
     const liveThumb = filemoonThumbs[item?.id];
-    const videoThumb = getStrictVideoProviderLink(item, defaultVideoSource, 'thumbnailUrl') || liveThumb || '';
+    const videoThumb = getPlayableVideoProviderLink(item, defaultVideoSource, 'thumbnailUrl').url || liveThumb || '';
     return isLikelyVideoUrl(videoThumb) ? '' : videoThumb;
   };
   const isFilemoonHtmlUrl = (url) => typeof url === 'string' && /filemoon\.sx\/(?:d|e)\//i.test(url);
   const getModalVideoSource = (item) => {
-    // Returns { type: 'video'|'iframe', src } for the modal. Filemoon /e/ URLs
-    // are HTML embeddable players (iframe); other providers give a real file
-    // URL that plays in a <video>. Only the selected host (defaultVideoSource)
-    // is used — no fallback chain.
+    // Returns { type: 'video'|'iframe', src, sourceKey, sourceLabel, isPreferred }
+    // for the modal. Filemoon /e/ URLs are HTML embeddable players (iframe);
+    // other providers give a real file URL that plays in a <video>. The
+    // preferred host (defaultVideoSource) is used first; when the item has no
+    // link there, the host that actually holds the file is used instead and
+    // the caller names it - a file that exists must not be shown as
+    // "no playable link".
     const links = getVideoProviderLinks(item);
-    const link = links[defaultVideoSource];
-    if (!link) return null;
-    const directUrl = pickText(link.directUrl, link.downloadUrl);
-    const watchUrl = pickText(link.watchUrl, link.displayUrl, link.url);
-    if (isFilemoonHtmlUrl(directUrl)) return { type: 'iframe', src: directUrl };
-    if (directUrl) return { type: 'video', src: directUrl };
-    if (isFilemoonHtmlUrl(watchUrl)) return { type: 'iframe', src: directUrl || watchUrl };
-    return null;
+    const preferredLink = links[defaultVideoSource];
+    if (preferredLink) {
+      const directUrl = pickText(preferredLink.directUrl, preferredLink.downloadUrl);
+      const watchUrl = pickText(preferredLink.watchUrl, preferredLink.displayUrl, preferredLink.url);
+      if (isFilemoonHtmlUrl(directUrl)) {
+        return { type: 'iframe', src: directUrl, sourceKey: defaultVideoSource, sourceLabel: getVideoProviderLabel(defaultVideoSource), isPreferred: true };
+      }
+      if (directUrl) {
+        return { type: 'video', src: directUrl, sourceKey: defaultVideoSource, sourceLabel: getVideoProviderLabel(defaultVideoSource), isPreferred: true };
+      }
+      if (isFilemoonHtmlUrl(watchUrl)) {
+        return { type: 'iframe', src: directUrl || watchUrl, sourceKey: defaultVideoSource, sourceLabel: getVideoProviderLabel(defaultVideoSource), isPreferred: true };
+      }
+    }
+
+    const playable = getPlayableVideoProviderLink(item, defaultVideoSource, 'directUrl');
+    if (!playable.url) return null;
+    return {
+      type: 'video',
+      src: playable.url,
+      sourceKey: playable.sourceKey,
+      sourceLabel: playable.sourceLabel,
+      isPreferred: playable.isPreferred,
+    };
   };
   const shouldRenderModalVideoPlayer = (item) => getModalVideoSource(item)?.type === 'video';
   const getModalVideoEmbedUrl = (item) => getModalVideoSource(item)?.type === 'iframe' ? getModalVideoSource(item).src : '';
@@ -4301,7 +4325,8 @@ export default function GalleryPage() {
     if (getMediaItemKind(modalImage) === 'audio') {
       // a song is not a video: the host links are the same fields, but the
       // player has to be an <audio> element
-      const audioSrc = modalPlaybackUrl || getPreferredVideoDirectUrl(modalImage) || '';
+      const playableAudio = getPlayableVideoProviderLink(modalImage, defaultVideoSource, 'directUrl');
+      const audioSrc = modalPlaybackUrl || playableAudio.url || '';
       return (
         <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 overflow-hidden border border-base-300 bg-base-100
                    transition-all duration-700 ease-out
@@ -4315,7 +4340,14 @@ export default function GalleryPage() {
               {modalImage?.pageTitle || modalImage?.fileName || 'Untitled Song'}
             </h3>
             {audioSrc ? (
-              <audio src={audioSrc} controls className="w-full" preload="metadata" />
+              <>
+                <audio src={audioSrc} controls className="w-full" preload="metadata" />
+                <p className="text-xs text-base-content/60">
+                  {playableAudio.isPreferred
+                    ? `Playing from ${playableAudio.sourceLabel}`
+                    : `Playing from ${playableAudio.sourceLabel} — ${getVideoProviderLabel(defaultVideoSource)} has no link for this song`}
+                </p>
+              </>
             ) : (
               <div className="text-sm text-base-content/60">
                 No playable host link for this song yet.
@@ -4326,7 +4358,8 @@ export default function GalleryPage() {
       );
     }
     if (shouldRenderModalVideoPlayer(modalImage)) {
-      const playSrc = modalPlaybackUrl || getPreferredVideoDirectUrl(modalImage);
+      const modalVideoSource = getModalVideoSource(modalImage);
+      const playSrc = modalPlaybackUrl || modalVideoSource?.src || '';
       if (modalContainerType === 'ts') {
         return (
           <MpegtsPlayer
@@ -4338,17 +4371,24 @@ export default function GalleryPage() {
         );
       }
       return (
-        <video
-          ref={modalVideoRef}
-          src={playSrc}
-          className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain
-                   transition-all duration-700 ease-out
-                   ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
-          controls
-          autoPlay
-          playsInline
-          preload="auto"
-        />
+        <div className="w-full h-full flex flex-col gap-2">
+          <video
+            ref={modalVideoRef}
+            src={playSrc}
+            className={`w-full flex-1 rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain
+                     transition-all duration-700 ease-out
+                     ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
+            controls
+            autoPlay
+            playsInline
+            preload="auto"
+          />
+          {modalVideoSource?.sourceLabel && !modalVideoSource.isPreferred && (
+            <p className="text-xs text-base-content/60 px-1">
+              Playing from {modalVideoSource.sourceLabel} — {getVideoProviderLabel(defaultVideoSource)} has no link for this video
+            </p>
+          )}
+        </div>
       );
     }
     if (getModalVideoEmbedUrl(modalImage)) {

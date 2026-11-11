@@ -184,5 +184,59 @@ check('stored video item is not a song', !isAudioMediaItem({ isVideo: true, file
     AUDIO_FILE_EXTENSIONS.every((ext) => AUDIO_ACCEPT_ATTRIBUTE.includes(`.${ext}`)));
 }
 
+// --- a song must play from the host that actually holds the file ------------
+// The gallery plays from the preferred video host, but an item can live on a
+// host the preferred source does not have (a song uploaded to telegram only).
+// A strict preferred-host lookup then reports "no playable host link" for a
+// file that is sitting right there - that is what the user saw.
+{
+  const { getPlayableVideoProviderLink } = await import('imgvault-shared/videoProviderLinks.js');
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const { join } = await import('node:path');
+  const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+  const telegramOnlySong = {
+    kind: 'audio',
+    fileType: 'audio/mp4',
+    videoHosts: {
+      telegram: {
+        directUrl: '/telegram-media/FILE?mt=audio%2Fmp4',
+        watchUrl: 'https://t.me/channel/1',
+      },
+    },
+  };
+
+  const playable = getPlayableVideoProviderLink(telegramOnlySong, 'filemoon', 'directUrl');
+  check('a telegram-only song still yields a playable url',
+    playable.url === '/telegram-media/FILE?mt=audio%2Fmp4');
+  check('the host that actually serves the file is reported',
+    playable.sourceKey === 'telegram' && playable.sourceLabel.length > 0);
+  check('a non-preferred host is flagged so the ui can name it',
+    playable.isPreferred === false);
+
+  const preferredFirst = getPlayableVideoProviderLink({
+    kind: 'audio',
+    videoHosts: {
+      filemoon: { directUrl: 'https://filemoon.sx/d/abc' },
+      telegram: { directUrl: '/telegram-media/FILE' },
+    },
+  }, 'filemoon', 'directUrl');
+  check('the preferred host still wins when it has the file',
+    preferredFirst.url === 'https://filemoon.sx/d/abc' && preferredFirst.isPreferred === true);
+
+  check('an item with no host link at all yields nothing',
+    getPlayableVideoProviderLink({ kind: 'audio' }, 'filemoon', 'directUrl').url === '');
+
+  const galleryPage = readFileSync(join(repoRoot, 'nextgen-extension/src/pages/GalleryPage.jsx'), 'utf8');
+  check('the gallery modal plays a song through the playable-host helper',
+    galleryPage.includes('getPlayableVideoProviderLink(modalImage, defaultVideoSource'));
+  check('the gallery modal names the host it plays from',
+    galleryPage.includes('Playing from ${playableAudio.sourceLabel}'));
+
+  const webLightbox = readFileSync(join(repoRoot, 'web/src/app/components/GalleryLightbox.jsx'), 'utf8');
+  check('the web lightbox plays a song through the playable-host helper',
+    webLightbox.includes('getPlayableVideoProviderLink(image, preferredVideoSource'));
+}
+
 console.log(failures === 0 ? '\nALL CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);
