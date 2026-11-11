@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { RefreshCw, Upload, Search, Trash2, Settings, FolderOpen, Image, Cable, FileText, LockKeyhole, ArrowUpDown, UploadCloud, Globe, ArrowUpRight, ListChecks, X } from 'lucide-react';
+import { getMediaItemKind } from '@shared/mediaFieldRegistry.js';
 
 const WEBAPP_URL = 'https://imgvaultt.vercel.app/';
 import ThemeToggleButton from './ThemeToggleButton';
@@ -152,15 +153,18 @@ export default function GalleryNavbar({
   const itemsForBreakdown = Array.isArray(filteredImages) ? filteredImages : (Array.isArray(images) ? images : []);
   const breakdown = itemsForBreakdown.reduce((acc, item) => {
     if (item?.isLink) acc.links += 1;
+    // a song is not an image: it rides the video hosts but it is audio
+    else if (getMediaItemKind(item || {}) === 'audio' || String(item?.fileType || '').startsWith('audio/')) acc.songs += 1;
     else if (item?.isVideo || String(item?.fileType || '').startsWith('video/')) acc.videos += 1;
     else acc.images += 1;
     return acc;
-  }, { images: 0, videos: 0, links: 0 });
+  }, { images: 0, videos: 0, links: 0, songs: 0 });
   const breakdownParts = [
     `${visibleCount} item${visibleCount !== 1 ? 's' : ''}`,
     `${breakdown.images} image${breakdown.images !== 1 ? 's' : ''}`,
     `${breakdown.videos} video${breakdown.videos !== 1 ? 's' : ''}`,
     `${breakdown.links} link${breakdown.links !== 1 ? 's' : ''}`,
+    ...(breakdown.songs > 0 ? [`${breakdown.songs} song${breakdown.songs !== 1 ? 's' : ''}`] : []),
   ];
   const vaultBreakdownParts = [
     `${visibleCount} hidden item${visibleCount !== 1 ? 's' : ''}`,

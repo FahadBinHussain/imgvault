@@ -49,7 +49,7 @@ import {
   hasVideoProviderLink,
   mergeVideoProviderResult,
 } from '../utils/videoProviderLinks';
-import { isAudioUploadFile } from '../utils/audioProviderLinks';
+import { isAudioUploadFile, AUDIO_ACCEPT_ATTRIBUTE } from '../utils/audioProviderLinks';
 import {
   getBaseFieldKeys,
   getMediaItemKind,
@@ -5587,18 +5587,18 @@ export default function GalleryPage() {
                           {is3DMode ? <Box className="w-16 h-16 mx-auto text-cyan-500 mb-4" /> : <Upload className="w-16 h-16 mx-auto text-base-content/40 group-hover:text-primary transition-colors mb-4" />}
                         </motion.div>
                         <p className="text-base-content text-lg font-medium mb-2">
-                          {is3DMode ? 'Click to select 3D models' : 'Click to select images or videos'}
+                          {is3DMode ? 'Click to select 3D models' : 'Click to select images, videos or songs'}
                         </p>
                         <p className="text-base-content/70 text-sm">
                           or drag and drop
                         </p>
                         <p className="text-base-content/55 text-xs mt-2">
-                          {is3DMode ? <>3D: GLB, GLTF, OBJ, FBX, STL, SPZ, 3MF, USDZ<br/>Hosts: UDrop &amp; TeraBox (direct XHR, no 64MiB limit)</> : <>Images: PNG, JPG, GIF up to 10MB<br/>Videos: MP4, WebM, AVI, MOV</>}
+                          {is3DMode ? <>3D: GLB, GLTF, OBJ, FBX, STL, SPZ, 3MF, USDZ<br/>Hosts: UDrop &amp; TeraBox (direct XHR, no 64MiB limit)</> : <>Images: PNG, JPG, GIF up to 10MB<br/>Videos: MP4, WebM, AVI, MOV<br/>Songs: M4A, MP3, WAV, OPUS, OGG, FLAC, AAC</>}
                         </p>
                       </div>
                       <input
                         type="file"
-                        accept={is3DMode ? ".glb,.gltf,.obj,.fbx,.stl,.spz,.3mf,.usdz,.usd,.blend,.dae,.ply,.abc,.bvh,model/*,application/octet-stream" : "image/*,video/*"}
+                        accept={is3DMode ? ".glb,.gltf,.obj,.fbx,.stl,.spz,.3mf,.usdz,.usd,.blend,.dae,.ply,.abc,.bvh,model/*,application/octet-stream" : `image/*,video/*,${AUDIO_ACCEPT_ATTRIBUTE}`}
                         multiple
                         onChange={handleFileUpload}
                         className="hidden"

@@ -25,6 +25,15 @@ export const AUDIO_FILE_EXTENSIONS = [
 export const AUDIO_MIME_PREFIX = 'audio/';
 
 /**
+ * accept attribute fragment for song pickers. The OS file dialog filters on
+ * this string, so `audio/*` alone is not enough: a browser reports an .m4a as
+ * `audio/mp4` but many pickers only match the mime list, so the extensions
+ * have to be listed too. A picker without this fragment silently refuses to
+ * select a song, no matter what the drop handler accepts.
+ */
+export const AUDIO_ACCEPT_ATTRIBUTE = `audio/*,${AUDIO_FILE_EXTENSIONS.map((ext) => `.${ext}`).join(',')}`;
+
+/**
  * Lowercase extension of a file name, without the dot.
  * @param {string} name
  * @returns {string}

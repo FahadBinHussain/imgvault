@@ -8,6 +8,7 @@ import {
   isAudioMediaItem,
   getFileExtension,
   AUDIO_FILE_EXTENSIONS,
+  AUDIO_ACCEPT_ATTRIBUTE,
 } from 'imgvault-shared/audioProviderLinks.js';
 import {
   getMediaItemKind,
@@ -154,6 +155,33 @@ check('stored video item is not a song', !isAudioMediaItem({ isVideo: true, file
     webPage.includes("{ value: 'audio', label: 'Songs' }"));
   check('the web gallery renders a music tile for a song',
     webPage.includes("kind === 'audio' ? (") && webPage.includes('SONG'));
+}
+
+// --- the picker has to LET a song be picked ---------------------------------
+// The OS file dialog filters on the accept attribute. A picker that only
+// accepts image/*,video/* refuses to select a song, even though the drop
+// handler, the upload path and the preview all handle one. A CDP probe that
+// sets the file input directly ignores accept, so this never shows up in a
+// headless test - it only shows up when a human opens the file dialog.
+{
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const { join } = await import('node:path');
+  const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+  const read = (rel) => readFileSync(join(repoRoot, rel), 'utf8');
+
+  const galleryPage = read('nextgen-extension/src/pages/GalleryPage.jsx');
+  check('the gallery picker accepts audio files',
+    galleryPage.includes('image/*,video/*,${AUDIO_ACCEPT_ATTRIBUTE}'),
+    galleryPage.slice(galleryPage.indexOf('accept={is3DMode'), galleryPage.indexOf('accept={is3DMode') + 220));
+  check('the accept fragment carries the mime prefix and the extensions',
+    AUDIO_ACCEPT_ATTRIBUTE.includes('audio/*')
+    && AUDIO_ACCEPT_ATTRIBUTE.includes('.m4a')
+    && AUDIO_ACCEPT_ATTRIBUTE.includes('.mp3'));
+  check('the accept fragment does not smuggle webm in as an audio extension',
+    !AUDIO_ACCEPT_ATTRIBUTE.includes('.webm'));
+  check('every audio extension shows up in the accept fragment',
+    AUDIO_FILE_EXTENSIONS.every((ext) => AUDIO_ACCEPT_ATTRIBUTE.includes(`.${ext}`)));
 }
 
 console.log(failures === 0 ? '\nALL CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`);
