@@ -1,5 +1,6 @@
 export const MEDIA_KIND_IMAGE = 'image';
 export const MEDIA_KIND_VIDEO = 'video';
+export const MEDIA_KIND_AUDIO = 'audio';
 export const MEDIA_KIND_LINK = 'link';
 export const MEDIA_KIND_SCENE = 'scene';
 export const MEDIA_KIND_SYSTEM = 'system';
@@ -54,6 +55,13 @@ const VIDEO_BASE_FIELD_KEYS = [
   'filemoonDirectUrl',
   'udropWatchUrl',
   'udropDirectUrl',
+];
+
+// Songs use the SAME hosts as video, so they carry the same host link fields.
+// `isAudio` is what separates them from a video row.
+const AUDIO_BASE_FIELD_KEYS = [
+  ...VIDEO_BASE_FIELD_KEYS,
+  'isAudio',
 ];
 
 const LINK_BASE_FIELD_KEYS = [
@@ -154,6 +162,10 @@ export const MEDIA_FIELD_REGISTRY = Object.freeze({
     label: 'Video',
     base: Object.freeze([...VIDEO_BASE_FIELD_KEYS]),
   }),
+  [MEDIA_KIND_AUDIO]: Object.freeze({
+    label: 'Song',
+    base: Object.freeze([...AUDIO_BASE_FIELD_KEYS]),
+  }),
   [MEDIA_KIND_LINK]: Object.freeze({
     label: 'Link',
     base: Object.freeze([...LINK_BASE_FIELD_KEYS]),
@@ -187,6 +199,7 @@ const isPlainObject = (value) => (
 const EXPLICIT_MEDIA_KINDS = new Set([
   MEDIA_KIND_IMAGE,
   MEDIA_KIND_VIDEO,
+  MEDIA_KIND_AUDIO,
   MEDIA_KIND_LINK,
   MEDIA_KIND_SCENE,
   MEDIA_KIND_SYSTEM,
@@ -239,6 +252,13 @@ export function getMediaItemKind(item = {}) {
   if (explicitKind === MEDIA_KIND_LINK || explicitKind === MEDIA_KIND_SYSTEM) return explicitKind;
   if (explicitKind === MEDIA_KIND_IMAGE) return MEDIA_KIND_IMAGE;
   if (explicitKind === MEDIA_KIND_SCENE) return MEDIA_KIND_SCENE;
+  // Songs carry the video host links (same hosts as video), so the audio
+  // branch has to be checked BEFORE the video one.
+  if (explicitKind === MEDIA_KIND_AUDIO) {
+    return fileType.startsWith('image/') && !hasVideoLinks
+      ? MEDIA_KIND_IMAGE
+      : MEDIA_KIND_AUDIO;
+  }
   if (explicitKind === MEDIA_KIND_VIDEO) {
     return fileType.startsWith('image/') && !hasVideoLinks
       ? MEDIA_KIND_IMAGE
@@ -248,6 +268,13 @@ export function getMediaItemKind(item = {}) {
   if (isTruthyFlag(item?.isLink) || item?.linkUrl) return MEDIA_KIND_LINK;
   if (is3DItem(item) || item?.spzUrl) return MEDIA_KIND_SCENE;
   if (fileType.startsWith('image/') && !hasVideoLinks) return MEDIA_KIND_IMAGE;
+  if (
+    isTruthyFlag(item?.isAudio) ||
+    fileType.startsWith('audio/') ||
+    String(item?.encryptedMimeType || '').toLowerCase().startsWith('audio/')
+  ) {
+    return MEDIA_KIND_AUDIO;
+  }
   if (
     isTruthyFlag(item?.isVideo) ||
     isTruthyFlag(item?._decryptedMeta?.isVideo) ||
@@ -286,6 +313,7 @@ export function getAllBaseFieldKeys() {
   return [
     ...MEDIA_FIELD_REGISTRY[MEDIA_KIND_IMAGE].base,
     ...MEDIA_FIELD_REGISTRY[MEDIA_KIND_VIDEO].base,
+    ...MEDIA_FIELD_REGISTRY[MEDIA_KIND_AUDIO].base,
     ...MEDIA_FIELD_REGISTRY[MEDIA_KIND_LINK].base,
     ...MEDIA_FIELD_REGISTRY[MEDIA_KIND_SCENE].base,
   ];

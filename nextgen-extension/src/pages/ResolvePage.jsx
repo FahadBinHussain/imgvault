@@ -72,8 +72,20 @@ const SCENE_HOST_LABELS = { udrop: 'UDrop', terabox: 'TeraBox', telegram: 'Teleg
 
 const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || '').trim());
 
+// songs live on the VIDEO hosts, so every video-host check has to accept them
+function isVideoHostItem(item) {
+  if (!item) return false;
+  return Boolean(
+    item.isVideo ||
+    item.isAudio ||
+    String(item.fileType || '').startsWith('video/') ||
+    String(item.fileType || '').startsWith('audio/')
+  );
+}
+
 function isImageItem(item) {
-  return Boolean(item) && !item.isLink && !item.isVideo && item.kind !== 'scene' && !item.spzUrl && !String(item.fileType || '').startsWith('video/');
+  // songs are not images - they live on the video hosts (same hosts as video)
+  return Boolean(item) && !item.isLink && !item.isVideo && !item.isAudio && item.kind !== 'scene' && item.kind !== 'audio' && !item.spzUrl && !String(item.fileType || '').startsWith('video/') && !String(item.fileType || '').startsWith('audio/');
 }
 
 function isVaultedEncryptedItem(item) {
@@ -386,7 +398,7 @@ export default function ResolvePage() {
         // rows), so they must count as referenced when they have a host URL.
         // Scenes are tracked on the dedicated 3D Scene Hosts tab, not here.
         if (item.kind === 'scene' || item.spzUrl) return false;
-        const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
+        const isVideo = isVideoHostItem(item);
         const hasUdrop = Boolean(item.udropWatchUrl || item.udropDirectUrl || item.udropUrl) || (Array.isArray(item.extraMetadata?.udropLinks) && item.extraMetadata.udropLinks.length > 0);
         return isVideo || hasUdrop;
       });
@@ -456,7 +468,7 @@ export default function ResolvePage() {
         // Link items can be uploaded/fixed like videos, so they must count
         // as referenced when they carry a Filemoon URL.
         if (item.kind === 'scene' || item.spzUrl) return false;
-        const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
+        const isVideo = isVideoHostItem(item);
         const hasFilemoon = Boolean(item.filemoonWatchUrl || item.filemoonDirectUrl || item.filemoonUrl) || (Array.isArray(item.extraMetadata?.filemoonLinks) && item.extraMetadata.filemoonLinks.length > 0);
         return isVideo || hasFilemoon;
       });
@@ -512,7 +524,7 @@ export default function ResolvePage() {
         // trashed ones are auto-deleted, so ignore them on host tabs.
         if (isVaultedEncryptedItem(item)) return false;
         if (item.kind === 'scene' || item.spzUrl) return false;
-        const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
+        const isVideo = isVideoHostItem(item);
         const hasTeraBox = Boolean(item.teraboxWatchUrl || item.teraboxDirectUrl || item.teraboxUrl) ||
           Boolean(item.videoHosts?.terabox?.watchUrl || item.videoHosts?.terabox?.directUrl) ||
           Boolean(item.teraboxFileId || item.videoHosts?.terabox?.fileId);
@@ -612,7 +624,7 @@ export default function ResolvePage() {
         if (isVaultedEncryptedItem(item)) continue;
         if (item.kind === 'scene' || item.spzUrl) continue;
 
-        const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
+        const isVideo = isVideoHostItem(item);
         // A telegram post counts as a host link (mirrors the sibling checks'
         // host-URL test); a plain video with none is a gap row.
         if (!isVideo && !Number.isFinite(videoMsgId)) continue;
@@ -2130,7 +2142,7 @@ export default function ResolvePage() {
 
                   // ---- Normal DB items ----
                   const title = item.pageTitle || item.fileName || item.description || 'Untitled';
-                  const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
+                  const isVideo = isVideoHostItem(item);
                   const isScene = Boolean(item.spzUrl);
                   const typeLabel = isScene ? '3D scene' : isVideo ? 'Video' : 'Media';
                   const typeIcon = isScene ? <Box className="h-4 w-4" /> : isVideo ? <Video className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />;
@@ -3849,7 +3861,7 @@ export default function ResolvePage() {
                   if (status === 'noUrl') {
                     const item = entry.item || {};
                     const title = item.pageTitle || item.fileName || item.description || 'Untitled';
-                    const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
+                    const isVideo = isVideoHostItem(item);
                     return (
                       <article
                         key={`tg-noUrl-${item.id}`}

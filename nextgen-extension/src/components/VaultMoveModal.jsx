@@ -20,7 +20,8 @@ export default function VaultMoveModal({
   const sourceOptions = useMemo(() => {
     if (items.length === 0) return [];
     const optionSets = items.map((item) => {
-      const isVideo = Boolean(item.isVideo || String(item.fileType || '').startsWith('video/'));
+      // songs live on the VIDEO hosts, so a song's source is a video host too
+      const isVideo = Boolean(item.isVideo || item.isAudio || String(item.fileType || '').startsWith('video/') || String(item.fileType || '').startsWith('audio/'));
       if (isVideo) {
         return getVideoSourceHostOptions(item, '');
       }

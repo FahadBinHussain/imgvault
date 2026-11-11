@@ -25,10 +25,11 @@ try {
   console.log('Drop:', e.message);
 }
 
-// Add new constraint with 'scene' included
+// Add new constraint with 'scene' and 'audio' included ('audio' = songs,
+// which ride the video hosts but are not videos)
 try {
-  await sql`ALTER TABLE media_items ADD CONSTRAINT chk_media_items_kind CHECK (kind IN ('image', 'video', 'link', 'scene'))`;
-  console.log('✓ Added new constraint with scene');
+  await sql`ALTER TABLE media_items ADD CONSTRAINT chk_media_items_kind CHECK (kind IN ('image', 'video', 'link', 'scene', 'audio'))`;
+  console.log('✓ Added new constraint with scene + audio');
 } catch (e) {
   console.log('Add:', e.message);
 }

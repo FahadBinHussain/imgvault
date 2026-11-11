@@ -15,7 +15,8 @@ import { getMediaItemKind } from '@shared/mediaFieldRegistry.js'
 import { importMasterKeyFromB64, readVaultSession } from './vaultClient'
 import { VAULT_MOVE_MAX_CIPHERTEXT_BYTES } from './vaultMoveLimits'
 
-const MOVE_KINDS = new Set(['image', 'video'])
+// songs ride the video hosts, so they are vaulted like videos
+const MOVE_KINDS = new Set(['image', 'video', 'audio'])
 
 function formatBytes(bytes) {
   const value = Number(bytes) || 0
@@ -34,12 +35,12 @@ function capError(size, stage) {
 }
 
 function pickSource({ item, kind, preferredImageProvider, preferredVideoProvider }) {
-  if (kind === 'video') {
+  if (kind === 'video' || kind === 'audio') {
     // watch URLs serve HTML; only a direct byte URL can be encrypted.
     const url = getStrictVideoProviderLink(item, preferredVideoProvider, 'directUrl')
     if (!url) {
       throw new Error(
-        `This video has no direct URL on ${getVideoProviderLabel(preferredVideoProvider)} — a watch ` +
+        `This ${kind === 'audio' ? 'song' : 'video'} has no direct URL on ${getVideoProviderLabel(preferredVideoProvider)} — a watch ` +
           'page cannot be downloaded. Switch the gallery video source or move it from the extension.'
       )
     }
@@ -84,7 +85,7 @@ export async function moveItemToVault({
 
   const kind = getMediaItemKind(item)
   if (!MOVE_KINDS.has(kind)) {
-    throw new Error(`"${kind}" items cannot be vaulted from the web — only images and videos.`)
+    throw new Error(`"${kind}" items cannot be vaulted from the web — only images, videos and songs.`)
   }
 
   const source = pickSource({
@@ -126,8 +127,9 @@ export async function moveItemToVault({
   const encrypted = await encryptBlob(masterKey, plain)
 
   const metadata = {
-    kind: item.kind || (kind === 'video' ? 'video' : 'image'),
+    kind: item.kind || (kind === 'video' ? 'video' : kind === 'audio' ? 'audio' : 'image'),
     isVideo: kind === 'video',
+    ...(kind === 'audio' ? { isAudio: true } : {}),
     pageTitle: item.pageTitle || '',
     description: item.description || '',
     tags: Array.isArray(item.tags) ? item.tags : [],

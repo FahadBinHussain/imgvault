@@ -31,7 +31,8 @@ import {
   XCircle,
   CheckCircle2,
   Info,
-  ArrowLeft
+  ArrowLeft,
+  Music
 } from 'lucide-react'
 import { Modal } from 'imgvault-ui'
 import AppNavbar from '../components/AppNavbar'
@@ -125,6 +126,7 @@ const MEDIA_FILTER_OPTIONS = [
   { value: 'all', label: 'All' },
   { value: 'image', label: 'Images' },
   { value: 'video', label: 'Videos' },
+  { value: 'audio', label: 'Songs' },
   { value: 'link', label: 'Links' },
   { value: 'scene', label: '3D Scenes' },
 ]
@@ -132,8 +134,9 @@ const MEDIA_FILTER_OPTIONS = [
 const MEDIA_KIND_ORDER = {
   image: 0,
   video: 1,
-  link: 2,
-  scene: 3,
+  audio: 2,
+  link: 3,
+  scene: 4,
 }
 
 function getAddedTimestamp(item) {
@@ -718,6 +721,18 @@ function ImageCard({ image, index, viewMode, onClick, className = '', preferredP
               <FileText className="w-12 h-12 text-base-content/55 transition-transform duration-500 group-hover:scale-110" />
             </div>
           )
+        ) : kind === 'audio' ? (
+          // a song has no image thumb - a music tile instead of a broken <img>
+          <div className={`relative w-full overflow-hidden ${viewMode === 'list' ? 'h-full' : 'aspect-video'} bg-gradient-to-br from-[#1f2937] to-[#111827]`}>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Music className="w-10 h-10 text-white/55 transition-transform duration-500 group-hover:scale-110" />
+            </div>
+            <div className="absolute top-2 left-2">
+              <span className="px-2 py-1 text-[10px] font-bold rounded-md bg-emerald-500/90 text-white transition-transform duration-300 group-hover:scale-105">
+                SONG
+              </span>
+            </div>
+          </div>
         ) : kind === 'video' ? (
           <div className={`relative w-full overflow-hidden ${viewMode === 'list' ? 'h-full' : 'aspect-video'} bg-gradient-to-br from-[#1a1a2e] to-[#16213e]`}>
             {videoPosterUrl && !videoPosterFailed ? (
@@ -1102,11 +1117,11 @@ export default function GalleryPage() {
     return searchedImages.reduce((acc, item) => {
       const kind = getItemKind(item)
       acc.all += 1
-      if (kind === 'image' || kind === 'video' || kind === 'link' || kind === 'scene') {
+      if (kind === 'image' || kind === 'video' || kind === 'audio' || kind === 'link' || kind === 'scene') {
         acc[kind] += 1
       }
       return acc
-    }, { all: 0, image: 0, video: 0, link: 0, scene: 0 })
+    }, { all: 0, image: 0, video: 0, audio: 0, link: 0, scene: 0 })
   }, [searchedImages])
 
   const mediaFilteredImages = useMemo(() => {
@@ -1121,9 +1136,11 @@ export default function GalleryPage() {
   const counts = filteredImages.reduce((acc, item) => {
     const kind = getItemKind(item)
     acc.total += 1
-    acc[kind] += 1
+    if (kind === 'image' || kind === 'video' || kind === 'audio' || kind === 'link' || kind === 'scene') {
+      acc[kind] += 1
+    }
     return acc
-  }, { total: 0, image: 0, video: 0, link: 0, scene: 0 })
+  }, { total: 0, image: 0, video: 0, audio: 0, link: 0, scene: 0 })
   const filteredIndexById = new Map(filteredImages.map((item, itemIndex) => [item.id, itemIndex]))
   const groupedImages = groupImagesByDate(filteredImages, sortMode)
 
@@ -1580,7 +1597,7 @@ export default function GalleryPage() {
                 </h1>
                 <p className="text-base-content/65">
                   {counts.total > 0
-                    ? `${counts.total} total · ${counts.image} images · ${counts.video} videos${counts.scene ? ` · ${counts.scene} 3D scenes` : ''} · ${counts.link} links`
+                    ? `${counts.total} total · ${counts.image} images · ${counts.video} videos${counts.audio ? ` · ${counts.audio} songs` : ''}${counts.scene ? ` · ${counts.scene} 3D scenes` : ''} · ${counts.link} links`
                     : 'Your saved media from across the web'}
                 </p>
                 {images.length > 0 && (

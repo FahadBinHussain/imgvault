@@ -36,6 +36,10 @@ const SHIM_ALLOWLIST = {
     'imgvault-shared/videoProviderLinks.js',
     '../config/providerCatalog.js',
   ],
+  'nextgen-extension/src/utils/audioProviderLinks.js': [
+    'imgvault-shared/audioProviderLinks.js',
+    '../config/providerCatalog.js',
+  ],
   // host size caps: one set of numbers for every platform
   'nextgen-extension/src/utils/hostUploadLimits.js': ['imgvault-shared/hostUploadLimits.js'],
   'web/src/lib/hostUploadLimits.js': ['imgvault-shared/hostUploadLimits.js'],
@@ -75,6 +79,7 @@ const TWIN_BASENAMES = new Set([
   'mediaItemNormalizer.js',
   'imageProviderLinks.js',
   'videoProviderLinks.js',
+  'audioProviderLinks.js',
   'image-provider-links.js',
   'video-provider-links.js',
   // phase 3: canonical copies in packages/ui (imgvault-ui)

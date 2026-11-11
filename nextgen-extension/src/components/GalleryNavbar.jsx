@@ -206,6 +206,7 @@ export default function GalleryNavbar({
     { value: 'all', label: 'All' },
     { value: 'image', label: 'Images' },
     { value: 'video', label: 'Videos' },
+    { value: 'audio', label: 'Songs' },
     { value: 'link', label: 'Links' },
     { value: 'scene', label: 'Scenes' },
   ];

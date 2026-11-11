@@ -24,7 +24,8 @@ import { VAULT_MOVE_MAX_CIPHERTEXT_BYTES } from '@/lib/vaultMoveLimits'
 // Telegram posting + the row update can take longer than the default budget.
 export const maxDuration = 60
 
-const MOVE_KINDS = new Set(['image', 'video'])
+// songs ride the video hosts, so they are vaulted like videos
+const MOVE_KINDS = new Set(['image', 'video', 'audio'])
 
 const PLAINTEXT_COLUMN_BLANKS = {
   pixvidUrl: '',
@@ -137,7 +138,7 @@ export async function POST(request) {
   }
   if (!MOVE_KINDS.has(String(current.kind || '').toLowerCase())) {
     return Response.json(
-      { error: `"${current.kind || 'unknown'}" items cannot be vaulted from the web — only images and videos` },
+      { error: `"${current.kind || 'unknown'}" items cannot be vaulted from the web — only images, videos and songs` },
       { status: 400 }
     )
   }

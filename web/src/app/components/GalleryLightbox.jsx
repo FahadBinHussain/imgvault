@@ -15,6 +15,7 @@ import {
   Download,
   X,
   AlertTriangle,
+  Music,
 } from 'lucide-react'
 import { MediaDetailModal } from 'imgvault-ui'
 import { downloadFieldViaProxy } from '@/lib/downloads'
@@ -977,6 +978,51 @@ export default function GalleryLightbox({
                     )}
                   </div>
                 )
+              ) : currentKind === 'audio' ? (
+                // a song lives on the VIDEO hosts, so the player reuses the
+                // video direct url - but it must be an <audio> element, never
+                // an <img> (that is what made the preview look broken)
+                <div className="flex w-full max-w-[720px] flex-col items-center gap-4 rounded-[var(--radius-box)] border border-base-content/15 bg-base-200/60 px-6 py-8">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500/90 text-white">
+                      <Music className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-base-content/85">
+                        {image?.pageTitle || image?.fileName || 'Song'}
+                      </p>
+                      <p className="text-xs text-base-content/55">Saved song</p>
+                    </div>
+                  </div>
+                  {currentVideoDirectUrl ? (
+                    <audio
+                      key={currentVideoDirectUrl}
+                      src={currentVideoDirectUrl}
+                      controls
+                      preload="metadata"
+                      className="w-full max-w-[560px]"
+                      onLoadedData={() => setIsLoading(false)}
+                      onError={() => {
+                        setVideoSourceFailed(true)
+                        setIsLoading(false)
+                      }}
+                    />
+                  ) : (
+                    <p className="text-sm font-semibold text-base-content/75">
+                      No playable source for this song
+                    </p>
+                  )}
+                  {(currentVideoWatchUrl || currentVideoDirectUrl) && (
+                    <a
+                      href={currentVideoWatchUrl || currentVideoDirectUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-base-content/20 bg-base-100 px-3 py-1.5 text-xs font-semibold transition-all duration-300 hover:scale-105"
+                    >
+                      Open {hostLabel} link <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
               ) : currentKind === 'link' ? (
                 <img
                   src={currentLinkPreview || imageUrl}

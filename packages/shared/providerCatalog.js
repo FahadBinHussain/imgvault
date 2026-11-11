@@ -148,6 +148,17 @@ export const VIDEO_SOURCE_OPTIONS = VIDEO_UPLOAD_SERVICES.map(({ sourceValue, so
   return a.label.localeCompare(b.label);
 });
 
+/* --- song / audio ----------------------------------------------------------
+ * Song files (.m4a, .mp3, ...) ride the SAME hosts as video: every one of
+ * those hosts takes an arbitrary binary file (filemoon/udrop/terabox upload
+ * the blob as-is, telegram sends it as a document). A separate host list
+ * would only duplicate the video one and drift from it. */
+export const DEFAULT_AUDIO_SOURCE = DEFAULT_VIDEO_SOURCE;
+
+export const AUDIO_UPLOAD_SERVICES = VIDEO_UPLOAD_SERVICES;
+
+export const AUDIO_SOURCE_OPTIONS = VIDEO_SOURCE_OPTIONS;
+
 /** Hosts that can store 3D scene files (.spz + texture). Marketing rule: every
  *  new 3D host opts in here (threeDHost) — no duplicated key lists in the UI. */
 export const THREE_D_HOST_KEYS = VIDEO_UPLOAD_SERVICES.filter((s) => s.threeDHost).map((s) => s.key);

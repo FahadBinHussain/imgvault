@@ -588,6 +588,7 @@ export class StorageManager {
       !this.isSystemItem(item) &&
       !this.isVaultedItem(item) &&
       !this.isTruthyFlag(item.isVideo) &&
+      !this.isTruthyFlag(item.isAudio) &&
       !this.isTruthyFlag(item.isLink)
     ));
   }
@@ -1111,7 +1112,8 @@ export class StorageManager {
       if (this.isSystemItem(item) || this.isVaultedItem(item)) continue;
       if (excludeItemId && String(item.id || '') === excludeItemId) continue;
       if (item.extraMetadata?.pendingUpload === true || item.extraMetadata?.pendingUpload === 'true' || item.pendingUpload) continue;
-      const isVideo = this.isTruthyFlag(item.isVideo) || String(item.fileType || '').startsWith('video/');
+      // songs ride the video hosts, so a re-uploaded song is a duplicate too
+      const isVideo = this.isTruthyFlag(item.isVideo) || this.isTruthyFlag(item.isAudio) || String(item.fileType || '').startsWith('video/') || String(item.fileType || '').startsWith('audio/');
       if (!isVideo) continue;
 
       const itemUrls = [item.sourcePageUrl, item.sourceImageUrl]

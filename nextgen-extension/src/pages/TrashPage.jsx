@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Undo2, Trash2, AlertTriangle,
   FileText, Calendar, Link2,
-  File, Image as ImageIcon, Hash, Fingerprint, Video
+  File, Image as ImageIcon, Hash, Fingerprint, Video, Music
 } from 'lucide-react';
 import { Button, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
 import { useTrash, useChromeStorage } from '../hooks/useChromeExtension';
@@ -354,6 +354,10 @@ export default function TrashPage() {
 
   const isLinkItem = (image) => {
     return getMediaItemKind(image) === 'link';
+  };
+
+  const isSongItem = (image) => {
+    return getMediaItemKind(image) === 'audio';
   };
 
   const getVideoPosterUrl = (image) => {
@@ -897,7 +901,13 @@ export default function TrashPage() {
                     )}
                     
                     {/* Render image or video embed */}
-                    {getVideoDirectUrl(image) ? (
+                    {isSongItem(image) ? (
+                      // a song has no poster - a music tile instead of a broken <img>
+                      <div className="w-full aspect-video bg-base-200 flex flex-col items-center justify-center gap-3">
+                        <Music className="w-12 h-12 text-base-content/40" />
+                        <span className="text-xs text-base-content/50">Song</span>
+                      </div>
+                    ) : getVideoDirectUrl(image) ? (
                       <video
                         src={getVideoDirectUrl(image)}
                         poster={getVideoPosterUrl(image) || undefined}

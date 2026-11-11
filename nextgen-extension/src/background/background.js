@@ -2352,7 +2352,9 @@ class ImgVaultServiceWorker {
     // Encrypted path: vault unlocked.
     if (this.vaultMasterKey) {
       try {
-        const isVideo = current.isVideo || String(current.fileType || '').startsWith('video/');
+        // songs live on the VIDEO hosts, so a song's source link is a video link
+        const isAudio = Boolean(current.isAudio || current.kind === 'audio');
+        const isVideo = current.isVideo || isAudio || String(current.fileType || '').startsWith('video/') || String(current.fileType || '').startsWith('audio/');
         let sourceUrl = '';
         if (sourceHost) {
           sourceUrl = isVideo
@@ -2478,7 +2480,9 @@ class ImgVaultServiceWorker {
             current.encryptedBlobHosts || null
           );
           const meta = await decryptMetadata(this.vaultMasterKey, current.encryptedMetadata);
-          const isVideo = Boolean(meta.isVideo || current.isVideo || String(meta.fileType || '').startsWith('video/'));
+          // songs were vaulted with kind 'audio' - they restore into the video hosts
+          const isAudio = Boolean(meta.isAudio || meta.kind === 'audio');
+          const isVideo = Boolean(meta.isVideo || isAudio || current.isVideo || String(meta.fileType || '').startsWith('video/') || String(meta.fileType || '').startsWith('audio/'));
           const fileName = meta.fileName || current.encryptedFileName || (isVideo ? 'video.mp4' : 'image.jpg');
 
         let restored = {
@@ -2560,7 +2564,11 @@ class ImgVaultServiceWorker {
           for (const [providerKey, result] of Object.entries(uploadResults)) {
             restored = mergeVideoProviderResult(restored, providerKey, result);
           }
-          restored.isVideo = true;
+          restored.isVideo = !isAudio;
+          if (isAudio) {
+            restored.isAudio = true;
+            restored.kind = 'audio';
+          }
         } else {
           const settings = await chrome.storage.sync.get(IMAGE_UPLOAD_SERVICES.flatMap((service) => service.apiKeyFields || []));
           const configured = getConfiguredImageUploadServices(settings);
@@ -4475,13 +4483,16 @@ class ImgVaultServiceWorker {
    */
   async saveVaultedUpload(data) {
     const { uploadData, encrypted, udropResult, blobSize } = data;
-    const kind = (uploadData.isVideo || uploadData.kind === 'video') ? 'video' : 'image';
-    const fileName = uploadData.fileName || (kind === 'video' ? 'video.mp4' : 'image.jpg');
+    // songs are their own kind - they ride the video hosts but are not videos
+    const isAudio = Boolean(uploadData.isAudio || uploadData.kind === 'audio');
+    const kind = isAudio ? 'audio' : (uploadData.isVideo || uploadData.kind === 'video') ? 'video' : 'image';
+    const fileName = uploadData.fileName || (kind === 'video' ? 'video.mp4' : kind === 'audio' ? 'song.m4a' : 'image.jpg');
     const creationDate = uploadData.fileLastModified ? new Date(uploadData.fileLastModified).toISOString() : null;
 
     const mediaMetadata = {
       kind,
       isVideo: kind === 'video',
+      ...(isAudio ? { isAudio: true } : {}),
       pageTitle: '',
       description: '',
       tags: [],
@@ -4511,8 +4522,8 @@ class ImgVaultServiceWorker {
    * @returns {Promise<Object>} Upload result
    */
   async handleImageUpload(data) {
-    // Check if it's a video upload
-    if (data.isVideo) {
+    // Check if it's a video upload - songs ride the video hosts too
+    if (data.isVideo || data.isAudio) {
       return this.handleVideoUpload(data);
     }
 
@@ -4819,7 +4830,7 @@ class ImgVaultServiceWorker {
       }
 
       await startUploadRun({
-        kind: 'video',
+        kind: data.isAudio ? 'audio' : 'video',
         owner: UPLOAD_OWNER.WORKER,
         hosts: selectedServices.map((service) => service.label),
         fileName: this.extractFileName(data) || '',
@@ -4955,7 +4966,10 @@ class ImgVaultServiceWorker {
         tags: data.tags || [],
         description: data.description || '',
         collectionId: data.collectionId || null,
-        isVideo: true
+        // songs ride the video hosts, so they keep the video link fields -
+        // only the kind flags differ
+        isVideo: !data.isAudio,
+        ...(data.isAudio ? { isAudio: true, kind: 'audio' } : { kind: 'video' }),
       };
 
       for (const [providerKey, result] of Object.entries(uploadResults)) {
@@ -5007,7 +5021,7 @@ class ImgVaultServiceWorker {
     if (!item) {
       throw new Error('Saved image was not found.');
     }
-    if (item.isLink || item.isVideo || String(item.fileType || '').startsWith('video/')) {
+    if (item.isLink || item.isVideo || item.isAudio || String(item.fileType || '').startsWith('video/') || String(item.fileType || '').startsWith('audio/')) {
       throw new Error('Only saved images can resolve image hosts.');
     }
 
@@ -5102,7 +5116,7 @@ class ImgVaultServiceWorker {
     if (!item) {
       throw new Error('Saved video was not found.');
     }
-    if (!item.isVideo && !String(item.fileType || '').startsWith('video/')) {
+    if (!item.isVideo && !item.isAudio && !String(item.fileType || '').startsWith('video/') && !String(item.fileType || '').startsWith('audio/')) {
       throw new Error('Only saved videos can retry video hosts.');
     }
 
@@ -6819,7 +6833,10 @@ class ImgVaultServiceWorker {
       tags: data.tags || [],
       description: data.description || '',
       collectionId: data.collectionId || null,
-      isVideo: true,
+      // songs ride the video hosts, so they keep the video link fields -
+      // only the kind flags differ
+      isVideo: !data.isAudio,
+      ...(data.isAudio ? { isAudio: true, kind: 'audio' } : { kind: 'video' }),
     };
 
     const uploadResults = data.videoUploadResults || {
@@ -6892,7 +6909,10 @@ class ImgVaultServiceWorker {
       tags: data.tags || [],
       description: data.description || '',
       collectionId: data.collectionId || null,
-      isVideo: true,
+      // songs ride the video hosts, so they keep the video link fields -
+      // only the kind flags differ
+      isVideo: !data.isAudio,
+      ...(data.isAudio ? { isAudio: true, kind: 'audio' } : { kind: 'video' }),
       extraMetadata: {
         pendingUpload: true,
         pendingUploadStartedAt: new Date().toISOString(),

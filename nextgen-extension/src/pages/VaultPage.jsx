@@ -704,6 +704,7 @@ export default function VaultPage() {
   const getKind = (item) => {
     const kind = getMediaItemKind(item);
     if (kind === 'link') return 'Link';
+    if (kind === 'audio') return 'Song';
     if (kind === 'video') return 'Video';
     return 'Image';
   };
@@ -969,10 +970,14 @@ export default function VaultPage() {
 
   // Configured restore target services for the selected item kind (video hosts
   // vs image hosts), reconciled so the picker mirrors the upload modal.
+  // songs ride the video hosts, so they restore into the video hosts too.
   const restoreItemIsVideo = Boolean(
     selectedItem?.isVideo ||
+    selectedItem?.isAudio ||
     selectedItem?._decryptedMeta?.isVideo ||
-    String(selectedItem?.encryptedMimeType || selectedItem?.fileType || '').startsWith('video/')
+    selectedItem?._decryptedMeta?.isAudio ||
+    String(selectedItem?.encryptedMimeType || selectedItem?.fileType || '').startsWith('video/') ||
+    String(selectedItem?.encryptedMimeType || selectedItem?.fileType || '').startsWith('audio/')
   );
   const restoreConfiguredServices = hostSettings
     ? (restoreItemIsVideo
@@ -1124,7 +1129,9 @@ export default function VaultPage() {
     const encryptedUrl = item?.id ? decryptedUrls[item.id] : null;
     const isEncrypted = Boolean(item?.encryptedBlobUrl);
     if (isEncrypted) {
-      const isVideo = Boolean(item.isVideo || item._decryptedMeta?.isVideo || String(item.encryptedMimeType || '').startsWith('video/'));
+      // songs were vaulted with kind 'audio' - they play in an <audio> element
+      const isAudio = Boolean(item.isAudio || item._decryptedMeta?.isAudio || item._decryptedMeta?.kind === 'audio' || String(item.encryptedMimeType || '').startsWith('audio/'));
+      const isVideo = !isAudio && Boolean(item.isVideo || item._decryptedMeta?.isVideo || String(item.encryptedMimeType || '').startsWith('video/'));
       // Chunked (IVG1) blobs stream through the SW endpoint; legacy
       // single-shot blobs use the fully-decrypted object URL.
       const fmt = streamFormat[item.id];
@@ -1155,7 +1162,20 @@ export default function VaultPage() {
         );
       }
       if (mediaUrl) {
-        return isVideo ? (
+        return isAudio ? (
+          <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black/90 flex flex-col items-center justify-center gap-4 p-6 transition-all duration-700 ease-out ${animCls}`}>
+            <audio
+              key={item.id}
+              src={mediaUrl}
+              className="w-full max-w-[560px]"
+              controls
+              autoPlay
+              preload="metadata"
+              onError={(e) => console.warn('[Vault] audio error:', e.target?.error?.message)}
+            />
+            <p className="text-xs text-white/60">{item._decryptedMeta?.pageTitle || item.fileName || 'Song'}</p>
+          </div>
+        ) : isVideo ? (
           <video
             key={item.id}
             src={mediaUrl}

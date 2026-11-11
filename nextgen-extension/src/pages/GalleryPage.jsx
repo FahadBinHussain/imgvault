@@ -10,7 +10,7 @@ import {
   Upload, Trash2, Download, X, FolderOpen,
   FileText, Cloud, Link2, Tag, Video, ExternalLink,
   File, Image as ImageIcon, LockKeyhole,
-  Box, AlertTriangle, RotateCcw
+  Box, AlertTriangle, RotateCcw, Music
 } from 'lucide-react';
 import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
 import UploadHostSelector, { reconcileSelectedHostKeys } from '../components/UploadHostSelector';
@@ -31,6 +31,7 @@ import {
   DEFAULT_VAULT_BLOB_HOST,
   THREE_D_HOST_KEYS,
   getConfiguredVideoUploadServices,
+  getConfiguredAudioUploadServices,
   getVideoProviderLabel,
   getVideoUploadService,
 } from '../config/providerCatalog';
@@ -48,6 +49,7 @@ import {
   hasVideoProviderLink,
   mergeVideoProviderResult,
 } from '../utils/videoProviderLinks';
+import { isAudioUploadFile } from '../utils/audioProviderLinks';
 import {
   getBaseFieldKeys,
   getMediaItemKind,
@@ -140,11 +142,12 @@ const SORT_OPTIONS = [
 const MEDIA_KIND_ORDER = {
   image: 0,
   video: 1,
-  link: 2,
-  scene: 3,
+  audio: 2,
+  link: 3,
+  scene: 4,
 };
 
-const MEDIA_FILTER_OPTIONS = ['all', 'image', 'video', 'link', 'scene'];
+const MEDIA_FILTER_OPTIONS = ['all', 'image', 'video', 'audio', 'link', 'scene'];
 
 const isDateSort = (sortMode) => sortMode === 'newest' || sortMode === 'oldest';
 
@@ -209,6 +212,8 @@ const isSceneConfigFile = (file) => /\.json$/i.test(file?.name || '');
 const isVideoUploadFile = (file) => (
   Boolean(file?.type?.startsWith('video/')) || /\.(mp4|webm|avi|mov|mkv|m4v)$/i.test(file?.name || '')
 );
+// songs are their own kind: they use the video hosts, but they are audio
+const isAudioUpload = (file) => isAudioUploadFile(file);
 
 export default function GalleryPage() {
   const navigate = useNavigate();
@@ -389,7 +394,8 @@ export default function GalleryPage() {
   // Refresh the playback URL when the modal opens for a video whose provider
   // has expiring direct links (terabox dlinks last 8h; stored link is stale).
   useEffect(() => {
-    if (!selectedImage?.id || getMediaItemKind(selectedImage) !== 'video') {
+    const selectedKind = selectedImage?.id ? getMediaItemKind(selectedImage) : '';
+    if (!selectedImage?.id || (selectedKind !== 'video' && selectedKind !== 'audio')) {
       setModalPlaybackUrl('');
       return;
     }
@@ -550,6 +556,9 @@ export default function GalleryPage() {
     if (uploadImageData?.isVideo || (uploadImageData?.file && isVideoUploadFile(uploadImageData.file))) {
       return 'video';
     }
+    if (uploadImageData?.isAudio || (uploadImageData?.file && isAudioUpload(uploadImageData.file))) {
+      return 'audio';
+    }
     return 'image';
   }, [is3DMode, uploadImageData]);
 
@@ -559,6 +568,10 @@ export default function GalleryPage() {
     }
     if (currentUploadKind === 'video') {
       return getConfiguredVideoUploadServices(uploadHostSettings);
+    }
+    // songs use the same hosts as video
+    if (currentUploadKind === 'audio') {
+      return getConfiguredAudioUploadServices(uploadHostSettings);
     }
 
     return IMAGE_UPLOAD_SERVICES.filter((service) => service.isConfigured(uploadHostSettings));
@@ -1460,10 +1473,10 @@ export default function GalleryPage() {
       // UI stuck on "Uploading..." forever, and so the picked file can be
       // cached for a later resume.
       const run = await beginUploadRun({
-        kind: 'video',
+        kind: uploadData.isAudio ? 'audio' : 'video',
         hosts: usableServices.map((service) => service.label),
         hostKeys: usableServices.map((service) => service.key),
-        fileName: uploadData.fileName || getFileNameFromPath(uploadData.filePath || '') || 'video.mp4',
+        fileName: uploadData.fileName || getFileNameFromPath(uploadData.filePath || '') || (uploadData.isAudio ? 'song.m4a' : 'video.mp4'),
         bytesTotal: uploadData.fileBlob?.size || uploadData.fileSize || 0,
         source: 'local-file',
       });
@@ -1756,15 +1769,15 @@ export default function GalleryPage() {
         throw new Error('Media payload is empty. Please reload the file and try again.');
       }
 
-      const kind = uploadData.isVideo ? 'video' : 'image';
+      const kind = uploadData.isVideo ? 'video' : (uploadData.isAudio ? 'audio' : 'image');
       const normalized = kind === 'video'
         ? await normalizeVaultVideo(sourceBlob, (message) => {
           chrome.storage.local.set({ uploadStatus: message }).catch(() => {});
           appendClientUploadLog(message).catch(() => {});
         })
-        : { blob: sourceBlob, fileName: uploadData.fileName || 'image.jpg', fileType: sourceBlob.type || 'image/jpeg', normalizedFrom: '' };
+        : { blob: sourceBlob, fileName: uploadData.fileName || (kind === 'audio' ? 'song.m4a' : 'image.jpg'), fileType: sourceBlob.type || (kind === 'audio' ? 'audio/mp4' : 'image/jpeg'), normalizedFrom: '' };
       const blob = normalized.blob;
-      const fileName = normalized.fileName || uploadData.fileName || (kind === 'video' ? 'video.mp4' : 'image.jpg');
+      const fileName = normalized.fileName || uploadData.fileName || (kind === 'video' ? 'video.mp4' : (kind === 'audio' ? 'song.m4a' : 'image.jpg'));
       const creationDate = uploadData.fileLastModified ? new Date(uploadData.fileLastModified).toISOString() : null;
 
       // 1) Encrypt with chunked progress (log + status bar)
@@ -1783,6 +1796,7 @@ export default function GalleryPage() {
       const metadata = {
         kind,
         isVideo: kind === 'video',
+        ...(kind === 'audio' ? { isAudio: true } : {}),
         pageTitle: uploadData.pageTitle || '',
         description: uploadData.description || '',
         tags: Array.isArray(uploadData.tags) ? uploadData.tags : [],
@@ -2541,6 +2555,7 @@ export default function GalleryPage() {
         fileName: interruptedRun.fileName || file.name,
         fileSize: file.size,
         isVideo: interruptedRun.kind === 'video',
+        isAudio: interruptedRun.kind === 'audio',
         selectedHostKeys: interruptedRun.hostKeys || [],
         resumeStates,
         resumes: resumeStates,
@@ -2550,7 +2565,7 @@ export default function GalleryPage() {
         resumePendingItemId: interruptedRun.pendingItemId || '',
       };
 
-      if (interruptedRun.kind === 'video') {
+      if (interruptedRun.kind === 'video' || interruptedRun.kind === 'audio') {
         await uploadVideoDirectly(uploadData);
       } else if (interruptedRun.kind === '3d') {
         await upload3DDirectly(uploadData);
@@ -2616,6 +2631,8 @@ export default function GalleryPage() {
     if (is3DMode && (is3DUploadFile(file) || isSceneConfigFile(file) || file.type==='image/webp' || /\.webp$/i.test(file.name||''))) return true;
     if (!is3DMode && is3DUploadFile(file)) return false;
     if (file.type?.startsWith('image/') || file.type?.startsWith('video/')) return true;
+    // songs ride the video hosts, so they are uploadable like videos
+    if (isAudioUpload(file)) return true;
     return /\.(png|jpe?g|gif|webp|avif|bmp|svg|mp4|webm|avi|mov|mkv|m4v)$/i.test(file.name || '');
   };
 
@@ -2626,16 +2643,18 @@ export default function GalleryPage() {
     const supportedFiles = getSupportedUploadFiles(files);
 
     if (supportedFiles.length === 0) {
-      showToast('Please select image or video files.', 'error', 3000);
+      showToast('Please select image, video or song files.', 'error', 3000);
       return null;
     }
 
     if (supportedFiles.length > 1) {
-      const firstIsVideo = isVideoUploadFile(supportedFiles[0]);
-      const hasMixedMedia = supportedFiles.some((file) => isVideoUploadFile(file) !== firstIsVideo);
+      // one media kind per batch: images, videos and songs are separate lanes
+      const kindOf = (file) => (isVideoUploadFile(file) ? 'video' : (isAudioUpload(file) ? 'audio' : 'image'));
+      const firstKind = kindOf(supportedFiles[0]);
+      const hasMixedMedia = supportedFiles.some((file) => kindOf(file) !== firstKind);
 
       if (hasMixedMedia) {
-        showToast('Batch upload supports images or videos separately. Select one media type at a time.', 'warning', 4500);
+        showToast('Batch upload supports images, videos or songs separately. Select one media type at a time.', 'warning', 4500);
         return null;
       }
     }
@@ -2653,7 +2672,7 @@ export default function GalleryPage() {
     setShowUploadModal(true);
 
     if (supportedFiles.length === 1) {
-      const fileType = isVideoUploadFile(supportedFiles[0]) ? 'Video' : 'Image';
+      const fileType = isVideoUploadFile(supportedFiles[0]) ? 'Video' : (isAudioUpload(supportedFiles[0]) ? 'Song' : 'Image');
       showToast(`${fileType} loaded successfully.`, 'success', 3000);
     } else {
       showToast(`${supportedFiles.length} files loaded. They will upload one by one.`, 'success', 3500);
@@ -2701,7 +2720,8 @@ export default function GalleryPage() {
       : 'Uploaded manually';
     const is3D = is3DUploadFile(file);
     const isVideo = !is3D && isVideoUploadFile(file);
-    const previewUrl = is3D ? '' : isVideo ? URL.createObjectURL(file) : await new Promise((resolve, reject) => {
+    const isAudio = !is3D && !isVideo && isAudioUpload(file);
+    const previewUrl = is3D ? '' : (isVideo || isAudio) ? URL.createObjectURL(file) : await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result);
       reader.onerror = () => reject(reader.error || new Error('Failed to read file'));
@@ -2714,7 +2734,7 @@ export default function GalleryPage() {
       const localVideoMetadata = isVideo ? await extractVideoFileMetadata(file) : null;
       const response = await chrome.runtime.sendMessage({
         action: 'extractMetadata',
-        imageUrl: isVideo ? null : previewUrl,
+        imageUrl: (isVideo || isAudio) ? null : previewUrl,
         pageUrl: finalPageUrl,
         fileName: file.name,
         fileMimeType: file.type,
@@ -2796,6 +2816,7 @@ export default function GalleryPage() {
       timestamp: Date.now(),
       file,
       isVideo,
+      isAudio,
       is3D,
       fileType: file.type || (is3D ? 'model/' + (file.name.split('.').pop() || 'glb') : ''),
       ...(nextUploadMetadata?.width != null && nextUploadMetadata?.height != null
@@ -3038,6 +3059,7 @@ export default function GalleryPage() {
       fileLastModified: mediaData?.file?.lastModified || null,
       collectionId: selectedCollectionId || null,
       isVideo: Boolean(mediaData?.isVideo),
+      isAudio: Boolean(mediaData?.isAudio),
       is3D: Boolean(mediaData?.is3D || is3DUploadFile(mediaData?.file)),
       fileType: mediaData?.fileType || mediaData?.file?.type || null,
       sha256: metadata?.sha256 || mediaData?.sha256 || '',
@@ -3078,7 +3100,8 @@ export default function GalleryPage() {
     }
 
     // Video direct: already does page-side XHR and supports >60MB via XHR (no 64MiB limit)
-    if (uploadData.isVideo && uploadData.fileBlob) {
+    // Songs take the same route - they use the video hosts, they are just audio.
+    if ((uploadData.isVideo || uploadData.isAudio) && uploadData.fileBlob) {
       return uploadVideoDirectly(uploadData);
     }
 
@@ -4275,6 +4298,33 @@ export default function GalleryPage() {
         />
       );
     }
+    if (getMediaItemKind(modalImage) === 'audio') {
+      // a song is not a video: the host links are the same fields, but the
+      // player has to be an <audio> element
+      const audioSrc = modalPlaybackUrl || getPreferredVideoDirectUrl(modalImage) || '';
+      return (
+        <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 overflow-hidden border border-base-300 bg-base-100
+                   transition-all duration-700 ease-out
+                   ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
+          <div className="h-full p-4 sm:p-6 flex flex-col justify-center gap-4">
+            <div className="flex items-center gap-2 text-base-content/70">
+              <Music className="w-4 h-4" />
+              <span className="text-xs font-semibold uppercase tracking-wide">Song</span>
+            </div>
+            <h3 className="text-xl font-bold text-base-content leading-snug">
+              {modalImage?.pageTitle || modalImage?.fileName || 'Untitled Song'}
+            </h3>
+            {audioSrc ? (
+              <audio src={audioSrc} controls className="w-full" preload="metadata" />
+            ) : (
+              <div className="text-sm text-base-content/60">
+                No playable host link for this song yet.
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
     if (shouldRenderModalVideoPlayer(modalImage)) {
       const playSrc = modalPlaybackUrl || getPreferredVideoDirectUrl(modalImage);
       if (modalContainerType === 'ts') {
@@ -5127,6 +5177,16 @@ export default function GalleryPage() {
                           </div>
                         );
                       })()
+                    ) : getMediaItemKind(img) === 'audio' ? (
+                      // a song has no image thumb - a music tile instead of a
+                      // broken <img>
+                      <div className="relative w-full aspect-video flex items-center justify-center"
+                           style={{ background: 'linear-gradient(135deg, #1f2937 0%, #111827 100%)' }}>
+                        <Music style={{ width: 34, height: 34, color: 'rgba(255,255,255,0.55)' }} />
+                        <div className="absolute top-2 left-2">
+                          <span className="px-2 py-1 text-[10px] font-bold rounded-md bg-emerald-500/90 text-white">SONG</span>
+                        </div>
+                      </div>
                     ) : getMediaItemKind(img) === 'video' ? (
                       (() => {
                         const videoDirectUrl = getPreferredVideoDirectUrl(img);
@@ -5429,7 +5489,7 @@ export default function GalleryPage() {
             <div className="flex items-center justify-between w-full">
               <span className="flex items-center gap-2">
                 {is3DMode && <motion.span animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}><Box className="w-5 h-5 text-cyan-500" /></motion.span>}
-                <span>{is3DMode ? (uploadQueue.length > 1 ? `Upload 3D Batch (${uploadQueue.length})` : 'Upload 3D Model') : uploadQueue.length > 1 ? `Upload Batch (${uploadQueue.length})` : ((uploadImageData?.isVideo || uploadMetadata?.isVideo) ? 'Upload Video' : 'Upload Image')}</span>
+                <span>{is3DMode ? (uploadQueue.length > 1 ? `Upload 3D Batch (${uploadQueue.length})` : 'Upload 3D Model') : uploadQueue.length > 1 ? `Upload Batch (${uploadQueue.length})` : ((uploadImageData?.isVideo || uploadMetadata?.isVideo) ? 'Upload Video' : ((uploadImageData?.isAudio || uploadMetadata?.isAudio) ? 'Upload Song' : 'Upload Image'))}</span>
                 {is3DMode && <span className="rounded-full bg-cyan-500 px-2 py-0.5 text-xs font-bold text-white">UDrop • TeraBox</span>}
               </span>
               <div className="flex gap-2">
@@ -5641,6 +5701,19 @@ export default function GalleryPage() {
                           controls
                           className="w-full h-auto max-h-96 object-contain"
                         />
+                      ) : uploadImageData.isAudio ? (
+                        // a song is not an image: rendering it in <img> is what
+                        // produced the broken preview before
+                        <div className="w-full max-h-96 flex flex-col items-center justify-center gap-3 p-4">
+                          <audio
+                            src={uploadImageData.srcUrl}
+                            controls
+                            className="w-full"
+                          />
+                          <div className="text-xs text-base-content/60">
+                            {(uploadImageData.fileName || '').split('.').pop()?.toUpperCase() || 'AUDIO'} • {formatBytes(uploadImageData.file?.size || 0)}
+                          </div>
+                        </div>
                       ) : (
                         <>
                           {uploadPreviewResolving && !uploadPreviewSrc ? (
@@ -6357,6 +6430,7 @@ export default function GalleryPage() {
 
                       {(() => {
                         const isVideoUpload = Boolean(uploadImageData?.isVideo);
+                        const isAudioUpload = Boolean(uploadImageData?.isAudio);
                         const normalizedSourceUrl = /^https?:\/\//i.test(String(uploadPageUrl || ''))
                           ? String(uploadPageUrl || '')
                           : (uploadPageUrl === 'Uploaded manually'
@@ -6367,7 +6441,7 @@ export default function GalleryPage() {
                           .map((t) => t.trim())
                           .filter(Boolean);
 
-                        const uploadKind = isVideoUpload ? 'video' : 'image';
+                        const uploadKind = isVideoUpload ? 'video' : (isAudioUpload ? 'audio' : 'image');
                         const uploadFieldValues = {
                           pixvidUrl: 'Pending (set after upload)',
                           pixvidDeleteUrl: 'Pending (set after upload)',
@@ -6638,6 +6712,7 @@ export default function GalleryPage() {
                   {/* Display ALL metadata fields that will be saved */}
                   {uploadMetadata && (() => {
                     const isVideoUpload = Boolean(uploadImageData?.isVideo);
+                        const isAudioUpload = Boolean(uploadImageData?.isAudio);
                     const normalizedSourceUrl = /^https?:\/\//i.test(String(uploadPageUrl || ''))
                       ? String(uploadPageUrl || '')
                       : 'Uploaded manually';

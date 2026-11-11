@@ -103,7 +103,7 @@ export const mediaItems = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    kindCheck: check('chk_media_items_kind', sql`${table.kind} in ('image','video','link','scene')`),
+    kindCheck: check('chk_media_items_kind', sql`${table.kind} in ('image','video','link','scene','audio')`),
     addedIdx: index('idx_media_items_added').on(table.internalAddedTimestamp),
     deletedIdx: index('idx_media_items_deleted').on(table.deletedAt),
     collectionIdx: index('idx_media_items_collection').on(table.collectionId),

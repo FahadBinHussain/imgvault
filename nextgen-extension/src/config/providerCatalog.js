@@ -9,10 +9,13 @@ import {
   DEFAULT_VIDEO_SOURCE,
   DEFAULT_3D_SOURCE,
   DEFAULT_VAULT_BLOB_HOST,
+  DEFAULT_AUDIO_SOURCE,
   IMAGE_UPLOAD_SERVICES as IMAGE_UPLOAD_SERVICES_META,
   VIDEO_UPLOAD_SERVICES as VIDEO_UPLOAD_SERVICES_META,
+  AUDIO_UPLOAD_SERVICES as AUDIO_UPLOAD_SERVICES_META,
   IMAGE_SOURCE_OPTIONS,
   VIDEO_SOURCE_OPTIONS,
+  AUDIO_SOURCE_OPTIONS,
   THREE_D_SOURCE_OPTIONS,
   THREE_D_HOST_KEYS,
   filterUploadServicesByKeys,
@@ -123,14 +126,18 @@ const attachRuntime = (services) => services.map((service) => (
 
 export const IMAGE_UPLOAD_SERVICES = attachRuntime(IMAGE_UPLOAD_SERVICES_META);
 export const VIDEO_UPLOAD_SERVICES = attachRuntime(VIDEO_UPLOAD_SERVICES_META);
+// songs ride the video hosts, so they get the very same runtime bindings
+export const AUDIO_UPLOAD_SERVICES = attachRuntime(AUDIO_UPLOAD_SERVICES_META);
 
 export {
   DEFAULT_IMAGE_SOURCE,
   DEFAULT_VIDEO_SOURCE,
   DEFAULT_3D_SOURCE,
   DEFAULT_VAULT_BLOB_HOST,
+  DEFAULT_AUDIO_SOURCE,
   IMAGE_SOURCE_OPTIONS,
   VIDEO_SOURCE_OPTIONS,
+  AUDIO_SOURCE_OPTIONS,
   THREE_D_SOURCE_OPTIONS,
   THREE_D_HOST_KEYS,
   filterUploadServicesByKeys,
@@ -146,6 +153,10 @@ export function getConfiguredImageUploadServices(settings) {
 
 export function getConfiguredVideoUploadServices(settings) {
   return getConfiguredServices(VIDEO_UPLOAD_SERVICES, settings);
+}
+
+export function getConfiguredAudioUploadServices(settings) {
+  return getConfiguredServices(AUDIO_UPLOAD_SERVICES, settings);
 }
 
 export function getVaultBlobHostServices() {
