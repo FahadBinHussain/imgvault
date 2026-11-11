@@ -143,6 +143,58 @@ fn video_normalize_cleanup(request_id: &str) {
     let _ = fs::remove_file(video_session_path(request_id, "output.mp4"));
 }
 
+// ---- generic file writer ----------------------------------------------------
+// Used when the extension already holds the finished bytes (e.g. a Suno clip
+// that had to be decrypted in the service worker) and only needs a place on
+// disk. The target path is remembered in a sidecar file so every chunk
+// message stays small - a base64 chunk of 512 KiB is already ~700 KiB on the
+// wire, and Chrome drops native messages above 1 MiB.
+
+fn file_write_target_path(request_id: &str) -> PathBuf {
+    video_session_path(request_id, "target-path")
+}
+
+fn file_write_start(request_id: &str, output_path: &str) -> Result<(), String> {
+    let target = PathBuf::from(output_path);
+    if let Some(parent) = target.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Could not create the output folder {}: {}", parent.display(), e))?;
+        }
+    }
+    fs::File::create(&target)
+        .map_err(|e| format!("Could not create the output file {}: {}", target.display(), e))?;
+    fs::write(file_write_target_path(request_id), output_path.as_bytes())
+        .map_err(|e| format!("Could not remember the output path: {}", e))
+}
+
+fn file_write_resolve_target(request_id: &str) -> Result<PathBuf, String> {
+    let sidecar = file_write_target_path(request_id);
+    let raw = fs::read_to_string(&sidecar)
+        .map_err(|e| format!("No native file-write session for {}: {}", request_id, e))?;
+    Ok(PathBuf::from(raw.trim()))
+}
+
+fn file_write_chunk(request_id: &str, encoded: &str) -> Result<(), String> {
+    let bytes = BASE64.decode(encoded).map_err(|e| format!("Invalid native file chunk: {}", e))?;
+    let target = file_write_resolve_target(request_id)?;
+    let mut file = fs::OpenOptions::new()
+        .append(true)
+        .open(&target)
+        .map_err(|e| format!("Could not open the output file {}: {}", target.display(), e))?;
+    file.write_all(&bytes)
+        .map_err(|e| format!("Could not write the output file {}: {}", target.display(), e))
+}
+
+fn file_write_finish(request_id: &str) -> Result<(String, u64), String> {
+    let target = file_write_resolve_target(request_id)?;
+    let size = fs::metadata(&target)
+        .map_err(|e| format!("Could not stat the output file {}: {}", target.display(), e))?
+        .len();
+    let _ = fs::remove_file(file_write_target_path(request_id));
+    Ok((target.display().to_string(), size))
+}
+
 struct DownloadOutcome {
     message: String,
     file_path: Option<String>,
@@ -1549,6 +1601,28 @@ fn handle_native_messaging() {
                     "video_normalize_cleanup" => {
                         if let Some(request_id) = native_msg.request_id.as_deref() { video_normalize_cleanup(request_id); }
                         NativeResponse { success: true, event: Some("complete".to_string()), request_id: native_msg.request_id.clone(), message: Some("Native video session cleaned up".to_string()), line: None, stream: None, file_path: None, stdout: None, stderr: None }
+                    }
+                    "file_write_start" => {
+                        let request_id = native_msg.request_id.clone().unwrap_or_default();
+                        let output_path = native_msg.output_path.clone().unwrap_or_default();
+                        match file_write_start(&request_id, &output_path) {
+                            Ok(()) => NativeResponse { success: true, event: Some("complete".to_string()), request_id: Some(request_id), message: Some("Native file session started".to_string()), line: None, stream: None, file_path: None, stdout: None, stderr: None },
+                            Err(error) => NativeResponse { success: false, event: Some("complete".to_string()), request_id: Some(request_id), message: Some(error), line: None, stream: None, file_path: None, stdout: None, stderr: None },
+                        }
+                    }
+                    "file_write_chunk" => {
+                        let request_id = native_msg.request_id.clone().unwrap_or_default();
+                        match native_msg.data.as_deref().ok_or_else(|| "Missing file chunk data".to_string()).and_then(|data| file_write_chunk(&request_id, data)) {
+                            Ok(()) => NativeResponse { success: true, event: Some("complete".to_string()), request_id: Some(request_id), message: Some("chunk accepted".to_string()), line: None, stream: None, file_path: None, stdout: None, stderr: None },
+                            Err(error) => NativeResponse { success: false, event: Some("complete".to_string()), request_id: Some(request_id), message: Some(error), line: None, stream: None, file_path: None, stdout: None, stderr: None },
+                        }
+                    }
+                    "file_write_finish" => {
+                        let request_id = native_msg.request_id.clone().unwrap_or_default();
+                        match file_write_finish(&request_id) {
+                            Ok((path, size)) => NativeResponse { success: true, event: Some("complete".to_string()), request_id: Some(request_id), message: Some(size.to_string()), line: None, stream: None, file_path: Some(path), stdout: None, stderr: None },
+                            Err(error) => NativeResponse { success: false, event: Some("complete".to_string()), request_id: Some(request_id), message: Some(error), line: None, stream: None, file_path: None, stdout: None, stderr: None },
+                        }
                     }
                     "download" => {
                         let NativeMessage { url, output_path, cookies_data, request_id, format, .. } = native_msg;

@@ -31,7 +31,7 @@ import {
 import { extractFilemoonFilecode, getFilemoonDirectLink, getFilemoonHlsLink } from '../utils/filemoonApi.js';
 import { getFilemoonStreamSource } from '../utils/filemoonSpa.js';
 import { resolveTeraBoxThumbnail, resolveTeraBoxPlaybackUrl, resolveTeraBoxFilePath, deleteTeraBoxFiles, listAllTeraBoxFiles, teraBoxFsIdFromUrl, isTeraBoxUrl, isTeraBoxHost, resolveTeraBoxDownloadTarget } from '../utils/teraBoxApi.js';
-import { isSunoHost, isSunoUrl, resolveSunoDownloadTarget } from '../utils/sunoApi.js';
+import { isSunoHost, isSunoUrl, resolveSunoDownloadTarget, decryptSunoEncryptedClip, bytesToBase64 } from '../utils/sunoApi.js';
 import { PENDING_UPLOAD_EXTRA_KEYS, withoutPendingUploadFlags } from '../utils/pendingUpload.js';
 import { deleteUdropFile } from '../utils/udropApi.js';
 import { flattenSceneConfig } from '../utils/sceneConfig.js';
@@ -151,6 +151,7 @@ class ImgVaultServiceWorker {
     // left showing "Uploading..." forever.
     this.uploadOwnerPorts = new Map();
     this.nativeVideoPorts = new Map();
+    this.nativeFilePorts = new Map();
     this.cancellingNativeDownloads = new Set();
     this.vaultMasterKey = null;
     this.vaultStreamUrlCache = new Map();
@@ -5723,6 +5724,10 @@ class ImgVaultServiceWorker {
 
     const authToken = await this.getSunoSessionToken();
     const direct = await resolveSunoDownloadTarget(pageUrl, { authToken });
+    if (direct?.encrypted) {
+      await logLine(`Resolved Suno encrypted playback stream (decrypt locally): ${direct.pageTitle} (${direct.fsId})`);
+      return direct;
+    }
     if (!direct?.mediaUrl) {
       throw new Error(`Could not resolve direct media URL from Suno for: ${pageUrl}`);
     }
@@ -5971,6 +5976,47 @@ class ImgVaultServiceWorker {
                     : (isTb
                         ? await this.resolveTeraBoxMediaUrl(provenanceUrl, activeRequestId)
                         : await this.browserResolveDirectMediaUrl(provenanceUrl, activeRequestId));
+
+                  // Suno serves many clips as an encrypted stream with no plain
+                  // MP4 anywhere: there is no URL for yt-dlp to fetch, so the
+                  // clip is decrypted here and written to disk directly.
+                  if (isSuno && resolved?.encrypted) {
+                    const encryptedBase = resolved.fileName || `${resolved.clipId}.m4a`;
+                    const encryptedTitle = this.sanitizeMediaFileNamePart(resolved.pageTitle || encryptedBase, 120);
+                    const encryptedId = this.sanitizeMediaFileNamePart(resolved.fsId || encryptedBase, 60);
+                    const encryptedOutputPath = `${downloadFolder}\\${encryptedTitle}${encryptedId ? ` [${encryptedId}]` : ''}.m4a`;
+
+                    await this.appendNativeDownloadLog(
+                      activeRequestId,
+                      '[suno-resolve] This track has no plain MP4 (video_url empty, audio_url forbidden, encoding 1.0.0). Decrypting it through Suno\'s own playback license endpoint — 3rd method in use.',
+                      'warning',
+                      'system'
+                    );
+                    await this.cleanupNativeDownloadJournal(activeRequestId);
+
+                    const written = await this.downloadSunoEncryptedClipToFile(
+                      resolved.clipId || resolved.fsId,
+                      encryptedOutputPath,
+                      activeRequestId
+                    ).catch((error) => {
+                      throw new Error(`suno-decrypt failed: ${error?.message || error}`);
+                    });
+                    this.cancellingNativeDownloads.delete(activeRequestId);
+                    await this.settleNativeDownloadCompleted(
+                      activeRequestId,
+                      provenanceUrl,
+                      written.filePath,
+                      `Suno encrypted clip decrypted (${written.byteLength} bytes)`
+                    ).catch((error) => {
+                      console.debug('Failed to persist pending auto upload state:', error);
+                    });
+                    resolve({
+                      success: true,
+                      filePath: written.filePath,
+                      message: 'Suno encrypted clip decrypted',
+                    });
+                    return;
+                  }
 
                   const mediaBase = resolved.fileName || this.mediaBaseName(resolved.mediaUrl);
                   const titlePart = this.sanitizeMediaFileNamePart(resolved.pageTitle || mediaBase, 120);
@@ -6258,6 +6304,126 @@ class ImgVaultServiceWorker {
       port.onDisconnect.addListener(onDisconnect);
       try { port.postMessage(payload); } catch (error) { finish(reject, error); }
     });
+  }
+
+  /**
+   * Stream already-finished bytes to the native host, which writes them to
+   * disk. Used when the extension itself produced the media (e.g. a Suno clip
+   * that had to be decrypted in the service worker) and there is no URL left
+   * for yt-dlp to fetch.
+   *
+   * Chrome drops native messages above 1 MiB, so the payload is sent in
+   * 512 KiB chunks (base64 of 512 KiB is ~700 KiB on the wire).
+   */
+  async handleNativeFileWrite(data = {}) {
+    const { operation, sessionId } = data;
+    if (operation === 'start') {
+      const id = sessionId || `vault-file-${crypto.randomUUID()}`;
+      if (this.nativeFilePorts.has(id)) throw new Error(`Native file session ${id} already exists.`);
+      let port;
+      try {
+        port = chrome.runtime.connectNative('com.imgvault.nativehost');
+      } catch (error) {
+        throw new Error(`Native file writer unavailable: ${error.message}`);
+      }
+      this.nativeFilePorts.set(id, port);
+      try {
+        return await this.sendNativeFilePortMessage(id, {
+          action: 'file_write_start',
+          request_id: id,
+          output_path: data.outputPath || '',
+        });
+      } catch (error) {
+        port.disconnect();
+        this.nativeFilePorts.delete(id);
+        throw error;
+      }
+    }
+    if (!sessionId || !this.nativeFilePorts.has(sessionId)) {
+      throw new Error('Native file session is missing or expired.');
+    }
+    if (operation === 'cleanup') {
+      try {
+        this.nativeFilePorts.get(sessionId)?.disconnect();
+      } finally {
+        this.nativeFilePorts.delete(sessionId);
+      }
+      return { success: true };
+    }
+    const payload = operation === 'chunk'
+      ? { action: 'file_write_chunk', request_id: sessionId, data: data.data }
+      : operation === 'finish'
+        ? { action: 'file_write_finish', request_id: sessionId }
+        : null;
+    if (!payload) throw new Error(`Unknown native file operation: ${operation}`);
+    return this.sendNativeFilePortMessage(sessionId, payload, 120000);
+  }
+
+  sendNativeFilePortMessage(sessionId, payload, timeoutMs = 120000) {
+    const port = this.nativeFilePorts.get(sessionId);
+    if (!port) return Promise.reject(new Error('Native file port is not connected.'));
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        port.onMessage.removeListener(onMessage);
+        port.onDisconnect.removeListener(onDisconnect);
+        fn(value);
+      };
+      const onMessage = (response) => response?.success
+        ? finish(resolve, response)
+        : finish(reject, new Error(response?.message || 'Native file operation failed.'));
+      const onDisconnect = () => finish(reject, new Error(chrome.runtime.lastError?.message || 'Native host disconnected during the file write.'));
+      const timeout = setTimeout(() => finish(reject, new Error(`Native file operation timed out after ${timeoutMs / 1000} seconds.`)), timeoutMs);
+      port.onMessage.addListener(onMessage);
+      port.onDisconnect.addListener(onDisconnect);
+      try { port.postMessage(payload); } catch (error) { finish(reject, error); }
+    });
+  }
+
+  /**
+   * Decrypt a Suno clip that is served as an encrypted stream and write the
+   * plaintext .m4a to disk through the native host.
+   */
+  async downloadSunoEncryptedClipToFile(clipId, outputPath, activeRequestId) {
+    const logLine = (text, type = 'info') => this.appendNativeDownloadLog(
+      activeRequestId,
+      text,
+      type,
+      'system'
+    );
+
+    const authToken = await this.getSunoSessionToken();
+    const decrypted = await decryptSunoEncryptedClip(clipId, {
+      authToken,
+      onProgress: (message) => {
+        logLine(`[suno-decrypt] ${message}`);
+      },
+    });
+
+    const bytes = decrypted.bytes;
+    const sessionId = `vault-file-${crypto.randomUUID()}`;
+    await this.handleNativeFileWrite({ operation: 'start', sessionId, outputPath });
+    try {
+      const CHUNK = 512 * 1024;
+      for (let offset = 0; offset < bytes.length; offset += CHUNK) {
+        const slice = bytes.subarray(offset, Math.min(offset + CHUNK, bytes.length));
+        await this.handleNativeFileWrite({
+          operation: 'chunk',
+          sessionId,
+          data: bytesToBase64(slice),
+        });
+      }
+      const finished = await this.handleNativeFileWrite({ operation: 'finish', sessionId });
+      return {
+        filePath: finished?.filePath || outputPath,
+        byteLength: bytes.length,
+      };
+    } finally {
+      await this.handleNativeFileWrite({ operation: 'cleanup', sessionId }).catch(() => {});
+    }
   }
 
   async handleNativeHostCommand(command, data = {}, timeoutMs = 15000) {

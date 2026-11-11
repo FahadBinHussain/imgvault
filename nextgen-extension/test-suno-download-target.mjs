@@ -2,12 +2,16 @@
 //
 // run: node test-suno-download-target.mjs
 //
+import crypto from 'node:crypto';
 import {
   isSunoHost,
   isSunoUrl,
   extractSunoSongId,
   resolveSunoDownloadTarget,
+  decryptSunoEncryptedClip,
 } from './src/utils/sunoApi.js';
+
+const { subtle } = crypto.webcrypto;
 
 const results = [];
 const check = (name, ok, detail = '') => {
@@ -49,7 +53,9 @@ const makeJsonResponse = (ok, status, body) => ({
   text: async () => JSON.stringify(body),
 });
 
-// 1. Private/no-video clip with DRM encoding must fail loudly (never guess cdn1.suno.ai/<id>.mp4)
+// 1. Private clip with an encrypted stream: no plain MP4 exists, so the
+//    resolver must report the encrypted playback stream (never guess a CDN
+//    mp4, never pretend the track is DRM-locked).
 {
   const blockedId = '867071b3-a848-427c-a544-1929ae6b5611';
   const calls = [];
@@ -70,25 +76,86 @@ const makeJsonResponse = (ok, status, body) => ({
     });
   };
 
+  const resolved = await resolveSunoDownloadTarget(`https://suno.com/song/${blockedId}`, { fetchImpl: fetchMock });
+  check('encrypted clip resolves to the encrypted playback stream', resolved?.encrypted === true);
+  check('encrypted clip sets sourceKind=encrypted_media', resolved?.sourceKind === 'encrypted_media');
+  check('encrypted clip carries no mediaUrl (there is no plain file)', !resolved?.mediaUrl);
+  check('encrypted clip keeps the clip id for the license request', resolved?.clipId === blockedId);
+  check('only called clip API when unauthenticated', calls.length === 1);
+}
+
+// 1b. Decrypt round trip: build an encrypted payload with the site's own
+//     scheme and check the client returns the exact plaintext.
+{
+  const clipId = '44444444-5555-6666-7777-888888888888';
+  const glt = 'guest-token-for-the-unit-test';
+  const plain = new Uint8Array(4096);
+  plain.set([0x66, 0x74, 0x79, 0x70], 4); // ftyp at offset 4
+  plain.set([0x69, 0x73, 0x6f, 0x6d], 8); // isom
+  for (let i = 16; i < plain.length; i += 1) plain[i] = i % 251;
+
+  const digest = await subtle.digest('SHA-256', new TextEncoder().encode(glt));
+  const gcmKey = await subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['encrypt']);
+  const ctrKey = crypto.randomBytes(16);
+  const ctrIv = crypto.randomBytes(16);
+  const aad = new TextEncoder().encode(clipId);
+  const wrap = async (bytes) => {
+    const iv = crypto.randomBytes(12);
+    const ct = new Uint8Array(await subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad }, gcmKey, bytes));
+    return Buffer.concat([Buffer.from(iv), Buffer.from(ct)]).toString('base64');
+  };
+  const ctrCryptoKey = await subtle.importKey('raw', ctrKey, { name: 'AES-CTR' }, false, ['encrypt']);
+  const encrypted = new Uint8Array(
+    await subtle.encrypt({ name: 'AES-CTR', counter: ctrIv, length: 128 }, ctrCryptoKey, plain)
+  );
+  const rights = { key: await wrap(ctrKey), iv: await wrap(ctrIv), glt };
+
+  const fetchMock = async (endpoint) => {
+    if (endpoint.includes('/api/clip/')) {
+      return makeJsonResponse(true, 200, {
+        id: clipId,
+        title: 'Encrypted Fixture',
+        media_urls: [{ url: 'https://cdn.example/clip.m4a', content_type: 'm4a-opus', encoding: '1.0.0' }],
+      });
+    }
+    if (endpoint.includes('/api/mango/rights')) {
+      return makeJsonResponse(true, 200, rights);
+    }
+    return {
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => encrypted.buffer.slice(encrypted.byteOffset, encrypted.byteOffset + encrypted.byteLength),
+    };
+  };
+
+  const decrypted = await decryptSunoEncryptedClip(clipId, { fetchImpl: fetchMock });
+  check('decrypt returns the same byte length', decrypted.byteLength === plain.length, `${decrypted.byteLength}`);
+  check('decrypt returns the exact plaintext', Buffer.compare(Buffer.from(decrypted.bytes), Buffer.from(plain)) === 0);
+  check('decrypt reports sourceKind=encrypted_media', decrypted.sourceKind === 'encrypted_media');
+}
+
+// 1c. A broken payload must fail loudly instead of writing garbage
+{
+  const clipId = '55555555-6666-7777-8888-999999999999';
+  const fetchMock = async (endpoint) => {
+    if (endpoint.includes('/api/clip/')) {
+      return makeJsonResponse(true, 200, {
+        id: clipId,
+        media_urls: [{ url: 'https://cdn.example/clip.m4a', content_type: 'm4a-opus', encoding: '1.0.0' }],
+      });
+    }
+    if (endpoint.includes('/api/mango/rights')) {
+      return makeJsonResponse(true, 200, { key: 'AAAAAAAAAAAAAAAAAAAAAA==', iv: 'AAAAAAAAAAAAAAAAAAAAAA==', glt: 'g' });
+    }
+    return { ok: true, status: 200, arrayBuffer: async () => new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]).buffer };
+  };
   let thrown = null;
   try {
-    await resolveSunoDownloadTarget(`https://suno.com/song/${blockedId}`, { fetchImpl: fetchMock });
+    await decryptSunoEncryptedClip(clipId, { fetchImpl: fetchMock });
   } catch (err) {
     thrown = err;
   }
-  check('empty video_url + DRM clip throws loudly (never guesses CDN mp4)', Boolean(thrown));
-  check(
-    'thrown error names video_url empty, forbidden audio, DRM encoding, and missing session cookie',
-    Boolean(
-      thrown
-      && /video_url is empty/i.test(thrown.message)
-      && /forbidden/i.test(thrown.message)
-      && /DRM-protected \(encoding 1\.0\.0\)/i.test(thrown.message)
-      && /no Suno __session cookie/i.test(thrown.message)
-    ),
-    thrown?.message
-  );
-  check('only called clip API when unauthenticated', calls.length === 1);
+  check('a broken license/ciphertext fails loudly', Boolean(thrown), thrown?.message);
 }
 
 // 2. Official download API resolves processing -> ready when authorized
@@ -207,14 +274,27 @@ try {
 
 try {
   const blockedLiveId = '867071b3-a848-427c-a544-1929ae6b5611';
-  await resolveSunoDownloadTarget(`https://suno.com/song/${blockedLiveId}`);
-  check('live DRM-only empty video_url clip refuses guessed download', false, 'unexpectedly resolved');
-} catch (err) {
+  const target = await resolveSunoDownloadTarget(`https://suno.com/song/${blockedLiveId}`);
   check(
-    'live DRM-only empty video_url clip fails loudly',
-    /video_url is empty/i.test(err.message) && /DRM-protected/i.test(err.message),
-    err.message
+    'live encrypted clip resolves to the encrypted playback stream',
+    target?.encrypted === true && target?.sourceKind === 'encrypted_media',
+    `sourceKind=${target?.sourceKind}`
   );
+} catch (err) {
+  check('live encrypted clip failed', false, err.message);
+}
+
+try {
+  const encryptedLiveId = '867071b3-a848-427c-a544-1929ae6b5611';
+  const decrypted = await decryptSunoEncryptedClip(encryptedLiveId);
+  const box = String.fromCharCode(
+    decrypted.bytes[4], decrypted.bytes[5], decrypted.bytes[6], decrypted.bytes[7]
+  );
+  check('live decrypt produces an mp4 container', box === 'ftyp', `box=${box}`);
+  check('live decrypt returns a full-length audio file', decrypted.byteLength > 500000, `${decrypted.byteLength} bytes`);
+  check('live decrypt reports encrypted_media', decrypted.sourceKind === 'encrypted_media');
+} catch (err) {
+  check('live decrypt failed', false, err.message);
 }
 
 const failed = results.filter((r) => !r.ok);
