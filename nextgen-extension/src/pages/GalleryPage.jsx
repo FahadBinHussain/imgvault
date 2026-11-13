@@ -1813,17 +1813,25 @@ export default function GalleryPage() {
           `No local file for this item — it came from a page URL, so its bytes are fetched through the service worker first: ${describeSource(remoteSource)}`,
           'warning'
         );
-        const resolved = await sendMessage('resolveImagePreview', {
-          imageUrl: remoteSource,
-          pageUrl: uploadData.pageUrl || '',
-        });
-        if (!resolved?.dataUrl) {
+        let resolved = null;
+        let fetchFailure = '';
+        try {
+          resolved = await sendMessage('resolveImagePreview', {
+            imageUrl: remoteSource,
+            pageUrl: uploadData.pageUrl || '',
+          });
+        } catch (fetchError) {
+          fetchFailure = fetchError?.message || String(fetchError);
+        }
+        const fetchedDataUrl = resolved?.dataUrl || '';
+        if (!fetchedDataUrl) {
           throw new Error(
-            `Could not fetch the image bytes for the Secret Vault from ${describeSource(remoteSource)}. `
-            + 'If that host refuses a blind fetch (facebook/instagram CDNs do), download the file and upload it locally instead.'
+            `Could not fetch the image bytes for the Secret Vault from ${describeSource(remoteSource)}`
+            + `${fetchFailure ? ` (${fetchFailure})` : ' (the worker returned no data)'}. `
+            + 'If that host refuses a blind fetch, download the file and upload it locally instead.'
           );
         }
-        sourceBlob = await (await fetch(resolved.dataUrl)).blob();
+        sourceBlob = await (await fetch(fetchedDataUrl)).blob();
         if (!(sourceBlob instanceof Blob) || sourceBlob.size <= 0) {
           throw new Error(
             `The image at ${describeSource(remoteSource)} came back empty (0 bytes), so there is nothing to encrypt. `
@@ -2528,8 +2536,8 @@ export default function GalleryPage() {
         pageUrl: uploadPageUrl || uploadImageData.pageUrl || ''
       });
 
-      if (response?.success && response?.dataUrl) {
-        setUploadPreviewSrc(response.dataUrl);
+      if (response?.success && response?.data?.dataUrl) {
+        setUploadPreviewSrc(response.data.dataUrl);
       }
     } catch (error) {
       console.error('Failed to resolve protected upload preview:', error);

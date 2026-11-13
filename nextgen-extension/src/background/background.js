@@ -3164,7 +3164,10 @@ class ImgVaultServiceWorker {
           request.imageUrl ?? request.data?.imageUrl,
           request.pageUrl ?? request.data?.pageUrl
         )
-          .then(dataUrl => sendResponse({ success: true, dataUrl }))
+          // `data` wrapper on purpose: every app-side caller reads responses through
+          // useChromeMessage, which resolves `response.data`. Answering `{ success, dataUrl }`
+          // made a SUCCESSFUL fetch look like an empty payload to the wrapped caller.
+          .then(dataUrl => sendResponse({ success: true, data: { dataUrl } }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
 
