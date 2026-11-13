@@ -1788,12 +1788,46 @@ export default function GalleryPage() {
         throw new Error('Secret Vault is locked. Unlock it before saving encrypted items.');
       }
 
-      const sourceBlob = uploadData.fileBlob;
+      // Vaulting needs real bytes to encrypt. An image picked off a web page (right-click /
+      // pendingImage) reaches this function with only `imageUrl` — no File — so there was
+      // nothing local to encrypt and every such vault upload died on "media payload is
+      // empty". Resolve those bytes through the service worker's own fetch policy
+      // (resolveImagePreview: cookies/referer/pximg DNR rules) and carry on down the normal
+      // page-side path, so the encryption + per-host progress stay identical.
+      let sourceBlob = uploadData.fileBlob;
       if (!(sourceBlob instanceof Blob) || sourceBlob.size <= 0) {
-        throw new Error('Media payload is empty. Please reload the file and try again.');
+        const remoteSource = String(uploadData.imageUrl || '').trim();
+        if (!/^(https?:|data:)/i.test(remoteSource)) {
+          throw new Error(
+            'Secret Vault has nothing to encrypt: this item has no local file and no fetchable image URL. '
+            + 'Pick the file again (Choose file or drag & drop), then upload.'
+          );
+        }
+        await appendClientUploadLog(
+          `No local file for this item — it came from a page URL, so its bytes are fetched through the service worker first: ${remoteSource.slice(0, 160)}`,
+          'warning'
+        );
+        const resolved = await sendMessage('resolveImagePreview', {
+          imageUrl: remoteSource,
+          pageUrl: uploadData.pageUrl || '',
+        });
+        if (!resolved?.dataUrl) {
+          throw new Error(
+            `Could not fetch the image bytes for the Secret Vault from ${remoteSource.slice(0, 160)}. `
+            + 'Download the file and upload it locally instead.'
+          );
+        }
+        sourceBlob = await (await fetch(resolved.dataUrl)).blob();
+        if (!(sourceBlob instanceof Blob) || sourceBlob.size <= 0) {
+          throw new Error(
+            `The image at ${remoteSource.slice(0, 160)} came back empty (0 bytes), so there is nothing to encrypt. `
+            + 'Download the file and upload it locally instead.'
+          );
+        }
       }
 
       const kind = uploadData.isVideo ? 'video' : (uploadData.isAudio ? 'audio' : 'image');
+      // sourceBlob is either the picked file or the bytes just fetched from the item's page URL.
       const normalized = kind === 'video'
         ? await normalizeVaultVideo(sourceBlob, (message) => {
           chrome.storage.local.set({ uploadStatus: message }).catch(() => {});

@@ -4395,7 +4395,10 @@ class ImgVaultServiceWorker {
       const source = data.fileBlob instanceof Blob ? data.fileBlob : data.imageUrl;
       const blob = await this.fetchImage(source, uploadController.signal, data.pageUrl);
       if (!(blob instanceof Blob) || blob.size <= 0) {
-        throw new Error('Media payload is empty. Please reload the file and try again.');
+        throw new Error(
+          `Secret Vault got no bytes to encrypt from ${typeof source === 'string' ? source.slice(0, 160) : 'the supplied file'}. `
+          + 'Pick the file again, or download it and upload it locally.'
+        );
       }
 
       const fileName = this.extractFileName(data) || (kind === 'video' ? 'video.mp4' : 'image.jpg');
