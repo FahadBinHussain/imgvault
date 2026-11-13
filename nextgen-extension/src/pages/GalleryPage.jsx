@@ -1795,7 +1795,13 @@ export default function GalleryPage() {
       // (resolveImagePreview: cookies/referer/pximg DNR rules) and carry on down the normal
       // page-side path, so the encryption + per-host progress stay identical.
       let sourceBlob = uploadData.fileBlob;
-      if (!(sourceBlob instanceof Blob) || sourceBlob.size <= 0) {
+      // A File/Blob that crossed a realm boundary (message / storage round-trip) fails
+      // `instanceof Blob` while still holding real bytes — judge it by capability, not by
+      // constructor identity, or a perfectly good file gets reported as "missing".
+      const hasUsableLocalBytes = sourceBlob instanceof Blob
+        ? sourceBlob.size > 0
+        : Boolean(sourceBlob && typeof sourceBlob.arrayBuffer === 'function' && sourceBlob.size > 0);
+      if (!hasUsableLocalBytes) {
         const remoteSource = String(uploadData.imageUrl || '').trim();
         // Keep http(s) URLs whole in the log: a truncated signed CDN URL (fbcdn puts the
         // signature in the query) reads like a real URL but fetches 403, which cost a
@@ -1803,27 +1809,59 @@ export default function GalleryPage() {
         const describeSource = (url) => (url.startsWith('data:')
           ? `${url.slice(0, 60)}… (${url.length} chars)`
           : url);
-        if (!/^(https?:|data:)/i.test(remoteSource)) {
+        if (!/^(https?:|data:|blob:)/i.test(remoteSource)) {
+          // Never a bare "nothing to encrypt": name exactly what the modal was carrying,
+          // otherwise the user cannot tell a missing right-click image from a lost File.
+          const payloadShape = {
+            fileBlob: uploadData.fileBlob === null || uploadData.fileBlob === undefined
+              ? String(uploadData.fileBlob)
+              : (uploadData.fileBlob.constructor?.name || typeof uploadData.fileBlob),
+            fileBlobSize: uploadData.fileBlob?.size ?? null,
+            imageUrl: remoteSource || '(empty)',
+            fileName: uploadData.fileName || '(empty)',
+            isVideo: Boolean(uploadData.isVideo),
+            isAudio: Boolean(uploadData.isAudio),
+            is3D: Boolean(uploadData.is3D),
+          };
           throw new Error(
-            'Secret Vault has nothing to encrypt: this item has no local file and no fetchable image URL. '
-            + 'Pick the file again (Choose file or drag & drop), then upload.'
+            'Secret Vault has nothing to encrypt — the upload modal holds no file and no image URL. '
+            + `payload: ${JSON.stringify(payloadShape)}. `
+            + 'If you came from the right-click save, the page gave no image address for that click: '
+            + 're-add it with the file picker, or right-click directly on the picture itself.'
           );
         }
         await appendClientUploadLog(
-          `No local file for this item — it came from a page URL, so its bytes are fetched through the service worker first: ${describeSource(remoteSource)}`,
+          `No local file for this item — it came from a page URL, so its bytes are fetched before encrypting: ${describeSource(remoteSource)}`,
           'warning'
         );
-        let resolved = null;
+        let fetchedDataUrl = '';
         let fetchFailure = '';
-        try {
-          resolved = await sendMessage('resolveImagePreview', {
-            imageUrl: remoteSource,
-            pageUrl: uploadData.pageUrl || '',
-          });
-        } catch (fetchError) {
-          fetchFailure = fetchError?.message || String(fetchError);
+        if (/^blob:/i.test(remoteSource)) {
+          // A blob: URL of THIS page (a local file's preview that outlived its File object).
+          // Same realm, so a plain page fetch returns the bytes; the worker cannot see it.
+          try {
+            const localBlob = await (await fetch(remoteSource)).blob();
+            if (localBlob.size > 0) {
+              sourceBlob = localBlob;
+              fetchedDataUrl = '(blob url read in page)';
+            } else {
+              fetchFailure = 'the blob url is empty';
+            }
+          } catch (blobError) {
+            fetchFailure = blobError?.message || String(blobError);
+          }
+        } else {
+          let resolved = null;
+          try {
+            resolved = await sendMessage('resolveImagePreview', {
+              imageUrl: remoteSource,
+              pageUrl: uploadData.pageUrl || '',
+            });
+          } catch (fetchError) {
+            fetchFailure = fetchError?.message || String(fetchError);
+          }
+          fetchedDataUrl = resolved?.dataUrl || '';
         }
-        const fetchedDataUrl = resolved?.dataUrl || '';
         if (!fetchedDataUrl) {
           throw new Error(
             `Could not fetch the image bytes for the Secret Vault from ${describeSource(remoteSource)}`
@@ -1831,7 +1869,9 @@ export default function GalleryPage() {
             + 'If that host refuses a blind fetch, download the file and upload it locally instead.'
           );
         }
-        sourceBlob = await (await fetch(fetchedDataUrl)).blob();
+        if (!(sourceBlob instanceof Blob) || sourceBlob.size <= 0) {
+          sourceBlob = await (await fetch(fetchedDataUrl)).blob();
+        }
         if (!(sourceBlob instanceof Blob) || sourceBlob.size <= 0) {
           throw new Error(
             `The image at ${describeSource(remoteSource)} came back empty (0 bytes), so there is nothing to encrypt. `
