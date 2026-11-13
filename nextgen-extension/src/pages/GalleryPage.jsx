@@ -1797,6 +1797,12 @@ export default function GalleryPage() {
       let sourceBlob = uploadData.fileBlob;
       if (!(sourceBlob instanceof Blob) || sourceBlob.size <= 0) {
         const remoteSource = String(uploadData.imageUrl || '').trim();
+        // Keep http(s) URLs whole in the log: a truncated signed CDN URL (fbcdn puts the
+        // signature in the query) reads like a real URL but fetches 403, which cost a
+        // debugging round already. data: URLs are shortened, they are unreadable anyway.
+        const describeSource = (url) => (url.startsWith('data:')
+          ? `${url.slice(0, 60)}… (${url.length} chars)`
+          : url);
         if (!/^(https?:|data:)/i.test(remoteSource)) {
           throw new Error(
             'Secret Vault has nothing to encrypt: this item has no local file and no fetchable image URL. '
@@ -1804,7 +1810,7 @@ export default function GalleryPage() {
           );
         }
         await appendClientUploadLog(
-          `No local file for this item — it came from a page URL, so its bytes are fetched through the service worker first: ${remoteSource.slice(0, 160)}`,
+          `No local file for this item — it came from a page URL, so its bytes are fetched through the service worker first: ${describeSource(remoteSource)}`,
           'warning'
         );
         const resolved = await sendMessage('resolveImagePreview', {
@@ -1813,14 +1819,14 @@ export default function GalleryPage() {
         });
         if (!resolved?.dataUrl) {
           throw new Error(
-            `Could not fetch the image bytes for the Secret Vault from ${remoteSource.slice(0, 160)}. `
-            + 'Download the file and upload it locally instead.'
+            `Could not fetch the image bytes for the Secret Vault from ${describeSource(remoteSource)}. `
+            + 'If that host refuses a blind fetch (facebook/instagram CDNs do), download the file and upload it locally instead.'
           );
         }
         sourceBlob = await (await fetch(resolved.dataUrl)).blob();
         if (!(sourceBlob instanceof Blob) || sourceBlob.size <= 0) {
           throw new Error(
-            `The image at ${remoteSource.slice(0, 160)} came back empty (0 bytes), so there is nothing to encrypt. `
+            `The image at ${describeSource(remoteSource)} came back empty (0 bytes), so there is nothing to encrypt. `
             + 'Download the file and upload it locally instead.'
           );
         }

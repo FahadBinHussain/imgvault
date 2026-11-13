@@ -3155,7 +3155,15 @@ class ImgVaultServiceWorker {
         return true;
 
       case 'resolveImagePreview':
-        this.fetchImageAsDataUrl(request.imageUrl, request.pageUrl)
+        // NOTE: this action's caller sends either a flat message
+        // ({ action, imageUrl, pageUrl }) or the app's usual wrapped shape
+        // ({ action, data: { imageUrl, pageUrl } }). Reading only one of them made the
+        // wrapped caller fetch `undefined` and die on "Unsupported media source" — a real
+        // bug, surfaced by the vault upload path that has no local file bytes to fall on.
+        this.fetchImageAsDataUrl(
+          request.imageUrl ?? request.data?.imageUrl,
+          request.pageUrl ?? request.data?.pageUrl
+        )
           .then(dataUrl => sendResponse({ success: true, dataUrl }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
