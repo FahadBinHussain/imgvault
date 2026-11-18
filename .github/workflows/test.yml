@@ -1,0 +1,83 @@
+name: Tests
+
+# Separate from the release workflow (nextgen-extension-crx.yml) on purpose:
+# a test failure here must never block a release build, and the live-network
+# legacy scripts (suno/terabox probes) can flake on network issues. This
+# workflow reports test health on push/PR; the release flow is untouched.
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - '.github/workflows/test.yml'
+      - 'nextgen-extension/**'
+      - 'native-host/**'
+      - 'packages/**'
+      - 'web/**'
+      - 'tools/check-shared-twins.mjs'
+  pull_request:
+    paths:
+      - '.github/workflows/test.yml'
+      - 'nextgen-extension/**'
+      - 'native-host/**'
+      - 'packages/**'
+      - 'web/**'
+      - 'tools/check-shared-twins.mjs'
+  workflow_dispatch:
+
+jobs:
+  test-js:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: nextgen-extension/pnpm-lock.yaml
+
+      - name: Install extension dependencies
+        working-directory: nextgen-extension
+        run: pnpm install --frozen-lockfile
+
+      - name: Install web dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      # Runs the 12 legacy scripts (the 2 credential-gated UDrop probes skip
+      # loudly without UDROp_KEY1/UDROP_KEY2), the node:test suites, and the
+      # shared-twin drift guard. Exits non-zero on any failure.
+      - name: Run extension test suite
+        run: node nextgen-extension/run-tests.mjs
+
+      - name: Run web test suite
+        run: pnpm --dir web test
+
+  test-rust:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run native host unit tests
+        run: cargo test --manifest-path native-host/src-tauri/Cargo.toml
+
+      # The host ships as a Windows exe; the cross-target check must stay
+      # green too (check only — no linker needed).
+      - name: Check Windows cross-target
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          cargo check --manifest-path native-host/src-tauri/Cargo.toml --target x86_64-pc-windows-gnu
