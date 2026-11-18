@@ -24,6 +24,7 @@ import {
   formatBytesForError,
   telegramUploadField,
   telegramUploadMethod,
+  telegramUploadSizeCap,
 } from 'imgvault-shared/telegramLimits.js';
 
 export {
@@ -34,6 +35,7 @@ export {
   formatBytesForError,
   telegramUploadField,
   telegramUploadMethod,
+  telegramUploadSizeCap,
 };
 
 export const TELEGRAM_LOCAL_MEDIA_PREFIX = '/telegram-media/';
@@ -537,6 +539,202 @@ export async function checkTelegramSceneIntegrity(items, allItems, { token, chan
 }
 
 /**
+ * Is the native host reachable right now? The pre-flight asks this ONLY when
+ * a picked file is over the Bot API cap with no disk path - the one case
+ * where the answer changes whether Telegram can take the file.
+ *
+ * The worker owns the native-host command route, and it reads `command`
+ * FLAT off the message (background.js `nativeHostCommand` case) - so this
+ * sends the raw shape HostPage uses. useChromeMessage wraps everything in
+ * {action, data}, which would bury `command` where the worker never looks
+ * (the same class of bug as the resolveImagePreview shape saga).
+ *
+ * Never throws: {ok:false, error} is a normal answer (host not installed,
+ * worker busy), and the caller logs it loudly instead of crashing.
+ */
+export async function probeNativeHost({ timeoutMs = 15000 } = {}) {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
+    return { ok: false, error: 'extension runtime unavailable' };
+  }
+  try {
+    const data = await new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error(`native host ping timed out after ${timeoutMs / 1000}s`));
+      }, timeoutMs);
+      chrome.runtime.sendMessage(
+        { action: 'nativeHostCommand', command: 'ping', data: {} },
+        (response) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message || 'native host ping failed'));
+          } else if (response?.success) {
+            resolve(response.data);
+          } else {
+            reject(new Error(response?.error || 'Native host unreachable'));
+          }
+        }
+      );
+    });
+    return { ok: true, message: data?.message || 'Native host reachable' };
+  } catch (error) {
+    return { ok: false, error: error?.message || String(error) };
+  }
+}
+
+// 512 KiB of bytes -> ~700 KiB of base64 on the wire, under Chrome's 1 MiB
+// native-message cap (the same chunk the worker's file writer uses).
+const STAGE_CHUNK_BYTES = 512 * 1024;
+
+const toBase64 = (bytes) => {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+};
+
+// One native-host port speaking sequential request/response: each message
+// gets exactly one `complete` answer, in order, so the next chunk only goes
+// out after the previous one was acknowledged.
+function openNativePort() {
+  let port;
+  try {
+    port = chrome.runtime.connectNative('com.imgvault.nativehost');
+  } catch (error) {
+    throw new Error(`Failed to connect to native host: ${error.message}`);
+  }
+  const pending = [];
+  let dead = null;
+  port.onMessage.addListener((response) => {
+    const next = pending.shift();
+    if (!next) return;
+    if (response?.success) next.resolve(response);
+    else next.reject(new Error(response?.message || 'Native host operation failed.'));
+  });
+  port.onDisconnect.addListener(() => {
+    const error = new Error(chrome.runtime.lastError?.message || 'Native host disconnected.');
+    dead = error;
+    while (pending.length) pending.shift().reject(error);
+  });
+  const request = (message, timeoutMs = 120000) => {
+    if (dead) return Promise.reject(dead);
+    return new Promise((resolve, reject) => {
+      const entry = {
+        resolve: (value) => { clearTimeout(timer); resolve(value); },
+        reject: (error) => { clearTimeout(timer); reject(error); },
+      };
+      const timer = setTimeout(() => {
+        const at = pending.indexOf(entry);
+        if (at >= 0) pending.splice(at, 1);
+        entry.reject(new Error(`Native host timed out after ${timeoutMs / 1000}s on ${message.action}.`));
+      }, timeoutMs);
+      pending.push(entry);
+      try {
+        port.postMessage(message);
+      } catch (error) {
+        entry.reject(error);
+      }
+    });
+  };
+  return {
+    request,
+    disconnect: () => { try { port.disconnect(); } catch (_) {} },
+  };
+}
+
+/**
+ * Stage a picked file onto disk through the native host so the MTProto
+ * uploader gets a real path. A browser File has no disk path, so without
+ * this the native route is unreachable for every picked file - which is
+ * exactly why Telegram kept skipping >50 MB uploads.
+ *
+ * The host picks the temp path (%TEMP%/imgvault-tg-stage/<session>/<name>,
+ * original filename kept so Telethon derives the right mime type) and
+ * returns it; the caller deletes it after the upload. A failed or aborted
+ * stage deletes its own partial file instead of leaving hundreds of MB
+ * behind.
+ *
+ * @returns {Promise<string>} the staged file's disk path
+ */
+export async function stageBlobForNativeUpload(blob, filename, { onProgress, signal } = {}) {
+  const size = blob?.size || 0;
+  if (!size) throw new Error('Cannot stage an empty file for the native Telegram upload.');
+  if (typeof chrome === 'undefined' || !chrome.runtime?.connectNative) {
+    throw new Error('Native host staging needs the extension runtime (chrome.runtime.connectNative).');
+  }
+  const cleanName = String(filename || 'video.mp4');
+  const sessionId = `tg-stage-${crypto.randomUUID()}`;
+  const port = openNativePort();
+  let stagedPath = '';
+  try {
+    if (signal?.aborted) throw new Error('Telegram native upload aborted.');
+    let started;
+    try {
+      started = await port.request({
+        action: 'file_write_start',
+        request_id: sessionId,
+        output_path: '',
+        file_name: cleanName,
+      });
+    } catch (error) {
+      throw new Error(
+        `Staging failed at file_write_start: ${error.message} `
+        + 'If ImgVault-Native-Host.exe predates this extension version, reinstall it from the latest release.'
+      );
+    }
+    stagedPath = started?.filePath || '';
+    if (!stagedPath) throw new Error('Native host staged the file but returned no path.');
+    let staged = 0;
+    for (let offset = 0; offset < size; offset += STAGE_CHUNK_BYTES) {
+      if (signal?.aborted) throw new Error('Telegram native upload aborted.');
+      const slice = blob.slice(offset, Math.min(offset + STAGE_CHUNK_BYTES, size));
+      const bytes = new Uint8Array(await slice.arrayBuffer());
+      await port.request({ action: 'file_write_chunk', request_id: sessionId, data: toBase64(bytes) });
+      staged += bytes.length;
+      onProgress?.({
+        loaded: staged,
+        current: staged,
+        total: size,
+        percent: size ? Math.round((staged / size) * 100) : 0,
+        phase: 'staging',
+        text: `Staging ${cleanName} for Telegram...`,
+      });
+    }
+    const finished = await port.request({ action: 'file_write_finish', request_id: sessionId });
+    const writtenSize = Number(finished?.message);
+    if (Number.isFinite(writtenSize) && writtenSize !== size) {
+      throw new Error(`Staged file size mismatch: wrote ${writtenSize} bytes, expected ${size}.`);
+    }
+    return finished?.filePath || stagedPath;
+  } catch (error) {
+    if (stagedPath) await deleteNativeTempFile(stagedPath).catch(() => {});
+    throw error;
+  } finally {
+    port.disconnect();
+  }
+}
+
+/**
+ * Delete a staged temp file on the native host. The host only deletes files
+ * under %TEMP% carrying the imgvault- marker, so a wrong path can never eat
+ * a user file. Returns false when the file was already gone.
+ */
+export async function deleteNativeTempFile(filePath) {
+  const target = String(filePath || '').trim();
+  if (!target) return false;
+  const port = openNativePort();
+  try {
+    const response = await port.request({ action: 'file_delete', file_path: target }, 15000);
+    return response?.message !== 'already gone';
+  } finally {
+    port.disconnect();
+  }
+}
+
+/**
  * Upload a large file directly via MTProto through the Rust native host (ImgVault-Native-Host).
  * Used when a video exceeds Telegram's standard 50 MB Bot API ceiling (up to 2,000 MB).
  */
@@ -574,7 +772,9 @@ export async function uploadTelegramNative({ filePath, channel, caption = '', on
             const current = parseInt(parts[1], 10) || 0;
             const total = parseInt(parts[2], 10) || 0;
             const percent = parseFloat(parts[3]) || 0;
-            onProgress({ current, total, percent, text: res.message });
+            // `loaded` is what the gallery progress handler reads; without
+            // it the native upload showed no byte count at all.
+            onProgress({ current, loaded: current, total, percent, phase: 'uploading', text: res.message });
           }
         }
         return;

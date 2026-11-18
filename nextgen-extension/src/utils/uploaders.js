@@ -7,11 +7,13 @@ import {
   TELEGRAM_UPLOAD_MAX_BYTES,
   TELEGRAM_NATIVE_MAX_BYTES,
   assertTelegramUploadSize,
+  deleteNativeTempFile,
   deleteTelegramMessage,
   requireTelegramToken,
   scrapeTelegramPostUrl,
   scrapeTelegramPostMedia,
   sendTelegramFile,
+  stageBlobForNativeUpload,
   telegramApiBase,
   telegramChatId,
   telegramLocalMediaUrl,
@@ -1521,42 +1523,63 @@ export class TelegramUploader extends BaseUploader {
     telegramChatId(channel);
 
     const size = blob?.size || 0;
-    // Over-50MB videos route through the Rust Native Host MTProto uploader if filePath is available
-    if (size > TELEGRAM_UPLOAD_MAX_BYTES && filePath) {
+    // Over-50MB videos route through the Rust Native Host MTProto uploader
+    // (up to 2 GB). A native download already has its disk path; a picked
+    // file has none, so it is staged to a temp file on the host first -
+    // without that the native route was unreachable for every picked file.
+    if (size > TELEGRAM_UPLOAD_MAX_BYTES) {
       assertTelegramUploadSize(size, filename, mimeType, true);
-      const res = await uploadTelegramNative({
-        filePath,
-        channel,
-        onProgress,
-        signal,
-      });
-
-      const messageId = String(res.messageId);
-      const chat = String(channel || '').trim().replace(/^@+/, '');
-      const watchUrl = messageId ? `https://t.me/${chat}/${messageId}` : '';
-      let cdnUrl = '';
-      let posterUrl = '';
-      try {
-        const postMedia = await scrapeTelegramPostMedia(channel, messageId, { attempts: 4, signal });
-        cdnUrl = postMedia.mp4Url;
-        posterUrl = postMedia.posterUrl;
-      } catch (err) {
-        console.warn(`[telegram-native] Scrape CDN warning for message ${messageId}:`, err);
+      let nativePath = filePath || '';
+      const staged = !nativePath;
+      if (staged) {
+        console.log(`📨 [TELEGRAM] ${filename} is over 50 MB with no disk path - staging it on the native host for the MTProto upload.`);
+        nativePath = await stageBlobForNativeUpload(blob, filename, { onProgress, signal });
       }
+      try {
+        const res = await uploadTelegramNative({
+          filePath: nativePath,
+          channel,
+          onProgress,
+          signal,
+        });
 
-      return {
-        watchUrl,
-        displayUrl: watchUrl,
-        directUrl: cdnUrl || watchUrl,
-        thumbUrl: posterUrl || null,
-        thumbnailUrl: posterUrl || null,
-        deleteUrl: null,
-        fileId: `native-${messageId}`,
-        messageId,
-        filename,
-        apiStatus: 'success',
-        apiMessage: 'Uploaded via native host MTProto',
-      };
+        const messageId = String(res.messageId);
+        const chat = String(channel || '').trim().replace(/^@+/, '');
+        const watchUrl = messageId ? `https://t.me/${chat}/${messageId}` : '';
+        let cdnUrl = '';
+        let posterUrl = '';
+        try {
+          const postMedia = await scrapeTelegramPostMedia(channel, messageId, { attempts: 4, signal });
+          cdnUrl = postMedia.mp4Url;
+          posterUrl = postMedia.posterUrl;
+        } catch (err) {
+          console.warn(`[telegram-native] Scrape CDN warning for message ${messageId}:`, err);
+        }
+
+        return {
+          watchUrl,
+          displayUrl: watchUrl,
+          directUrl: cdnUrl || watchUrl,
+          thumbUrl: posterUrl || null,
+          thumbnailUrl: posterUrl || null,
+          deleteUrl: null,
+          fileId: `native-${messageId}`,
+          messageId,
+          filename,
+          apiStatus: 'success',
+          apiMessage: 'Uploaded via native host MTProto',
+        };
+      } finally {
+        // A staged temp file is deleted whether the upload succeeded or not;
+        // a real download path is the user's file and is never touched.
+        if (staged && nativePath) {
+          try {
+            await deleteNativeTempFile(nativePath);
+          } catch (cleanupError) {
+            console.warn(`[telegram-native] Staged temp file was NOT deleted: ${nativePath} (${cleanupError.message})`);
+          }
+        }
+      }
     }
 
     assertTelegramUploadSize(size, filename, mimeType, false);

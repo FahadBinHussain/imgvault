@@ -36,7 +36,7 @@ import {
   getVideoUploadService,
 } from '../config/providerCatalog';
 import { FilemoonUploader, UDropUploader, TeraBoxUploader, TelegramUploader } from '../utils/uploaders';
-import { assertTelegramUploadSize } from '../utils/telegramApi.js';
+import { assertTelegramUploadSize, probeNativeHost, telegramUploadSizeCap } from '../utils/telegramApi.js';
 import { encryptBlob, encryptMetadata } from '../utils/vaultCrypto.js';
 import { getVaultMasterKey, importMasterKeyFromB64 } from '../utils/vaultSession.js';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
@@ -1471,18 +1471,40 @@ export default function GalleryPage() {
       // used to fail at the very END of the upload - after the other host had
       // already taken the file - and the user only found out from the error
       // message. A resume hit the same gate, so it never fixed anything.
-      // Check if native host is available (supports up to 2 GB for Telegram)
-      const hasNativeHost = Boolean(uploadData.filePath);
+      //
+      // The native host lifts Telegram's cap to 2 GB, and it applies TWO
+      // ways: a native download already has its disk path, and a picked file
+      // gets staged to a temp file first. The old check only looked at the
+      // path, which no upload ever set - so Telegram skipped every >50 MB
+      // file even with the host installed. Only probe when the answer
+      // changes the outcome: Telegram selected, over the Bot API cap, no
+      // disk path.
       const videoFileName = uploadData.fileName || getFileNameFromPath(uploadData.filePath || '') || 'video.mp4';
+      const videoMimeType = uploadData.mimeType || uploadData.fileBlob?.type || '';
+      const videoBytes = uploadData.fileBlob?.size || uploadData.fileSize || 0;
+      let hasNativeHost = Boolean(uploadData.filePath);
+      let nativeProbeError = '';
+      const telegramSelected = selectedServices.some((service) => service?.key === 'telegram');
+      if (!hasNativeHost && telegramSelected && videoBytes > telegramUploadSizeCap(videoFileName, videoMimeType)) {
+        const probe = await probeNativeHost();
+        hasNativeHost = probe.ok;
+        nativeProbeError = probe.ok ? '' : (probe.error || 'unknown error');
+        if (probe.ok) {
+          await appendClientUploadLog(`Native host reachable - Telegram can take this ${formatBytes(videoBytes)} file via MTProto (the 50 MB Bot API cap does not apply).`);
+        }
+      }
       const { accepted: usableServices, rejected: oversizedHosts } = partitionHostsByUploadLimit(selectedServices, {
-        bytes: uploadData.fileBlob?.size || uploadData.fileSize || 0,
+        bytes: videoBytes,
         fileName: videoFileName,
-        mimeType: uploadData.mimeType || uploadData.fileBlob?.type || '',
+        mimeType: videoMimeType,
         hasNativeHost,
       });
 
       for (const { service, reason } of oversizedHosts) {
         await appendClientUploadLog(`⚠️ ${reason} Skipping ${service.label} for this upload.`, 'warning');
+        if (service?.key === 'telegram' && nativeProbeError) {
+          await appendClientUploadLog(`⚠️ Native host MTProto route unavailable (${nativeProbeError}) - Telegram can only take up to 50 MB through the Bot API.`, 'warning');
+        }
         uploadErrors.push(`${service.label}: skipped - ${reason}`);
         showToast(`${service.label} skipped - ${reason}`, 'warning', 7000);
       }
@@ -1533,6 +1555,9 @@ export default function GalleryPage() {
       const pendingMetaVideo = { ...uploadData };
       delete pendingMetaVideo.fileBlob;
       delete pendingMetaVideo.file;
+      // The disk path is page-session-local: persisting it would let a later
+      // retry upload whatever file happens to sit at that path by then.
+      delete pendingMetaVideo.filePath;
       // A resumed upload re-uses the row the interrupted attempt reserved.
       // Reserving a second one would leave the first row orphaned AND make
       // the duplicate check fire on the upload's own reservation.
@@ -1593,12 +1618,16 @@ export default function GalleryPage() {
             blob: uploadData.fileBlob,
             settings,
             data: { ...uploadData, fileName: uploadData.fileName || 'video.mp4' },
-            onProgress: async ({ loaded, total, percent }) => {
+            onProgress: async ({ loaded, total, percent, phase }) => {
               const totalLabel = total ? formatBytes(total) : formatBytes(uploadData.fileBlob?.size || 0);
               const loadedLabel = formatBytes(loaded);
+              // A picked >50 MB file is staged to disk before the MTProto
+              // upload - the progress line names the phase so staging never
+              // looks like a stuck upload.
+              const actionLabel = phase === 'staging' ? 'staging for native upload' : 'upload progress';
               const message = percent !== null
-                ? `${service.label} upload progress: ${percent}% (${loadedLabel} / ${totalLabel})`
-                : `${service.label} upload progress: ${loadedLabel} sent`;
+                ? `${service.label} ${actionLabel}: ${percent}% (${loadedLabel} / ${totalLabel})`
+                : `${service.label} ${actionLabel}: ${loadedLabel} sent`;
               await chrome.storage.local.set({ uploadStatus: message });
               await appendClientUploadLog(message);
               await reportUploadRunProgress({
@@ -1690,6 +1719,8 @@ export default function GalleryPage() {
       const cleanUploadData = { ...uploadData };
       delete cleanUploadData.fileBlob;
       delete cleanUploadData.file;
+      // Page-session-local, like above: never persisted, never trusted later.
+      delete cleanUploadData.filePath;
       const saved = await sendMessage('saveUploadedVideo', {
         ...cleanUploadData,
         videoUploadResults: uploadResults,
@@ -2821,7 +2852,7 @@ export default function GalleryPage() {
     }
   };
 
-  const processMediaFile = async (file, preservePageUrl = null, preservePageTitle = null) => {
+  const processMediaFile = async (file, preservePageUrl = null, preservePageTitle = null, downloadFilePath = '') => {
     revokeUploadPreviewUrl();
 
     const finalPageUrl = preservePageUrl && preservePageUrl !== 'Uploaded manually'
@@ -2931,6 +2962,10 @@ export default function GalleryPage() {
       isAudio,
       is3D,
       fileType: file.type || (is3D ? 'model/' + (file.name.split('.').pop() || 'glb') : ''),
+      // The disk path of a native download, carried with THIS file only. A
+      // picked file never has one, and a fresh object per file means a path
+      // can never leak onto an unrelated upload.
+      ...(downloadFilePath ? { filePath: downloadFilePath } : {}),
       ...(nextUploadMetadata?.width != null && nextUploadMetadata?.height != null
         ? { width: nextUploadMetadata.width, height: nextUploadMetadata.height }
         : {}),
@@ -2991,7 +3026,7 @@ export default function GalleryPage() {
           setShowFolderPrompt(false);
           setPendingDownloadFile(null);
           setPendingDownloadSourceUrl('');
-          await processMediaFile(file, pendingDownloadSourceUrl || 'native-download://upload', 'Downloaded Video');
+          await processMediaFile(file, pendingDownloadSourceUrl || 'native-download://upload', 'Downloaded Video', pendingDownloadFile);
           setIsLocalUpload(true);
           setShowUploadModal(true);
           showToast(`Loaded "${fileName}" from saved folder.`, 'success', 3000);
@@ -3006,7 +3041,7 @@ export default function GalleryPage() {
                 setShowFolderPrompt(false);
                 setPendingDownloadFile(null);
                 setPendingDownloadSourceUrl('');
-                await processMediaFile(file, pendingDownloadSourceUrl || 'native-download://upload', 'Downloaded Video');
+                await processMediaFile(file, pendingDownloadSourceUrl || 'native-download://upload', 'Downloaded Video', pendingDownloadFile);
                 setIsLocalUpload(true);
                 setShowUploadModal(true);
                 showToast(`Loaded "${fileName}" from saved folder.`, 'success', 3000);
@@ -3061,7 +3096,7 @@ export default function GalleryPage() {
       setPendingDownloadSourceUrl('');
       
       // Process and show modal
-      await processMediaFile(file, pendingDownloadSourceUrl || 'native-download://upload', 'Downloaded Video');
+      await processMediaFile(file, pendingDownloadSourceUrl || 'native-download://upload', 'Downloaded Video', pendingDownloadFile);
       setIsLocalUpload(true);
       setShowUploadModal(true);
       showToast(`✅ Video "${fileName}" loaded successfully!`, 'success', 3000);
@@ -3157,6 +3192,10 @@ export default function GalleryPage() {
     return {
       imageUrl: String(mediaData?.srcUrl || ''),
       fileBlob: mediaData?.file || null,
+      // Disk path of a native download (travels with the file's own data, so
+      // it can never land on a picked file). The Telegram pre-flight and the
+      // native uploader key off this: with it, >50 MB goes MTProto.
+      filePath: mediaData?.filePath || '',
       originalSourceUrl: hasRealSourceUrl
         ? normalizedPageUrl
         : (localUploadSource ? 'Uploaded manually' : normalizedPageUrl),
@@ -4253,7 +4292,7 @@ export default function GalleryPage() {
                 console.log('✅ [AUTO-LOAD] File loaded successfully:', file.name, file.size, 'bytes');
                 
                 // Process and show modal
-                await processMediaFile(file, location.state.downloadSourceUrl || pendingDownloadSourceUrl || 'native-download://upload', 'Downloaded Video');
+                await processMediaFile(file, location.state.downloadSourceUrl || pendingDownloadSourceUrl || 'native-download://upload', 'Downloaded Video', location.state.downloadFilePath);
                 setIsLocalUpload(true);
                 setShowUploadModal(true);
                 showToast(`✅ Video "${fileName}" loaded successfully!`, 'success', 3000);

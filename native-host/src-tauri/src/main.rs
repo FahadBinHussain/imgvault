@@ -154,8 +154,36 @@ fn file_write_target_path(request_id: &str) -> PathBuf {
     video_session_path(request_id, "target-path")
 }
 
-fn file_write_start(request_id: &str, output_path: &str) -> Result<(), String> {
-    let target = PathBuf::from(output_path);
+// A staged file keeps the original name (Telethon derives the mime type and
+// the visible file name from the path), minus anything that could escape the
+// stage folder.
+fn sanitize_stage_file_name(name: &str) -> String {
+    let clean: String = name
+        .chars()
+        .filter(|c| !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0'))
+        .collect();
+    let clean = clean.trim().trim_matches('.');
+    if clean.is_empty() {
+        "file".to_string()
+    } else {
+        clean.chars().take(120).collect()
+    }
+}
+
+fn file_write_start(request_id: &str, output_path: &str, file_name: &str) -> Result<PathBuf, String> {
+    // An empty or relative path means the caller has no disk path to offer -
+    // a file picked in the browser never has one. Stage it under %TEMP%
+    // instead so the native Telegram uploader still gets a real file.
+    // Absolute paths (the Suno flow) behave exactly as before.
+    let given = output_path.trim();
+    let target = if given.is_empty() || PathBuf::from(given).is_relative() {
+        env::temp_dir()
+            .join("imgvault-tg-stage")
+            .join(sanitize_request_id(request_id))
+            .join(sanitize_stage_file_name(file_name))
+    } else {
+        PathBuf::from(given)
+    };
     if let Some(parent) = target.parent() {
         if !parent.as_os_str().is_empty() {
             fs::create_dir_all(parent)
@@ -164,8 +192,30 @@ fn file_write_start(request_id: &str, output_path: &str) -> Result<(), String> {
     }
     fs::File::create(&target)
         .map_err(|e| format!("Could not create the output file {}: {}", target.display(), e))?;
-    fs::write(file_write_target_path(request_id), output_path.as_bytes())
-        .map_err(|e| format!("Could not remember the output path: {}", e))
+    fs::write(file_write_target_path(request_id), target.display().to_string().as_bytes())
+        .map_err(|e| format!("Could not remember the output path: {}", e))?;
+    Ok(target)
+}
+
+// Delete a staged temp file after its upload. Only our own temp files are
+// ever deleted: the path must sit under %TEMP% and carry the imgvault-
+// marker, so a wrong path from a bug can never eat a user file.
+// Returns true when a file was removed, false when it was already gone.
+fn delete_staged_file(path: &str) -> Result<bool, String> {
+    let target = PathBuf::from(path);
+    let under_temp = target.starts_with(env::temp_dir());
+    let ours = target.display().to_string().contains("imgvault-");
+    if !under_temp || !ours {
+        return Err(format!(
+            "Refusing to delete a file outside the imgvault temp area: {}",
+            path
+        ));
+    }
+    match fs::remove_file(&target) {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(format!("Could not delete {}: {}", target.display(), e)),
+    }
 }
 
 fn file_write_resolve_target(request_id: &str) -> Result<PathBuf, String> {
@@ -1605,8 +1655,16 @@ fn handle_native_messaging() {
                     "file_write_start" => {
                         let request_id = native_msg.request_id.clone().unwrap_or_default();
                         let output_path = native_msg.output_path.clone().unwrap_or_default();
-                        match file_write_start(&request_id, &output_path) {
-                            Ok(()) => NativeResponse { success: true, event: Some("complete".to_string()), request_id: Some(request_id), message: Some("Native file session started".to_string()), line: None, stream: None, file_path: None, stdout: None, stderr: None },
+                        let file_name = native_msg.file_name.clone().unwrap_or_default();
+                        match file_write_start(&request_id, &output_path, &file_name) {
+                            Ok(path) => NativeResponse { success: true, event: Some("complete".to_string()), request_id: Some(request_id), message: Some("Native file session started".to_string()), line: None, stream: None, file_path: Some(path.display().to_string()), stdout: None, stderr: None },
+                            Err(error) => NativeResponse { success: false, event: Some("complete".to_string()), request_id: Some(request_id), message: Some(error), line: None, stream: None, file_path: None, stdout: None, stderr: None },
+                        }
+                    }
+                    "file_delete" => {
+                        let request_id = native_msg.request_id.clone().unwrap_or_default();
+                        match native_msg.file_path.as_deref().ok_or_else(|| "Missing file_path for file_delete".to_string()).and_then(delete_staged_file) {
+                            Ok(deleted) => NativeResponse { success: true, event: Some("complete".to_string()), request_id: Some(request_id), message: Some(if deleted { "deleted".to_string() } else { "already gone".to_string() }), line: None, stream: None, file_path: None, stdout: None, stderr: None },
                             Err(error) => NativeResponse { success: false, event: Some("complete".to_string()), request_id: Some(request_id), message: Some(error), line: None, stream: None, file_path: None, stdout: None, stderr: None },
                         }
                     }

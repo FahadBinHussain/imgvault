@@ -97,6 +97,73 @@ try {
 } catch (_) {}
 check('the uploader accepts the same small file', uploaderAccepted);
 
+// --- the native host lifts telegram to 2 GB ------------------------------
+// 2.19.6 shipped the native MTProto route, but no upload ever set the
+// filePath that unlocks it, so the pre-flight always applied the Bot API
+// cap and Telegram skipped every >50 MB file. These cases pin the 2 GB
+// behaviour the pre-flight now relies on.
+check(
+  'native host lifts the mp4 cap to 2000 MB',
+  describeHostUploadLimit('telegram', { fileName: 'a.mp4', hasNativeHost: true }).maxBytes === 2000 * MB,
+  `${describeHostUploadLimit('telegram', { fileName: 'a.mp4', hasNativeHost: true }).maxBytes}`
+);
+check(
+  'native host lifts the mkv cap to 2000 MB',
+  describeHostUploadLimit('telegram', { fileName: 'a.mkv', hasNativeHost: true }).maxBytes === 2000 * MB,
+  `${describeHostUploadLimit('telegram', { fileName: 'a.mkv', hasNativeHost: true }).maxBytes}`
+);
+check(
+  'the native note names MTProto',
+  describeHostUploadLimit('telegram', { fileName: 'a.mp4', hasNativeHost: true }).note.includes('MTProto'),
+  describeHostUploadLimit('telegram', { fileName: 'a.mp4', hasNativeHost: true }).note
+);
+
+// The exact size the user hit: a 168.9 MB mp4 picked from disk (no filePath).
+const PICKED_FILE_BYTES = Math.round(168.9 * MB);
+const pickedNative = partitionHostsByUploadLimit([telegram], {
+  bytes: PICKED_FILE_BYTES,
+  fileName: 'clip.mp4',
+  mimeType: 'video/mp4',
+  hasNativeHost: true,
+});
+check('a 168.9 MB mp4 is accepted by telegram with the native host', pickedNative.accepted.some((s) => s.key === 'telegram'));
+check('nothing is rejected for the 168.9 MB mp4 with the native host', pickedNative.rejected.length === 0);
+
+const pickedBot = partitionHostsByUploadLimit([telegram], {
+  bytes: PICKED_FILE_BYTES,
+  fileName: 'clip.mp4',
+  mimeType: 'video/mp4',
+  hasNativeHost: false,
+});
+check('the same file is still rejected without the native host', pickedBot.rejected.length === 1);
+
+// --- the native cap still ends at 2 GB ------------------------------------
+// 2000 MiB renders as 1.95 GB (the formatter divides by 1024^3) - pin the
+// rendered value, not the round number.
+const hugeNative = partitionHostsByUploadLimit([telegram], {
+  bytes: Math.round(2.5 * 1024 * MB),
+  fileName: 'huge.mp4',
+  mimeType: 'video/mp4',
+  hasNativeHost: true,
+});
+check('a 2.5 GB mp4 is rejected even with the native host', hugeNative.rejected.length === 1);
+check('the native cap is named as 1.95 GB', hugeNative.rejected[0].reason.includes('1.95 GB'), hugeNative.rejected[0].reason);
+
+// --- the uploader agrees on the native cap ----------------------------------
+let uploaderAcceptedNative = false;
+try {
+  assertTelegramUploadSize(PICKED_FILE_BYTES, 'clip.mp4', 'video/mp4', true);
+  uploaderAcceptedNative = true;
+} catch (_) {}
+check('the uploader accepts the 168.9 MB mp4 with the native host', uploaderAcceptedNative);
+let uploaderRefusedHugeNative = false;
+try {
+  assertTelegramUploadSize(Math.round(2.5 * 1024 * MB), 'huge.mp4', 'video/mp4', true);
+} catch (_) {
+  uploaderRefusedHugeNative = true;
+}
+check('the uploader refuses a 2.5 GB mp4 even with the native host', uploaderRefusedHugeNative);
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
 if (failed.length) {
