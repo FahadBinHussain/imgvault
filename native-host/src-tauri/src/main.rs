@@ -3,7 +3,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use std::env;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -170,20 +170,25 @@ fn sanitize_stage_file_name(name: &str) -> String {
     }
 }
 
-fn file_write_start(request_id: &str, output_path: &str, file_name: &str) -> Result<PathBuf, String> {
-    // An empty or relative path means the caller has no disk path to offer -
-    // a file picked in the browser never has one. Stage it under %TEMP%
-    // instead so the native Telegram uploader still gets a real file.
-    // Absolute paths (the Suno flow) behave exactly as before.
+// Where a file-write session lands on disk. An empty or relative path means
+// the caller has no disk path to offer - a file picked in the browser never
+// has one. Stage it under %TEMP% instead so the native Telegram uploader
+// still gets a real file. Absolute paths (the Suno flow) pass through
+// unchanged.
+fn resolve_file_write_target(request_id: &str, output_path: &str, file_name: &str) -> PathBuf {
     let given = output_path.trim();
-    let target = if given.is_empty() || PathBuf::from(given).is_relative() {
+    if given.is_empty() || PathBuf::from(given).is_relative() {
         env::temp_dir()
             .join("imgvault-tg-stage")
             .join(sanitize_request_id(request_id))
             .join(sanitize_stage_file_name(file_name))
     } else {
         PathBuf::from(given)
-    };
+    }
+}
+
+fn file_write_start(request_id: &str, output_path: &str, file_name: &str) -> Result<PathBuf, String> {
+    let target = resolve_file_write_target(request_id, output_path, file_name);
     if let Some(parent) = target.parent() {
         if !parent.as_os_str().is_empty() {
             fs::create_dir_all(parent)
@@ -197,15 +202,17 @@ fn file_write_start(request_id: &str, output_path: &str, file_name: &str) -> Res
     Ok(target)
 }
 
-// Delete a staged temp file after its upload. Only our own temp files are
-// ever deleted: the path must sit under %TEMP% and carry the imgvault-
-// marker, so a wrong path from a bug can never eat a user file.
+// A path is only ever deleted when it sits under %TEMP% and carries the
+// imgvault- marker, so a wrong path from a bug can never eat a user file.
+fn is_deletable_staged_file(path: &Path) -> bool {
+    path.starts_with(env::temp_dir()) && path.display().to_string().contains("imgvault-")
+}
+
+// Delete a staged temp file after its upload.
 // Returns true when a file was removed, false when it was already gone.
 fn delete_staged_file(path: &str) -> Result<bool, String> {
     let target = PathBuf::from(path);
-    let under_temp = target.starts_with(env::temp_dir());
-    let ours = target.display().to_string().contains("imgvault-");
-    if !under_temp || !ours {
+    if !is_deletable_staged_file(&target) {
         return Err(format!(
             "Refusing to delete a file outside the imgvault temp area: {}",
             path
@@ -679,6 +686,88 @@ fn rewrite_mirror_url(url: &str) -> String {
     url.to_string()
 }
 
+const TELEGRAM_ACCOUNT: &str = "+8801956799504";
+const DEFAULT_TELEGRAM_API_ID: &str = "27462865";
+const DEFAULT_TELEGRAM_API_HASH: &str = "63358074ffa2262b19f4451497a85b34";
+
+fn telegram_account_dir(app_data: &str) -> String {
+    format!(r"{}\mainframe\accounts\telegram\{}", app_data, TELEGRAM_ACCOUNT)
+}
+
+#[derive(Debug, PartialEq)]
+struct TelegramUploadArgs {
+    session: String,
+    api_id: String,
+    api_hash: String,
+}
+
+// Resolve the Telethon session path and API credentials. Explicit values win;
+// otherwise the api-id.txt / api-hash.txt file contents (when the caller read
+// them) win; otherwise the compiled-in defaults apply. File contents are
+// trimmed, explicit values are used as given.
+fn resolve_telegram_upload_args(
+    app_data: &str,
+    session_path: Option<&str>,
+    api_id: Option<&str>,
+    api_hash: Option<&str>,
+    api_id_file: Option<&str>,
+    api_hash_file: Option<&str>,
+) -> TelegramUploadArgs {
+    let session = session_path
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!(r"{}\telegram", telegram_account_dir(app_data)));
+    let api_id = api_id
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| api_id_file.map(|contents| contents.trim().to_string()))
+        .unwrap_or_else(|| DEFAULT_TELEGRAM_API_ID.to_string());
+    let api_hash = api_hash
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| api_hash_file.map(|contents| contents.trim().to_string()))
+        .unwrap_or_else(|| DEFAULT_TELEGRAM_API_HASH.to_string());
+    TelegramUploadArgs {
+        session,
+        api_id,
+        api_hash,
+    }
+}
+
+// One stdout line from telegram_upload.py: PROGRESS:<current>:<total>:<percent>,
+// RESULT:<json>, ERROR:<message>, or anything else (ignored).
+#[derive(Debug, PartialEq)]
+enum TelegramUploaderLine {
+    Progress {
+        current: String,
+        total: String,
+        percent: String,
+    },
+    Result(String),
+    Error(String),
+    Other,
+}
+
+fn parse_telegram_uploader_line(line: &str) -> TelegramUploaderLine {
+    if let Some(progress) = line.strip_prefix("PROGRESS:") {
+        let parts: Vec<&str> = progress.split(':').collect();
+        if parts.len() >= 3 {
+            return TelegramUploaderLine::Progress {
+                current: parts[0].to_string(),
+                total: parts[1].to_string(),
+                percent: parts[2].to_string(),
+            };
+        }
+        return TelegramUploaderLine::Other;
+    }
+    if let Some(res) = line.strip_prefix("RESULT:") {
+        return TelegramUploaderLine::Result(res.to_string());
+    }
+    if let Some(err) = line.strip_prefix("ERROR:") {
+        return TelegramUploaderLine::Error(err.to_string());
+    }
+    TelegramUploaderLine::Other
+}
+
 fn handle_telegram_upload(
     stdout: &mut io::Stdout,
     request_id: Option<&str>,
@@ -690,22 +779,26 @@ fn handle_telegram_upload(
     api_hash: Option<&str>,
 ) -> NativeResponse {
     let app_data = env::var("APPDATA").unwrap_or_default();
-    let default_session = format!(r"{}\mainframe\accounts\telegram\+8801956799504\telegram", app_data);
-    let session = session_path.unwrap_or(&default_session);
-
-    let resolved_api_id = if let Some(id) = api_id.filter(|s| !s.trim().is_empty()) {
-        id.to_string()
+    let account_dir = telegram_account_dir(&app_data);
+    // The credential files are only read when no explicit value was given.
+    let api_id_file = if api_id.filter(|s| !s.trim().is_empty()).is_none() {
+        fs::read_to_string(format!(r"{}\api-id.txt", account_dir)).ok()
     } else {
-        let path = format!(r"{}\mainframe\accounts\telegram\+8801956799504\api-id.txt", app_data);
-        fs::read_to_string(&path).unwrap_or_else(|_| "27462865".to_string()).trim().to_string()
+        None
     };
-
-    let resolved_api_hash = if let Some(hash) = api_hash.filter(|s| !s.trim().is_empty()) {
-        hash.to_string()
+    let api_hash_file = if api_hash.filter(|s| !s.trim().is_empty()).is_none() {
+        fs::read_to_string(format!(r"{}\api-hash.txt", account_dir)).ok()
     } else {
-        let path = format!(r"{}\mainframe\accounts\telegram\+8801956799504\api-hash.txt", app_data);
-        fs::read_to_string(&path).unwrap_or_else(|_| "63358074ffa2262b19f4451497a85b34".to_string()).trim().to_string()
+        None
     };
+    let resolved = resolve_telegram_upload_args(
+        &app_data,
+        session_path,
+        api_id,
+        api_hash,
+        api_id_file.as_deref(),
+        api_hash_file.as_deref(),
+    );
 
     let exe_dir = env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf()));
     let script_path = exe_dir
@@ -736,11 +829,11 @@ fn handle_telegram_upload(
     let mut cmd = Command::new("python");
     cmd.arg(&script_str)
         .arg("--session")
-        .arg(session)
+        .arg(&resolved.session)
         .arg("--api-id")
-        .arg(&resolved_api_id)
+        .arg(&resolved.api_id)
         .arg("--api-hash")
-        .arg(&resolved_api_hash)
+        .arg(&resolved.api_hash)
         .arg("--channel")
         .arg(channel)
         .arg("--file")
@@ -785,16 +878,15 @@ fn handle_telegram_upload(
         let reader = BufReader::new(out);
         for line_res in reader.lines() {
             if let Ok(line) = line_res {
-                if let Some(progress) = line.strip_prefix("PROGRESS:") {
-                    let parts: Vec<&str> = progress.split(':').collect();
-                    if parts.len() >= 3 {
+                match parse_telegram_uploader_line(&line) {
+                    TelegramUploaderLine::Progress { current, total, percent } => {
                         let _ = send_native_response(
                             stdout,
                             &NativeResponse {
                                 success: true,
                                 event: Some("progress".to_string()),
                                 request_id: request_id.map(|s| s.to_string()),
-                                message: Some(format!("Uploaded {} / {} ({}%)", parts[0], parts[1], parts[2])),
+                                message: Some(format!("Uploaded {} / {} ({}%)", current, total, percent)),
                                 line: Some(line.clone()),
                                 stream: Some("stdout".to_string()),
                                 file_path: None,
@@ -803,10 +895,9 @@ fn handle_telegram_upload(
                             },
                         );
                     }
-                } else if let Some(res) = line.strip_prefix("RESULT:") {
-                    final_result = Some(res.to_string());
-                } else if let Some(err) = line.strip_prefix("ERROR:") {
-                    last_error = Some(err.to_string());
+                    TelegramUploaderLine::Result(res) => final_result = Some(res),
+                    TelegramUploaderLine::Error(err) => last_error = Some(err),
+                    TelegramUploaderLine::Other => {}
                 }
             }
         }
@@ -858,16 +949,26 @@ fn handle_telegram_upload(
     }
 }
 
-fn send_native_response(stdout: &mut io::Stdout, response: &NativeResponse) -> Result<(), String> {
+// Chrome native messaging framing: a 4-byte native-endian length prefix
+// (little-endian on every target this host ships for) followed by the JSON
+// payload.
+fn encode_native_response(response: &NativeResponse) -> Result<Vec<u8>, String> {
     let response_json = serde_json::to_string(response)
         .map_err(|e| format!("Failed to serialize response: {}", e))?;
-    let response_length = response_json.len() as u32;
+    let mut bytes = Vec::with_capacity(4 + response_json.len());
+    bytes.extend_from_slice(&(response_json.len() as u32).to_ne_bytes());
+    bytes.extend_from_slice(response_json.as_bytes());
+    Ok(bytes)
+}
+
+fn send_native_response(stdout: &mut io::Stdout, response: &NativeResponse) -> Result<(), String> {
+    let bytes = encode_native_response(response)?;
 
     stdout
-        .write_all(&response_length.to_ne_bytes())
+        .write_all(&bytes[..4])
         .map_err(|e| format!("Failed to write response length: {}", e))?;
     stdout
-        .write_all(response_json.as_bytes())
+        .write_all(&bytes[4..])
         .map_err(|e| format!("Failed to write response content: {}", e))?;
     stdout
         .flush()
@@ -998,6 +1099,40 @@ fn check_cookies() -> Result<String, String> {
     }
 }
 
+// Join the non-empty yt-dlp streams for an error report, stderr first.
+fn combine_ytdlp_output(stdout_text: &str, stderr_text: &str) -> String {
+    [stderr_text.trim(), stdout_text.trim()]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn ytdlp_failure_message(combined: &str, exit_code: Option<i32>) -> String {
+    if combined.is_empty() {
+        format!("yt-dlp failed with exit code {:?}", exit_code)
+    } else {
+        format!("yt-dlp failed:\n{}", combined)
+    }
+}
+
+// A long title can push the output path past the filesystem limit; retry once
+// with the title capped at 180 bytes. `combined_lower` is the lowercased
+// combined yt-dlp output.
+fn should_retry_with_short_title(output_path: &str, combined_lower: &str) -> bool {
+    output_path.contains("%(title)s")
+        && !output_path.contains("%(title).180B")
+        && (combined_lower.contains("unable to open for writing")
+            || combined_lower.contains("no such file or directory"))
+}
+
+// The site served an unreadable page (or a 403); retry up to 2 more times.
+fn should_retry_extraction(attempt: u32, combined_lower: &str) -> bool {
+    attempt < 2
+        && (combined_lower.contains("unable to extract universal data for rehydration")
+            || combined_lower.contains("http error 403"))
+}
+
 // Download video using yt-dlp
 fn download_video(url: &str, output_path: &str, cookies_data: Option<&[BrowserCookie]>) -> Result<DownloadOutcome, DownloadOutcome> {
     let output_dir = get_output_directory(output_path)
@@ -1092,22 +1227,36 @@ fn download_video(url: &str, output_path: &str, cookies_data: Option<&[BrowserCo
             })
         }
     } else {
-        let combined = [stderr_text.trim().to_string(), stdout_text.trim().to_string()]
-            .into_iter()
-            .filter(|part| !part.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n");
+        let combined = combine_ytdlp_output(&stdout_text, &stderr_text);
 
         Err(DownloadOutcome {
-            message: if combined.is_empty() {
-                format!("yt-dlp failed with exit code {:?}", output.status.code())
-            } else {
-                format!("yt-dlp failed:\n{}", combined)
-            },
+            message: ytdlp_failure_message(&combined, output.status.code()),
             file_path: None,
             stdout: stdout_text,
             stderr: stderr_text,
         })
+    }
+}
+
+// Classify a failed test download from its stderr: a 403 gets a fixed
+// message, an ffmpeg failure names its first stderr line, anything else
+// reports its first stderr line.
+// (Only called by test_download, which is itself currently unused.)
+#[allow(dead_code)]
+fn classify_test_download_error(stderr_text: &str) -> String {
+    let stderr_lower = stderr_text.to_lowercase();
+    if stderr_lower.contains("http error 403") {
+        "yt-dlp failed: HTTP Error 403 Forbidden".to_string()
+    } else if stderr_lower.contains("ffmpeg") {
+        format!(
+            "yt-dlp failed (ffmpeg error): {}",
+            stderr_text.lines().next().unwrap_or("see stderr")
+        )
+    } else {
+        format!(
+            "yt-dlp failed: {}",
+            stderr_text.lines().next().unwrap_or(stderr_text)
+        )
     }
 }
 
@@ -1170,14 +1319,7 @@ fn test_download(url: String, output_path: String, hide_window: bool) -> Result<
         }))
     } else {
         eprintln!("[yt-dlp] Download failed with exit code: {:?}", output.status.code());
-        let stderr_lower = stderr_text.to_lowercase();
-        let detail = if stderr_lower.contains("http error 403") {
-            "yt-dlp failed: HTTP Error 403 Forbidden".to_string()
-        } else if stderr_lower.contains("ffmpeg") {
-            format!("yt-dlp failed (ffmpeg error): {}", stderr_text.lines().next().unwrap_or("see stderr"))
-        } else {
-            format!("yt-dlp failed: {}", stderr_text.lines().next().unwrap_or(&stderr_text))
-        };
+        let detail = classify_test_download_error(&stderr_text);
         Err(serde_json::json!({
             "message": detail,
             "stdout": stdout_text,
@@ -1461,20 +1603,12 @@ fn download_video_with_progress(
             })
         }
     } else {
-        let combined = [stderr_text.trim().to_string(), stdout_text.trim().to_string()]
-            .into_iter()
-            .filter(|part| !part.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n");
+        let combined = combine_ytdlp_output(&stdout_text, &stderr_text);
 
         let lower_combined = combined.to_lowercase();
-        let should_retry_with_short_title =
-            output_path.contains("%(title)s") &&
-            !output_path.contains("%(title).180B") &&
-            (lower_combined.contains("unable to open for writing") ||
-                lower_combined.contains("no such file or directory"));
+        let retry_short_title = should_retry_with_short_title(output_path, &lower_combined);
 
-        if should_retry_with_short_title {
+        if retry_short_title {
             let fallback_output_path = output_path.replace("%(title)s", "%(title).180B");
             let notice = NativeResponse {
                 success: true,
@@ -1506,11 +1640,9 @@ fn download_video_with_progress(
             );
         }
 
-        let should_retry_extraction = attempt < 2 &&
-            (lower_combined.contains("unable to extract universal data for rehydration") ||
-             lower_combined.contains("http error 403"));
+        let retry_extraction = should_retry_extraction(attempt, &lower_combined);
 
-        if should_retry_extraction {
+        if retry_extraction {
             let notice = NativeResponse {
                 success: true,
                 event: Some("progress".to_string()),
@@ -1544,11 +1676,7 @@ fn download_video_with_progress(
         }
 
         Err(DownloadOutcome {
-            message: if combined.is_empty() {
-                format!("yt-dlp failed with exit code {:?}", status.code())
-            } else {
-                format!("yt-dlp failed:\n{}", combined)
-            },
+            message: ytdlp_failure_message(&combined, status.code()),
             file_path: None,
             stdout: stdout_text,
             stderr: stderr_text,
@@ -2079,5 +2207,1003 @@ fn main() {
             let message = format!("Failed to register ImgVault Native Host.\n\n{}", error);
             show_message_box("ImgVault Native Host", &message, true);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    // Unique per test so parallel test threads never share a temp file.
+    fn unique_request_id(tag: &str) -> String {
+        let n = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        format!("test-{}-{}-{}", std::process::id(), tag, n)
+    }
+
+    fn unique_temp_dir(prefix: &str, tag: &str) -> PathBuf {
+        let n = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = env::temp_dir().join(format!("{}-{}-{}-{}", prefix, std::process::id(), tag, n));
+        fs::create_dir_all(&dir).expect("create unique temp dir");
+        dir
+    }
+
+    // Best-effort cleanup of files/dirs a test created, even if an assert fails.
+    struct TestCleanup {
+        paths: Vec<PathBuf>,
+    }
+
+    impl TestCleanup {
+        fn new() -> Self {
+            Self { paths: Vec::new() }
+        }
+
+        fn track(&mut self, path: PathBuf) {
+            self.paths.push(path);
+        }
+    }
+
+    impl Drop for TestCleanup {
+        fn drop(&mut self) {
+            for path in &self.paths {
+                if path.is_dir() {
+                    let _ = fs::remove_dir_all(path);
+                } else {
+                    let _ = fs::remove_file(path);
+                }
+            }
+        }
+    }
+
+    // ---- sanitizers ---------------------------------------------------------
+
+    #[test]
+    fn sanitize_request_id_keeps_safe_chars() {
+        assert_eq!(sanitize_request_id("abc-123_XYZ"), "abc-123_XYZ");
+    }
+
+    #[test]
+    fn sanitize_request_id_replaces_unsafe_chars() {
+        assert_eq!(sanitize_request_id("a/b\\c:d e.f"), "a_b_c_d_e_f");
+        assert_eq!(sanitize_request_id(".."), "__");
+        assert_eq!(sanitize_request_id("héllo"), "h_llo");
+    }
+
+    #[test]
+    fn sanitize_request_id_empty_stays_empty() {
+        assert_eq!(sanitize_request_id(""), "");
+    }
+
+    #[test]
+    fn sanitize_stage_file_name_keeps_plain_name() {
+        assert_eq!(sanitize_stage_file_name("clip.mp4"), "clip.mp4");
+        assert_eq!(sanitize_stage_file_name("my video (1).mkv"), "my video (1).mkv");
+    }
+
+    #[test]
+    fn sanitize_stage_file_name_strips_separators_and_traversal() {
+        assert_eq!(sanitize_stage_file_name("../../etc/passwd"), "etcpasswd");
+        assert_eq!(sanitize_stage_file_name("..\\..\\evil.mp4"), "evil.mp4");
+        assert_eq!(sanitize_stage_file_name("sub/dir/file.mp4"), "subdirfile.mp4");
+    }
+
+    #[test]
+    fn sanitize_stage_file_name_strips_windows_reserved_chars() {
+        assert_eq!(sanitize_stage_file_name("a:b*c?d\"e<f>g|h"), "abcdefgh");
+        assert_eq!(sanitize_stage_file_name("nul\0byte"), "nulbyte");
+    }
+
+    #[test]
+    fn sanitize_stage_file_name_dots_only_becomes_file() {
+        assert_eq!(sanitize_stage_file_name("..."), "file");
+        assert_eq!(sanitize_stage_file_name(""), "file");
+        assert_eq!(sanitize_stage_file_name("   "), "file");
+        assert_eq!(sanitize_stage_file_name(".../..."), "file");
+    }
+
+    #[test]
+    fn sanitize_stage_file_name_trims_dots_and_spaces() {
+        assert_eq!(sanitize_stage_file_name(".hidden."), "hidden");
+        assert_eq!(sanitize_stage_file_name("  clip.mp4  "), "clip.mp4");
+    }
+
+    #[test]
+    fn sanitize_stage_file_name_truncates_to_120_chars() {
+        let long = "a".repeat(200);
+        let clean = sanitize_stage_file_name(&long);
+        assert_eq!(clean.len(), 120);
+        assert_eq!(clean, "a".repeat(120));
+    }
+
+    // ---- staging path resolution --------------------------------------------
+
+    #[test]
+    fn resolve_file_write_target_empty_path_stages_under_temp() {
+        let target = resolve_file_write_target("req-1", "", "clip.mp4");
+        assert_eq!(
+            target,
+            env::temp_dir()
+                .join("imgvault-tg-stage")
+                .join("req-1")
+                .join("clip.mp4")
+        );
+    }
+
+    #[test]
+    fn resolve_file_write_target_whitespace_only_path_stages() {
+        let target = resolve_file_write_target("req-1", "   ", "clip.mp4");
+        assert_eq!(
+            target,
+            env::temp_dir()
+                .join("imgvault-tg-stage")
+                .join("req-1")
+                .join("clip.mp4")
+        );
+    }
+
+    #[test]
+    fn resolve_file_write_target_relative_path_stages() {
+        let target = resolve_file_write_target("req-1", "sub/dir/file.mp4", "picked.mp4");
+        assert_eq!(
+            target,
+            env::temp_dir()
+                .join("imgvault-tg-stage")
+                .join("req-1")
+                .join("picked.mp4")
+        );
+    }
+
+    #[test]
+    fn resolve_file_write_target_absolute_path_passes_through() {
+        let absolute = env::temp_dir().join("imgvault-test-abs").join("clip.m4a");
+        let target = resolve_file_write_target("req-1", absolute.to_str().unwrap(), "clip.m4a");
+        assert_eq!(target, absolute);
+    }
+
+    #[test]
+    fn resolve_file_write_target_trims_surrounding_whitespace() {
+        let absolute = env::temp_dir().join("imgvault-test-abs").join("clip.m4a");
+        let padded = format!("  {}  ", absolute.display());
+        let target = resolve_file_write_target("req-1", &padded, "clip.m4a");
+        assert_eq!(target, absolute);
+    }
+
+    #[test]
+    fn resolve_file_write_target_traversal_cannot_escape_staging_dir() {
+        let staging_root = env::temp_dir().join("imgvault-tg-stage");
+        let target = resolve_file_write_target("../../etc", "../../../evil.mp4", "../../../evil.mp4");
+        assert!(target.starts_with(&staging_root), "escaped staging dir: {}", target.display());
+        assert!(
+            !target.components().any(|c| matches!(c, std::path::Component::ParentDir)),
+            "target still carries ..: {}",
+            target.display()
+        );
+        // And the crafted names land as harmless flat names, not nested paths.
+        assert_eq!(target.file_name().unwrap().to_str().unwrap(), "evil.mp4");
+    }
+
+    #[test]
+    fn resolve_file_write_target_empty_file_name_becomes_file() {
+        let target = resolve_file_write_target("req-1", "", "");
+        assert_eq!(
+            target,
+            env::temp_dir()
+                .join("imgvault-tg-stage")
+                .join("req-1")
+                .join("file")
+        );
+    }
+
+    // The Suno flow hands the host a Windows absolute path; on Windows that
+    // must pass through untouched. (Linux treats `C:\...` as relative, so
+    // this case only runs where the path semantics apply.)
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn resolve_file_write_target_windows_absolute_path_passes_through() {
+        let target = resolve_file_write_target("req-1", r"C:\Users\Admin\Videos\clip.m4a", "clip.m4a");
+        assert_eq!(target, PathBuf::from(r"C:\Users\Admin\Videos\clip.m4a"));
+    }
+
+    // ---- file_delete guard --------------------------------------------------
+
+    #[test]
+    fn is_deletable_staged_file_accepts_marked_temp_path() {
+        let path = env::temp_dir().join("imgvault-foo").join("bar.txt");
+        assert!(is_deletable_staged_file(&path));
+    }
+
+    #[test]
+    fn is_deletable_staged_file_accepts_marker_in_dir_name() {
+        // The marker is checked against the whole display string, so a file
+        // inside an imgvault- session dir is deletable even when the file
+        // name itself carries no marker.
+        let path = env::temp_dir().join("imgvault-tg-stage").join("req-1").join("clip.mp4");
+        assert!(is_deletable_staged_file(&path));
+    }
+
+    #[test]
+    fn is_deletable_staged_file_refuses_non_temp_path() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("imgvault-foo.txt");
+        assert!(!is_deletable_staged_file(&path));
+    }
+
+    #[test]
+    fn is_deletable_staged_file_refuses_temp_path_without_marker() {
+        let path = env::temp_dir().join("plain-dir").join("file.txt");
+        assert!(!is_deletable_staged_file(&path));
+    }
+
+    #[test]
+    fn delete_staged_file_removes_file_and_reports_true_then_false() {
+        let mut cleanup = TestCleanup::new();
+        let dir = unique_temp_dir("imgvault-test", "delete");
+        cleanup.track(dir.clone());
+        let file = dir.join("staged.mp4");
+        fs::write(&file, b"bytes").unwrap();
+
+        assert_eq!(delete_staged_file(file.to_str().unwrap()), Ok(true));
+        assert!(!file.exists());
+        // Already gone is success, not an error.
+        assert_eq!(delete_staged_file(file.to_str().unwrap()), Ok(false));
+    }
+
+    #[test]
+    fn delete_staged_file_missing_file_is_success() {
+        let path = env::temp_dir()
+            .join("imgvault-test-never-created")
+            .join("ghost.mp4");
+        assert_eq!(delete_staged_file(path.to_str().unwrap()), Ok(false));
+    }
+
+    #[test]
+    fn delete_staged_file_refuses_non_temp_and_keeps_file() {
+        let mut cleanup = TestCleanup::new();
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("imgvault-guard-test-{}-{}.txt", std::process::id(), TEST_COUNTER.fetch_add(1, Ordering::SeqCst)));
+        cleanup.track(file.clone());
+        fs::write(&file, b"do not delete").unwrap();
+
+        let result = delete_staged_file(file.to_str().unwrap());
+        assert!(result.is_err(), "non-temp path was accepted: {:?}", result);
+        assert!(file.exists(), "refused delete still removed the file");
+    }
+
+    #[test]
+    fn delete_staged_file_refuses_unmarked_temp_path_and_keeps_file() {
+        let mut cleanup = TestCleanup::new();
+        let dir = unique_temp_dir("plain-test", "delete");
+        cleanup.track(dir.clone());
+        let file = dir.join("file.txt");
+        fs::write(&file, b"do not delete").unwrap();
+
+        let result = delete_staged_file(file.to_str().unwrap());
+        assert!(result.is_err(), "unmarked temp path was accepted: {:?}", result);
+        assert!(file.exists(), "refused delete still removed the file");
+    }
+
+    // ---- telegram upload arg resolution -------------------------------------
+
+    const APP_DATA: &str = r"C:\Users\Admin\AppData\Roaming";
+
+    #[test]
+    fn resolve_telegram_upload_args_defaults() {
+        let args = resolve_telegram_upload_args(APP_DATA, None, None, None, None, None);
+        assert_eq!(
+            args,
+            TelegramUploadArgs {
+                session: r"C:\Users\Admin\AppData\Roaming\mainframe\accounts\telegram\+8801956799504\telegram".to_string(),
+                api_id: "27462865".to_string(),
+                api_hash: "63358074ffa2262b19f4451497a85b34".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn resolve_telegram_upload_args_explicit_session_wins() {
+        let args = resolve_telegram_upload_args(
+            APP_DATA,
+            Some(r"D:\sessions\other"),
+            None,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(args.session, r"D:\sessions\other");
+        assert_eq!(args.api_id, "27462865");
+    }
+
+    #[test]
+    fn resolve_telegram_upload_args_explicit_api_credentials_win() {
+        let args = resolve_telegram_upload_args(
+            APP_DATA,
+            None,
+            Some("111"),
+            Some("hash-override"),
+            Some("999"),
+            Some("hash-from-file"),
+        );
+        assert_eq!(args.api_id, "111");
+        assert_eq!(args.api_hash, "hash-override");
+    }
+
+    #[test]
+    fn resolve_telegram_upload_args_file_contents_used_when_no_explicit() {
+        let args = resolve_telegram_upload_args(
+            APP_DATA,
+            None,
+            None,
+            None,
+            Some("  12345\n"),
+            Some("abcdef\r\n"),
+        );
+        assert_eq!(args.api_id, "12345");
+        assert_eq!(args.api_hash, "abcdef");
+    }
+
+    #[test]
+    fn resolve_telegram_upload_args_blank_explicit_falls_back() {
+        // A blank explicit value is treated as absent: file contents win,
+        // and without a file the compiled-in default applies.
+        let with_file = resolve_telegram_upload_args(APP_DATA, None, Some("   "), Some(""), Some("777"), Some("h"));
+        assert_eq!(with_file.api_id, "777");
+        assert_eq!(with_file.api_hash, "h");
+
+        let without_file = resolve_telegram_upload_args(APP_DATA, None, Some("   "), Some("  "), None, None);
+        assert_eq!(without_file.api_id, "27462865");
+        assert_eq!(without_file.api_hash, "63358074ffa2262b19f4451497a85b34");
+    }
+
+    #[test]
+    fn resolve_telegram_upload_args_empty_file_contents_stay_empty() {
+        // Mirrors the current behavior: a present-but-empty credential file
+        // yields an empty value, not the default (the default only applies
+        // when the file cannot be read at all).
+        let args = resolve_telegram_upload_args(APP_DATA, None, None, None, Some(""), Some("  \n"));
+        assert_eq!(args.api_id, "");
+        assert_eq!(args.api_hash, "");
+    }
+
+    #[test]
+    fn telegram_account_dir_shape() {
+        assert_eq!(
+            telegram_account_dir(APP_DATA),
+            r"C:\Users\Admin\AppData\Roaming\mainframe\accounts\telegram\+8801956799504"
+        );
+    }
+
+    // ---- native message framing + message serde -----------------------------
+
+    fn sample_response() -> NativeResponse {
+        NativeResponse {
+            success: true,
+            event: Some("complete".to_string()),
+            request_id: Some("req-9".to_string()),
+            message: Some("done".to_string()),
+            line: None,
+            stream: None,
+            file_path: Some("/tmp/out.mkv".to_string()),
+            stdout: None,
+            stderr: None,
+        }
+    }
+
+    #[test]
+    fn encode_native_response_prefixes_length_and_round_trips() {
+        let bytes = encode_native_response(&sample_response()).unwrap();
+        assert!(bytes.len() > 4);
+        let prefix = u32::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+        assert_eq!(prefix, bytes.len() - 4, "length prefix must equal the JSON payload length");
+        let parsed: serde_json::Value = serde_json::from_slice(&bytes[4..]).unwrap();
+        assert_eq!(parsed["success"], true);
+        assert_eq!(parsed["event"], "complete");
+        assert_eq!(parsed["requestId"], "req-9");
+        assert_eq!(parsed["message"], "done");
+        assert_eq!(parsed["filePath"], "/tmp/out.mkv");
+    }
+
+    #[test]
+    fn encode_native_response_uses_camel_case_keys() {
+        let bytes = encode_native_response(&sample_response()).unwrap();
+        let json = std::str::from_utf8(&bytes[4..]).unwrap();
+        assert!(json.contains("\"requestId\""), "expected requestId in {json}");
+        assert!(json.contains("\"filePath\""), "expected filePath in {json}");
+        assert!(!json.contains("request_id"), "snake_case request_id leaked in {json}");
+        assert!(!json.contains("file_path"), "snake_case file_path leaked in {json}");
+    }
+
+    #[test]
+    fn native_message_deserializes_snake_case_fields() {
+        let msg: NativeMessage = serde_json::from_str(
+            r#"{"action":"download","url":"https://example.com/v","output_path":"/tmp/out.mkv","request_id":"req-1","format":"best","cookies_data":[{"domain":".example.com","host_only":false,"path":"/","secure":true,"expiration_date":123,"name":"n","value":"v"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(msg.action, "download");
+        assert_eq!(msg.url.as_deref(), Some("https://example.com/v"));
+        assert_eq!(msg.output_path.as_deref(), Some("/tmp/out.mkv"));
+        assert_eq!(msg.request_id.as_deref(), Some("req-1"));
+        assert_eq!(msg.format.as_deref(), Some("best"));
+        let cookies = msg.cookies_data.unwrap();
+        assert_eq!(cookies.len(), 1);
+        assert_eq!(cookies[0].domain, ".example.com");
+        assert!(cookies[0].secure);
+        assert_eq!(msg.file_path, None);
+    }
+
+    #[test]
+    fn native_message_missing_action_fails() {
+        let result: Result<NativeMessage, _> = serde_json::from_str(r#"{"request_id":"req-1"}"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn native_message_optional_fields_default_to_none() {
+        let msg: NativeMessage = serde_json::from_str(r#"{"action":"ping"}"#).unwrap();
+        assert_eq!(msg.action, "ping");
+        assert_eq!(msg.url, None);
+        assert_eq!(msg.request_id, None);
+        assert!(msg.cookies_data.is_none());
+    }
+
+    // ---- telegram uploader progress-line parsing ----------------------------
+
+    #[test]
+    fn parse_telegram_uploader_line_progress() {
+        assert_eq!(
+            parse_telegram_uploader_line("PROGRESS:1048576:2097152:50"),
+            TelegramUploaderLine::Progress {
+                current: "1048576".to_string(),
+                total: "2097152".to_string(),
+                percent: "50".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_telegram_uploader_line_progress_needs_three_parts() {
+        assert_eq!(parse_telegram_uploader_line("PROGRESS:1048576:2097152"), TelegramUploaderLine::Other);
+        assert_eq!(parse_telegram_uploader_line("PROGRESS:"), TelegramUploaderLine::Other);
+    }
+
+    #[test]
+    fn parse_telegram_uploader_line_result() {
+        assert_eq!(
+            parse_telegram_uploader_line(r#"RESULT:{"message_id":90}"#),
+            TelegramUploaderLine::Result(r#"{"message_id":90}"#.to_string())
+        );
+    }
+
+    #[test]
+    fn parse_telegram_uploader_line_error() {
+        assert_eq!(
+            parse_telegram_uploader_line("ERROR:session expired"),
+            TelegramUploaderLine::Error("session expired".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_telegram_uploader_line_other() {
+        assert_eq!(parse_telegram_uploader_line("Connecting..."), TelegramUploaderLine::Other);
+        assert_eq!(parse_telegram_uploader_line(""), TelegramUploaderLine::Other);
+        assert_eq!(parse_telegram_uploader_line("progress:1:2:3"), TelegramUploaderLine::Other);
+    }
+
+    // ---- truncate_for_native_message ----------------------------------------
+
+    #[test]
+    fn truncate_for_native_message_short_text_unchanged() {
+        assert_eq!(truncate_for_native_message("hello", 100), "hello");
+    }
+
+    #[test]
+    fn truncate_for_native_message_exact_limit_unchanged() {
+        let text = "a".repeat(10);
+        assert_eq!(truncate_for_native_message(&text, 10), text);
+    }
+
+    #[test]
+    fn truncate_for_native_message_truncates_and_reports_counts() {
+        let text = "a".repeat(100);
+        assert_eq!(
+            truncate_for_native_message(&text, 10),
+            "aaaaaaaaaa\u{2026} [truncated 90 bytes, showing first 10 of 100]"
+        );
+    }
+
+    #[test]
+    fn truncate_for_native_message_prefers_newline_cut() {
+        let text = format!("aaaa\n{}", "b".repeat(50));
+        let out = truncate_for_native_message(&text, 10);
+        assert!(out.starts_with("aaaa\u{2026}"), "expected cut at the newline: {out}");
+        assert!(out.contains("showing first 4 of 55"), "counts wrong: {out}");
+    }
+
+    #[test]
+    fn truncate_for_native_message_never_splits_utf8() {
+        // 10 emoji = 40 bytes; a 10-byte cut lands mid-emoji, so the cut must
+        // back off to the 8-byte boundary.
+        let text = "\u{1F600}".repeat(10);
+        assert_eq!(
+            truncate_for_native_message(&text, 10),
+            "\u{1F600}\u{1F600}\u{2026} [truncated 32 bytes, showing first 8 of 40]"
+        );
+        // A zero-byte budget must not panic either.
+        assert_eq!(
+            truncate_for_native_message("abc", 0),
+            "\u{2026} [truncated 3 bytes, showing first 0 of 3]"
+        );
+    }
+
+    // ---- downloaded-path detection ------------------------------------------
+
+    #[test]
+    fn looks_like_downloaded_path_accepts_windows_drive() {
+        assert!(looks_like_downloaded_path(r"C:\Users\Admin\Videos\clip.mkv"));
+        assert!(looks_like_downloaded_path("C:/Users/Admin/Videos/clip.mkv"));
+    }
+
+    #[test]
+    fn looks_like_downloaded_path_accepts_unc() {
+        assert!(looks_like_downloaded_path(r"\\server\share\clip.mkv"));
+    }
+
+    #[test]
+    fn looks_like_downloaded_path_accepts_unix_absolute() {
+        assert!(looks_like_downloaded_path("/home/user/Videos/clip.mkv"));
+    }
+
+    #[test]
+    fn looks_like_downloaded_path_rejects_log_lines() {
+        assert!(!looks_like_downloaded_path(""));
+        assert!(!looks_like_downloaded_path("   "));
+        assert!(!looks_like_downloaded_path("[download] 100% of 1.2GiB"));
+        assert!(!looks_like_downloaded_path("WARNING: falling back"));
+        assert!(!looks_like_downloaded_path("ERROR: unable to download"));
+        assert!(!looks_like_downloaded_path("https://example.com/clip.mkv"));
+        assert!(!looks_like_downloaded_path("relative/path/clip.mkv"));
+        assert!(!looks_like_downloaded_path("/home/user/noext"));
+        assert!(!looks_like_downloaded_path("/home/user/file."));
+        assert!(!looks_like_downloaded_path(r"C:\path\noext"));
+        // An ffmpeg log line quoting a path is not a path line.
+        assert!(!looks_like_downloaded_path(r"Input #0, mov,mp4,m4a from 'C:\Videos\clip.mp4':"));
+    }
+
+    #[test]
+    fn extract_downloaded_path_prefers_last_stdout_line() {
+        let stdout = "[download] 100%\nC:\\Users\\Admin\\Videos\\clip.mkv\n[ffmpeg] Merging\n";
+        assert_eq!(
+            extract_downloaded_path(stdout, ""),
+            Some(r"C:\Users\Admin\Videos\clip.mkv".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_downloaded_path_falls_back_to_stderr() {
+        assert_eq!(
+            extract_downloaded_path("[download] 100%", "/home/user/clip.mkv\n"),
+            Some("/home/user/clip.mkv".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_downloaded_path_none_when_absent() {
+        assert_eq!(extract_downloaded_path("[download] 100%", "ERROR: boom"), None);
+        assert_eq!(extract_downloaded_path("", ""), None);
+    }
+
+    #[test]
+    fn extract_downloaded_path_prefers_stdout_over_stderr() {
+        assert_eq!(
+            extract_downloaded_path("/tmp/a.mkv", "/tmp/b.mkv"),
+            Some("/tmp/a.mkv".to_string())
+        );
+    }
+
+    // ---- mirror URL rewrite -------------------------------------------------
+
+    #[test]
+    fn rewrite_mirror_url_rewrites_ukdevilz_watch() {
+        assert_eq!(
+            rewrite_mirror_url("https://ukdevilz.com/watch/12345_678"),
+            "https://vk.com/video12345_678"
+        );
+    }
+
+    #[test]
+    fn rewrite_mirror_url_rewrites_www_and_strips_query_and_slash() {
+        assert_eq!(
+            rewrite_mirror_url("https://www.ukdevilz.com/watch/12345_678/?ref=x"),
+            "https://vk.com/video12345_678"
+        );
+    }
+
+    #[test]
+    fn rewrite_mirror_url_rewrites_case_insensitive_host() {
+        assert_eq!(
+            rewrite_mirror_url("HTTPS://UKDEVILZ.COM/WATCH/12345_678"),
+            "https://vk.com/video12345_678"
+        );
+    }
+
+    #[test]
+    fn rewrite_mirror_url_leaves_other_urls_alone() {
+        assert_eq!(
+            rewrite_mirror_url("https://www.youtube.com/watch?v=abc"),
+            "https://www.youtube.com/watch?v=abc"
+        );
+        assert_eq!(
+            rewrite_mirror_url("https://vk.com/video12345_678"),
+            "https://vk.com/video12345_678"
+        );
+        // Not a /watch/ path.
+        assert_eq!(
+            rewrite_mirror_url("https://ukdevilz.com/videofile/123.mp4"),
+            "https://ukdevilz.com/videofile/123.mp4"
+        );
+        // A non-numeric id is not a VK video id.
+        assert_eq!(
+            rewrite_mirror_url("https://ukdevilz.com/watch/abc123"),
+            "https://ukdevilz.com/watch/abc123"
+        );
+        // A port on the host defeats the path match, so it passes through.
+        assert_eq!(
+            rewrite_mirror_url("https://ukdevilz.com:8080/watch/12345_678"),
+            "https://ukdevilz.com:8080/watch/12345_678"
+        );
+    }
+
+    // ---- yt-dlp output helpers ----------------------------------------------
+
+    #[test]
+    fn combine_ytdlp_output_orders_stderr_first() {
+        assert_eq!(combine_ytdlp_output("out", "err"), "err\nout");
+    }
+
+    #[test]
+    fn combine_ytdlp_output_skips_empty_parts() {
+        assert_eq!(combine_ytdlp_output("out", ""), "out");
+        assert_eq!(combine_ytdlp_output("", "err"), "err");
+        assert_eq!(combine_ytdlp_output("  ", "\n"), "");
+        assert_eq!(combine_ytdlp_output("  out  ", "  err  "), "err\nout");
+    }
+
+    #[test]
+    fn ytdlp_failure_message_empty_combined_names_exit_code() {
+        assert_eq!(
+            ytdlp_failure_message("", Some(1)),
+            "yt-dlp failed with exit code Some(1)"
+        );
+        assert_eq!(
+            ytdlp_failure_message("", None),
+            "yt-dlp failed with exit code None"
+        );
+    }
+
+    #[test]
+    fn ytdlp_failure_message_nonempty_combined() {
+        assert_eq!(
+            ytdlp_failure_message("ERROR: boom", Some(1)),
+            "yt-dlp failed:\nERROR: boom"
+        );
+    }
+
+    #[test]
+    fn should_retry_with_short_title_cases() {
+        let template = r"C:\Videos\%(title)s.%(ext)s";
+        assert!(should_retry_with_short_title(template, "error: unable to open for writing"));
+        assert!(should_retry_with_short_title(template, "no such file or directory"));
+        // Already shortened: no second retry.
+        assert!(!should_retry_with_short_title(
+            r"C:\Videos\%(title).180B.%(ext)s",
+            "unable to open for writing"
+        ));
+        // No title template at all.
+        assert!(!should_retry_with_short_title(
+            r"C:\Videos\fixed.%(ext)s",
+            "unable to open for writing"
+        ));
+        // An unrelated failure is not a path-length problem.
+        assert!(!should_retry_with_short_title(template, "http error 403"));
+    }
+
+    #[test]
+    fn should_retry_extraction_cases() {
+        assert!(should_retry_extraction(0, "unable to extract universal data for rehydration"));
+        assert!(should_retry_extraction(1, "http error 403"));
+        // Attempt 2 is the last attempt: no further retry.
+        assert!(!should_retry_extraction(2, "http error 403"));
+        assert!(!should_retry_extraction(3, "http error 403"));
+        assert!(!should_retry_extraction(0, "some other failure"));
+    }
+
+    #[test]
+    fn classify_test_download_error_cases() {
+        assert_eq!(
+            classify_test_download_error("ERROR: HTTP Error 403: Forbidden\nmore"),
+            "yt-dlp failed: HTTP Error 403 Forbidden"
+        );
+        assert_eq!(
+            classify_test_download_error("ffmpeg exited with code 1\nsecond line"),
+            "yt-dlp failed (ffmpeg error): ffmpeg exited with code 1"
+        );
+        assert_eq!(
+            classify_test_download_error("ERROR: Unsupported URL\nsecond line"),
+            "yt-dlp failed: ERROR: Unsupported URL"
+        );
+        assert_eq!(classify_test_download_error(""), "yt-dlp failed: ");
+    }
+
+    // ---- cookies file --------------------------------------------------------
+
+    #[test]
+    fn write_temp_cookies_file_writes_netscape_format() {
+        let cookies = vec![
+            BrowserCookie {
+                domain: ".example.com".to_string(),
+                host_only: false,
+                path: "/".to_string(),
+                secure: true,
+                expiration_date: 1_700_000_000,
+                name: "session".to_string(),
+                value: "abc".to_string(),
+            },
+            BrowserCookie {
+                domain: "plain.example.com".to_string(),
+                host_only: true,
+                path: "/videos".to_string(),
+                secure: false,
+                expiration_date: -5,
+                name: "x".to_string(),
+                value: "y".to_string(),
+            },
+        ];
+        let path = write_temp_cookies_file(&cookies).unwrap();
+        let mut cleanup = TestCleanup::new();
+        cleanup.track(path.clone());
+
+        let contents = fs::read_to_string(&path).unwrap();
+        assert!(contents.starts_with("# Netscape HTTP Cookie File\n# Generated by ImgVault\n"));
+        assert!(contents.contains(".example.com\tTRUE\t/\tTRUE\t1700000000\tsession\tabc\n"));
+        // host_only flips the subdomain flag, and a negative expiry clamps to 0.
+        assert!(contents.contains("plain.example.com\tFALSE\t/videos\tFALSE\t0\tx\ty\n"));
+    }
+
+    #[test]
+    fn cleanup_temp_cookies_file_removes_only_own_files() {
+        let mut cleanup = TestCleanup::new();
+        let ours = env::temp_dir().join(format!(
+            "imgvault-yt-dlp-cookies-{}-{}.txt",
+            std::process::id(),
+            TEST_COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        let other = env::temp_dir().join(format!(
+            "plain-cookies-{}-{}.txt",
+            std::process::id(),
+            TEST_COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        cleanup.track(other.clone());
+        fs::write(&ours, b"cookies").unwrap();
+        fs::write(&other, b"cookies").unwrap();
+
+        cleanup_temp_cookies_file(&Some(ours.clone()));
+        assert!(!ours.exists(), "own cookies file was not removed");
+        cleanup_temp_cookies_file(&Some(other.clone()));
+        assert!(other.exists(), "a foreign file was removed");
+        cleanup_temp_cookies_file(&None);
+    }
+
+    // ---- temp path builders + misc pure helpers ------------------------------
+
+    #[test]
+    fn session_and_request_paths_live_under_temp_and_carry_sanitized_id() {
+        let id = "req/../1";
+        assert_eq!(
+            video_session_path(id, "input"),
+            env::temp_dir().join("imgvault-req____1-input")
+        );
+        assert_eq!(
+            get_request_pid_path(id),
+            env::temp_dir().join("imgvault-native-download-req____1.pid")
+        );
+        assert_eq!(
+            get_cancel_flag_path(id),
+            env::temp_dir().join("imgvault-native-download-req____1.cancel")
+        );
+        assert_eq!(
+            get_request_journal_path(id),
+            env::temp_dir().join("imgvault-yt-dlp-journal-req____1.json")
+        );
+    }
+
+    #[test]
+    fn get_output_directory_returns_parent() {
+        assert_eq!(
+            get_output_directory("/home/user/Videos/%(title)s.mkv").unwrap(),
+            PathBuf::from("/home/user/Videos")
+        );
+    }
+
+    #[test]
+    fn get_cookies_path_is_next_to_executable() {
+        let cookies = get_cookies_path().unwrap();
+        assert_eq!(cookies.file_name().unwrap().to_str().unwrap(), "cookies.txt");
+        assert_eq!(cookies.parent().unwrap(), get_executable_directory().unwrap());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn get_default_videos_directory_non_windows_is_current_dir() {
+        assert_eq!(get_default_videos_directory().unwrap(), env::current_dir().unwrap());
+    }
+
+    #[test]
+    fn chrono_now_ms_is_plausible() {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let value = chrono_now_ms();
+        assert!(value > 1_704_067_200_000, "before 2024-01-01: {value}");
+        assert!(value <= now_ms + 1_000, "in the future: {value} > {now_ms}");
+    }
+
+    // ---- file round trips (real temp files, unique per test) -----------------
+
+    #[test]
+    fn video_normalize_start_chunk_round_trip() {
+        let id = unique_request_id("vnorm");
+        let input = video_session_path(&id, "input");
+        assert!(video_normalize_start(&id).is_ok());
+        assert_eq!(fs::read(&input).unwrap(), b"");
+
+        video_normalize_chunk(&id, &BASE64.encode(b"hello")).unwrap();
+        video_normalize_chunk(&id, &BASE64.encode(b" world")).unwrap();
+        assert_eq!(fs::read(&input).unwrap(), b"hello world");
+
+        assert!(video_normalize_chunk(&id, "!!!not-base64!!!").is_err());
+        video_normalize_cleanup(&id);
+        assert!(!input.exists());
+    }
+
+    #[test]
+    fn video_normalize_chunk_without_start_fails() {
+        let id = unique_request_id("vnorm-nostart");
+        assert!(video_normalize_chunk(&id, &BASE64.encode(b"x")).is_err());
+    }
+
+    #[test]
+    fn file_write_start_chunk_finish_round_trip_staged() {
+        let id = unique_request_id("fwstage");
+        let mut cleanup = TestCleanup::new();
+
+        let target = file_write_start(&id, "", "clip.mp4").unwrap();
+        let session_dir = target.parent().unwrap().to_path_buf();
+        cleanup.track(session_dir.clone());
+        assert_eq!(
+            target,
+            env::temp_dir()
+                .join("imgvault-tg-stage")
+                .join(&id)
+                .join("clip.mp4")
+        );
+
+        file_write_chunk(&id, &BASE64.encode(b"abc")).unwrap();
+        file_write_chunk(&id, &BASE64.encode(b"def")).unwrap();
+        let (path, size) = file_write_finish(&id).unwrap();
+        assert_eq!(path, target.display().to_string());
+        assert_eq!(size, 6);
+        assert_eq!(fs::read(&target).unwrap(), b"abcdef");
+        // finish removes the sidecar.
+        assert!(!file_write_target_path(&id).exists());
+
+        // The staged file is deletable through the guarded delete path.
+        assert_eq!(delete_staged_file(&path), Ok(true));
+        assert!(!target.exists());
+    }
+
+    #[test]
+    fn file_write_start_absolute_path_round_trip() {
+        let id = unique_request_id("fwabs");
+        let mut cleanup = TestCleanup::new();
+        let dir = unique_temp_dir("imgvault-test", "fwabs");
+        cleanup.track(dir.clone());
+        let absolute = dir.join("clip.m4a");
+
+        let target = file_write_start(&id, absolute.to_str().unwrap(), "clip.m4a").unwrap();
+        assert_eq!(target, absolute);
+        file_write_chunk(&id, &BASE64.encode(b"data")).unwrap();
+        let (path, size) = file_write_finish(&id).unwrap();
+        assert_eq!(path, absolute.display().to_string());
+        assert_eq!(size, 4);
+        assert_eq!(fs::read(&absolute).unwrap(), b"data");
+    }
+
+    #[test]
+    fn file_write_resolve_target_without_start_fails() {
+        let id = unique_request_id("fw-nostart");
+        assert!(file_write_resolve_target(&id).is_err());
+        assert!(file_write_chunk(&id, &BASE64.encode(b"x")).is_err());
+        assert!(file_write_finish(&id).is_err());
+    }
+
+    #[test]
+    fn download_journal_write_read_remove_round_trip() {
+        let id = unique_request_id("journal");
+        let path = get_request_journal_path(&id);
+        let mut cleanup = TestCleanup::new();
+        cleanup.track(path.clone());
+
+        assert_eq!(read_download_journal(&id), None);
+        write_download_journal(
+            &id,
+            "completed",
+            Some("/tmp/clip.mkv"),
+            Some("Download complete"),
+            Some("stdout"),
+            Some("stderr"),
+        )
+        .unwrap();
+
+        let journal = read_download_journal(&id).expect("journal readable");
+        assert_eq!(journal["requestId"], id);
+        assert_eq!(journal["status"], "completed");
+        assert_eq!(journal["file_path"], "/tmp/clip.mkv");
+        assert_eq!(journal["message"], "Download complete");
+        assert!(journal["completedAt"].as_i64().unwrap() > 0);
+
+        remove_download_journal(&id);
+        assert_eq!(read_download_journal(&id), None);
+    }
+
+    #[test]
+    fn request_pid_and_cancel_flag_round_trip() {
+        let id = unique_request_id("pidflag");
+        let mut cleanup = TestCleanup::new();
+        cleanup.track(get_request_pid_path(&id));
+        cleanup.track(get_cancel_flag_path(&id));
+
+        write_request_pid(&id, 4242).unwrap();
+        assert_eq!(fs::read_to_string(get_request_pid_path(&id)).unwrap(), "4242");
+        remove_request_pid(&id);
+        assert!(!get_request_pid_path(&id).exists());
+
+        assert!(!has_cancel_flag(&id));
+        write_cancel_flag(&id).unwrap();
+        assert!(has_cancel_flag(&id));
+        remove_cancel_flag(&id);
+        assert!(!has_cancel_flag(&id));
+    }
+
+    #[test]
+    fn cancel_download_request_no_active_download() {
+        let id = unique_request_id("cancel-none");
+        let result = cancel_download_request(&id).unwrap();
+        assert!(result.contains("No active download"), "unexpected: {result}");
+    }
+
+    #[test]
+    fn cancel_download_request_reports_finished_journal() {
+        let id = unique_request_id("cancel-done");
+        let mut cleanup = TestCleanup::new();
+        cleanup.track(get_request_journal_path(&id));
+        write_download_journal(&id, "completed", None, None, None, None).unwrap();
+
+        let result = cancel_download_request(&id).unwrap();
+        assert!(result.contains("already finished"), "unexpected: {result}");
+    }
+
+    #[test]
+    fn cancel_download_request_reports_existing_cancel_flag() {
+        let id = unique_request_id("cancel-flag");
+        let mut cleanup = TestCleanup::new();
+        cleanup.track(get_cancel_flag_path(&id));
+        write_cancel_flag(&id).unwrap();
+
+        let result = cancel_download_request(&id).unwrap();
+        assert!(result.contains("already requested"), "unexpected: {result}");
     }
 }

@@ -9,9 +9,12 @@ edition = "2021"
 base64 = "0.22"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-winreg = "0.52"
 
 [target.'cfg(windows)'.dependencies]
+# winreg is Windows-only (its lib.rs is a compile_error on other targets) and
+# main.rs only uses it behind #[cfg(target_os = "windows")]; keeping it
+# unconditional broke every non-Windows build, including `cargo test` on Linux.
+winreg = "0.52"
 winapi = { version = "0.3", features = ["fileapi", "winbase", "minwindef", "winuser"] }
 
 [profile.release]
