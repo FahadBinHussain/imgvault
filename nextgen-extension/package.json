@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "node run-tests.mjs",
     "build": "vite build && powershell -ExecutionPolicy Bypass -File ./postbuild.ps1",
     "preview": "vite preview",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",

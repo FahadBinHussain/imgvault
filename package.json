@@ -2,6 +2,7 @@
   "name": "imgvault",
   "private": true,
   "scripts": {
+    "test": "node nextgen-extension/run-tests.mjs && pnpm --dir web test && cargo test --manifest-path native-host/src-tauri/Cargo.toml",
     "build:web": "pnpm --dir web build",
     "build:extension": "pnpm --dir nextgen-extension build",
     "check:twins": "node tools/check-shared-twins.mjs"
