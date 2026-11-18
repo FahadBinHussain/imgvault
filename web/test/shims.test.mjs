@@ -14,11 +14,14 @@ import * as catalogShared from 'imgvault-shared/providerCatalog.js'
 import * as limitsShim from '../src/lib/hostUploadLimits.js'
 import * as limitsShared from 'imgvault-shared/hostUploadLimits.js'
 
-function checkShim(t, name, shim, shared) {
-  t.test(`${name}: exports the same key set as shared`, () => {
+async function checkShim(t, name, shim, shared) {
+  // subtests MUST be awaited: an un-awaited t.test() is cancelled when the
+  // parent returns (node 22 cancels it reliably; node 24 happened to let it
+  // finish, which is why this passed locally and failed in CI).
+  await t.test(`${name}: exports the same key set as shared`, () => {
     assert.deepEqual(Object.keys(shim).sort(), Object.keys(shared).sort())
   })
-  t.test(`${name}: every export is the identical shared reference`, () => {
+  await t.test(`${name}: every export is the identical shared reference`, () => {
     for (const key of Object.keys(shared)) {
       assert.equal(shim[key], shared[key], `${name}.${key} drifted from shared`)
     }
@@ -26,10 +29,10 @@ function checkShim(t, name, shim, shared) {
 }
 
 test('web re-export shims mirror packages/shared', async (t) => {
-  checkShim(t, 'image-provider-links', imageShim, imageShared)
-  checkShim(t, 'video-provider-links', videoShim, videoShared)
-  checkShim(t, 'providerCatalog', catalogShim, catalogShared)
-  checkShim(t, 'hostUploadLimits', limitsShim, limitsShared)
+  await checkShim(t, 'image-provider-links', imageShim, imageShared)
+  await checkShim(t, 'video-provider-links', videoShim, videoShared)
+  await checkShim(t, 'providerCatalog', catalogShim, catalogShared)
+  await checkShim(t, 'hostUploadLimits', limitsShim, limitsShared)
 })
 
 test('shims expose the exports the web lib files actually import', () => {
