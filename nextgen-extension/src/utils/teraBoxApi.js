@@ -447,14 +447,19 @@ export async function authorizeTeraBox(explicitCookie) {
       // extra cookie names the tab picked up (verify cookie, etc.)
       const map = new Map();
       resolvedCookie.split(';').filter(Boolean).forEach((s) => {
-        const i = s.indexOf('=');
-        const name = i > 0 ? s.trim().slice(0, i).trim() : '';
-        if (name) map.set(name, i > 0 ? s.trim().slice(i + 1) : '');
+        // trim FIRST, then split: the index has to be computed on the same
+        // string it slices, or every segment after the first (leading space)
+        // comes out garbled — name gains '=', value loses its first char.
+        const seg = s.trim();
+        const i = seg.indexOf('=');
+        const name = i > 0 ? seg.slice(0, i).trim() : '';
+        if (name) map.set(name, i > 0 ? seg.slice(i + 1) : '');
       });
       tabCookie.split(';').filter(Boolean).forEach((s) => {
-        const i = s.indexOf('=');
-        const name = i > 0 ? s.trim().slice(0, i).trim() : '';
-        if (name && !map.has(name)) map.set(name, i > 0 ? s.trim().slice(i + 1) : '');
+        const seg = s.trim();
+        const i = seg.indexOf('=');
+        const name = i > 0 ? seg.slice(0, i).trim() : '';
+        if (name && !map.has(name)) map.set(name, i > 0 ? seg.slice(i + 1) : '');
       });
       cookie = Array.from(map, ([n, v]) => `${n}=${v}`).join('; ');
     }

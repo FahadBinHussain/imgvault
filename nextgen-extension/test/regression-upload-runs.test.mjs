@@ -255,15 +255,21 @@ test('2.19.2 (2026-11-03): calculateTeraBoxChunkSize is 4 MB at the 4 GB boundar
   assert.equal(calculateTeraBoxChunkSize(0), 1);
 });
 
-// DISCOVERED BUG (2026-11-18, reported — NOT pinned live because the call
-// never returns): calculateTeraBoxChunkSize HANGS FOREVER for any file
-// over 4 GB. `threshold <<= 1` is a 32-bit shift, so the 4 GB threshold
-// (2^32) becomes 0 on the first doubling and `streamSize > threshold`
-// stays true forever at 100% CPU. uploaders.js:1135 calls it with the
-// real file size, so a >4 GB TeraBox upload hangs the real uploader.
-// The fix is `chunkSize *= 2; threshold *= 2;` instead of `<<=`. The
-// >4 GB doubling cases are deliberately NOT asserted here until the
-// source is fixed — calling them would hang the whole test run.
+// FIXED 2.19.23: calculateTeraBoxChunkSize used to HANG FOREVER for any
+// file over 4 GB — `threshold <<= 1` is a 32-bit shift, so the 4 GB
+// threshold (2^32) became 0 on the first doubling and `streamSize >
+// threshold` stayed true forever at 100% CPU. uploaders.js calls it with
+// the real file size, so a >4 GB TeraBox upload hung the real uploader.
+// The doubling is plain multiplication now, so the >4 GB cases below
+// terminate and pin the chunk size at each boundary.
+test('2.19.23: calculateTeraBoxChunkSize terminates past 4 GB and doubles per 4 GB threshold', () => {
+  assert.equal(calculateTeraBoxChunkSize(5 * GB), 8 * MB);
+  assert.equal(calculateTeraBoxChunkSize(8 * GB), 8 * MB);
+  assert.equal(calculateTeraBoxChunkSize(9 * GB), 16 * MB);
+  assert.equal(calculateTeraBoxChunkSize(16 * GB), 16 * MB);
+  assert.equal(calculateTeraBoxChunkSize(17 * GB), 32 * MB);
+  assert.equal(calculateTeraBoxChunkSize(100 * GB), 128 * MB);
+});
 
 // ------------------------------------------- source assertions (wiring) ---
 

@@ -38,8 +38,11 @@ export function calculateTeraBoxChunkSize(streamSize) {
   let threshold = 4 * 1024 * 1024 * 1024;
   if (streamSize < chunkSize) return Math.max(streamSize, 1);
   while (streamSize > threshold) {
-    chunkSize <<= 1;
-    threshold <<= 1;
+    // plain multiplication, NOT <<= : the shift is 32-bit, so the 4 GB
+    // threshold (2^32) became 0 on the first doubling and this loop never
+    // returned for any file over 4 GB (2.19.23 fix).
+    chunkSize *= 2;
+    threshold *= 2;
   }
   return chunkSize;
 }

@@ -177,16 +177,29 @@ test('2.16.9 (2026-10-26): authorizeTeraBox merges a tab cookie in — new names
   }
 });
 
-// DISCOVERED BUG (2026-11-18, reported — NOT pinned live): the tab-cookie
-// merge in authorizeTeraBox corrupts every cookie segment after the first.
-// `i` is computed on the raw segment (with its leading space) but the name
-// and value are sliced from `s.trim()`, so the name gains a '=' and the
-// value loses its first character — measured live 2026-11-18:
-// 'ndus=fake-session; browserid=fake-browser' + 'ndus=tab-value; verify=abc123'
-// merges to 'ndus=fake-session; browserid==ake-browser; verify==bc123'.
-// The single-segment cases above pass because the first segment has no
-// leading space. The fix is to trim the segment BEFORE computing `i` (or
-// split on ';' and trim each part once).
+// FIXED 2.19.23: the tab-cookie merge used to corrupt every cookie
+// segment after the first — `i` was computed on the raw segment (with
+// its leading space) but the name and value were sliced from `s.trim()`,
+// so the name gained a '=' and the value lost its first character
+// (measured 2026-11-18: 'ndus=fake-session; browserid=fake-browser' +
+// 'ndus=tab-value; verify=abc123' merged to
+// 'ndus=fake-session; browserid==ake-browser; verify==bc123'). The
+// segment is trimmed BEFORE computing `i` now. The single-segment
+// cases above passed because the first segment has no leading space —
+// this is the multi-segment case that actually broke.
+test('2.19.23: authorizeTeraBox merges multi-segment tab cookies without garbling them', async () => {
+  installChrome({
+    teraboxJsToken: 'cached-token', teraboxJsTokenAt: Date.now(),
+    teraboxTabCookie: 'ndus=tab-value; verify=abc123', teraboxTabCookieAt: Date.now(),
+  });
+  try {
+    const auth = await authorizeTeraBox('ndus=fake-session; browserid=fake-browser');
+    assert.equal(auth.jsToken, 'cached-token');
+    assert.equal(auth.cookie, 'ndus=fake-session; browserid=fake-browser; verify=abc123');
+  } finally {
+    uninstallChrome();
+  }
+});
 
 test('2.16.9 (2026-10-26): authorizeTeraBox with no cookie at all returns null instead of a half-auth', async () => {
   installChrome({});
