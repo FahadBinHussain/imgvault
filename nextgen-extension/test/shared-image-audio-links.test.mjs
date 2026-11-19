@@ -9,6 +9,7 @@ import {
   getImageRetrySourceCandidates,
   getImageUploadService,
   getMissingImageUploadServices,
+  getPlayableImageProviderLink,
   getPreferredImageProviderLink,
   getStrictImageProviderLink,
   hasAnyImageProviderLink,
@@ -121,6 +122,43 @@ describe('getPreferredImageProviderLink', () => {
   });
   test('nothing anywhere returns empty', () => {
     assert.equal(getPreferredImageProviderLink({}), '');
+  });
+});
+
+describe('getPlayableImageProviderLink', () => {
+  const item = { imageHosts: { pixvid: { url: 'https://pixvid.example/a.png' } } };
+  test('the preferred host wins and is flagged preferred', () => {
+    assert.deepEqual(getPlayableImageProviderLink(item, 'pixvid'), {
+      url: 'https://pixvid.example/a.png',
+      sourceKey: 'pixvid',
+      sourceLabel: 'Pixvid',
+      isPreferred: true,
+    });
+  });
+  test('a missing preferred host falls through and the serving host is NAMED, flagged non-preferred', () => {
+    assert.deepEqual(getPlayableImageProviderLink(item, 'imgbb'), {
+      url: 'https://pixvid.example/a.png',
+      sourceKey: 'pixvid',
+      sourceLabel: 'Pixvid',
+      isPreferred: false,
+    });
+  });
+  test('the thumbnailUrl field falls back to the host url', () => {
+    assert.equal(
+      getPlayableImageProviderLink(item, 'imgbb', 'thumbnailUrl').url,
+      'https://pixvid.example/a.png',
+    );
+  });
+  test('nothing anywhere returns the empty shape', () => {
+    assert.deepEqual(getPlayableImageProviderLink({}), {
+      url: '', sourceKey: '', sourceLabel: '', isPreferred: false,
+    });
+  });
+  test('getPreferredImageProviderLink is the same resolution, url-only', () => {
+    assert.equal(
+      getPreferredImageProviderLink(item, 'imgbb'),
+      getPlayableImageProviderLink(item, 'imgbb').url,
+    );
   });
 });
 

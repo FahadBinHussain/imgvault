@@ -22,9 +22,9 @@ const gallery = () => src('../src/pages/GalleryPage.jsx');
 
 // ------------------------------------------------- manifest / build ---
 
-test('2.19.22 (2026-11-18): the manifest is at 2.19.22, carries unlimitedStorage, and lists scene-viewer.js concretely', () => {
+test('2.19.23 (2026-11-19): the manifest is at 2.19.23, carries unlimitedStorage, and lists scene-viewer.js concretely', () => {
   const manifest = JSON.parse(src('../public/manifest.json'));
-  assert.equal(manifest.version, '2.19.22');
+  assert.equal(manifest.version, '2.19.23');
   assert.ok(manifest.permissions.includes('unlimitedStorage'));
   const resources = manifest.web_accessible_resources.flatMap((entry) => entry.resources);
   assert.ok(resources.includes('scene-viewer.js'));
@@ -168,11 +168,14 @@ test('2.14.0 (2026-10-11): the navbar goes single-row at 1700px; the timeline ra
 
 // ------------------------------------------------- STRICT (current) ---
 
-// NOTE (doc/code mismatch, reported not pinned): the 2.11.x STRICT entry
-// says "never use the chain-based getPreferred* for UI", but all three
-// pages use getPreferredImageProviderLink for IMAGE display. The VIDEO
-// side complies (playable-first since 2.19.16) and STRICT still governs
-// vault move + download targets, so those are what is pinned here.
+// NOTE (2.19.23): the 2.11.x STRICT entry says "never use the chain-based
+// getPreferred* for UI", but all three pages use getPreferredImageProviderLink
+// for IMAGE display. The VIDEO side complies (playable-first since 2.19.16),
+// and the IMAGE side now has the same shape: getPlayableImageProviderLink
+// (preferred first, named fallback) drives both modals, and
+// getPreferredImageProviderLink delegates to it for card thumbnails.
+// STRICT still governs vault move + download targets, so those are what
+// is pinned here.
 test('2.11.x STRICT (current contract): vault move resolves STRICTLY from the selected host; video UI never uses the chain helper', () => {
   const bg = background();
   assert.ok(bg.includes("? (getStrictVideoProviderLink(current, sourceHost, 'directUrl') || getStrictVideoProviderLink(current, sourceHost, 'watchUrl'))"));
@@ -180,6 +183,26 @@ test('2.11.x STRICT (current contract): vault move resolves STRICTLY from the se
   for (const page of ['GalleryPage', 'VaultPage', 'ResolvePage']) {
     assert.ok(!src(`../src/pages/${page}.jsx`).includes('getPreferredVideoProviderLink'));
   }
+});
+
+test('2.19.23: image display is playable-first — web pages and both modals resolve from the host that has the file and name it', () => {
+  const web = (rel) => src(`../../web/src/${rel}`);
+  // web display pages no longer use STRICT (a pixvid-only image was
+  // invisible when imgbb was preferred)
+  for (const rel of ['app/gallery/page.jsx', 'app/collections/page.jsx', 'app/components/GalleryLightbox.jsx']) {
+    const file = web(rel);
+    assert.ok(file.includes('getPlayableImageProviderLink'), `${rel} must use the playable helper`);
+    assert.ok(!file.includes('getStrictImageProviderLink'), `${rel} must not use STRICT for display`);
+  }
+  // both modals name the serving host when it is not the preferred one
+  const lightbox = web('app/components/GalleryLightbox.jsx');
+  assert.ok(lightbox.includes('Showing from {playableImage.sourceLabel}'));
+  const page = gallery();
+  assert.ok(page.includes('const playableImage = getPlayableImageProviderLink(modalImage, defaultGallerySource'));
+  assert.ok(page.includes('Showing from {playableImage.sourceLabel}'));
+  // STRICT still governs download targets (shared) and vault move
+  const targets = src('../../packages/shared/downloadTargets.js');
+  assert.ok(targets.includes('getStrictImageProviderLink(item, imageSource, \'url\')'));
 });
 
 // ------------------------------------------------- host / dedup wiring ---

@@ -39,7 +39,7 @@ import { FilemoonUploader, UDropUploader, TeraBoxUploader, TelegramUploader } fr
 import { assertTelegramUploadSize, probeNativeHost, telegramUploadSizeCap } from '../utils/telegramApi.js';
 import { encryptBlob, encryptMetadata } from '../utils/vaultCrypto.js';
 import { getVaultMasterKey, importMasterKeyFromB64 } from '../utils/vaultSession.js';
-import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
+import { getPreferredImageProviderLink, getPlayableImageProviderLink, getImageProviderLabel } from '../utils/imageProviderLinks';
 import { downloadItemDirect } from '../utils/downloads';
 import {
   getMissingVideoUploadServices,
@@ -4551,18 +4551,29 @@ export default function GalleryPage() {
         </div>
       );
     }
+    // an image can live on a host the preferred source does not have —
+    // show the host that actually holds the file and name it (2.19.23,
+    // same as the video modal's "Playing from" label).
+    const playableImage = getPlayableImageProviderLink(modalImage, defaultGallerySource, 'url');
     return (
-      <img
-        src={
-          getPreferredImageProviderLink(modalImage, defaultGallerySource, 'url') ||
-          modalImage.sourceImageUrl
-        }
-        alt={modalImage.pageTitle}
-        className={`max-w-full max-h-full object-contain rounded-[var(--radius-box)] shadow-2xl relative z-10
-                 transition-all duration-700 ease-out
-                 hover:scale-[1.02] hover:shadow-primary/30
-                 ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
-      />
+      <div className="w-full h-full flex flex-col gap-2 items-center">
+        <img
+          src={
+            playableImage.url ||
+            modalImage.sourceImageUrl
+          }
+          alt={modalImage.pageTitle}
+          className={`max-w-full max-h-full object-contain rounded-[var(--radius-box)] shadow-2xl relative z-10
+                   transition-all duration-700 ease-out
+                   hover:scale-[1.02] hover:shadow-primary/30
+                   ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
+        />
+        {playableImage.sourceLabel && !playableImage.isPreferred && (
+          <p className="text-xs text-base-content/60 px-1">
+            Showing from {playableImage.sourceLabel} — {getImageProviderLabel(defaultGallerySource)} has no link for this image
+          </p>
+        )}
+      </div>
     );
   };
 

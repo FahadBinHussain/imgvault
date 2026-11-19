@@ -68,13 +68,31 @@ export function getImageProviderLinks(item = {}) {
 }
 
 export function getPreferredImageProviderLink(item, preferredProvider = DEFAULT_IMAGE_SOURCE, field = 'url') {
+  return getPlayableImageProviderLink(item, preferredProvider, field).url;
+}
+
+/**
+ * The image link to DISPLAY, playable-first like the video helper
+ * (2.19.16): the preferred host is tried first, and only when it has no
+ * link does the host that actually holds the file answer — with its name,
+ * so the UI can say which host is serving the image instead of silently
+ * showing another host's file. Images have no "playable" semantics, so
+ * the only adaptation from the video shape is the field fallback
+ * (url <- displayUrl <- directUrl); the { url, sourceKey, sourceLabel,
+ * isPreferred } contract is identical.
+ *
+ * @returns {{url: string, sourceKey: string, sourceLabel: string, isPreferred: boolean}}
+ */
+export function getPlayableImageProviderLink(item, preferredProvider = DEFAULT_IMAGE_SOURCE, field = 'url') {
   const links = getImageProviderLinks(item);
+  const preferred = String(preferredProvider || '').trim().toLowerCase();
   const orderedKeys = [
-    preferredProvider,
-    ...IMAGE_UPLOAD_SERVICES.map((service) => service.key).filter((key) => key !== preferredProvider),
+    preferred,
+    ...IMAGE_UPLOAD_SERVICES.map((service) => service.key).filter((key) => key !== preferred),
   ];
 
   for (const key of orderedKeys) {
+    if (!key) continue;
     const link = links[key];
     if (!link) continue;
     const value = pickText(
@@ -84,10 +102,17 @@ export function getPreferredImageProviderLink(item, preferredProvider = DEFAULT_
       link.directUrl,
       link.url
     );
-    if (value) return value;
+    if (!value) continue;
+    const service = getImageUploadService(key);
+    return {
+      url: value,
+      sourceKey: key,
+      sourceLabel: service?.label || key,
+      isPreferred: key === preferred,
+    };
   }
 
-  return '';
+  return { url: '', sourceKey: '', sourceLabel: '', isPreferred: false };
 }
 
 export function hasImageProviderLink(item, providerKey) {

@@ -19,15 +19,15 @@ import {
 } from 'lucide-react'
 import { Modal } from 'imgvault-ui'
 import AppNavbar from '../components/AppNavbar'
-import { getStrictImageProviderLink } from '@/lib/image-provider-links'
+import { getPlayableImageProviderLink } from '@/lib/image-provider-links'
 import { DEFAULT_IMAGE_SOURCE } from '@/lib/providerCatalog'
 
 const TOAST_DURATIONS = { info: 0, success: 3000, error: 4000 }
 
 function getGalleryImageUrl(image, preferredProvider = DEFAULT_IMAGE_SOURCE) {
   return (
-    getStrictImageProviderLink(image, preferredProvider, 'url') ||
-    getStrictImageProviderLink(image, preferredProvider, 'thumbnailUrl') ||
+    getPlayableImageProviderLink(image, preferredProvider, 'url').url ||
+    getPlayableImageProviderLink(image, preferredProvider, 'thumbnailUrl').url ||
     image?.sourceImageUrl ||
     ''
   )

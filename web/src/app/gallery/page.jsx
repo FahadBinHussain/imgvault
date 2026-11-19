@@ -37,7 +37,7 @@ import {
 import { Modal } from 'imgvault-ui'
 import AppNavbar from '../components/AppNavbar'
 import GalleryLightbox from '../components/GalleryLightbox'
-import { getStrictImageProviderLink } from '@/lib/image-provider-links'
+import { getPlayableImageProviderLink } from '@/lib/image-provider-links'
 import { getStrictVideoProviderLink, getPlayableVideoProviderLink } from '@/lib/video-provider-links'
 import { downloadItemViaProxy } from '@/lib/downloads'
 import { moveItemToVault } from '@/lib/vaultMove'
@@ -66,8 +66,8 @@ async function readJsonSafely(res) {
 
 function getGalleryImageUrl(image, preferredProvider = DEFAULT_IMAGE_SOURCE) {
   return (
-    getStrictImageProviderLink(image, preferredProvider, 'url') ||
-    getStrictImageProviderLink(image, preferredProvider, 'thumbnailUrl') ||
+    getPlayableImageProviderLink(image, preferredProvider, 'url').url ||
+    getPlayableImageProviderLink(image, preferredProvider, 'thumbnailUrl').url ||
     image?.sourceImageUrl ||
     ''
   )

@@ -20,7 +20,7 @@ import {
 import { MediaDetailModal } from 'imgvault-ui'
 import { downloadFieldViaProxy } from '@/lib/downloads'
 import { getPlayableVideoProviderLink } from '@/lib/video-provider-links'
-import { getStrictImageProviderLink } from '@/lib/image-provider-links'
+import { getPlayableImageProviderLink, getImageProviderLabel } from '@/lib/image-provider-links'
 import {
   DEFAULT_IMAGE_SOURCE,
   DEFAULT_VIDEO_SOURCE,
@@ -141,8 +141,8 @@ export default function GalleryLightbox({
     getPlayableVideoProviderLink(item, preferredVideoSource, 'directUrl').url
   )
   const getGalleryImageUrl = (item) => (
-    getStrictImageProviderLink(item, preferredProvider, 'url') ||
-    getStrictImageProviderLink(item, preferredProvider, 'thumbnailUrl') ||
+    getPlayableImageProviderLink(item, preferredProvider, 'url').url ||
+    getPlayableImageProviderLink(item, preferredProvider, 'thumbnailUrl').url ||
     item?.sourceImageUrl ||
     ''
   )
@@ -280,6 +280,12 @@ export default function GalleryLightbox({
   }
 
   const imageUrl = getGalleryImageUrl(image)
+  // an image can live on a host the preferred source does not have —
+  // show the host that actually holds the file and name it (2.19.23,
+  // same as the song label below)
+  const playableImage = currentKind === 'image'
+    ? getPlayableImageProviderLink(image, preferredProvider, 'url')
+    : { url: '', sourceKey: '', sourceLabel: '', isPreferred: false }
   const modalVideoSource = currentKind === 'video' && !videoSourceFailed ? getModalVideoSource(image) : null
   const currentVideoWatchUrl = getVideoWatchUrl(image)
   const currentVideoDirectUrl = getVideoDirectUrl(image)
@@ -1055,16 +1061,23 @@ export default function GalleryLightbox({
                   draggable="false"
                 />
               ) : (
-                <img
-                  src={imageUrl}
-                  alt={image.pageTitle || 'Image'}
-                  className={`max-w-full max-h-[40dvh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
-                  onLoad={() => {
-                    markImageLoaded(imageUrl)
-                    setIsLoading(false)
-                  }}
-                  draggable="false"
-                />
+                <div className="flex max-w-full flex-col items-center gap-2">
+                  <img
+                    src={imageUrl}
+                    alt={image.pageTitle || 'Image'}
+                    className={`max-w-full max-h-[40dvh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+                    onLoad={() => {
+                      markImageLoaded(imageUrl)
+                      setIsLoading(false)
+                    }}
+                    draggable="false"
+                  />
+                  {playableImage.sourceLabel && !playableImage.isPreferred && (
+                    <p className="text-xs text-base-content/55">
+                      Showing from {playableImage.sourceLabel} — {getImageProviderLabel(preferredProvider)} has no link for this image
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 
