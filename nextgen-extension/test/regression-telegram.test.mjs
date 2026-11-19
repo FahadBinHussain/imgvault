@@ -360,7 +360,7 @@ test('2.19.23: uploadTelegramNative passes the uploader warning and videoAttribu
         success: true,
         stdout: JSON.stringify({
           messageId: 91, size: 2000, date: 1730000001,
-          warning: 'Could not read video dimensions from clip.mp4 — uploading without video attributes.',
+          warning: 'Could not read video dimensions from clip.mp4 — Telethon will attach zeroed video attributes (duration 0, 1x1), so Telegram shows it as a video with unknown duration/size.',
           videoAttributes: false,
         }),
       }));
@@ -579,8 +579,9 @@ test('2.19.23: telegram_upload.py attaches DocumentAttributeVideo from a pure-py
   assert.ok(py.includes('def probe_mp4_video(file_path):'));
   assert.ok(py.includes('DocumentAttributeVideo('));
   assert.ok(py.includes('attributes=attributes,'));
-  // supports_streaming alone was the bug: the flag only has meaning ON a
-  // DocumentAttributeVideo, and Telethon cannot guess duration/dims.
+  // supports_streaming alone left zeroed attributes: Telethon attaches a
+  // default DocumentAttributeVideo(0, 1, 1) when it cannot read metadata,
+  // so the probe supplies the real duration/dims.
   assert.ok(py.includes('supports_streaming=True,'));
   // a probe failure is LOUD: a WARN line + a warning in the RESULT json
   assert.ok(py.includes('Could not read video dimensions from'));

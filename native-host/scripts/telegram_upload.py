@@ -231,7 +231,8 @@ async def upload_file(session_path, api_id, api_hash, channel, file_path, captio
         else:
             warning = (
                 f"Could not read video dimensions from {os.path.basename(file_path)} — "
-                "uploading without video attributes, Telegram will show it as a document."
+                "Telethon will attach zeroed video attributes (duration 0, 1x1), so "
+                "Telegram shows it as a video with unknown duration/size."
             )
             print(f"WARN:{warning}", flush=True)
 
