@@ -250,6 +250,10 @@ async def upload_file(session_path, api_id, api_hash, channel, file_path, captio
         entity = "me"
     elif target.startswith("-"):
         entity = int(target)
+    elif target.isdigit():
+        # A bare numeric id is a USER id to Telethon, never the channel —
+        # channels need the -100 prefix (same rule as the Bot API chat_id).
+        entity = int(f"-100{target}")
     else:
         clean = target.lstrip("@")
         entity = f"@{clean}"

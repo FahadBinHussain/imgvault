@@ -12,6 +12,7 @@ import {
   sendTelegramFile,
   telegramChatId,
   telegramLocalMediaUrl,
+  telegramPostPageUrl,
 } from '@/lib/telegramServerApi'
 import {
   getExtraMetadata,
@@ -212,12 +213,11 @@ export async function POST(request) {
     )
   }
 
-  const chatSlug = chatId.replace(/^@+/, '')
   const localUrl = telegramLocalMediaUrl(fileId, message?.document?.mime_type || '')
   const copy = buildVaultBlobCopy('telegram', {
     url: localUrl,
     directUrl: localUrl,
-    watchUrl: messageId ? `https://t.me/${chatSlug}/${messageId}` : '',
+    watchUrl: messageId ? telegramPostPageUrl(channel, messageId) : '',
     fileId,
     messageId,
   })

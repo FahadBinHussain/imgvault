@@ -53,7 +53,7 @@ import {
 } from '../utils/teraBoxApi';
 import { retryVideoHostPageSide } from '../utils/videoRetryPageSide';
 import { getVideoProviderLinks, getVideoSourceHostOptions } from '../utils/videoProviderLinks';
-import { checkTelegramSceneIntegrity, deleteTelegramMessage, listTelegramPosts, scrapeTelegramPostUrl, telegramLocalMediaUrl } from '../utils/telegramApi';
+import { checkTelegramSceneIntegrity, deleteTelegramMessage, isNumericTelegramChannel, listTelegramPosts, scrapeTelegramPostUrl, telegramLocalMediaUrl, telegramPostPageUrl } from '../utils/telegramApi';
 import { flattenSceneConfig } from '../utils/sceneConfig';
 import { UDropUploader, TeraBoxUploader } from '../utils/uploaders';
 
@@ -639,6 +639,21 @@ export default function ResolvePage() {
         videoRefs.set(videoMsgId, list);
       }
 
+      // A numeric channel is private: it has no public t.me/s page, so the
+      // listing + post-page probes cannot run at all. Nothing is marked
+      // broken — unverified refs are not broken refs (a false broken card
+      // would offer a duplicate re-upload Fix). Restoring this check needs
+      // MTProto enumeration via the native host; it is not built yet.
+      if (isNumericTelegramChannel(channel)) {
+        setTelegramLoadingMessage(null);
+        setTelegramIntegrity({ found: [], missing: [], noUrl, extra: [] });
+        setTelegramError(
+          'Telegram check unavailable: this channel is private, so its posts cannot be verified from the public page. ' +
+          `${videoRefs.size} video link(s) left unverified — none were marked broken.`
+        );
+        return;
+      }
+
       const posts = await listTelegramPosts(token, channel, {
         onProgress: (p) => setTelegramLoadingMessage(`Reading channel history… page ${p.page}, ${p.posts} media posts`),
       });
@@ -649,7 +664,7 @@ export default function ResolvePage() {
       const toEntry = (msgId, items) => ({
         messageId: String(msgId),
         codes: [String(msgId)],
-        pageUrl: `https://t.me/${cleanChannel}/${msgId}`,
+        pageUrl: telegramPostPageUrl(cleanChannel, msgId),
         items,
       });
 

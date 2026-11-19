@@ -145,14 +145,46 @@ export async function fetchTelegramFile(token, fileId, { range = null, timeoutMs
 
 /**
  * Bot API chat_id: a bare channel username answers "chat not found", so it is
- * @-prefixed; explicit ids (-100…/numeric) pass through unchanged.
+ * @-prefixed; explicit -100… ids pass through unchanged. A bare numeric id
+ * is a USER id to the Bot API, never the channel, so it gets the -100 prefix.
  */
 export function telegramChatId(channel) {
   const clean = String(channel || '').trim().replace(/^@+/, '')
   if (!clean) {
     throw new Error('Telegram channel is not configured. Set it in Settings → API Keys.')
   }
-  return clean.startsWith('-') || /^\d+$/.test(clean) ? clean : `@${clean}`
+  if (clean.startsWith('-')) return clean
+  if (/^\d+$/.test(clean)) return `-100${clean}`
+  return `@${clean}`
+}
+
+/**
+ * A channel stored as a number (bare `3959088547` or `-1003959088547`) is a
+ * PRIVATE channel: it has no username, no public t.me/s page, and its post
+ * links use the `t.me/c/<bare-id>/<messageId>` form. Usernames stay on the
+ * public `t.me/<username>/<messageId>` form.
+ */
+export function isNumericTelegramChannel(channel) {
+  const clean = String(channel || '').trim().replace(/^@+/, '')
+  return /^-?\d+$/.test(clean)
+}
+
+/** Bare numeric id for a numeric channel (`-1003959088547` -> `3959088547`). */
+export function telegramChannelBareId(channel) {
+  const clean = String(channel || '').trim().replace(/^@+/, '')
+  if (!/^-?\d+$/.test(clean)) return ''
+  return clean.replace(/^-100/, '').replace(/^-/, '')
+}
+
+/** Post page for a channel message. Numeric (private) channels use t.me/c. */
+export function telegramPostPageUrl(channel, messageId) {
+  const clean = String(channel || '').trim().replace(/^@+/, '')
+  const id = String(messageId || '').trim()
+  if (!clean || !id) return ''
+  if (isNumericTelegramChannel(clean)) {
+    return `https://t.me/c/${telegramChannelBareId(clean)}/${id}`
+  }
+  return `https://t.me/${clean}/${id}`
 }
 
 /**

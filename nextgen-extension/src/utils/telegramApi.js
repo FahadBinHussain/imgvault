@@ -55,8 +55,30 @@ export function telegramChatId(channel) {
   if (!clean) {
     throw new Error('Telegram channel is not configured. Set it in Settings -> API Keys.');
   }
-  // the Bot API wants `@channelusername`; chat ids are never stored anywhere.
-  return clean.startsWith('-') ? clean : `@${clean}`;
+  // The Bot API wants `@channelusername` for public channels and the full
+  // `-100…` id for private ones. A bare numeric id is a USER id to the Bot
+  // API, never the channel, so it gets the -100 prefix here.
+  if (clean.startsWith('-')) return clean;
+  if (/^\d+$/.test(clean)) return `-100${clean}`;
+  return `@${clean}`;
+}
+
+/**
+ * A channel stored as a number (bare `3959088547` or `-1003959088547`) is a
+ * PRIVATE channel: it has no username, no public t.me/s page, and its post
+ * links use the `t.me/c/<bare-id>/<messageId>` form. Usernames stay on the
+ * public `t.me/<username>/<messageId>` form.
+ */
+export function isNumericTelegramChannel(channel) {
+  const clean = String(channel || '').trim().replace(/^@+/, '');
+  return /^-?\d+$/.test(clean);
+}
+
+/** Bare numeric id for a numeric channel (`-1003959088547` -> `3959088547`). */
+export function telegramChannelBareId(channel) {
+  const clean = String(channel || '').trim().replace(/^@+/, '');
+  if (!/^-?\d+$/.test(clean)) return '';
+  return clean.replace(/^-100/, '').replace(/^-/, '');
 }
 
 export function telegramApiBase(token) {
@@ -201,6 +223,13 @@ export async function scrapeTelegramPostUrl(channel, messageId, { wantMp4 = true
  */
 export async function scrapeTelegramPostMedia(channel, messageId, { attempts = 4, signal } = {}) {
   const cleanChannel = String(channel || '').trim().replace(/^@+/, '');
+  // A private channel has no public t.me/s page at all — fail fast with the
+  // cause named instead of burning 4 attempts on a page that cannot exist.
+  if (isNumericTelegramChannel(cleanChannel)) {
+    throw new Error(
+      `Telegram scrape: channel ${cleanChannel} is private (numeric id) — it has no public t.me/s page, so no CDN url can be scraped for message ${messageId}`
+    );
+  }
   const marker = `data-post="${cleanChannel}/${messageId}"`;
   const pageUrl = `https://t.me/s/${cleanChannel}/${messageId}`;
   let lastReason = 'not fetched';
@@ -288,6 +317,13 @@ export async function listTelegramPosts(token, channel, { maxPages = 400, signal
   if (!token) throw new Error('Telegram bot token is not configured. Set it in Settings -> API Keys.');
   const cleanChannel = String(channel || '').trim().replace(/^@+/, '');
   if (!cleanChannel) throw new Error('Telegram channel is not configured. Set it in Settings -> API Keys.');
+  // A private channel has no public t.me/s page to walk — fail fast with the
+  // cause named instead of a confusing HTTP error from the listing fetch.
+  if (isNumericTelegramChannel(cleanChannel)) {
+    throw new Error(
+      `Telegram channel listing: channel ${cleanChannel} is private (numeric id) — it has no public t.me/s page to enumerate`
+    );
+  }
 
   const prefix = `data-post="${cleanChannel}/`;
   const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -357,11 +393,16 @@ export async function listTelegramPosts(token, channel, { maxPages = 400, signal
   return [...ids].sort((a, b) => a - b).map((id) => ({ messageId: String(id) }));
 }
 
-/** Public post page for a channel message (the only token-free link to it). */
+/** Public post page for a channel message (the only token-free link to it).
+ * Numeric (private) channels use the `t.me/c/<bare-id>/<id>` form. */
 export function telegramPostPageUrl(channel, messageId) {
   const clean = String(channel || '').trim().replace(/^@+/, '');
   const id = String(messageId || '').trim();
-  return clean && id ? `https://t.me/${clean}/${id}` : '';
+  if (!clean || !id) return '';
+  if (isNumericTelegramChannel(clean)) {
+    return `https://t.me/c/${telegramChannelBareId(clean)}/${id}`;
+  }
+  return `https://t.me/${clean}/${id}`;
 }
 
 /** fileId out of a platform-local `/telegram-media/<fileId>?mt=` url. */
@@ -523,11 +564,17 @@ export async function checkTelegramSceneIntegrity(items, allItems, { token, chan
     }
   }
 
-  const posts = await listTelegramPosts(token, cleanChannel, {
-    onProgress: (p) => {
-      if (onProgress) onProgress({ phase: 'listing', page: p.page, posts: p.posts });
-    },
-  });
+  // A private channel has no public listing to walk, so extras are unknown
+  // there — the getFile probes above still verify every referenced file, and
+  // an empty extra list must never be read as "no orphans". Public channels
+  // keep the listing-based extra computation.
+  const posts = isNumericTelegramChannel(cleanChannel)
+    ? []
+    : await listTelegramPosts(token, cleanChannel, {
+      onProgress: (p) => {
+        if (onProgress) onProgress({ phase: 'listing', page: p.page, posts: p.posts });
+      },
+    });
   const extra = posts
     .filter((post) => !referencedMessageIds.has(Number(post.messageId)))
     .map((post) => ({

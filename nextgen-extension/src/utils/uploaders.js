@@ -9,6 +9,7 @@ import {
   assertTelegramUploadSize,
   deleteNativeTempFile,
   deleteTelegramMessage,
+  isNumericTelegramChannel,
   requireTelegramToken,
   scrapeTelegramPostUrl,
   scrapeTelegramPostMedia,
@@ -17,6 +18,7 @@ import {
   telegramApiBase,
   telegramChatId,
   telegramLocalMediaUrl,
+  telegramPostPageUrl,
   telegramUploadMethod,
   uploadTelegramNative,
 } from './telegramApi.js';
@@ -1430,12 +1432,16 @@ export class TelegramUploader extends BaseUploader {
     if (!fileId) {
       throw new Error(`Telegram: ${method} returned no file_id (message ${messageId || 'unknown'})`);
     }
-    if (field === 'video' && !cdnUrl) {
+    // A private (numeric) channel has no public post page, so no CDN url can
+    // ever be scraped for it — the watchUrl is stored as the direct link
+    // instead, and the result says so. Public channels still refuse a
+    // video result with no CDN url.
+    const numericChannel = isNumericTelegramChannel(channel);
+    if (field === 'video' && !cdnUrl && !numericChannel) {
       throw new Error(`Telegram: video message ${messageId} has no CDN url - refusing to store a half-resolved link`);
     }
 
-    const chat = String(channel || '').trim().replace(/^@+/, '');
-    const watchUrl = messageId ? `https://t.me/${chat}/${messageId}` : '';
+    const watchUrl = messageId ? telegramPostPageUrl(channel, messageId) : '';
     const localUrl = telegramLocalMediaUrl(fileId, media.mime_type || '');
     const filenameOut = filename || media.file_name || '';
 
@@ -1443,7 +1449,7 @@ export class TelegramUploader extends BaseUploader {
       return {
         watchUrl,
         displayUrl: watchUrl,
-        directUrl: cdnUrl,
+        directUrl: cdnUrl || watchUrl,
         thumbUrl: posterUrl || null,
         thumbnailUrl: posterUrl || null,
         deleteUrl: null,
@@ -1451,7 +1457,9 @@ export class TelegramUploader extends BaseUploader {
         messageId,
         filename: filenameOut,
         apiStatus: 'success',
-        apiMessage: '',
+        apiMessage: numericChannel && !cdnUrl
+          ? 'Private Telegram channel — no public CDN link exists, the post link is stored instead'
+          : '',
       };
     }
 
@@ -1480,19 +1488,26 @@ export class TelegramUploader extends BaseUploader {
     let posterUrl = '';
 
     if (field === 'video') {
-      try {
-        const postMedia = await scrapeTelegramPostMedia(channel, messageId, { attempts: 4, signal });
-        cdnUrl = postMedia.mp4Url;
-        posterUrl = postMedia.posterUrl;
-      } catch (error) {
-        let cleanupNote = '';
+      // A private channel has no public post page, so the CDN scrape can
+      // never succeed there — skip it (no doomed attempts, no post delete)
+      // and let buildProviderResult store the watchUrl as the direct link.
+      if (isNumericTelegramChannel(channel)) {
+        console.warn(`[telegram] ${channel} is a private channel — no public post page, skipping the CDN scrape (watchUrl is stored instead).`);
+      } else {
         try {
-          await deleteTelegramMessage({ token, channel, messageId, signal });
-          cleanupNote = `; posted message ${messageId} was removed again so a retry stays clean`;
-        } catch (cleanupError) {
-          cleanupNote = `; cleanup FAILED - message ${messageId} is still on the channel (${cleanupError.message})`;
+          const postMedia = await scrapeTelegramPostMedia(channel, messageId, { attempts: 4, signal });
+          cdnUrl = postMedia.mp4Url;
+          posterUrl = postMedia.posterUrl;
+        } catch (error) {
+          let cleanupNote = '';
+          try {
+            await deleteTelegramMessage({ token, channel, messageId, signal });
+            cleanupNote = `; posted message ${messageId} was removed again so a retry stays clean`;
+          } catch (cleanupError) {
+            cleanupNote = `; cleanup FAILED - message ${messageId} is still on the channel (${cleanupError.message})`;
+          }
+          throw new Error(`${error.message}${cleanupNote}`);
         }
-        throw new Error(`${error.message}${cleanupNote}`);
       }
     }
 
@@ -1544,8 +1559,7 @@ export class TelegramUploader extends BaseUploader {
         });
 
         const messageId = String(res.messageId);
-        const chat = String(channel || '').trim().replace(/^@+/, '');
-        const watchUrl = messageId ? `https://t.me/${chat}/${messageId}` : '';
+        const watchUrl = messageId ? telegramPostPageUrl(channel, messageId) : '';
         // The native uploader warns when it could not read video
         // dimensions — the post lands as a document, no CDN URL, no
         // in-gallery playback. Say so loudly on the result instead of
@@ -1555,12 +1569,18 @@ export class TelegramUploader extends BaseUploader {
         }
         let cdnUrl = '';
         let posterUrl = '';
-        try {
-          const postMedia = await scrapeTelegramPostMedia(channel, messageId, { attempts: 4, signal });
-          cdnUrl = postMedia.mp4Url;
-          posterUrl = postMedia.posterUrl;
-        } catch (err) {
-          console.warn(`[telegram-native] Scrape CDN warning for message ${messageId}:`, err);
+        // A private channel has no public post page — skip the scrape
+        // instead of burning 4 doomed attempts per upload.
+        if (isNumericTelegramChannel(channel)) {
+          console.warn(`[telegram-native] ${channel} is a private channel — no public post page, skipping the CDN scrape (watchUrl is stored instead).`);
+        } else {
+          try {
+            const postMedia = await scrapeTelegramPostMedia(channel, messageId, { attempts: 4, signal });
+            cdnUrl = postMedia.mp4Url;
+            posterUrl = postMedia.posterUrl;
+          } catch (err) {
+            console.warn(`[telegram-native] Scrape CDN warning for message ${messageId}:`, err);
+          }
         }
 
         return {

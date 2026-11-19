@@ -15,6 +15,7 @@ import {
   fetchTelegramFile,
   formatBytesForError,
   getTelegramFileInfo,
+  isNumericTelegramChannel,
   listTelegramPosts,
   probeNativeHost,
   scrapeTelegramPostMedia,
@@ -23,6 +24,7 @@ import {
   stageBlobForNativeUpload,
   telegramApiBase,
   telegramCallApi,
+  telegramChannelBareId,
   telegramChatId,
   telegramFileBytesUrl,
   telegramFileIdFromLocalUrl,
@@ -89,6 +91,10 @@ describe('telegramChatId / telegramApiBase / requireTelegramToken (via telegramA
   test('a numeric chat id (leading -) is kept as-is', () => {
     assert.equal(telegramChatId('-100123456789'), '-100123456789');
   });
+  test('a bare numeric id gets the -100 prefix (bare digits are a user id to the Bot API)', () => {
+    assert.equal(telegramChatId('3959088547'), '-1003959088547');
+    assert.equal(telegramChatId('  3959088547  '), '-1003959088547');
+  });
   test('an empty channel throws naming Settings', () => {
     assert.throws(() => telegramChatId(''), /Telegram channel is not configured/);
     assert.throws(() => telegramChatId('   '), /Telegram channel is not configured/);
@@ -127,6 +133,21 @@ describe('telegramFileBytesUrl / telegramLocalMediaUrl / telegramPostPageUrl / t
     assert.equal(telegramPostPageUrl('@testchannel', 90), 'https://t.me/testchannel/90');
     assert.equal(telegramPostPageUrl('', '90'), '');
     assert.equal(telegramPostPageUrl('testchannel', ''), '');
+  });
+  test('telegramPostPageUrl builds the t.me/c link for a numeric (private) channel', () => {
+    assert.equal(telegramPostPageUrl('-1003959088547', '90'), 'https://t.me/c/3959088547/90');
+    assert.equal(telegramPostPageUrl('3959088547', 90), 'https://t.me/c/3959088547/90');
+    assert.equal(telegramPostPageUrl('  -1003959088547  ', '90'), 'https://t.me/c/3959088547/90');
+  });
+  test('isNumericTelegramChannel / telegramChannelBareId classify both id forms', () => {
+    assert.equal(isNumericTelegramChannel('-1003959088547'), true);
+    assert.equal(isNumericTelegramChannel('3959088547'), true);
+    assert.equal(isNumericTelegramChannel('testchannel'), false);
+    assert.equal(isNumericTelegramChannel('@testchannel'), false);
+    assert.equal(isNumericTelegramChannel(''), false);
+    assert.equal(telegramChannelBareId('-1003959088547'), '3959088547');
+    assert.equal(telegramChannelBareId('3959088547'), '3959088547');
+    assert.equal(telegramChannelBareId('testchannel'), '');
   });
   test('telegramFileIdFromLocalUrl extracts and decodes the file id', () => {
     assert.equal(telegramFileIdFromLocalUrl('/telegram-media/abc123?mt=audio%2Fmp4'), 'abc123');
@@ -335,6 +356,14 @@ describe('scrapeTelegramPostMedia', () => {
   const mp4 = 'https://cdn1.telesco.pe/file/abc123/video.mp4?token=x';
   const poster = 'https://cdn2.telesco.pe/file/abc123/thumb.jpg';
 
+  test('a numeric (private) channel fails fast without fetching — no public post page exists', async () => {
+    await assert.rejects(
+      () => scrapeTelegramPostMedia('-1003959088547', '90', { attempts: 4 }),
+      /is private \(numeric id\) — it has no public t\.me\/s page/,
+    );
+    assert.equal(fetchCalls.length, 0);
+  });
+
   test('extracts the mp4 and the poster from the post segment', async () => {
     fetchHandler = () => htmlResponse(postHtml(CHANNEL, '90', `<video src="${mp4}"></video><img src="${poster}">`));
     const out = await scrapeTelegramPostMedia(CHANNEL, '90', { attempts: 1 });
@@ -435,6 +464,13 @@ describe('listTelegramPosts', () => {
       : `<div class="tgme_widget_message_${kind}"><img src="https://cdn1.telesco.pe/file/x.jpg"></div>`;
     return `<div class="tgme_widget_message" data-post="${CHANNEL}/${id}">${media}</div>`;
   }).join('');
+  test('a numeric (private) channel fails fast without fetching — no public listing exists', async () => {
+    await assert.rejects(
+      () => listTelegramPosts(FAKE_TOKEN, '-1003959088547'),
+      /is private \(numeric id\) — it has no public t\.me\/s page/,
+    );
+    assert.equal(fetchCalls.length, 0);
+  });
   test('walks pages backward, keeps media posts only, sorts ascending', async () => {
     fetchHandler = (url) => {
       const before = new URL(url).searchParams.get('before');
@@ -533,6 +569,19 @@ describe('checkTelegramSceneIntegrity', () => {
     assert.deepEqual(out.missing, []);
     assert.deepEqual(out.noUrl, []);
     assert.deepEqual(out.extra, [{ messageId: '999', pageUrl: `https://t.me/${CHANNEL}/999` }]);
+  });
+  test('a numeric (private) channel skips the listing — getFile probes still verify, extras are unknown', async () => {
+    fetchHandler = (url, options) => {
+      if (url.startsWith('https://t.me/s/')) throw new Error('listing must not be attempted on a private channel');
+      return apiMock([])(url, options);
+    };
+    const item = sceneItem('s1', { fileId: 'spz-ok', messageId: '101' }, { fileId: 'tex-ok', messageId: '102' });
+    const out = await checkTelegramSceneIntegrity([item], [item], { token: FAKE_TOKEN, channel: '-1003959088547' });
+    assert.equal(out.found.length, 1);
+    assert.equal(out.found[0].spzPageUrl, 'https://t.me/c/3959088547/101');
+    assert.deepEqual(out.missing, []);
+    assert.deepEqual(out.extra, []);
+    assert.ok(!fetchCalls.some((c) => c.url.startsWith('https://t.me/s/')));
   });
   test('a deleted file (4xx) makes the scene missing, with the reason named', async () => {
     fetchHandler = apiMock([]);

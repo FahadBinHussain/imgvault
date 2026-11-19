@@ -11,12 +11,15 @@ import {
   fetchTelegramFile,
   formatBytesForError,
   getTelegramFileInfo,
+  isNumericTelegramChannel,
   redactTelegramToken,
   sendTelegramFile,
   telegramCallApi,
+  telegramChannelBareId,
   telegramChatId,
   telegramFileBytesUrl,
   telegramLocalMediaUrl,
+  telegramPostPageUrl,
   telegramUploadField,
   telegramUploadMethod,
   telegramUploadSizeCap,
@@ -64,7 +67,28 @@ test('telegramChatId @-prefixes a bare channel username', () => {
 
 test('telegramChatId passes explicit ids through unchanged', () => {
   assert.equal(telegramChatId('-1001234567890'), '-1001234567890')
-  assert.equal(telegramChatId('123456789'), '123456789')
+})
+
+test('telegramChatId gives a bare numeric id the -100 prefix (bare digits are a user id to the Bot API)', () => {
+  assert.equal(telegramChatId('123456789'), '-100123456789')
+  assert.equal(telegramChatId('  123456789  '), '-100123456789')
+})
+
+test('telegramPostPageUrl builds the t.me/c link for a numeric (private) channel', () => {
+  assert.equal(telegramPostPageUrl('-1003959088547', '90'), 'https://t.me/c/3959088547/90')
+  assert.equal(telegramPostPageUrl('3959088547', 90), 'https://t.me/c/3959088547/90')
+  assert.equal(telegramPostPageUrl('mychannel', '90'), 'https://t.me/mychannel/90')
+  assert.equal(telegramPostPageUrl('', '90'), '')
+  assert.equal(telegramPostPageUrl('mychannel', ''), '')
+})
+
+test('isNumericTelegramChannel / telegramChannelBareId classify both id forms', () => {
+  assert.equal(isNumericTelegramChannel('-1003959088547'), true)
+  assert.equal(isNumericTelegramChannel('3959088547'), true)
+  assert.equal(isNumericTelegramChannel('mychannel'), false)
+  assert.equal(telegramChannelBareId('-1003959088547'), '3959088547')
+  assert.equal(telegramChannelBareId('3959088547'), '3959088547')
+  assert.equal(telegramChannelBareId('mychannel'), '')
 })
 
 test('telegramChatId throws loudly when no channel is configured', () => {

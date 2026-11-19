@@ -609,14 +609,17 @@ export async function deleteVaultBlobCopies(extra, settings) {
 
 /**
  * Bot API chat_id: channel usernames must be @-prefixed (a bare username
- * answers "chat not found"); explicit ids (-100…/numeric) pass through.
+ * answers "chat not found"); explicit -100… ids pass through. A bare numeric
+ * id is a USER id to the Bot API, never the channel, so it gets the -100 prefix.
  * @param {string} channel - channel username from settings
  * @returns {string}
  */
 function telegramChatId(channel) {
   const clean = String(channel || '').trim()
   if (!clean) return ''
-  return clean.startsWith('-') || /^\d+$/.test(clean) ? clean : `@${clean}`
+  if (clean.startsWith('-')) return clean
+  if (/^\d+$/.test(clean)) return `-100${clean}`
+  return clean.startsWith('@') ? clean : `@${clean}`
 }
 
 /** The bot token rides the request URL — it must never reach error text. */
