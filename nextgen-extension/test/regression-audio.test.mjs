@@ -10,12 +10,12 @@
 // path. GalleryPage.jsx / background.js cannot be imported in plain
 // node, so these are SOURCE-TEXT assertions.
 //
-// NOTE (doc/code mismatch, reported not pinned): AGENTS.md 2.19.14(3)
-// claims the upload modal's currentUploadKind checks audio before
-// video, but the code checks video first (line ~557 before ~560).
-// Behaviour is still correct because processMediaFile sets the flags
-// mutually exclusively (pinned below), so no test asserts the
-// audio-first order in currentUploadKind.
+// FIXED 2.19.23: AGENTS.md 2.19.14(3) claims the upload modal's
+// currentUploadKind checks audio before video, but the code checked
+// video first. The flags are mutually exclusive by construction
+// (processMediaFile), but the file-predicate fallback is NOT — an
+// audio-mime file with a video extension (song.mp4, audio/mp4) is
+// both — so the order matters there, and the mime wins.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -33,6 +33,26 @@ test('2.19.14 (2026-11-11): processMediaFile sets isVideo/isAudio mutually exclu
   const page = gallery();
   assert.ok(page.includes('const isVideo = !is3D && isVideoUploadFile(file);'));
   assert.ok(page.includes('const isAudio = !is3D && !isVideo && isAudioUpload(file);'));
+});
+
+test('2.19.23: currentUploadKind checks audio BEFORE video, and so does the batch lane splitter', () => {
+  const page = gallery();
+  const memo = page.slice(page.indexOf('const currentUploadKind = useMemo'));
+  const audioAt = memo.indexOf("if (uploadImageData?.isAudio");
+  const videoAt = memo.indexOf("if (uploadImageData?.isVideo");
+  assert.ok(audioAt > 0 && videoAt > audioAt, 'audio branch must precede the video branch in currentUploadKind');
+  assert.ok(page.includes("const kindOf = (file) => (isAudioUpload(file) ? 'audio' : (isVideoUploadFile(file) ? 'video' : 'image'));"));
+});
+
+test('2.19.23: the file predicates overlap on an audio-mime video extension — which is why the order matters', async () => {
+  // isAudioUploadFile is shared + importable; isVideoUploadFile is a
+  // GalleryPage local, so the overlap is shown through the shared side
+  // plus the source of the local predicate.
+  const { isAudioUploadFile } = await import('../../packages/shared/audioProviderLinks.js');
+  const audioMimeMp4 = { name: 'song.mp4', type: 'audio/mp4' };
+  assert.equal(isAudioUploadFile(audioMimeMp4), true);
+  const page = gallery();
+  assert.ok(page.includes("/\\.(mp4|webm|avi|mov|mkv|m4v)$/i.test(file?.name || '')"));
 });
 
 test('2.19.14 (2026-11-11): the upload modal renders <audio controls> for a song and titles it "Upload Song"', () => {

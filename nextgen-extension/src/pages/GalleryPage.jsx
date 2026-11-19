@@ -554,11 +554,18 @@ export default function GalleryPage() {
     if (is3DMode || uploadImageData?.is3D || (uploadImageData?.file && is3DUploadFile(uploadImageData.file))) {
       return '3d';
     }
-    if (uploadImageData?.isVideo || (uploadImageData?.file && isVideoUploadFile(uploadImageData.file))) {
-      return 'video';
-    }
+    // audio BEFORE video (2.19.14 rule, fixed 2.19.23): a song carries the
+    // video hosts' links and would otherwise classify as a video, and the
+    // file predicates overlap — an audio-mime file with a video extension
+    // (song.mp4, audio/mp4) is both. the mime wins, so audio goes first,
+    // same as getMediaItemKind. the isVideo/isAudio flags are mutually
+    // exclusive by construction (processMediaFile), so reordering only
+    // changes the file-fallback corner.
     if (uploadImageData?.isAudio || (uploadImageData?.file && isAudioUpload(uploadImageData.file))) {
       return 'audio';
+    }
+    if (uploadImageData?.isVideo || (uploadImageData?.file && isVideoUploadFile(uploadImageData.file))) {
+      return 'video';
     }
     return 'image';
   }, [is3DMode, uploadImageData]);
@@ -2792,7 +2799,8 @@ export default function GalleryPage() {
 
     if (supportedFiles.length > 1) {
       // one media kind per batch: images, videos and songs are separate lanes
-      const kindOf = (file) => (isVideoUploadFile(file) ? 'video' : (isAudioUpload(file) ? 'audio' : 'image'));
+      // audio before video — same rule as currentUploadKind (2.19.23).
+      const kindOf = (file) => (isAudioUpload(file) ? 'audio' : (isVideoUploadFile(file) ? 'video' : 'image'));
       const firstKind = kindOf(supportedFiles[0]);
       const hasMixedMedia = supportedFiles.some((file) => kindOf(file) !== firstKind);
 

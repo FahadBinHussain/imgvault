@@ -4406,8 +4406,17 @@ class ImgVaultServiceWorker {
       const source = data.fileBlob instanceof Blob ? data.fileBlob : data.imageUrl;
       const blob = await this.fetchImage(source, uploadController.signal, data.pageUrl);
       if (!(blob instanceof Blob) || blob.size <= 0) {
+        // Keep http(s) URLs whole in the error: a truncated signed CDN URL
+        // (fbcdn puts the signature in the query) reads like a real URL but
+        // fetches 403 — the 2.19.19 trap, fixed on the gallery side but left
+        // here. data: URLs are shortened, they are unreadable anyway.
+        const describeSource = (value) => (typeof value !== 'string'
+          ? 'the supplied file'
+          : value.startsWith('data:')
+            ? `${value.slice(0, 60)}… (${value.length} chars)`
+            : value);
         throw new Error(
-          `Secret Vault got no bytes to encrypt from ${typeof source === 'string' ? source.slice(0, 160) : 'the supplied file'}. `
+          `Secret Vault got no bytes to encrypt from ${describeSource(source)}. `
           + 'Pick the file again, or download it and upload it locally.'
         );
       }

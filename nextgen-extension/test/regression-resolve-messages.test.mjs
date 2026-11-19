@@ -7,10 +7,9 @@
 //
 // GalleryPage.jsx / background.js / VaultPage.jsx cannot be imported in
 // plain node, so these are SOURCE-TEXT assertions: they pin the exact fix
-// text the AGENTS.md entry describes. (The one known leftover —
-// background.js still slices the source to 160 chars in the
-// "Secret Vault got no bytes" error — is reported, not pinned here,
-// because pinning it would assert the buggy behaviour.)
+// text the AGENTS.md entry describes. (The 2.19.19 slice trap had a second
+// site — background.js sliced the source to 160 chars in the "Secret Vault
+// got no bytes" error — fixed in 2.19.23 and pinned below.)
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -81,6 +80,19 @@ test('2.19.17 (2026-11-13): uploadVaultedDirectly sends the WRAPPED resolveImage
 test('2.19.17 (2026-11-13): handleVaultedUpload names the source it got no bytes from', () => {
   const bg = background();
   assert.ok(bg.includes('Secret Vault got no bytes to encrypt from'));
+});
+
+test('2.19.23: handleVaultedUpload keeps the source URL whole — the worker side of the 2.19.19 slice trap', () => {
+  const bg = background();
+  const start = bg.indexOf('Secret Vault got no bytes to encrypt from');
+  assert.ok(start > 0);
+  // the error is built from describeSource, not a slice
+  const fn = bg.slice(Math.max(0, start - 800), start + 200);
+  assert.ok(fn.includes('const describeSource = (value)'));
+  assert.ok(fn.includes("value.startsWith('data:')"));
+  assert.ok(fn.includes('`${value.slice(0, 60)}… (${value.length} chars)`'));
+  assert.ok(fn.includes('describeSource(source)'));
+  assert.ok(!fn.includes('source.slice(0, 160)'), 'the 160-char slice must be gone from this error');
 });
 
 test('2.19.18 (2026-11-13): fetchImage rejects non-strings, sends credentials to pximg, and names the HTTP status', () => {
