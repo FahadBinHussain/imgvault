@@ -577,7 +577,7 @@ export default function GalleryPage() {
     if (currentUploadKind === 'video') {
       return getConfiguredVideoUploadServices(uploadHostSettings);
     }
-    // songs use the same hosts as video
+    // songs use the video hosts minus video-only ones (filemoon rejects audio)
     if (currentUploadKind === 'audio') {
       return getConfiguredAudioUploadServices(uploadHostSettings);
     }

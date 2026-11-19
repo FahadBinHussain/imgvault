@@ -1,7 +1,9 @@
 // song / audio file helpers — shared by every platform (drift guard:
-// tools/check-shared-twins.mjs). Song files use the SAME hosts as video, so
-// the host/link plumbing is shared with the video provider links; this file
-// only owns the "is this an audio file" question.
+// tools/check-shared-twins.mjs). Song files use ALMOST the same hosts as
+// video — filemoon is video-only (rejects .m4a with 'Not video file
+// format') and is filtered out of AUDIO_UPLOAD_SERVICES — so the host/link
+// plumbing is shared with the video provider links; this file only owns
+// the "is this an audio file" question.
 //
 // .webm is deliberately NOT here: it is a video container as often as it is
 // an audio one, so the mime type has to decide. Everything else below is

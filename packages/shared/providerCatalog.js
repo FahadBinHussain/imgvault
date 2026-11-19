@@ -60,6 +60,11 @@ export const VIDEO_UPLOAD_SERVICES = [
     sourceLabel: 'Filemoon',
     apiKeyFields: ['filemoonApiKey'],
     required: false,
+    // video-only: filemoon rejects non-video uploads outright (.m4a fails
+    // with 'Not video file format', proven live 2026-11-19) — so it is
+    // excluded from the audio services (below), the vault blob hosts and
+    // the 3D hosts. a future video-only host opts out the same way.
+    videoOnly: true,
     uploaderKey: 'filemoonUploader',
     watchUrlField: 'filemoonWatchUrl',
     directUrlField: 'filemoonDirectUrl',
@@ -149,15 +154,27 @@ export const VIDEO_SOURCE_OPTIONS = VIDEO_UPLOAD_SERVICES.map(({ sourceValue, so
 });
 
 /* --- song / audio ----------------------------------------------------------
- * Song files (.m4a, .mp3, ...) ride the SAME hosts as video: every one of
- * those hosts takes an arbitrary binary file (filemoon/udrop/terabox upload
- * the blob as-is, telegram sends it as a document). A separate host list
- * would only duplicate the video one and drift from it. */
-export const DEFAULT_AUDIO_SOURCE = DEFAULT_VIDEO_SOURCE;
+ * Song files (.m4a, .mp3, ...) ride ALMOST the same hosts as video: udrop,
+ * terabox and telegram take an arbitrary binary file, but filemoon is
+ * video-only and rejects audio uploads outright (.m4a fails with
+ * 'Not video file format', proven live 2026-11-19). the audio list is the
+ * video list minus the video-only hosts, so a future video host still flows
+ * into audio unless it opts out with `videoOnly: true`. the audio default
+ * is udrop — the default video source (filemoon) is not a valid audio host,
+ * and udrop is already the default for 3D + vault blobs, takes any binary,
+ * and has no read-back cap (unlike telegram's 20 MB getFile gate). */
+export const DEFAULT_AUDIO_SOURCE = 'udrop';
 
-export const AUDIO_UPLOAD_SERVICES = VIDEO_UPLOAD_SERVICES;
+export const AUDIO_UPLOAD_SERVICES = VIDEO_UPLOAD_SERVICES.filter((service) => !service.videoOnly);
 
-export const AUDIO_SOURCE_OPTIONS = VIDEO_SOURCE_OPTIONS;
+export const AUDIO_SOURCE_OPTIONS = AUDIO_UPLOAD_SERVICES.map(({ sourceValue, sourceLabel }) => ({
+  value: sourceValue,
+  label: sourceLabel,
+})).sort((a, b) => {
+  if (a.value === DEFAULT_AUDIO_SOURCE) return -1;
+  if (b.value === DEFAULT_AUDIO_SOURCE) return 1;
+  return a.label.localeCompare(b.label);
+});
 
 /** Hosts that can store 3D scene files (.spz + texture). Marketing rule: every
  *  new 3D host opts in here (threeDHost) — no duplicated key lists in the UI. */

@@ -32,6 +32,7 @@ import {
   getPreferredImageProviderLink,
   hasImageProviderLink,
 } from '../utils/imageProviderLinks';
+import { isAudioMediaItem } from '../utils/audioProviderLinks';
 import {
   authorizeUdrop,
   checkUdropIntegrity,
@@ -73,6 +74,8 @@ const SCENE_HOST_LABELS = { udrop: 'UDrop', terabox: 'TeraBox', telegram: 'Teleg
 const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || '').trim());
 
 // songs live on the VIDEO hosts, so every video-host check has to accept them
+// — except filemoon, which is video-only (its check skips songs, see
+// runFilemoonIntegrityCheck); a song can never have a filemoon link.
 function isVideoHostItem(item) {
   if (!item) return false;
   return Boolean(
@@ -470,6 +473,12 @@ export default function ResolvePage() {
         if (item.kind === 'scene' || item.spzUrl) return false;
         const isVideo = isVideoHostItem(item);
         const hasFilemoon = Boolean(item.filemoonWatchUrl || item.filemoonDirectUrl || item.filemoonUrl) || (Array.isArray(item.extraMetadata?.filemoonLinks) && item.extraMetadata.filemoonLinks.length > 0);
+        // Filemoon is video-only: a song can never have a filemoon link, so
+        // an audio item without one is NOT a gap (it would sit in noUrl
+        // forever and offer a Fix that always fails). Audio items that
+        // already carry a filemoon URL stay in the population so their link
+        // is still judged found/broken instead of going "extra".
+        if (isAudioMediaItem(item) && !hasFilemoon) return false;
         return isVideo || hasFilemoon;
       });
 

@@ -356,3 +356,10 @@ test('2.13.4 (2026-09-18): the 3D tab runs ONE check keyed to the resolved defau
   assert.ok(page.includes('const sceneUserPickedRef = useRef(false);'));
   assert.ok(page.includes('sceneUserPickedRef.current = true;'));
 });
+
+test('2.19.25 (2026-11-19): the filemoon resolve check skips songs without a filemoon link — filemoon is video-only, so a song can never have one and must not sit in noUrl forever offering a Fix that always fails', () => {
+  const page = src('../src/pages/ResolvePage.jsx');
+  assert.ok(page.includes("import { isAudioMediaItem } from '../utils/audioProviderLinks';"));
+  const fn = page.slice(page.indexOf('const runFilemoonIntegrityCheck'));
+  assert.ok(fn.includes('if (isAudioMediaItem(item) && !hasFilemoon) return false;'));
+});

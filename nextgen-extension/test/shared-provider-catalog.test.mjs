@@ -35,8 +35,10 @@ describe('defaults', () => {
     assert.equal(DEFAULT_3D_SOURCE, 'udrop');
     assert.equal(DEFAULT_VAULT_BLOB_HOST, 'udrop');
   });
-  test('the default audio source is the default video source', () => {
-    assert.equal(DEFAULT_AUDIO_SOURCE, DEFAULT_VIDEO_SOURCE);
+  test('the default audio source is udrop, a valid audio host (NOT filemoon)', () => {
+    assert.equal(DEFAULT_AUDIO_SOURCE, 'udrop');
+    assert.notEqual(DEFAULT_AUDIO_SOURCE, DEFAULT_VIDEO_SOURCE);
+    assert.ok(AUDIO_UPLOAD_SERVICES.some((s) => s.key === DEFAULT_AUDIO_SOURCE));
   });
 });
 
@@ -114,12 +116,28 @@ describe('VIDEO_UPLOAD_SERVICES', () => {
   });
 });
 
-describe('audio services ride the video hosts', () => {
-  test('AUDIO_UPLOAD_SERVICES is the SAME array as VIDEO_UPLOAD_SERVICES', () => {
-    assert.strictEqual(AUDIO_UPLOAD_SERVICES, VIDEO_UPLOAD_SERVICES);
+describe('audio services ride the video hosts minus video-only ones', () => {
+  test('filemoon is the only video-only video host', () => {
+    assert.equal(byKey(VIDEO_UPLOAD_SERVICES).filemoon.videoOnly, true);
+    assert.deepEqual(
+      VIDEO_UPLOAD_SERVICES.filter((s) => s.videoOnly).map((s) => s.key),
+      ['filemoon'],
+    );
   });
-  test('AUDIO_SOURCE_OPTIONS is the SAME array as VIDEO_SOURCE_OPTIONS', () => {
-    assert.strictEqual(AUDIO_SOURCE_OPTIONS, VIDEO_SOURCE_OPTIONS);
+  test('AUDIO_UPLOAD_SERVICES is the video list minus filemoon, in catalog order', () => {
+    assert.deepEqual(AUDIO_UPLOAD_SERVICES.map((s) => s.key), ['udrop', 'terabox', 'telegram']);
+  });
+  test('AUDIO_UPLOAD_SERVICES is a filtered copy, NOT the same array as VIDEO_UPLOAD_SERVICES', () => {
+    assert.notStrictEqual(AUDIO_UPLOAD_SERVICES, VIDEO_UPLOAD_SERVICES);
+    const videoKeys = new Set(VIDEO_UPLOAD_SERVICES.map((s) => s.key));
+    for (const service of AUDIO_UPLOAD_SERVICES) {
+      assert.ok(videoKeys.has(service.key), service.key);
+    }
+  });
+  test('AUDIO_SOURCE_OPTIONS excludes filemoon and puts the audio default first', () => {
+    assert.equal(AUDIO_SOURCE_OPTIONS[0].value, 'udrop');
+    assert.deepEqual(AUDIO_SOURCE_OPTIONS.map((o) => o.value).sort(), ['telegram', 'terabox', 'udrop']);
+    assert.notStrictEqual(AUDIO_SOURCE_OPTIONS, VIDEO_SOURCE_OPTIONS);
   });
 });
 

@@ -70,12 +70,18 @@ check('audio base fields carry the video host fields',
 check('audio base fields are part of the all-fields list',
   getAllBaseFieldKeys().includes('isAudio'));
 
-// --- hosts: songs use the SAME hosts as video ------------------------------
-check('song hosts are the video hosts',
-  AUDIO_UPLOAD_SERVICES.map((s) => s.key).join(',') === VIDEO_UPLOAD_SERVICES.map((s) => s.key).join(','));
-check('song default source is the video default source', DEFAULT_AUDIO_SOURCE === DEFAULT_VIDEO_SOURCE);
-check('song source options mirror the video ones',
-  AUDIO_SOURCE_OPTIONS.map((o) => o.value).join(',') === VIDEO_SOURCE_OPTIONS.map((o) => o.value).join(','));
+// --- hosts: songs use the video hosts MINUS video-only ones ----------------
+// filemoon is video-only (rejects .m4a with 'Not video file format'), so it
+// is filtered out of the audio list instead of riding along with video.
+check('song hosts are the video hosts minus filemoon',
+  AUDIO_UPLOAD_SERVICES.map((s) => s.key).join(',') === 'udrop,terabox,telegram');
+check('filemoon is flagged video-only',
+  VIDEO_UPLOAD_SERVICES.find((s) => s.key === 'filemoon')?.videoOnly === true);
+check('song default source is udrop, a valid audio host (not the filemoon video default)',
+  DEFAULT_AUDIO_SOURCE === 'udrop' && AUDIO_UPLOAD_SERVICES.some((s) => s.key === DEFAULT_AUDIO_SOURCE));
+check('song source options exclude filemoon and put the audio default first',
+  AUDIO_SOURCE_OPTIONS[0].value === 'udrop'
+  && AUDIO_SOURCE_OPTIONS.map((o) => o.value).sort().join(',') === 'telegram,terabox,udrop');
 check('the video hosts really are the file hosts (no image host in the song list)',
   !AUDIO_UPLOAD_SERVICES.some((s) => s.key === 'imgbb' || s.key === 'pixvid'));
 
