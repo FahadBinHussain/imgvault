@@ -3,6 +3,7 @@ import { extractFilemoonFilecode, getFilemoonDirectLink, getFilemoonHlsLink } fr
 import { getFilemoonStreamSource } from './filemoonSpa.js';
 import { FilemoonUploader, UDropUploader, TeraBoxUploader, TelegramUploader } from './uploaders.js';
 import { resolveTeraBoxPlaybackUrl, teraBoxFsIdFromUrl } from './teraBoxApi.js';
+import { downloadParallelRanges, probeDownload, PARALLEL_RANGE_MIN_BYTES } from './parallelRangeDownload.js';
 
 const absolute = (url, base) => new URL(url, base).toString();
 
@@ -45,35 +46,6 @@ const buildFetchOpts = (referrer, extra = {}) => {
 };
 
 /**
- * Probe a URL with a tiny Range request to learn its total size, content
- * type and whether the server honors HTTP Range (206). Follows redirects
- * (udrop direct links redirect to a download_token URL) and returns the
- * final URL. Used to refresh a download token mid-stream.
- * @param {string} url
- * @param {string} [referrer]
- * @returns {Promise<{supportsRange:boolean,total:number,type:string,finalUrl:string,status:number}>}
- */
-async function probeDownload(url, referrer) {
-  let resp;
-  try {
-    resp = await fetch(url, buildFetchOpts(referrer, { headers: { Range: 'bytes=0-0' } }));
-  } catch (err) {
-    return { supportsRange: false, total: 0, type: '', finalUrl: url, status: 0 };
-  }
-  const contentRange = resp.headers.get('Content-Range') || '';
-  const rangeMatch = contentRange.match(/\/(\d+)$/);
-  const total = rangeMatch ? Number(rangeMatch[1]) : 0;
-  try { await resp.body?.cancel(); } catch (_) { /* free the probe body */ }
-  return {
-    supportsRange: resp.status === 206 && total > 0,
-    total,
-    type: resp.headers.get('Content-Type') || '',
-    finalUrl: resp.url || url,
-    status: resp.status,
-  };
-}
-
-/**
  * Stream a URL into a Blob while reporting download progress. Follows
  * redirects automatically (udrop direct links redirect to a download_token
  * URL that serves the actual file). udrop throttles a single connection
@@ -84,10 +56,10 @@ async function probeDownload(url, referrer) {
  * cap — only stall timeouts — so any file size will complete.
  * @param {string} url  Source URL (pre-redirect, e.g. udrop /file/…)
  * @param {string} [referrer]
- * @param {Function} [onProgress] ({loaded, total, percent})
+ * @param {Function} [onProgress] ({loaded, total, percent, method, methodNote})
  * @returns {Promise<Blob>}
  */
-async function fetchVideoAsBlob(url, referrer, onProgress) {
+async function fetchVideoAsBlobSingle(url, referrer, onProgress, methodNote = '') {
   const chunks = [];
   let loaded = 0;
   let total = 0;
@@ -173,6 +145,8 @@ async function fetchVideoAsBlob(url, referrer, onProgress) {
             loaded,
             total,
             percent: total > 0 ? Math.round((loaded / total) * 100) : null,
+            method: 'single-connection',
+            methodNote,
           });
         }
       }
@@ -180,7 +154,10 @@ async function fetchVideoAsBlob(url, referrer, onProgress) {
       stalled = true;
     } finally {
       if (stallTimer) clearTimeout(stallTimer);
-      try { reader.cancel(); } catch (_) { /* already done */ }
+      // cancel() on an errored stream returns a REJECTED promise — a bare
+      // try/catch only catches sync throws, so swallow the rejection
+      // explicitly or it surfaces as an unhandled rejection (2.19.23 fix).
+      reader.cancel().catch(() => {});
     }
 
     // Guard against truncated downloads: if the server declared a total
@@ -206,6 +183,50 @@ async function fetchVideoAsBlob(url, referrer, onProgress) {
 
     throw new Error('Download stalled (no data for 60s). The connection may be blocked.');
   }
+}
+
+/**
+ * Download a URL into a Blob. With `{ parallel: true }` (the retry path,
+ * where the file is large and the download is the bottleneck) the URL is
+ * probed first: a server that honors Range and a file over 8 MB download
+ * over 8 parallel ranges; anything else uses the single-connection stream
+ * — and when the reason is "no Range support", the progress reports carry
+ * a methodNote naming that, so the UI shows the second method in use
+ * instead of silently crawling (no silent fallbacks). Small files stay
+ * single-connection by design (probe + 8 requests cost more than they
+ * save), with no note — that is the right method, not a degradation.
+ * Without `parallel` (HLS segments, playlists) the single-connection path
+ * runs with no probe at all.
+ * @param {string} url
+ * @param {string} [referrer]
+ * @param {Function} [onProgress] ({loaded, total, percent, method, methodNote})
+ * @param {Object} [options]
+ * @param {boolean} [options.parallel]
+ * @returns {Promise<Blob>}
+ */
+async function fetchVideoAsBlob(url, referrer, onProgress, options = {}) {
+  if (!options.parallel) return fetchVideoAsBlobSingle(url, referrer, onProgress);
+
+  const probe = await probeDownload(url, referrer);
+  if (probe.supportsRange && probe.total > PARALLEL_RANGE_MIN_BYTES) {
+    return downloadParallelRanges(probe.finalUrl, {
+      referrer,
+      total: probe.total,
+      type: probe.type,
+      onProgress,
+    });
+  }
+
+  // No Range support (the probe answered but not with 206): single
+  // connection, LOUDLY. A failed probe (status 0, network error) gets no
+  // note — the single-connection path will surface the real failure.
+  const methodNote = probe.status > 0 && !probe.supportsRange
+    ? 'this host does not support Range requests, so the download runs on one connection'
+    : '';
+  if (methodNote) {
+    console.warn(`[video-retry] ${methodNote} — ${url}`);
+  }
+  return fetchVideoAsBlobSingle(url, referrer, onProgress, methodNote);
 }
 
 async function fetchText(url, referrer) {
@@ -361,11 +382,14 @@ export async function retryVideoHostPageSide(item, targetHost, settings, options
     try {
       report('download', `Downloading from ${new URL(fetchTarget).hostname}...`);
       const blob = await fetchVideoAsBlob(fetchTarget, referrer, (p) => {
-        const label = p.total > 0
+        const base = p.total > 0
           ? `Downloading ${formatBytes(p.loaded)} / ${formatBytes(p.total)}`
           : `Downloading ${formatBytes(p.loaded)}...`;
+        // a methodNote names the second method in use (single connection
+        // because the host has no Range support) — never silent.
+        const label = p.methodNote ? `${base} — ${p.methodNote}` : base;
         report('download', label, { loaded: p.loaded, total: p.total, percent: p.percent });
-      });
+      }, { parallel: true });
       const isVideoBlob = (
         blob instanceof Blob &&
         blob.size > 0 &&
