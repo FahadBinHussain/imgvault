@@ -353,14 +353,15 @@ export function hasRenderableFieldValue(value) {
 export function getTechnicalMetadataEntries(item = {}, options = {}) {
   const {
     omittedFields = [],
-    includeExtraMetadata = false,
     includeAi = false,
   } = options;
   const omitted = new Set(omittedFields);
+  // extraMetadata is a system key (SYSTEM_FIELD_KEYS), always excluded:
+  // the old includeExtraMetadata option could never bring it back, and no
+  // caller passed it — removed in 2.19.23 instead of pretending it worked.
   const excluded = new Set([
     ...getAllBaseFieldKeys(),
     ...getSystemFieldKeys(),
-    ...(includeExtraMetadata ? [] : ['extraMetadata']),
     ...(includeAi ? [] : ['ai']),
   ]);
 

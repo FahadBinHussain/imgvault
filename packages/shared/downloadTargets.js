@@ -29,7 +29,8 @@ export function getDownloadItemTitle(item = {}) {
  * Resolve the file URL a download should fetch — STRICT per the settings
  * source (same rule as playback/posters: defaultGallerySource /
  * defaultVideoSource, never a cross-host fallback chain). Scenes use their
- * stored spzUrl (single-host truth); links have no file at all.
+ * stored spzUrl (single-host truth); audio resolves from the video source
+ * (songs ride the video hosts); links have no file at all.
  *
  * Throws a loud, item-naming Error when nothing is downloadable — callers
  * surface it per item, never skip silently.
@@ -51,7 +52,11 @@ export function getDownloadTarget(item = {}, { imageSource = '', videoSource = '
     return { url, sourceKey: imageSource, sourceLabel: label, kind, title };
   }
 
-  if (kind === 'video') {
+  if (kind === 'video' || kind === 'audio') {
+    // songs ride the video hosts (2.19.14), so they resolve from the video
+    // source exactly like a video — they used to fall through to the link
+    // error below ("link items have no file"), which was a lie about a file
+    // that is right there (2.19.23 fix). kind stays 'audio' in the result.
     const label = getVideoProviderLabel(videoSource);
     const url = getStrictVideoProviderLink(item, videoSource, 'watchUrl');
     if (!hasText(url)) {
@@ -83,6 +88,7 @@ export function isHtmlContentType(contentType = '') {
 const KNOWN_URL_EXTENSIONS = new Set([
   'jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'avif', 'svg',
   'mp4', 'webm', 'mov', 'm4v', 'mkv', 'avi', 'ts',
+  'm4a', 'mp3', 'wav', 'opus', 'ogg', 'oga', 'flac', 'aac', 'm4b', 'weba', 'aif', 'aiff',
   'json', 'spz', 'bin', 'zip', 'pdf', 'glb', 'gltf',
 ]);
 
@@ -99,6 +105,15 @@ const CONTENT_TYPE_EXTENSIONS = {
   'video/quicktime': 'mov',
   'video/x-msvideo': 'avi',
   'video/x-matroska': 'mkv',
+  'audio/mp4': 'm4a',
+  'audio/mpeg': 'mp3',
+  'audio/ogg': 'ogg',
+  'audio/opus': 'opus',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+  'audio/flac': 'flac',
+  'audio/aac': 'aac',
+  'audio/webm': 'weba',
   'application/json': 'json',
   'application/zip': 'zip',
 };
@@ -106,6 +121,7 @@ const CONTENT_TYPE_EXTENSIONS = {
 const KIND_DEFAULT_EXTENSIONS = {
   image: 'jpg',
   video: 'mp4',
+  audio: 'm4a',
   scene: 'spz',
   link: 'url',
 };

@@ -30,10 +30,30 @@ describe('URLNormalizer.normalize', () => {
       'https://scontent.fbfb-1.fna.fbcdn.net/v/t1.0-9/123.jpg',
     );
   });
-  test('even the "essential" fb params are dropped (the collector builds them but the return ignores them)', () => {
+  test('a Facebook CDN URL keeps only its essential params — session params are stripped', () => {
     assert.equal(
       URLNormalizer.normalize('https://scontent.xx.fbcdn.net/a.jpg?fbid=123&oh=abc'),
-      'https://scontent.xx.fbcdn.net/a.jpg',
+      'https://scontent.xx.fbcdn.net/a.jpg?fbid=123',
+    );
+    assert.equal(
+      URLNormalizer.normalize('https://scontent.xx.fbcdn.net/a.jpg?set=pcb.1&id=456&oe=789'),
+      'https://scontent.xx.fbcdn.net/a.jpg?set=pcb.1&id=456',
+    );
+    // two different photos must not compare equal after normalizing
+    assert.equal(
+      URLNormalizer.areEqual(
+        'https://scontent.xx.fbcdn.net/a.jpg?fbid=111&oh=abc',
+        'https://scontent.xx.fbcdn.net/a.jpg?fbid=222&oh=abc',
+      ),
+      false,
+    );
+    // same photo, different session params still compares equal
+    assert.equal(
+      URLNormalizer.areEqual(
+        'https://scontent.xx.fbcdn.net/a.jpg?fbid=111&oh=aaa',
+        'https://scontent.xx.fbcdn.net/a.jpg?fbid=111&oh=bbb',
+      ),
+      true,
     );
   });
   test('other known CDNs lose all query params', () => {

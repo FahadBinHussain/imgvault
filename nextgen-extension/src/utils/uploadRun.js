@@ -420,6 +420,12 @@ export function repairSavedOutcomeSummary(run, savedItemId = '') {
   if (!run || run.status !== UPLOAD_RUN_STATUS.INTERRUPTED) return run;
   const { reason, outcome } = splitInterruptedSummary(run.summary);
   if (!outcome) return run;
+  // A sentence that already names the saved item IS the truth — never
+  // downgrade it to the weaker "reached a host" claim from hostsDone.
+  // Without this the repair was not idempotent: running it on an
+  // already-saved sentence rewrote it (2.19.23 fix). Same guard as
+  // needsSavedOutcomeRepair, so the two always agree.
+  if (/The item was saved to the gallery \(ID [^)]+\)\./.test(outcome)) return run;
 
   const itemId = String(savedItemId || run.savedItemId || '').trim();
   const truth = itemId

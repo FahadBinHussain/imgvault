@@ -264,12 +264,13 @@ describe('getTechnicalMetadataEntries', () => {
       ['ai'],
     );
   });
-  test('includeExtraMetadata does NOT bring extraMetadata back — it is a system key, always excluded', () => {
+  test('extraMetadata is a system key, always excluded (the dead includeExtraMetadata option was removed in 2.19.23)', () => {
     const item = { extraMetadata: { y: 2 }, ai: { caption: 'c' } };
     assert.deepEqual(
-      getTechnicalMetadataEntries(item, { includeExtraMetadata: true, includeAi: true }).map(([k]) => k),
+      getTechnicalMetadataEntries(item, { includeAi: true }).map(([k]) => k),
       ['ai'],
     );
+    assert.deepEqual(getTechnicalMetadataEntries(item).map(([k]) => k), []);
   });
   test('omittedFields are honoured', () => {
     const entries = getTechnicalMetadataEntries({ a: 1, b: 2 }, { omittedFields: ['a'] });

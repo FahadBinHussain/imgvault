@@ -76,15 +76,22 @@ export class URLNormalizer {
    */
   static normalizeFacebookCDN(urlObj) {
     const newParams = new URLSearchParams();
-    
+
     for (const [key, value] of urlObj.searchParams) {
       if (this.FACEBOOK_ESSENTIAL_PARAMS.includes(key)) {
         newParams.set(key, value);
       }
     }
-    
-    // Return URL without dynamic session parameters
-    return `${urlObj.origin}${urlObj.pathname}`;
+
+    // Keep the essential params on the URL: collecting them and then
+    // dropping them (the old return) made every fbcdn photo compare equal
+    // to every other one, so duplicate detection could not tell two
+    // different photos apart (2.19.23 fix). Session params (oh, oe,
+    // _nc_sid, ...) are still stripped.
+    const query = newParams.toString();
+    return query
+      ? `${urlObj.origin}${urlObj.pathname}?${query}`
+      : `${urlObj.origin}${urlObj.pathname}`;
   }
 
   /**

@@ -357,15 +357,14 @@ describe('needsSavedOutcomeRepair / repairSavedOutcomeSummary', () => {
     const noOutcome = { ...lyingRun, summary: 'Something went wrong' };
     assert.strictEqual(repairSavedOutcomeSummary(noOutcome), noOutcome);
   });
-  test('repair is NOT idempotent on an already-saved sentence without a savedItemId', () => {
-    // needsSavedOutcomeRepair is the guard that stops this call in practice;
-    // repair itself trusts the run evidence (hostsDone) over the sentence.
+  test('repair is idempotent: an already-saved sentence is never downgraded to the host claim', () => {
     const alreadySaved = { ...lyingRun, summary: 'Closed. The item was saved to the gallery (ID abc).' };
-    const repaired = repairSavedOutcomeSummary(alreadySaved);
-    assert.equal(
-      repaired.summary,
-      'Closed. The upload reached TeraBox, but the gallery item was not saved.',
-    );
+    assert.strictEqual(repairSavedOutcomeSummary(alreadySaved), alreadySaved);
+    // and a repaired run repairs to the same thing a second time
+    const repaired = repairSavedOutcomeSummary(lyingRun);
+    assert.strictEqual(repairSavedOutcomeSummary(repaired), repaired);
+    const repairedWithId = repairSavedOutcomeSummary(lyingRun, 'item-42');
+    assert.strictEqual(repairSavedOutcomeSummary(repairedWithId, 'item-42'), repairedWithId);
   });
   test('the repair replaces the lie with the host truth and keeps the reason', () => {
     const repaired = repairSavedOutcomeSummary(lyingRun);

@@ -160,10 +160,19 @@ describe('getDownloadTarget', () => {
         && err.message.includes('link items have no file'),
     );
   });
-  test('an audio item currently throws the link message (only image/video/scene resolve)', () => {
+  test('an audio item resolves from the video source, like a video (songs ride the video hosts)', () => {
+    const audioItem = {
+      kind: 'audio',
+      fileName: 'song.m4a',
+      videoHosts: { telegram: { watchUrl: 'https://t.me/chan/9' } },
+    };
+    const out = getDownloadTarget(audioItem, { videoSource: 'telegram' });
+    assert.equal(out.url, 'https://t.me/chan/9');
+    assert.equal(out.sourceLabel, 'Telegram');
+    assert.equal(out.kind, 'audio');
     assert.throws(
-      () => getDownloadTarget({ kind: 'audio', fileName: 'song.m4a' }, {}),
-      /link items have no file/,
+      () => getDownloadTarget(audioItem, { videoSource: 'udrop' }),
+      (err) => err.message.includes('no UDrop URL stored'),
     );
   });
 });
@@ -203,8 +212,15 @@ describe('getDownloadFileName', () => {
   test('the kind default is the last resort', () => {
     assert.equal(getDownloadFileName({ kind: 'image', fileName: 'pic' }, '', ''), 'pic.jpg');
     assert.equal(getDownloadFileName({ kind: 'video', fileName: 'clip' }, '', ''), 'clip.mp4');
+    assert.equal(getDownloadFileName({ kind: 'audio', fileName: 'song' }, '', ''), 'song.m4a');
     assert.equal(getDownloadFileName({ kind: 'scene', fileName: 'm' }, '', ''), 'm.spz');
     assert.equal(getDownloadFileName({ kind: 'link', fileName: 'site' }, '', ''), 'site.url');
+  });
+  test('audio extensions and content types resolve (a song used to save as .bin)', () => {
+    assert.equal(getDownloadFileName({ kind: 'audio', fileName: 'song.m4a' }, '', ''), 'song.m4a');
+    assert.equal(getDownloadFileName({ fileName: 'song' }, 'https://cdn.example/x.flac', ''), 'song.flac');
+    assert.equal(getDownloadFileName({ fileName: 'song' }, '', 'audio/mp4'), 'song.m4a');
+    assert.equal(getDownloadFileName({ fileName: 'song' }, '', 'audio/mpeg'), 'song.mp3');
   });
   test('forbidden filename characters become dashes, collapsed and trimmed', () => {
     assert.equal(
