@@ -73,14 +73,18 @@ test('2.19.6 (2026-11-03): telegram_upload spawns telegram_upload.py and parses 
 
 // ------------------------------------------------- video normalize ---
 
-// NOTE (doc/code mismatch, reported not pinned): AGENTS.md 2.13.14 says
-// the ffmpeg preset is `slow`, but the host actually runs `medium`.
-// The test pins the code's real values.
+// FIXED 2.19.23: AGENTS.md 2.13.14 says the ffmpeg preset is `slow`,
+// but the host ran `medium` (ffmpeg's default) since the day the entry
+// was written. The code follows the documented decision now.
 test('2.13.14/15 (2026-09-28): video normalize re-encodes with libx264 CRF 12 / AAC 320k / faststart, hardware decode, all threads', () => {
   const rs = mainRs();
   const fn = rs.slice(rs.indexOf('fn video_normalize_finish'));
   assert.ok(fn.includes('.args(["-y", "-hwaccel", "auto", "-threads", "0", "-i"])'));
-  assert.ok(fn.includes('"-c:v", "libx264", "-preset", "medium", "-crf", "12", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "320k", "-movflags", "+faststart"'));
+  assert.ok(fn.includes('.args(VIDEO_NORMALIZE_ENCODE_ARGS)'));
+  assert.ok(rs.includes('"-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "slow",'));
+  assert.ok(rs.includes('"-crf", "12", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "320k",'));
+  assert.ok(rs.includes('"-movflags", "+faststart",'));
+  assert.ok(!rs.includes('"-preset", "medium"'), 'the medium preset must be gone');
 });
 
 test('2.13.15 (2026-09-28): the normalized output is read back in 700 KiB base64 chunks (Chrome drops native messages above 1 MiB)', () => {

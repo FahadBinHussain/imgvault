@@ -109,13 +109,24 @@ fn video_normalize_chunk(request_id: &str, encoded: &str) -> Result<(), String> 
     file.write_all(&bytes).map_err(|e| format!("Could not write native video chunk: {}", e))
 }
 
+/// Vault video normalization quality (AGENTS.md 2.13.14): H.264 CRF 12
+/// with the `slow` preset and AAC 320k — visually near-lossless, broad
+/// Chromium compatibility. The code shipped `medium` (ffmpeg's default)
+/// on the same day the entry was written; no entry ever chose medium,
+/// so the code follows the documented decision (fixed 2.19.23).
+const VIDEO_NORMALIZE_ENCODE_ARGS: &[&str] = &[
+    "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "slow",
+    "-crf", "12", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "320k",
+    "-movflags", "+faststart",
+];
+
 fn video_normalize_finish(request_id: &str) -> Result<u64, String> {
     let input = video_session_path(request_id, "input");
     let output = video_session_path(request_id, "output.mp4");
     let result = Command::new("ffmpeg")
         .args(["-y", "-hwaccel", "auto", "-threads", "0", "-i"])
         .arg(&input)
-        .args(["-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "medium", "-crf", "12", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "320k", "-movflags", "+faststart"])
+        .args(VIDEO_NORMALIZE_ENCODE_ARGS)
         .arg(&output)
         .output()
         .map_err(|e| format!("Native FFmpeg is unavailable: {}", e))?;
@@ -3073,6 +3084,29 @@ mod tests {
     fn video_normalize_chunk_without_start_fails() {
         let id = unique_request_id("vnorm-nostart");
         assert!(video_normalize_chunk(&id, &BASE64.encode(b"x")).is_err());
+    }
+
+    #[test]
+    fn video_normalize_encode_args_match_the_documented_quality() {
+        // AGENTS.md 2.13.14: H.264 CRF 12, `slow` preset, AAC 320k,
+        // faststart. The code shipped ffmpeg's default `medium` preset
+        // until 2.19.23; this pins the documented values.
+        let args = VIDEO_NORMALIZE_ENCODE_ARGS;
+        let value_of = |flag: &str| {
+            args.iter()
+                .position(|a| *a == flag)
+                .and_then(|i| args.get(i + 1).copied())
+        };
+        assert_eq!(value_of("-preset"), Some("slow"));
+        assert_eq!(value_of("-crf"), Some("12"));
+        assert_eq!(value_of("-c:v"), Some("libx264"));
+        assert_eq!(value_of("-c:a"), Some("aac"));
+        assert_eq!(value_of("-b:a"), Some("320k"));
+        assert!(args.contains(&"-pix_fmt"));
+        assert!(args.contains(&"yuv420p"));
+        assert!(args.contains(&"-movflags"));
+        assert!(args.contains(&"+faststart"));
+        assert!(!args.contains(&"medium"), "the medium preset must be gone");
     }
 
     #[test]
