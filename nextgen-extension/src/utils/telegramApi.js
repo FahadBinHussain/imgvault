@@ -790,6 +790,11 @@ export async function uploadTelegramNative({ filePath, channel, caption = '', on
           messageId: parsed.messageId,
           size: parsed.size,
           date: parsed.date,
+          // the uploader warns when it could not read video dimensions
+          // (mp4 posted as a document) — surfaced by the caller, never
+          // dropped silently.
+          warning: parsed.warning || '',
+          videoAttributes: parsed.videoAttributes === true,
         });
       } else {
         finish(reject, new Error(res?.message || 'Native Telegram upload failed.'));

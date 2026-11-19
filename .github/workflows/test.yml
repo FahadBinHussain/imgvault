@@ -81,3 +81,21 @@ jobs:
         run: |
           rustup target add x86_64-pc-windows-gnu
           cargo check --manifest-path native-host/src-tauri/Cargo.toml --target x86_64-pc-windows-gnu
+
+  test-python:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Stdlib unittest only — no Telethon, no ffmpeg, no network. The mp4
+      # probe is pure python by design, so it stays testable anywhere.
+      - name: Run telegram uploader tests
+        working-directory: native-host/scripts
+        run: python -m unittest -v test_mp4_probe

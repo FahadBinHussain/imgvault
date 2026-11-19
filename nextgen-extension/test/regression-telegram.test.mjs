@@ -339,12 +339,39 @@ test('2.19.6 (2026-11-04): uploadTelegramNative surfaces progress (loaded byte c
       channel: 'chan',
       onProgress: (e) => progress.push(e),
     });
-    assert.deepEqual(result, { ok: true, messageId: 90, size: 1000, date: 1730000000 });
+    assert.deepEqual(result, {
+      ok: true, messageId: 90, size: 1000, date: 1730000000,
+      warning: '', videoAttributes: false,
+    });
     assert.equal(progress.length, 1);
     assert.equal(progress[0].phase, 'uploading');
     assert.equal(progress[0].loaded, 100);
     assert.equal(progress[0].total, 1000);
     assert.equal(progress[0].percent, 10);
+  } finally {
+    uninstallChrome();
+  }
+});
+
+test('2.19.23: uploadTelegramNative passes the uploader warning and videoAttributes flag through', async () => {
+  installChrome({
+    connectNativeHandler: (message, port) => {
+      queueMicrotask(() => port.emit({
+        success: true,
+        stdout: JSON.stringify({
+          messageId: 91, size: 2000, date: 1730000001,
+          warning: 'Could not read video dimensions from clip.mp4 — uploading without video attributes.',
+          videoAttributes: false,
+        }),
+      }));
+      return undefined;
+    },
+  });
+  try {
+    const result = await uploadTelegramNative({ filePath: 'C:\\x\\clip.mp4', channel: 'chan' });
+    assert.equal(result.messageId, 91);
+    assert.match(result.warning, /Could not read video dimensions/);
+    assert.equal(result.videoAttributes, false);
   } finally {
     uninstallChrome();
   }
@@ -506,7 +533,11 @@ test('2.19.22 (2026-11-18): uploaders.js stages ONLY picked files and deletes ON
   assert.ok(uploaders.includes('if (staged && nativePath) {'));
   assert.ok(uploaders.includes('await deleteNativeTempFile(nativePath);'));
   assert.ok(uploaders.includes("fileId: `native-${messageId}`"));
-  assert.ok(uploaders.includes("apiMessage: 'Uploaded via native host MTProto'"));
+  // 2.19.23: the apiMessage names the uploader warning when one is present
+  // (mp4 posted as a document), plain 'Uploaded via native host MTProto'
+  // otherwise.
+  assert.ok(uploaders.includes("? `Uploaded via native host MTProto — ${res.warning}`"));
+  assert.ok(uploaders.includes(": 'Uploaded via native host MTProto',"));
 });
 
 test('2.19.22 (2026-11-18): providerCatalog forwards data.filePath into the telegram upload options', () => {
@@ -540,4 +571,30 @@ test('2.19.6 (2026-11-04): telegramApi.js sends the native upload as action tele
   const api = src('../src/utils/telegramApi.js');
   assert.ok(api.includes("action: 'telegram_upload',"));
   assert.ok(api.includes('file_path: filePath,'));
+});
+
+test('2.19.23: telegram_upload.py attaches DocumentAttributeVideo from a pure-python mp4 probe', () => {
+  const py = src('../../native-host/scripts/telegram_upload.py');
+  assert.ok(py.includes('from telethon.tl.types import DocumentAttributeVideo'));
+  assert.ok(py.includes('def probe_mp4_video(file_path):'));
+  assert.ok(py.includes('DocumentAttributeVideo('));
+  assert.ok(py.includes('attributes=attributes,'));
+  // supports_streaming alone was the bug: the flag only has meaning ON a
+  // DocumentAttributeVideo, and Telethon cannot guess duration/dims.
+  assert.ok(py.includes('supports_streaming=True,'));
+  // a probe failure is LOUD: a WARN line + a warning in the RESULT json
+  assert.ok(py.includes('Could not read video dimensions from'));
+  assert.ok(py.includes('print(f"WARN:{warning}", flush=True)'));
+  assert.ok(py.includes('result["warning"] = warning'));
+  assert.ok(py.includes('"videoAttributes": video_attributes,'));
+});
+
+test('2.19.23: the native-upload warning flows through to the result apiMessage', () => {
+  const api = src('../src/utils/telegramApi.js');
+  assert.ok(api.includes("warning: parsed.warning || '',"));
+  assert.ok(api.includes('videoAttributes: parsed.videoAttributes === true,'));
+  const uploaders = src('../src/utils/uploaders.js');
+  assert.ok(uploaders.includes('if (res.warning) {'));
+  assert.ok(uploaders.includes('console.warn(`[telegram-native] ${res.warning}`);'));
+  assert.ok(uploaders.includes('`Uploaded via native host MTProto — ${res.warning}`'));
 });

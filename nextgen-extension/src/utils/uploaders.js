@@ -1546,6 +1546,13 @@ export class TelegramUploader extends BaseUploader {
         const messageId = String(res.messageId);
         const chat = String(channel || '').trim().replace(/^@+/, '');
         const watchUrl = messageId ? `https://t.me/${chat}/${messageId}` : '';
+        // The native uploader warns when it could not read video
+        // dimensions — the post lands as a document, no CDN URL, no
+        // in-gallery playback. Say so loudly on the result instead of
+        // letting a document post look like a successful video upload.
+        if (res.warning) {
+          console.warn(`[telegram-native] ${res.warning}`);
+        }
         let cdnUrl = '';
         let posterUrl = '';
         try {
@@ -1567,7 +1574,9 @@ export class TelegramUploader extends BaseUploader {
           messageId,
           filename,
           apiStatus: 'success',
-          apiMessage: 'Uploaded via native host MTProto',
+          apiMessage: res.warning
+            ? `Uploaded via native host MTProto — ${res.warning}`
+            : 'Uploaded via native host MTProto',
         };
       } finally {
         // A staged temp file is deleted whether the upload succeeded or not;
