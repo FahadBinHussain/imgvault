@@ -83,9 +83,23 @@ const reservedRow = {
   delete source.pendingUploadStartedAt;
   delete source.pendingUploadFileName;
 
-  const payload = toMediaDbPayload(source, reservedRow, {
+  // the real 2-arg call (2.19.23 fix): the old code passed the delete list
+  // as a THIRD argument, which toMediaDbPayload(source, options) silently
+  // ignored — the checks below passed only because the source was already
+  // cleaned, so the delete mechanism itself was never exercised.
+  const payload = toMediaDbPayload(source, {
+    existing: reservedRow,
     extraMetadataDeletes: PENDING_UPLOAD_EXTRA_KEYS,
   });
+
+  // proof the delete list does the work: without it, the flags come back
+  // from the existing row's mirror even though the source was cleaned.
+  const withoutDeletes = toMediaDbPayload(source, { existing: reservedRow });
+  check(
+    'without the delete list the flags survive (the mirror puts them back)',
+    withoutDeletes.extraMetadata.pendingUpload === true,
+    `pendingUpload=${String(withoutDeletes.extraMetadata.pendingUpload)}`
+  );
 
   check(
     'the finalisation write removes pendingUpload',
