@@ -1157,8 +1157,20 @@ export async function checkTeraBoxSceneIntegrity(items, allItems, cookie, onProg
     // sceneFiles is keyed PER HOST (sceneFiles.terabox.texture) — the old
     // sceneFiles.texture key never existed, so every terabox texture read
     // empty and its scene showed "broken" (2.19.26).
-    const spzFid = extractTeraBoxFileId(item) || teraBoxFsIdFromUrl(item.spzUrl) || String(item.extraMetadata?.sceneFiles?.terabox?.spz?.fileId || '').trim();
     const texFid = teraBoxFsIdFromUrl(item.textureUrl) || String(item.textureFileId || item.extraMetadata?.sceneFiles?.terabox?.texture?.fileId || '').trim();
+    // The spz id comes from sceneFiles.terabox.spz first when it exists; the
+    // videoHosts fileId is only a fallback, and a videoHosts fileId EQUAL to
+    // the texture fs_id is a mislabeled texture ref, never the spz — probing
+    // it would "find" the spz by matching the texture twice (ceramic, 2.19.27:
+    // videoHosts.terabox.fileId held texture fs_id 589797364224622 while
+    // sceneFiles.terabox had no spz entry at all, and the check reported the
+    // scene FOUND). The videoHosts fallback still stands when the fileId is a
+    // genuinely different id (legacy scenes with no sceneFiles spz entry).
+    const sceneSpzFid = String(item.extraMetadata?.sceneFiles?.terabox?.spz?.fileId || '').trim();
+    const videoHostsFid = extractTeraBoxFileId(item);
+    const spzFid = sceneSpzFid
+      || (videoHostsFid && videoHostsFid !== texFid ? videoHostsFid : '')
+      || teraBoxFsIdFromUrl(item.spzUrl);
     const spzName = String(links.filename || extraLinks.filename || item.teraboxFileName || item.fileName || '').trim();
     const texName = baseNameOfTeraBoxUrl(item.textureUrl);
     // Also consider sceneFiles for texture names

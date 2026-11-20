@@ -855,24 +855,16 @@ test('2.19.26 (2026-11-20): terabox scene check — the spz matches by the fid i
   }
 });
 
-// LOUD KNOWN FAILURE — DO NOT "FIX" BY EDITING THIS TEST, AND DO NOT MAKE
-// IT PASS BY CHANGING PRODUCTION CODE IN A TESTS-ONLY COMMIT.
-//
-// The ceramic scene (d1394dbd) has NO spz on TeraBox at all: its
-// sceneFiles.terabox holds the TEXTURE only (fs_id 589797364224622), while
-// videoHosts.terabox.fileId holds that SAME texture fs_id mislabeled with
-// the spz filename. checkTeraBoxSceneIntegrity reads the spz id from
-// extractTeraBoxFileId(item) FIRST — i.e. from videoHosts — so it probes
-// the texture file twice and reports the scene FOUND. The live 2.19.26
-// resolve page shows "7 found" for TeraBox scenes while ceramic's spz is
-// genuinely missing (proven live 2026-11-20 by the final-counts pass).
-//
-// The fix belongs in checkTeraBoxSceneIntegrity: when sceneFiles.terabox
-// exists, the spz id must come from sceneFiles.terabox.spz (and a
-// videoHosts fileId that equals the texture fs_id must never count as the
-// spz). Until that fix ships, this test stays SKIPPED — it pins the
-// intended behavior and names the bug.
-test.skip('KNOWN FAILING (2026-11-20): terabox scene check — a videoHosts fileId holding the TEXTURE fs_id must NOT count as the spz (ceramic masking case)', async () => {
+// FIXED in 2.19.27. The ceramic scene (d1394dbd) had NO spz on TeraBox at
+// all: its sceneFiles.terabox held the TEXTURE only (fs_id 589797364224622),
+// while videoHosts.terabox.fileId held that SAME texture fs_id mislabeled
+// with the spz filename. checkTeraBoxSceneIntegrity used to read the spz id
+// from extractTeraBoxFileId(item) FIRST — i.e. from videoHosts — so it
+// probed the texture file twice and reported the scene FOUND (the live
+// 2.19.26 resolve page showed "7 found" while ceramic's spz was genuinely
+// missing). The spz id now comes from sceneFiles.terabox.spz first, and a
+// videoHosts fileId equal to the texture fs_id never counts as the spz.
+test('2.19.27 (2026-11-20): terabox scene check — a videoHosts fileId holding the TEXTURE fs_id must NOT count as the spz (ceramic masking case)', async () => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = teraboxSceneFetch([
     { fs_id: '589797364224622', server_filename: 'ceramic-texture.webp', path: '/ceramic-texture.webp', size: 67104, isdir: 0 },

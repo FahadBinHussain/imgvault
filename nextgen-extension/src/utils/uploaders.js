@@ -1427,7 +1427,13 @@ export class TelegramUploader extends BaseUploader {
   buildProviderResult({ message, channel, filename, method, cdnUrl = '', posterUrl = '' }) {
     const field = method === 'sendVideo' ? 'video' : 'document';
     const messageId = String(message?.message_id || '');
-    const media = message?.[field] || {};
+    // Telegram classifies webp uploads sent via sendDocument as STICKERS, so
+    // the response carries message.sticker and no message.document — without
+    // this fallback the upload throws "returned no file_id" after the post
+    // already landed, and a retry posts a duplicate (webp images posted twice
+    // live 2026-11-19, msgs 468/469 orphans + 472/473 recorded). Document
+    // still wins when both are present; sendVideo never falls back.
+    const media = message?.[field] || (field === 'document' ? message?.sticker || {} : {});
     const fileId = String(media.file_id || '');
     if (!fileId) {
       throw new Error(`Telegram: ${method} returned no file_id (message ${messageId || 'unknown'})`);

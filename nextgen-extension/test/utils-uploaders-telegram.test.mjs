@@ -72,24 +72,17 @@ describe('TelegramUploader.buildProviderResult — documents', () => {
   });
 });
 
-// LOUD KNOWN FAILURE — DO NOT "FIX" BY EDITING THIS TEST, AND DO NOT MAKE
-// IT PASS BY CHANGING PRODUCTION CODE IN A TESTS-ONLY COMMIT.
-//
-// Telegram classifies webp uploads sent via Bot API sendDocument as
-// STICKERS: the response carries result.sticker, not result.document.
-// buildProviderResult reads ONLY message[field] (field = 'document' for
-// sendDocument), so a webp image upload throws "returned no file_id" even
-// though the post landed — the message is on the channel, the extension
-// records a failure, and a retry posts a DUPLICATE. Proven live 2026-11-19:
-// two webp images posted twice (msgs 468/469 orphans + 472/473 recorded)
-// because the first attempts got no file_id back. The throwaway gap-fill
-// drivers already handle this (msg.get("document") or msg.get("sticker"));
-// the shipped uploader does not.
-//
-// The fix belongs in buildProviderResult: fall back to message.sticker
-// when message.document is absent. Until that fix ships, this test stays
-// SKIPPED — it pins the intended behavior and names the bug.
-test.skip('KNOWN FAILING (2026-11-19): a sendDocument response carrying ONLY a sticker (webp) must yield its file_id', () => {
+// FIXED in 2.19.27. Telegram classifies webp uploads sent via Bot API
+// sendDocument as STICKERS: the response carries result.sticker, not
+// result.document. buildProviderResult used to read ONLY message[field]
+// (field = 'document' for sendDocument), so a webp image upload threw
+// "returned no file_id" even though the post landed — the message was on
+// the channel, the extension recorded a failure, and a retry posted a
+// DUPLICATE (proven live 2026-11-19: two webp images posted twice, msgs
+// 468/469 orphans + 472/473 recorded). It now falls back to
+// message.sticker when message.document is absent (document still wins
+// when both are present).
+test('2.19.27 (2026-11-20): a sendDocument response carrying ONLY a sticker (webp) must yield its file_id', () => {
   const out = uploader.buildProviderResult({
     message: {
       message_id: 472,
