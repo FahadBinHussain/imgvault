@@ -22,6 +22,12 @@ import {
   SCENE_TEXTURE_EXT_RE,
 } from '../src/utils/udropApi.js';
 import {
+  checkTeraBoxSceneIntegrity,
+} from '../src/utils/teraBoxApi.js';
+import {
+  checkTelegramSceneIntegrity,
+} from '../src/utils/telegramApi.js';
+import {
   listAllFilemoonFiles,
   extractFilemoonFilecode,
 } from '../src/utils/filemoonApi.js';
@@ -217,6 +223,152 @@ test('2.12.79 (2026-09-14): scene-family files are the model + texture extension
   assert.equal(extractUdropCode('https://www.udrop.com/file/abc123'), 'abc123');
   assert.equal(extractUdropCode('https://www.udrop.com/abc123'), 'abc123');
   assert.equal(extractUdropCode('https://example.com/x'), null);
+});
+
+test('2.19.26 (2026-11-20): checkSceneIntegrity matches via sceneFiles.udrop when spzUrl/textureUrl point at telegram — the scene is found, not broken', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => jsonResponse({
+    _status: 'success',
+    data: {
+      files: [
+        { short_url: 'spz9', file_id: '2625007', name: 'amphi.spz', status: 'active' },
+        { short_url: 'tex9', file_id: '2625008', name: 'amphi.webp', status: 'active' },
+      ],
+      folders: [],
+    },
+  });
+  const items = [
+    {
+      id: 'amphi',
+      spzUrl: '/telegram-media/BQADxxx',
+      textureUrl: '/telegram-media/CAADyyy',
+      udropWatchUrl: 'https://www.udrop.com/file/spz9',
+      extraMetadata: {
+        sceneFiles: {
+          udrop: {
+            spz: { fileId: '2625007', filename: 'amphi.spz' },
+            texture: { fileId: '2625008', filename: 'amphi.webp' },
+          },
+        },
+      },
+    },
+    // control: same telegram pointers, no udrop ref anywhere — no udrop
+    // codes at all, so it lands in noUrl, never missing.
+    {
+      id: 'no-ref',
+      spzUrl: '/telegram-media/BQADzzz',
+      textureUrl: '/telegram-media/CAADwww',
+    },
+  ];
+  try {
+    const result = await checkSceneIntegrity(items, items, 'fake-token', 'fake-account');
+    assert.equal(result.found.length, 1);
+    assert.equal(result.found[0].item.id, 'amphi');
+    assert.equal(result.found[0].spzMatched.file_id, '2625007');
+    assert.equal(result.found[0].texMatched.file_id, '2625008');
+    assert.equal(result.missing.length, 0);
+    assert.equal(result.noUrl.length, 1);
+    assert.equal(result.noUrl[0].item.id, 'no-ref');
+    assert.deepEqual(result.unverified, []);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): checkTeraBoxSceneIntegrity reads the texture fs_id from sceneFiles.terabox.texture — the old sceneFiles.texture key never existed', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = String(url || '');
+    if (u.startsWith('https://www.terabox.com/')) {
+      return { ok: true, status: 200, json: async () => ({}), text: async () => '<html></html>' };
+    }
+    if (u.includes('/api/list')) {
+      return jsonResponse({
+        errno: 0,
+        list: [
+          { fs_id: '111', server_filename: 'scene.spz', path: '/scene.spz', size: 1000, isdir: 0 },
+          { fs_id: '222', server_filename: 'tex.webp', path: '/tex.webp', size: 100, isdir: 0 },
+        ],
+      });
+    }
+    throw new Error(`unexpected fetch: ${u}`);
+  };
+  const items = [
+    {
+      id: 'ceramic',
+      fileName: 'ceramic.spz',
+      spzUrl: '/telegram-media/BQADxxx',
+      textureUrl: '/telegram-media/CAADyyy',
+      extraMetadata: {
+        sceneFiles: {
+          terabox: {
+            spz: { fileId: '111', filename: 'scene.spz' },
+            texture: { fileId: '222', filename: 'tex.webp' },
+          },
+        },
+      },
+    },
+  ];
+  try {
+    const result = await checkTeraBoxSceneIntegrity(items, items, 'ndus=fake; browserid=fake');
+    assert.equal(result.found.length, 1);
+    assert.equal(result.found[0].item.id, 'ceramic');
+    assert.equal(result.found[0].spzMatched.fs_id, '111');
+    assert.equal(result.found[0].texMatched.fs_id, '222');
+    assert.equal(result.missing.length, 0);
+    assert.deepEqual(result.unverified, []);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): checkTelegramSceneIntegrity reports over-20 MB files as unverified, not broken — and still calls a deleted post broken', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    const u = String(url || '');
+    if (!u.includes('/getFile')) throw new Error(`unexpected fetch: ${u}`);
+    const fileId = options?.body?.get?.('file_id') || '';
+    if (fileId === 'big-spz') {
+      // the API itself rejects over-20 MB files from getFile
+      return jsonResponse({ ok: false, error_code: 400, description: 'Bad Request: file is too big' });
+    }
+    if (fileId === 'huge-spz') {
+      // the client-side gate: the API returns metadata over the cap
+      return jsonResponse({ ok: true, result: { file_id: 'huge-spz', file_path: 'x', file_size: 30 * 1024 * 1024 } });
+    }
+    if (fileId === 'gone-spz') {
+      return jsonResponse({ ok: false, error_code: 400, description: 'Bad Request: invalid file id' });
+    }
+    return jsonResponse({ ok: true, result: { file_id: fileId, file_path: 'x', file_size: 100 } });
+  };
+  const sceneItem = (id, spzFileId, texFileId, messageId) => ({
+    id,
+    fileName: `${id}.spz`,
+    extraMetadata: {
+      sceneFiles: {
+        telegram: {
+          spz: { fileId: spzFileId, filename: `${id}.spz`, messageId: String(messageId) },
+          texture: { fileId: texFileId, filename: `${id}.webp`, messageId: String(messageId + 1) },
+        },
+      },
+    },
+  });
+  const items = [
+    sceneItem('ceramic', 'big-spz', 'small-tex', 589),
+    sceneItem('huge', 'huge-spz', 'small-tex2', 591),
+    sceneItem('gone', 'gone-spz', 'small-tex3', 593),
+  ];
+  try {
+    const result = await checkTelegramSceneIntegrity(items, items, { token: 'fake-token', channel: '-1003959088547' });
+    assert.equal(result.unverified.length, 2);
+    assert.deepEqual(result.unverified.map((e) => e.item.id).sort(), ['ceramic', 'huge']);
+    assert.equal(result.missing.length, 1);
+    assert.equal(result.missing[0].item.id, 'gone');
+    assert.equal(result.found.length, 0);
+    assert.ok(result.unverified.map((e) => (e.reasons || []).join(' ')).join(' ').match(/too big/i));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
 // ---------------------------------------------------------- filemoon ---

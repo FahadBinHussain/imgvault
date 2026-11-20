@@ -313,23 +313,48 @@ export async function checkUdropIntegrity(items, allItems, accessToken, accountI
 }
 
 /**
+ * UDrop scene refs for one item. Scenes store per-host refs in
+ * `extraMetadata.sceneFiles.udrop` (written by the scene upload and the
+ * scene Fix), with a top-level `sceneFiles.udrop` copy for the legacy
+ * firestore backend. fileId is the UDrop numeric file_id (or a short_url
+ * code from older writes) — buildUdropFileMap keys both. Mirrors the
+ * telegram check's pickTelegramSceneRefs pattern.
+ */
+const pickUdropSceneRefs = (item) => {
+  const extra = item?.extraMetadata && typeof item.extraMetadata === 'object' ? item.extraMetadata : {};
+  const scene = (extra.sceneFiles?.udrop && typeof extra.sceneFiles.udrop === 'object')
+    ? extra.sceneFiles.udrop
+    : (item?.sceneFiles?.udrop && typeof item.sceneFiles.udrop === 'object' ? item.sceneFiles.udrop : {});
+  const spz = scene.spz && typeof scene.spz === 'object' ? scene.spz : {};
+  const texture = scene.texture && typeof scene.texture === 'object' ? scene.texture : {};
+  return {
+    spzCode: String(spz.fileId || '').trim(),
+    texCode: String(texture.fileId || '').trim(),
+  };
+};
+
+/**
  * 3D scene integrity check against UDrop.
  * Scenes are stored as .spz files on UDrop (spzUrl = udrop.com/{code}/{name}.spz).
  * Compares the scene items' spz codes against the full UDrop file listing so the
  * scene tab doesn't inflate the video counts (was mixed into checkUdropIntegrity).
+ * spzUrl/textureUrl are SINGLE-host pointers — after a telegram Fix they point
+ * at telegram, so the match reads sceneFiles.udrop first (2.19.26: scenes
+ * showed "broken" on UDrop while their files were right there).
  * A listing failure THROWS — never report health from a partial/empty listing.
  * @param {Array} items – DB media items (scene items)
  * @param {Array} allItems – every DB item; their udrop codes are excluded from
  *                           the extra list so video files don't show as scene orphans
  * @param {string} accessToken
  * @param {string} accountId
- * @returns {Promise<{found:[],missing:[],noUrl:[],extra:[]}>}
+ * @returns {Promise<{found:[],missing:[],noUrl:[],extra:[],unverified:[]}>}
  */
 export async function checkSceneIntegrity(items, allItems, accessToken, accountId) {
   const found = [];
   const missing = [];
   const noUrl = [];
   const extra = [];
+  const unverified = [];
 
   const udropFiles = await listAllUdropFiles(accessToken, accountId);
   const udropMap = buildUdropFileMap(udropFiles);
@@ -347,9 +372,15 @@ export async function checkSceneIntegrity(items, allItems, accessToken, accountI
 
   for (const item of items) {
     const urls = udropUrlsOfItem(item);
-    const spzCode = extractUdropCode(item.spzUrl);
-    const texCode = extractUdropCode(item.textureUrl);
-    const codes = urls.map(extractUdropCode).filter(Boolean);
+    // spzUrl/textureUrl are SINGLE-host pointers: after a telegram Fix they
+    // point at telegram, so a udrop scene read only from them looks broken
+    // while its files are right there. sceneFiles.udrop is the per-host
+    // record — the pointer wins when it IS a udrop URL, sceneFiles is the
+    // fallback when it points elsewhere.
+    const sceneRefs = pickUdropSceneRefs(item);
+    const spzCode = extractUdropCode(item.spzUrl) || sceneRefs.spzCode || null;
+    const texCode = extractUdropCode(item.textureUrl) || sceneRefs.texCode || null;
+    const codes = [...urls.map(extractUdropCode), sceneRefs.spzCode, sceneRefs.texCode].filter(Boolean);
     const uniqueCodes = [...new Set(codes)];
 
     if (!uniqueCodes.length) {
@@ -420,5 +451,7 @@ export async function checkSceneIntegrity(items, allItems, accessToken, accountI
     extra.push({ file: texFile, textureFiles: [], standaloneTexture: true });
   });
 
-  return { found, missing, noUrl, extra };
+  // UDrop has no unverified source (a listing either matches or it doesn't) —
+  // the empty bucket keeps the scene-check result shape uniform with Telegram.
+  return { found, missing, noUrl, extra, unverified };
 }

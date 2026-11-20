@@ -1114,13 +1114,14 @@ export async function deleteTeraBoxFiles(explicitCookie, paths) {
  * @param {Array} allItems – every DB item; their terabox ids/names are excluded
  *                           from the extra list so videos don't show as scene orphans
  * @param {string} cookie
- * @returns {Promise<{found:[],missing:[],noUrl:[],extra:[]}>}
+ * @returns {Promise<{found:[],missing:[],noUrl:[],extra:[],unverified:[]}>}
  */
 export async function checkTeraBoxSceneIntegrity(items, allItems, cookie, onProgress) {
   const found = [];
   const missing = [];
   const noUrl = [];
   const extra = [];
+  const unverified = [];
 
   const files = await listAllTeraBoxFiles(cookie, onProgress);
   console.log(`[teraBoxApi] Scene check: listed ${files.length} TeraBox files.`);
@@ -1153,12 +1154,15 @@ export async function checkTeraBoxSceneIntegrity(items, allItems, cookie, onProg
     } catch (_) {}
     const extraLinks = item?.extraMetadata?.videoHosts?.terabox || {};
     // Both files are part of 1 scene — treat spz + texture as a pair (2.12.58)
+    // sceneFiles is keyed PER HOST (sceneFiles.terabox.texture) — the old
+    // sceneFiles.texture key never existed, so every terabox texture read
+    // empty and its scene showed "broken" (2.19.26).
     const spzFid = extractTeraBoxFileId(item) || teraBoxFsIdFromUrl(item.spzUrl) || String(item.extraMetadata?.sceneFiles?.terabox?.spz?.fileId || '').trim();
-    const texFid = teraBoxFsIdFromUrl(item.textureUrl) || String(item.textureFileId || item.extraMetadata?.sceneFiles?.texture?.fileId || '').trim();
+    const texFid = teraBoxFsIdFromUrl(item.textureUrl) || String(item.textureFileId || item.extraMetadata?.sceneFiles?.terabox?.texture?.fileId || '').trim();
     const spzName = String(links.filename || extraLinks.filename || item.teraboxFileName || item.fileName || '').trim();
     const texName = baseNameOfTeraBoxUrl(item.textureUrl);
     // Also consider sceneFiles for texture names
-    const sceneTexName = String(item.extraMetadata?.sceneFiles?.texture?.filename || '').trim();
+    const sceneTexName = String(item.extraMetadata?.sceneFiles?.terabox?.texture?.filename || '').trim();
     const effectiveTexName = texName || sceneTexName;
     // Keep legacy single-file vars for dbSets
     const fileId = spzFid;
@@ -1270,5 +1274,8 @@ export async function checkTeraBoxSceneIntegrity(items, allItems, cookie, onProg
     extra.push({ file: texFile, textureFiles: [], standaloneTexture: true });
   });
 
-  return { found, missing, noUrl, extra };
+  // TeraBox has no unverified source (a listing either matches or it
+  // doesn't) — the empty bucket keeps the scene-check result shape uniform
+  // with Telegram.
+  return { found, missing, noUrl, extra, unverified };
 }

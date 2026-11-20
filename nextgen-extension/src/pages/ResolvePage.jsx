@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Film,
   Image as ImageIcon,
+  Info,
   Link2,
   Loader2,
   RefreshCw,
@@ -159,7 +160,7 @@ export default function ResolvePage() {
   const [linkingExtra, setLinkingExtra] = useState({});
 
   // ---- 3D Scene integrity check state ----
-  const [sceneIntegrity, setSceneIntegrity] = useState({ found: [], missing: [], noUrl: [], extra: [] });
+  const [sceneIntegrity, setSceneIntegrity] = useState({ found: [], missing: [], noUrl: [], extra: [], unverified: [] });
   const [sceneLoading, setSceneLoading] = useState(false);
   const [sceneError, setSceneError] = useState(null);
   const [sceneFilter, setSceneFilter] = useState('all');
@@ -1225,7 +1226,7 @@ export default function ResolvePage() {
       // Symmetry with the video tabs: EVERY scene enters EACH host check, so a
       // udrop-only scene shows as no-url on the terabox tab and vice versa
       // (2.12.55). Filtering to already-linked scenes hid cross-host gaps.
-      let result = { found: [], missing: [], noUrl: [], extra: [] };
+      let result = { found: [], missing: [], noUrl: [], extra: [], unverified: [] };
       if (tab === 'udrop') {
         if (!hasText(settings?.udropKey1) || !hasText(settings?.udropKey2)) throw new Error('UDrop keys not configured. Go to Settings.');
         const auth = await authorizeUdrop(settings.udropKey1, settings.udropKey2);
@@ -1254,14 +1255,14 @@ export default function ResolvePage() {
       setSceneIntegrity(result);
       setNotice({
         type: result.missing.length > 0 ? 'error' : 'success',
-        message: `${SCENE_HOST_LABELS[tab]} 3D check: ${result.found.length} found, ${result.missing.length} broken, ${result.noUrl.length} no url, ${result.extra.length} extra${tab === 'telegram' ? ' (Telegram counts posts: 2 per scene)' : ''}.`,
+        message: `${SCENE_HOST_LABELS[tab]} 3D check: ${result.found.length} found, ${result.missing.length} broken, ${result.noUrl.length} no url, ${result.extra.length} extra${(result.unverified?.length || 0) > 0 ? `, ${result.unverified.length} unverified (over the 20 MB getFile limit — not broken)` : ''}${tab === 'telegram' ? ' (Telegram counts posts: 2 per scene)' : ''}.`,
       });
     } catch (err) {
       if (seq !== sceneCheckSeqRef.current) return;
       setSceneLoadingMessage(null);
       setSceneError(err.message || String(err));
       setSceneCheckedTab(tab);
-      setSceneIntegrity({ found: [], missing: [], noUrl: [], extra: [] });
+      setSceneIntegrity({ found: [], missing: [], noUrl: [], extra: [], unverified: [] });
     } finally {
       if (seq === sceneCheckSeqRef.current) {
         setSceneLoading(false);
@@ -1290,7 +1291,7 @@ export default function ResolvePage() {
 
   useEffect(() => {
     if (activeTab === 'scenes') {
-      setSceneIntegrity({ found: [], missing: [], noUrl: [], extra: [] });
+      setSceneIntegrity({ found: [], missing: [], noUrl: [], extra: [], unverified: [] });
       setSceneError(null);
       setSceneLoadingMessage(null);
       setSceneHasChecked(false);
@@ -3180,8 +3181,9 @@ export default function ResolvePage() {
 
             <section className="flex flex-wrap gap-2">
               {[
-                { value: 'all', label: 'All', count: sceneIntegrity.found.length + sceneIntegrity.missing.length + sceneIntegrity.noUrl.length + sceneIntegrity.extra.length, tip: 'Every saved 3D scene, counted once. This is the full list.' },
+                { value: 'all', label: 'All', count: sceneIntegrity.found.length + sceneIntegrity.missing.length + sceneIntegrity.noUrl.length + sceneIntegrity.extra.length + (sceneIntegrity.unverified?.length || 0), tip: 'Every saved 3D scene, counted once. This is the full list.' },
                 { value: 'missing', label: 'Broken links', count: sceneIntegrity.missing.length, tip: `Scenes whose .spz or texture file was deleted from ${sceneHostLabel} or whose link is broken.` },
+                { value: 'unverified', label: 'Unverified', count: sceneIntegrity.unverified?.length || 0, tip: 'Scenes the check could not verify — the file exceeds Telegram\'s 20 MB getFile limit, so the probe cannot confirm it. The file is probably still there; this is not a broken link.' },
                 { value: 'found', label: 'Found', count: sceneIntegrity.found.length, tip: `Scenes with working .spz + texture files on ${sceneHostLabel}. Nothing to do.` },
                 { value: 'noUrl', label: 'No scene URL', count: sceneIntegrity.noUrl.length, tip: 'Saved scenes that have no host link at all — they were never uploaded.' },
                 { value: 'extra', label: `Extra on ${sceneHostLabel}`, count: sceneIntegrity.extra.length, tip: sceneSubTab === 'telegram' ? 'Channel posts not linked to any saved item. Telegram lists posts, not scene groups — one scene is 2 posts (.spz + texture).' : `Scene groups (1 .spz + its textures) on ${sceneHostLabel} not linked to any saved scene. Config lives in the DB, so only host files list here.` },
@@ -3216,12 +3218,15 @@ export default function ResolvePage() {
                 if (sceneFilter === 'all') {
                   displayItems = [
                     ...sceneIntegrity.missing.map((i) => ({ ...i, status: 'missing' })),
+                    ...(sceneIntegrity.unverified || []).map((i) => ({ ...i, status: 'unverified' })),
                     ...sceneIntegrity.found.map((i) => ({ ...i, status: 'found' })),
                     ...sceneIntegrity.noUrl.map((i) => ({ ...i, status: 'noUrl' })),
                     ...sceneIntegrity.extra.map((i) => ({ ...i, status: 'extra' })),
                   ];
                 } else if (sceneFilter === 'missing') {
                   displayItems = sceneIntegrity.missing.map((i) => ({ ...i, status: 'missing' }));
+                } else if (sceneFilter === 'unverified') {
+                  displayItems = (sceneIntegrity.unverified || []).map((i) => ({ ...i, status: 'unverified' }));
                 } else if (sceneFilter === 'found') {
                   displayItems = sceneIntegrity.found.map((i) => ({ ...i, status: 'found' }));
                 } else if (sceneFilter === 'noUrl') {
@@ -3578,6 +3583,11 @@ export default function ResolvePage() {
                                 <AlertCircle className="h-3 w-3" /> No scene URL
                               </span>
                             )}
+                            {status === 'unverified' && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-xs font-semibold text-info">
+                                <Info className="h-3 w-3" /> Unverified
+                              </span>
+                            )}
                           </div>
                           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
                             {item.fileName && <span className="truncate">{item.fileName}</span>}
@@ -3596,18 +3606,18 @@ export default function ResolvePage() {
                         </div>
 
                         {/* Both files are 1 scene — show each with its own status so hosts stay symmetric (2.12.58) */}
-                        {(status === 'found' || status === 'missing' || status === 'noUrl') && (spzUrl || texUrl) && (
+                        {(status === 'found' || status === 'missing' || status === 'noUrl' || status === 'unverified') && (spzUrl || texUrl) && (
                           <div className="space-y-2 text-xs">
                             {spzUrl && (
-                              <div className={`flex items-center justify-between rounded border px-2 py-1 ${status === 'found' && (spzMatched || !spzCode) ? 'border-success/20 bg-success/5 text-success' : status === 'missing' && !spzMatched ? 'border-error/20 bg-error/5 text-error' : status === 'noUrl' ? 'border-warning/20 bg-warning/5 text-warning' : 'border-base-300 bg-base-200/40 text-base-content/70'}`}>
+                              <div className={`flex items-center justify-between rounded border px-2 py-1 ${status === 'found' && (spzMatched || !spzCode) ? 'border-success/20 bg-success/5 text-success' : status === 'unverified' && spzMatched ? 'border-success/20 bg-success/5 text-success' : status === 'unverified' ? 'border-info/20 bg-info/5 text-info' : status === 'missing' && !spzMatched ? 'border-error/20 bg-error/5 text-error' : status === 'noUrl' ? 'border-warning/20 bg-warning/5 text-warning' : 'border-base-300 bg-base-200/40 text-base-content/70'}`}>
                                 <span className="truncate font-mono text-[11px]">{spzName}</span>
-                                <span className="ml-2 shrink-0 text-[10px] font-semibold uppercase tracking-wider">{status === 'found' && (spzMatched || !spzCode) ? 'SPZ found' : status === 'missing' && !spzMatched ? 'SPZ missing' : status === 'noUrl' ? `SPZ → ${hostLabel} missing` : 'SPZ'}</span>
+                                <span className="ml-2 shrink-0 text-[10px] font-semibold uppercase tracking-wider">{status === 'found' && (spzMatched || !spzCode) ? 'SPZ found' : status === 'unverified' && spzMatched ? 'SPZ found' : status === 'unverified' ? 'SPZ unverified' : status === 'missing' && !spzMatched ? 'SPZ missing' : status === 'noUrl' ? `SPZ → ${hostLabel} missing` : 'SPZ'}</span>
                               </div>
                             )}
                             {texUrl && (
-                              <div className={`flex items-center justify-between rounded border px-2 py-1 ${status === 'found' && (texMatched || !texCode) ? 'border-success/20 bg-success/5 text-success' : status === 'missing' && !texMatched ? 'border-error/20 bg-error/5 text-error' : status === 'noUrl' ? 'border-warning/20 bg-warning/5 text-warning' : 'border-base-300 bg-base-200/40 text-base-content/70'}`}>
+                              <div className={`flex items-center justify-between rounded border px-2 py-1 ${status === 'found' && (texMatched || !texCode) ? 'border-success/20 bg-success/5 text-success' : status === 'unverified' && texMatched ? 'border-success/20 bg-success/5 text-success' : status === 'unverified' ? 'border-info/20 bg-info/5 text-info' : status === 'missing' && !texMatched ? 'border-error/20 bg-error/5 text-error' : status === 'noUrl' ? 'border-warning/20 bg-warning/5 text-warning' : 'border-base-300 bg-base-200/40 text-base-content/70'}`}>
                                 <span className="truncate font-mono text-[11px]">{texName}</span>
-                                <span className="ml-2 shrink-0 text-[10px] font-semibold uppercase tracking-wider">{status === 'found' && (texMatched || !texCode) ? 'Image found' : status === 'missing' && !texMatched ? 'Image missing' : status === 'noUrl' ? `Image → ${hostLabel} missing` : 'Image'}</span>
+                                <span className="ml-2 shrink-0 text-[10px] font-semibold uppercase tracking-wider">{status === 'found' && (texMatched || !texCode) ? 'Image found' : status === 'unverified' && texMatched ? 'Image found' : status === 'unverified' ? 'Image unverified' : status === 'missing' && !texMatched ? 'Image missing' : status === 'noUrl' ? `Image → ${hostLabel} missing` : 'Image'}</span>
                               </div>
                             )}
                             {status === 'missing' && (
@@ -3623,6 +3633,16 @@ export default function ResolvePage() {
                             {status === 'noUrl' && (
                               <div className="text-[11px] text-base-content/50">
                                 Not on {hostLabel} — SPZ + Image live on the other host. Fix copies both files to {hostLabel}.
+                              </div>
+                            )}
+                            {status === 'unverified' && (
+                              <div className="text-[11px] text-base-content/50">
+                                Could not be verified — the file exceeds Telegram&apos;s 20 MB getFile limit, so the check cannot confirm it. The file is probably still there; this is not a broken link, and there is nothing to fix.
+                              </div>
+                            )}
+                            {status === 'unverified' && (entry.reasons || []).length > 0 && (
+                              <div className="space-y-0.5 rounded border border-info/20 bg-info/5 px-2 py-1 font-mono text-[10px] text-info/80">
+                                {entry.reasons.map((reason) => <div key={reason} className="truncate">{reason}</div>)}
                               </div>
                             )}
                           </div>
@@ -3653,6 +3673,7 @@ export default function ResolvePage() {
                           {status === 'missing' && `Needs re-upload to ${hostLabel}`}
                           {status === 'found' && `Verified on ${hostLabel} — SPZ + Image`}
                           {status === 'noUrl' && `Not on ${hostLabel} — SPZ + Image missing`}
+                          {status === 'unverified' && 'Could not verify — over the 20 MB getFile limit'}
                         </div>
 
                         <div className="flex flex-col gap-2">

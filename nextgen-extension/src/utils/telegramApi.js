@@ -455,10 +455,22 @@ const pickTelegramSceneRefs = (item) => {
 };
 
 /**
+ * Is this probe failure the Bot API getFile 20 MB gate — i.e. the file is
+ * too big to verify, not gone? Two shapes: the API itself answers 400
+ * "file is too big", and our own getTelegramFileInfo throws a "getFile
+ * gate" error when the API does return metadata over the cap. A deleted
+ * post says "invalid file id" instead and must stay broken.
+ */
+const isGetFileGateError = (message) => /file is too big|getFile gate/i.test(String(message || ''));
+
+/**
  * 3D scene integrity check against Telegram — symmetric to the UDrop/TeraBox
  * scene checks. Two documents per scene (spz + texture) are probed with
- * getFile: a deleted post or an over-20 MB file is a broken link, while a
- * network/5xx failure THROWS (an outage is never reported as data loss).
+ * getFile: a deleted post is a broken link, while a network/5xx failure
+ * THROWS (an outage is never reported as data loss). An over-20 MB file is
+ * UNVERIFIED, not broken — the getFile gate blocks the probe, which proves
+ * nothing about the file (2.19.26: the 30 MB ceramic spz sat in "broken"
+ * for a file that was right there on Telegram).
  *
  * The channel is enumerable through `t.me/s/` (message ids only), so "extra"
  * is per POST, not per scene: a healthy scene contributes two posts.
@@ -466,7 +478,7 @@ const pickTelegramSceneRefs = (item) => {
  * @param {Array} items – scene DB items
  * @param {Array} allItems – every DB item; any telegram post they reference is
  *                           excluded from the extra list
- * @returns {Promise<{found:[],missing:[],noUrl:[],extra:[]}>}
+ * @returns {Promise<{found:[],missing:[],noUrl:[],extra:[],unverified:[]}>}
  */
 export async function checkTelegramSceneIntegrity(items, allItems, { token, channel, onProgress } = {}) {
   if (!token) throw new Error('Telegram bot token is not configured. Set it in Settings -> API Keys.');
@@ -505,6 +517,7 @@ export async function checkTelegramSceneIntegrity(items, allItems, { token, chan
   const found = [];
   const missing = [];
   const noUrl = [];
+  const unverified = [];
   for (const item of items || []) {
     if (!item) continue;
     const refs = refsByItem.get(item.id);
@@ -520,6 +533,15 @@ export async function checkTelegramSceneIntegrity(items, allItems, { token, chan
     const needsTex = Boolean(refs.texFileId);
     const spzOk = !needsSpz || Boolean(spzMatched);
     const texOk = !needsTex || Boolean(texMatched);
+    // The getFile gate is distinguishable from a genuinely missing file:
+    // the API answers 400 "file is too big" for a file that exists, and
+    // our own getTelegramFileInfo throws the same verdict client-side when
+    // the API does return metadata. A deleted post says "invalid file id"
+    // instead. Gate-blocked is UNVERIFIED, never broken.
+    const spzGate = Boolean(spzProbe && !spzProbe.ok && isGetFileGateError(spzProbe.reason));
+    const texGate = Boolean(texProbe && !texProbe.ok && isGetFileGateError(texProbe.reason));
+    const spzBroken = Boolean(spzProbe && !spzProbe.ok && !spzGate);
+    const texBroken = Boolean(texProbe && !texProbe.ok && !texGate);
     const reasons = [
       spzProbe && !spzProbe.ok ? `SPZ: ${spzProbe.reason}` : '',
       texProbe && !texProbe.ok ? `Image: ${texProbe.reason}` : '',
@@ -539,7 +561,9 @@ export async function checkTelegramSceneIntegrity(items, allItems, { token, chan
       reasons,
     };
     if (spzOk && texOk && (spzMatched || texMatched)) found.push(entry);
-    else missing.push(entry);
+    else if (spzBroken || texBroken) missing.push(entry);
+    else if (spzGate || texGate) unverified.push(entry);
+    else missing.push(entry); // has refs but no file ids at all — nothing to probe
   }
 
   // Every telegram post referenced by ANY item (image, video, scene) is never
@@ -582,7 +606,7 @@ export async function checkTelegramSceneIntegrity(items, allItems, { token, chan
       pageUrl: telegramPostPageUrl(cleanChannel, post.messageId),
     }));
 
-  return { found, missing, noUrl, extra };
+  return { found, missing, noUrl, extra, unverified };
 }
 
 /**
