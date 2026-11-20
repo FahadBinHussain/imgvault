@@ -143,6 +143,20 @@ describe('getFilemoonFileInfo', () => {
     fetchHandler = () => jsonResponse({}, { ok: false, status: 500 });
     await assert.rejects(() => getFilemoonFileInfo(FAKE_KEY, 'abc'), /Byse \/file\/info HTTP 500/);
   });
+  test('a 200 envelope whose inner result carries status 404 comes back as-is — /file/info CANNOT prove a file is alive', async () => {
+    // Real shape, proven live 2026-11-20 (item ad7c1a53, code 39s1pwul65lm):
+    // /file/info answers HTTP 200 with an inner [{status: 404}] payload for
+    // a dead code. Any caller that trusts the envelope (or the HTTP status)
+    // calls a dead file alive — which is why checkFilemoonIntegrity matches
+    // ONLY against the /file/list listing and never consults /file/info.
+    fetchHandler = () => jsonResponse({
+      status: 200,
+      result: [{ status: 404, file_code: '39s1pwul65lm' }],
+    });
+    assert.deepEqual(await getFilemoonFileInfo(FAKE_KEY, '39s1pwul65lm'), [
+      { status: 404, file_code: '39s1pwul65lm' },
+    ]);
+  });
 });
 
 describe('getFilemoonDirectLink', () => {
@@ -223,6 +237,54 @@ describe('checkFilemoonIntegrity', () => {
         videoHosts: { filemoon: { watchUrl: 'https://filemoon.sx/d/aaa' } },
       },
     ], FAKE_KEY);
+    assert.deepEqual(out.found[0].codes, ['aaa']);
+  });
+  test('a code absent from the listing is broken — the check NEVER asks /file/info, which answers HTTP 200 for dead codes', async () => {
+    // Real case, proven live 2026-11-20: item ad7c1a53 (dreamcore mkv) was
+    // uploaded to filemoon at 00:08 and verified, then filemoon dropped it
+    // within ~11 h. Code 39s1pwul65lm is gone from /file/list while
+    // /file/info still answers HTTP 200 with an inner status 404 — so the
+    // listing is the only liveness signal, and the check must not fall back
+    // to a per-file probe that would call the dead file alive.
+    fetchHandler = (url) => {
+      assert.ok(!url.includes('/file/info'), 'the check must never call /file/info');
+      return listing([{ file_code: 'other' }])(url);
+    };
+    const out = await checkFilemoonIntegrity([
+      { id: 'ad7c1a53', videoHosts: { filemoon: { watchUrl: 'https://filemoon.sx/d/39s1pwul65lm' } } },
+    ], FAKE_KEY);
+    assert.deepEqual(out.found, []);
+    assert.deepEqual(out.missing.map((f) => f.item.id), ['ad7c1a53']);
+    assert.deepEqual(out.missing[0].codes, ['39s1pwul65lm']);
+    assert.ok(fetchCalls.every((c) => c.url.includes('/file/list')));
+  });
+  test('one dead code + one live code on the same item is found (the live code carries it)', async () => {
+    // Real case, proven live 2026-11-20: the Night Drive dup (9095a102)
+    // carries dead code 5zz1b16cxcxh AND live code s7u2tp9euktn — the
+    // resolve check finds it via the live one.
+    fetchHandler = listing([{ file_code: 's7u2tp9euktn', title: 'Night Drive By Visualdon 4K 60fps' }]);
+    const out = await checkFilemoonIntegrity([
+      {
+        id: '9095a102',
+        videoHosts: { filemoon: { watchUrl: 'https://filemoon.sx/d/5zz1b16cxcxh' } },
+        extraMetadata: { filemoonLinks: [{ watchUrl: 'https://filemoon.sx/d/s7u2tp9euktn' }] },
+      },
+    ], FAKE_KEY);
+    assert.deepEqual(out.found.map((f) => f.item.id), ['9095a102']);
+    assert.equal(out.found[0].matchedFile.file_code, 's7u2tp9euktn');
+    assert.deepEqual(out.found[0].codes, ['5zz1b16cxcxh', 's7u2tp9euktn']);
+    assert.deepEqual(out.missing, []);
+  });
+  test('an /e/ embed URL and a /d/ watch URL on the same item both resolve to the one code', async () => {
+    fetchHandler = listing([{ file_code: 'aaa' }]);
+    const out = await checkFilemoonIntegrity([
+      {
+        id: '1',
+        filemoonWatchUrl: 'https://filemoon.sx/d/aaa',
+        filemoonDirectUrl: 'https://filemoon.sx/e/aaa',
+      },
+    ], FAKE_KEY);
+    assert.deepEqual(out.found.map((f) => f.item.id), ['1']);
     assert.deepEqual(out.found[0].codes, ['aaa']);
   });
 });

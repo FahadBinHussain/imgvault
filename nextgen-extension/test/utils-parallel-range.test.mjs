@@ -206,6 +206,19 @@ describe('downloadParallelRanges', () => {
       /known total size/,
     );
   });
+  test('an explicit parts count is honored — 2 parts means 2 range requests', async () => {
+    const { fetchImpl, calls } = rangeServer(bytes);
+    const blob = await downloadParallelRanges('https://cdn.example/f.mp4', {
+      total: bytes.length,
+      fetchImpl,
+      parts: 2,
+      maxRetries: 2,
+    });
+    assert.deepEqual(new Uint8Array(await blob.arrayBuffer()), bytes);
+    assert.equal(calls.length, 2);
+    assert.ok(calls.includes('bytes=0-499'));
+    assert.ok(calls.includes('bytes=500-999'));
+  });
 });
 
 describe('videoRetryPageSide wiring (source assertions)', () => {
@@ -228,5 +241,23 @@ describe('videoRetryPageSide wiring (source assertions)', () => {
     assert.ok(file.includes('async function fetchVideoAsBlobSingle(url, referrer, onProgress, methodNote = \'\') {'));
     assert.ok(file.includes('Download truncated: got ${loaded} of ${total} bytes.'));
     assert.ok(file.includes('method: \'single-connection\','));
+  });
+  test('parallel runs ONLY when the server honors Range AND the file is STRICTLY over 8 MB (exactly 8 MB stays single)', () => {
+    const file = retry();
+    assert.ok(file.includes('if (probe.supportsRange && probe.total > PARALLEL_RANGE_MIN_BYTES) {'));
+  });
+  test('the parallel call uses the probe finalUrl (post-redirect) with the probed total + type, and the default 8 parts', () => {
+    const file = retry();
+    const fn = file.slice(file.indexOf('async function fetchVideoAsBlob('));
+    assert.ok(fn.includes('return downloadParallelRanges(probe.finalUrl, {'));
+    assert.ok(fn.includes('total: probe.total,'));
+    assert.ok(fn.includes('type: probe.type,'));
+    assert.ok(!fn.includes('parts:'), 'no explicit parts override — PARALLEL_RANGE_PARTS (8) owns the split');
+  });
+  test('a failed probe (status 0) gets NO fallback note — the single-connection path surfaces the real failure', () => {
+    const file = retry();
+    const fn = file.slice(file.indexOf('async function fetchVideoAsBlob('));
+    assert.ok(fn.includes('const methodNote = probe.status > 0 && !probe.supportsRange'));
+    assert.ok(fn.includes('? \'this host does not support Range requests, so the download runs on one connection\''));
   });
 });

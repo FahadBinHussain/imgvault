@@ -139,3 +139,30 @@ test('2.13.19 (2026-10-04): updateVideoThumbnail writes the host map BOTH top-le
   assert.ok(fn.includes('extraMetadata: { ...(current.extraMetadata || {}), videoHosts: vh },'));
   assert.ok(fn.includes('videoHosts: vh,'));
 });
+
+test('2.19.25 (2026-11-19): songs get their host list from getConfiguredAudioUploadServices — filemoon is never offered for audio', () => {
+  const page = gallery();
+  const fn = page.slice(page.indexOf('const configuredUploadServices = useMemo('));
+  assert.ok(fn.includes("if (currentUploadKind === 'audio') {"));
+  assert.ok(fn.includes('return getConfiguredAudioUploadServices(uploadHostSettings);'));
+});
+
+test('2.19.25 (2026-11-19): reconcileSelectedHostKeys drops stored keys that are not in the configured services — a stored filemoon audio selection vanishes on its own', () => {
+  const selector = src('../src/components/UploadHostSelector.jsx');
+  const fn = selector.slice(selector.indexOf('export function reconcileSelectedHostKeys('));
+  // The filter is the whole mechanism: only keys present in the services
+  // list survive, so a filemoon key stored before 2.19.25 drops the moment
+  // the audio services (which exclude filemoon) are passed in.
+  assert.ok(fn.includes('const availableKeys = services.map((service) => service.key);'));
+  assert.ok(fn.includes('selectedKeys.filter((key) => availableKeys.includes(key))'));
+  // And when the filter empties the selection, the default is ALL available
+  // hosts — never an empty selection that would block the upload.
+  assert.ok(fn.includes('return defaultAll ? availableKeys : [];'));
+});
+
+test('2.19.25 (2026-11-19): the gallery reconciles per-kind AND legacy stored host keys against the configured services', () => {
+  const page = gallery();
+  const fn = page.slice(page.indexOf('const effectiveSelectedUploadHostKeys = useMemo('));
+  assert.ok(fn.includes('return reconcileSelectedHostKeys(fromKind, configuredUploadServices);'));
+  assert.ok(fn.includes('reconcileSelectedHostKeys(legacySelectedUploadHostKeys, configuredUploadServices, false)'));
+});

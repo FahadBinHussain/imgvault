@@ -1,0 +1,199 @@
+// node:test suite for the Telegram uploader's result shaping
+// (TelegramUploader.buildProviderResult in src/utils/uploaders.js) and the
+// private-channel upload behavior (2.19.24).
+//
+// IMPORT ORDER MATTERS HERE. uploaders.js cannot be imported directly in
+// plain node: it pulls in teraBoxApi -> videoProviderLinks ->
+// config/providerCatalog -> uploaders (the cycle), and the direct import
+// dies with "Cannot access 'FilemoonUploader' before initialization".
+// Importing config/providerCatalog.js FIRST breaks the cycle the other
+// way — uploaders.js then initializes fully. Do not reorder these imports,
+// and do not "simplify" them into source-text pins: the behavior tests
+// below are the point.
+import '../src/config/providerCatalog.js';
+import { test, describe } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { TelegramUploader } from '../src/utils/uploaders.js';
+import { getConfiguredAudioUploadServices } from '../src/config/providerCatalog.js';
+
+const src = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
+const uploader = new TelegramUploader();
+
+describe('TelegramUploader.buildProviderResult — documents', () => {
+  test('a sendDocument result keeps the file_id and serves bytes through the platform-local route', () => {
+    const out = uploader.buildProviderResult({
+      message: { message_id: 5, document: { file_id: 'BQADx', mime_type: 'image/webp', file_name: 'a.webp' } },
+      channel: 'mychannel',
+      filename: 'a.webp',
+      method: 'sendDocument',
+    });
+    assert.equal(out.fileId, 'BQADx');
+    assert.equal(out.messageId, '5');
+    assert.equal(out.url, '/telegram-media/BQADx?mt=image%2Fwebp');
+    assert.equal(out.directUrl, '/telegram-media/BQADx?mt=image%2Fwebp');
+    assert.equal(out.watchUrl, 'https://t.me/mychannel/5');
+    assert.equal(out.apiStatus, 'success');
+  });
+  test('a sendDocument result on a numeric (private) channel links the post as t.me/c', () => {
+    const out = uploader.buildProviderResult({
+      message: { message_id: 90, document: { file_id: 'BQADy', mime_type: 'video/mp4', file_name: 'clip.mp4' } },
+      channel: '-1003959088547',
+      filename: 'clip.mp4',
+      method: 'sendDocument',
+    });
+    assert.equal(out.watchUrl, 'https://t.me/c/3959088547/90');
+    assert.equal(out.displayUrl, 'https://t.me/c/3959088547/90');
+  });
+  test('a message with no file_id throws naming the method and the message', () => {
+    assert.throws(
+      () => uploader.buildProviderResult({
+        message: { message_id: 7 },
+        channel: 'mychannel',
+        filename: 'x.bin',
+        method: 'sendDocument',
+      }),
+      /Telegram: sendDocument returned no file_id \(message 7\)/,
+    );
+  });
+  test('a message carrying BOTH document and sticker reads the document (document wins)', () => {
+    const out = uploader.buildProviderResult({
+      message: {
+        message_id: 8,
+        document: { file_id: 'BQADdoc', mime_type: 'image/webp' },
+        sticker: { file_id: 'CAADstk', mime_type: 'image/webp' },
+      },
+      channel: 'mychannel',
+      filename: 'a.webp',
+      method: 'sendDocument',
+    });
+    assert.equal(out.fileId, 'BQADdoc');
+  });
+});
+
+// LOUD KNOWN FAILURE — DO NOT "FIX" BY EDITING THIS TEST, AND DO NOT MAKE
+// IT PASS BY CHANGING PRODUCTION CODE IN A TESTS-ONLY COMMIT.
+//
+// Telegram classifies webp uploads sent via Bot API sendDocument as
+// STICKERS: the response carries result.sticker, not result.document.
+// buildProviderResult reads ONLY message[field] (field = 'document' for
+// sendDocument), so a webp image upload throws "returned no file_id" even
+// though the post landed — the message is on the channel, the extension
+// records a failure, and a retry posts a DUPLICATE. Proven live 2026-11-19:
+// two webp images posted twice (msgs 468/469 orphans + 472/473 recorded)
+// because the first attempts got no file_id back. The throwaway gap-fill
+// drivers already handle this (msg.get("document") or msg.get("sticker"));
+// the shipped uploader does not.
+//
+// The fix belongs in buildProviderResult: fall back to message.sticker
+// when message.document is absent. Until that fix ships, this test stays
+// SKIPPED — it pins the intended behavior and names the bug.
+test.skip('KNOWN FAILING (2026-11-19): a sendDocument response carrying ONLY a sticker (webp) must yield its file_id', () => {
+  const out = uploader.buildProviderResult({
+    message: {
+      message_id: 472,
+      sticker: { file_id: 'CAADBQADYCAAAiqqAAFUe1ZHWlBjG6EC', mime_type: 'image/webp', file_name: 'wp15140068.webp' },
+    },
+    channel: '-1003959088547',
+    filename: 'wp15140068.webp',
+    method: 'sendDocument',
+  });
+  assert.equal(out.fileId, 'CAADBQADYCAAAiqqAAFUe1ZHWlBjG6EC');
+  assert.equal(out.url, '/telegram-media/CAADBQADYCAAAiqqAAFUe1ZHWlBjG6EC?mt=image%2Fwebp');
+  assert.equal(out.watchUrl, 'https://t.me/c/3959088547/472');
+});
+
+describe('TelegramUploader.buildProviderResult — videos + private channels (2.19.24)', () => {
+  const videoMessage = (id) => ({
+    message_id: id,
+    video: { file_id: 'BAADv', mime_type: 'video/mp4', file_name: 'clip.mp4' },
+  });
+  test('a sendVideo result with a scraped CDN url uses it as the direct link', () => {
+    const out = uploader.buildProviderResult({
+      message: videoMessage(10),
+      channel: 'mychannel',
+      filename: 'clip.mp4',
+      method: 'sendVideo',
+      cdnUrl: 'https://cdn1.telesco.pe/file.mp4',
+      posterUrl: 'https://cdn1.telesco.pe/poster.jpg',
+    });
+    assert.equal(out.directUrl, 'https://cdn1.telesco.pe/file.mp4');
+    assert.equal(out.thumbUrl, 'https://cdn1.telesco.pe/poster.jpg');
+    assert.equal(out.watchUrl, 'https://t.me/mychannel/10');
+  });
+  test('a sendVideo result with NO CDN url on a PUBLIC channel refuses to store a half-resolved link', () => {
+    assert.throws(
+      () => uploader.buildProviderResult({
+        message: videoMessage(11),
+        channel: 'mychannel',
+        filename: 'clip.mp4',
+        method: 'sendVideo',
+      }),
+      /has no CDN url - refusing to store a half-resolved link/,
+    );
+  });
+  test('a sendVideo result with NO CDN url on a PRIVATE channel stores the watchUrl as the direct link and says so', () => {
+    const out = uploader.buildProviderResult({
+      message: videoMessage(12),
+      channel: '-1003959088547',
+      filename: 'clip.mp4',
+      method: 'sendVideo',
+    });
+    assert.equal(out.directUrl, 'https://t.me/c/3959088547/12');
+    assert.match(out.apiMessage, /Private Telegram channel/);
+  });
+  test('a bare numeric channel id also gets the t.me/c watchUrl (no -100 needed from the caller)', () => {
+    const out = uploader.buildProviderResult({
+      message: videoMessage(13),
+      channel: '3959088547',
+      filename: 'clip.mp4',
+      method: 'sendVideo',
+    });
+    assert.equal(out.watchUrl, 'https://t.me/c/3959088547/13');
+    assert.equal(out.directUrl, 'https://t.me/c/3959088547/13');
+  });
+});
+
+describe('private channels skip the CDN scrape (2.19.24) — wiring pins', () => {
+  test('finishUpload skips the scrape on a numeric channel instead of burning 4 doomed attempts', () => {
+    const uploaders = src('../src/utils/uploaders.js');
+    const fn = uploaders.slice(uploaders.indexOf('async finishUpload'));
+    assert.ok(fn.includes('if (isNumericTelegramChannel(channel)) {'));
+    assert.ok(fn.includes('no public post page, skipping the CDN scrape (watchUrl is stored instead)'));
+  });
+  test('the native (>50 MB) upload path also skips the scrape on a numeric channel', () => {
+    const uploaders = src('../src/utils/uploaders.js');
+    const fn = uploaders.slice(uploaders.indexOf('async uploadWithProgress'));
+    assert.ok(fn.includes('if (isNumericTelegramChannel(channel)) {'));
+    assert.ok(fn.includes('is a private channel — no public post page, skipping the CDN scrape'));
+  });
+  test('telegram_upload.py maps channel ids the same way as the Bot API chat_id rule', () => {
+    const py = src('../../native-host/scripts/telegram_upload.py');
+    assert.ok(py.includes('entity = int(f"-100{target}")'), 'bare digits get the -100 prefix');
+    assert.ok(py.includes('elif target.startswith("-"):\n        entity = int(target)'), 'an explicit -100 id passes through');
+    assert.ok(py.includes('entity = "me"'), '"me" stays "me"');
+    assert.ok(py.includes('entity = f"@{clean}"'), 'a username gets the @ prefix');
+  });
+});
+
+describe('getConfiguredAudioUploadServices (2.19.25)', () => {
+  test('fully configured settings return udrop + terabox + telegram — never filemoon', () => {
+    const out = getConfiguredAudioUploadServices({
+      filemoonApiKey: 'k',
+      udropKey1: 'a',
+      udropKey2: 'b',
+      telegramBotToken: 't',
+      telegramChannel: 'c',
+    });
+    assert.deepEqual(out.map((s) => s.key), ['udrop', 'terabox', 'telegram']);
+  });
+  test('a filemoon key alone configures no audio host except always-on terabox', () => {
+    const out = getConfiguredAudioUploadServices({ filemoonApiKey: 'k' });
+    assert.deepEqual(out.map((s) => s.key), ['terabox']);
+  });
+  test('udrop needs BOTH keys to count as configured for audio', () => {
+    const out = getConfiguredAudioUploadServices({ udropKey1: 'a' });
+    assert.deepEqual(out.map((s) => s.key), ['terabox']);
+  });
+});

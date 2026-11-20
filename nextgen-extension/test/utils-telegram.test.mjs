@@ -296,6 +296,21 @@ describe('getTelegramFileInfo', () => {
         && err.message.includes('20.0 MB'),
     );
   });
+  test('a file at EXACTLY the 20 MB cap passes — the gate is strict greater-than, not greater-or-equal', async () => {
+    fetchHandler = () => jsonResponse({
+      ok: true,
+      result: { file_id: 'abc', file_path: 'documents/f.mp4', file_size: 20 * 1024 * 1024 },
+    });
+    const info = await getTelegramFileInfo(FAKE_TOKEN, 'abc');
+    assert.equal(info.file_size, 20 * 1024 * 1024);
+  });
+  test('one byte over the cap trips the gate', async () => {
+    fetchHandler = () => jsonResponse({
+      ok: true,
+      result: { file_id: 'abc', file_path: 'documents/f.mp4', file_size: 20 * 1024 * 1024 + 1 },
+    });
+    await assert.rejects(() => getTelegramFileInfo(FAKE_TOKEN, 'abc'), /Telegram getFile gate/);
+  });
 });
 
 describe('fetchTelegramFile', () => {

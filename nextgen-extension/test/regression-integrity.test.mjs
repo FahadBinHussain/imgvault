@@ -515,3 +515,520 @@ test('2.19.25 (2026-11-19): the filemoon resolve check skips songs without a fil
   const fn = page.slice(page.indexOf('const runFilemoonIntegrityCheck'));
   assert.ok(fn.includes('if (isAudioMediaItem(item) && !hasFilemoon) return false;'));
 });
+
+// --------------------------------------- scene checks, 2.19.26 variants ---
+// The 2.19.26 fix made the udrop + terabox scene checks match through
+// sceneFiles.<host> (the per-host record) instead of only the spzUrl /
+// textureUrl pointers (single-host — a Fix moves them). These variants pin
+// every combination of pointer-vs-record so a future refactor cannot
+// silently re-break one of them.
+
+const udropListingFetch = (files) => async () => jsonResponse({
+  _status: 'success',
+  data: { files, folders: [] },
+});
+
+test('2.19.26 (2026-11-20): udrop scene check — spz via sceneFiles + texture via the pointer is found', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = udropListingFetch([
+    { short_url: 'spz9', file_id: '2625007', name: 'amphi.spz', status: 'active' },
+    { short_url: 'tex1', file_id: '2625008', name: 'amphi.webp', status: 'active' },
+  ]);
+  const items = [{
+    id: 'mixed-spz-record',
+    spzUrl: '/telegram-media/BQADxxx',
+    textureUrl: 'https://www.udrop.com/file/tex1',
+    extraMetadata: { sceneFiles: { udrop: { spz: { fileId: '2625007', filename: 'amphi.spz' } } } },
+  }];
+  try {
+    const result = await checkSceneIntegrity(items, items, 'fake-token', 'fake-account');
+    assert.equal(result.found.length, 1);
+    assert.equal(result.found[0].spzMatched.file_id, '2625007');
+    assert.equal(result.found[0].texMatched.short_url, 'tex1');
+    assert.equal(result.missing.length, 0);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): udrop scene check — texture via sceneFiles + spz via the pointer is found', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = udropListingFetch([
+    { short_url: 'spz1', file_id: '2625011', name: 'bath.spz', status: 'active' },
+    { short_url: 'tex9', file_id: '2625015', name: 'bath.webp', status: 'active' },
+  ]);
+  const items = [{
+    id: 'mixed-tex-record',
+    spzUrl: 'https://www.udrop.com/file/spz1',
+    textureUrl: '/telegram-media/CAADyyy',
+    extraMetadata: { sceneFiles: { udrop: { texture: { fileId: '2625015', filename: 'bath.webp' } } } },
+  }];
+  try {
+    const result = await checkSceneIntegrity(items, items, 'fake-token', 'fake-account');
+    assert.equal(result.found.length, 1);
+    assert.equal(result.found[0].spzMatched.short_url, 'spz1');
+    assert.equal(result.found[0].texMatched.file_id, '2625015');
+    assert.equal(result.missing.length, 0);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): udrop scene check — a sceneFiles spz code missing from the listing is missing, with the texture match still reported', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = udropListingFetch([
+    { short_url: 'tex1', file_id: '2625008', name: 'amphi.webp', status: 'active' },
+  ]);
+  const items = [{
+    id: 'spz-gone',
+    spzUrl: '/telegram-media/BQADxxx',
+    textureUrl: '/telegram-media/CAADyyy',
+    extraMetadata: {
+      sceneFiles: {
+        udrop: {
+          spz: { fileId: '2625007', filename: 'amphi.spz' },
+          texture: { fileId: '2625008', filename: 'amphi.webp' },
+        },
+      },
+    },
+  }];
+  try {
+    const result = await checkSceneIntegrity(items, items, 'fake-token', 'fake-account');
+    assert.equal(result.found.length, 0);
+    assert.equal(result.missing.length, 1);
+    assert.equal(result.missing[0].spzMatched, null);
+    assert.equal(result.missing[0].texMatched.file_id, '2625008');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): udrop scene check — the legacy top-level item.sceneFiles.udrop copy counts when extraMetadata has none', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = udropListingFetch([
+    { short_url: 'spz9', file_id: '2625007', name: 'amphi.spz', status: 'active' },
+    { short_url: 'tex9', file_id: '2625008', name: 'amphi.webp', status: 'active' },
+  ]);
+  const items = [{
+    id: 'legacy-top-level',
+    spzUrl: '/telegram-media/BQADxxx',
+    textureUrl: '/telegram-media/CAADyyy',
+    sceneFiles: {
+      udrop: {
+        spz: { fileId: '2625007', filename: 'amphi.spz' },
+        texture: { fileId: '2625008', filename: 'amphi.webp' },
+      },
+    },
+  }];
+  try {
+    const result = await checkSceneIntegrity(items, items, 'fake-token', 'fake-account');
+    assert.equal(result.found.length, 1);
+    assert.equal(result.found[0].item.id, 'legacy-top-level');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): udrop scene check — extraMetadata.sceneFiles.udrop wins over the top-level copy when both exist', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = udropListingFetch([
+    { short_url: 'spz9', file_id: '2625007', name: 'amphi.spz', status: 'active' },
+    { short_url: 'tex9', file_id: '2625008', name: 'amphi.webp', status: 'active' },
+  ]);
+  const items = [{
+    id: 'extra-wins',
+    spzUrl: '/telegram-media/BQADxxx',
+    textureUrl: '/telegram-media/CAADyyy',
+    extraMetadata: {
+      sceneFiles: {
+        udrop: {
+          spz: { fileId: '2625007', filename: 'amphi.spz' },
+          texture: { fileId: '2625008', filename: 'amphi.webp' },
+        },
+      },
+    },
+    // stale top-level copy pointing at files that are NOT in the listing —
+    // if the check read this one instead, the scene would show broken.
+    sceneFiles: {
+      udrop: {
+        spz: { fileId: '9999999', filename: 'amphi.spz' },
+        texture: { fileId: '9999998', filename: 'amphi.webp' },
+      },
+    },
+  }];
+  try {
+    const result = await checkSceneIntegrity(items, items, 'fake-token', 'fake-account');
+    assert.equal(result.found.length, 1);
+    assert.equal(result.found[0].spzMatched.file_id, '2625007');
+    assert.equal(result.missing.length, 0);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): udrop scene check — the pointer wins when it IS a udrop URL, even when sceneFiles names a different live file', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = udropListingFetch([
+    { short_url: 'ptr1', file_id: '1', name: 'pointer.spz', status: 'active' },
+    { short_url: 'spz9', file_id: '2625007', name: 'record.spz', status: 'active' },
+    { short_url: 'tex1', file_id: '2', name: 'tex.webp', status: 'active' },
+  ]);
+  const items = [{
+    id: 'pointer-wins',
+    spzUrl: 'https://www.udrop.com/file/ptr1',
+    textureUrl: 'https://www.udrop.com/file/tex1',
+    extraMetadata: { sceneFiles: { udrop: { spz: { fileId: '2625007', filename: 'record.spz' } } } },
+  }];
+  try {
+    const result = await checkSceneIntegrity(items, items, 'fake-token', 'fake-account');
+    assert.equal(result.found.length, 1);
+    assert.equal(result.found[0].spzMatched.short_url, 'ptr1');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): udrop scene check — a texture-only ref (no spz code anywhere) is found when the texture is there', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = udropListingFetch([
+    { short_url: 'tex1', file_id: '2', name: 'tex.webp', status: 'active' },
+  ]);
+  const items = [{
+    id: 'tex-only',
+    spzUrl: '/telegram-media/BQADxxx',
+    textureUrl: 'https://www.udrop.com/file/tex1',
+  }];
+  try {
+    const result = await checkSceneIntegrity(items, items, 'fake-token', 'fake-account');
+    assert.equal(result.found.length, 1);
+    assert.equal(result.found[0].spzMatched, null);
+    assert.equal(result.found[0].texMatched.short_url, 'tex1');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): udrop scene check — a listing failure THROWS, never a partial report', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => jsonResponse({}, 500);
+  try {
+    await assert.rejects(
+      () => checkSceneIntegrity([{ id: 'x' }], [{ id: 'x' }], 'fake-token', 'fake-account'),
+      /UDrop folder\/listing failed: HTTP 500/,
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+const teraboxSceneFetch = (list) => async (url) => {
+  const u = String(url || '');
+  if (u.startsWith('https://www.terabox.com/')) {
+    return { ok: true, status: 200, json: async () => ({}), text: async () => '<html></html>' };
+  }
+  if (u.includes('/api/list')) {
+    return jsonResponse({ errno: 0, list });
+  }
+  throw new Error(`unexpected fetch: ${u}`);
+};
+
+test('2.19.26 (2026-11-20): terabox scene check — the spz matches through the videoHosts fileId fallback when sceneFiles has no spz entry', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = teraboxSceneFetch([
+    { fs_id: '111', server_filename: 'scene.spz', path: '/scene.spz', size: 1000, isdir: 0 },
+    { fs_id: '222', server_filename: 'tex.webp', path: '/tex.webp', size: 100, isdir: 0 },
+  ]);
+  const items = [{
+    id: 'vh-fallback',
+    fileName: 'ceramic.spz',
+    spzUrl: '/telegram-media/BQADxxx',
+    textureUrl: '/telegram-media/CAADyyy',
+    // filename deliberately does NOT match the listing — the match must
+    // come from the fileId, not the name fallback.
+    videoHosts: { terabox: { fileId: '111', filename: 'other-name.spz', watchUrl: 'https://www.terabox.com/sharing/link?surl=x' } },
+    extraMetadata: { sceneFiles: { terabox: { texture: { fileId: '222', filename: 'tex.webp' } } } },
+  }];
+  try {
+    const result = await checkTeraBoxSceneIntegrity(items, items, 'ndus=fake; browserid=fake');
+    assert.equal(result.found.length, 1);
+    assert.equal(result.found[0].spzMatched.fs_id, '111');
+    assert.equal(result.found[0].texMatched.fs_id, '222');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): terabox scene check — a texture fs_id missing from the listing is missing, with the spz match still reported', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = teraboxSceneFetch([
+    { fs_id: '111', server_filename: 'scene.spz', path: '/scene.spz', size: 1000, isdir: 0 },
+  ]);
+  const items = [{
+    id: 'tex-gone',
+    fileName: 'ceramic.spz',
+    spzUrl: '/telegram-media/BQADxxx',
+    textureUrl: '/telegram-media/CAADyyy',
+    extraMetadata: {
+      sceneFiles: {
+        terabox: {
+          spz: { fileId: '111', filename: 'scene.spz' },
+          texture: { fileId: '999', filename: 'tex.webp' },
+        },
+      },
+    },
+  }];
+  try {
+    const result = await checkTeraBoxSceneIntegrity(items, items, 'ndus=fake; browserid=fake');
+    assert.equal(result.found.length, 0);
+    assert.equal(result.missing.length, 1);
+    assert.equal(result.missing[0].spzMatched.fs_id, '111');
+    assert.equal(result.missing[0].texMatched, null);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): terabox scene check — a foreign-host scene (telegram pointers, no terabox refs) lands in noUrl, never missing', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = teraboxSceneFetch([
+    { fs_id: '111', server_filename: 'scene.spz', path: '/scene.spz', size: 1000, isdir: 0 },
+  ]);
+  const items = [{
+    id: 'telegram-only',
+    fileName: 'other.spz',
+    spzUrl: '/telegram-media/BQADxxx',
+    textureUrl: '/telegram-media/CAADyyy',
+  }];
+  try {
+    const result = await checkTeraBoxSceneIntegrity(items, items, 'ndus=fake; browserid=fake');
+    assert.equal(result.found.length, 0);
+    assert.equal(result.missing.length, 0);
+    assert.equal(result.noUrl.length, 1);
+    assert.equal(result.noUrl[0].item.id, 'telegram-only');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): terabox scene check — the spz matches by NAME when no file id is stored anywhere', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = teraboxSceneFetch([
+    { fs_id: '111', server_filename: 'scene.spz', path: '/scene.spz', size: 1000, isdir: 0 },
+    { fs_id: '222', server_filename: 'tex.webp', path: '/tex.webp', size: 100, isdir: 0 },
+  ]);
+  const items = [{
+    id: 'name-fallback',
+    fileName: 'scene.spz',
+    spzUrl: '/telegram-media/BQADxxx',
+    textureUrl: '/telegram-media/CAADyyy',
+    videoHosts: { terabox: { filename: 'scene.spz', watchUrl: 'https://www.terabox.com/sharing/link?surl=x' } },
+    extraMetadata: { sceneFiles: { terabox: { texture: { fileId: '222', filename: 'tex.webp' } } } },
+  }];
+  try {
+    const result = await checkTeraBoxSceneIntegrity(items, items, 'ndus=fake; browserid=fake');
+    assert.equal(result.found.length, 1);
+    assert.equal(result.found[0].spzMatched.fs_id, '111');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): terabox scene check — the spz matches by the fid in the spzUrl dlink when nothing else names it', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = teraboxSceneFetch([
+    { fs_id: '111', server_filename: 'scene.spz', path: '/scene.spz', size: 1000, isdir: 0 },
+    { fs_id: '222', server_filename: 'tex.webp', path: '/tex.webp', size: 100, isdir: 0 },
+  ]);
+  const items = [{
+    id: 'dlink-fallback',
+    fileName: 'renamed-locally.spz',
+    spzUrl: 'https://d.terabox.com/file/abc123?fid=7-99-111',
+    textureUrl: '/telegram-media/CAADyyy',
+    extraMetadata: { sceneFiles: { terabox: { texture: { fileId: '222', filename: 'tex.webp' } } } },
+  }];
+  try {
+    const result = await checkTeraBoxSceneIntegrity(items, items, 'ndus=fake; browserid=fake');
+    assert.equal(result.found.length, 1);
+    assert.equal(result.found[0].spzMatched.fs_id, '111');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+// LOUD KNOWN FAILURE — DO NOT "FIX" BY EDITING THIS TEST, AND DO NOT MAKE
+// IT PASS BY CHANGING PRODUCTION CODE IN A TESTS-ONLY COMMIT.
+//
+// The ceramic scene (d1394dbd) has NO spz on TeraBox at all: its
+// sceneFiles.terabox holds the TEXTURE only (fs_id 589797364224622), while
+// videoHosts.terabox.fileId holds that SAME texture fs_id mislabeled with
+// the spz filename. checkTeraBoxSceneIntegrity reads the spz id from
+// extractTeraBoxFileId(item) FIRST — i.e. from videoHosts — so it probes
+// the texture file twice and reports the scene FOUND. The live 2.19.26
+// resolve page shows "7 found" for TeraBox scenes while ceramic's spz is
+// genuinely missing (proven live 2026-11-20 by the final-counts pass).
+//
+// The fix belongs in checkTeraBoxSceneIntegrity: when sceneFiles.terabox
+// exists, the spz id must come from sceneFiles.terabox.spz (and a
+// videoHosts fileId that equals the texture fs_id must never count as the
+// spz). Until that fix ships, this test stays SKIPPED — it pins the
+// intended behavior and names the bug.
+test.skip('KNOWN FAILING (2026-11-20): terabox scene check — a videoHosts fileId holding the TEXTURE fs_id must NOT count as the spz (ceramic masking case)', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = teraboxSceneFetch([
+    { fs_id: '589797364224622', server_filename: 'ceramic-texture.webp', path: '/ceramic-texture.webp', size: 67104, isdir: 0 },
+  ]);
+  const items = [{
+    id: 'd1394dbd-5c75-4260-ba13-a2b8ca9f81fb',
+    fileName: '31b40b75-fa05-403c-9bef-def66948e218_ceramic.spz',
+    spzUrl: '/telegram-media/BQADxxx',
+    textureUrl: 'https://www.terabox.com/file/tex?fid=1-2-589797364224622',
+    videoHosts: {
+      terabox: {
+        fileId: '589797364224622',
+        filename: '31b40b75-fa05-403c-9bef-def66948e218_ceramic.spz',
+        watchUrl: 'https://www.terabox.com/sharing/link?surl=x',
+      },
+    },
+    extraMetadata: {
+      sceneFiles: {
+        terabox: {
+          texture: { fileId: '589797364224622', filename: 'ceramic-texture.webp' },
+        },
+      },
+    },
+  }];
+  try {
+    const result = await checkTeraBoxSceneIntegrity(items, items, 'ndus=fake; browserid=fake');
+    assert.equal(result.found.length, 0, 'the spz is not on terabox — the scene must not be found');
+    assert.equal(result.missing.length, 1);
+    assert.equal(result.missing[0].spzMatched, null);
+    assert.equal(result.missing[0].texMatched.fs_id, '589797364224622');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+const telegramSceneFetch = (byFileId) => async (url, options) => {
+  const u = String(url || '');
+  if (!u.includes('/getFile')) throw new Error(`unexpected fetch: ${u}`);
+  const fileId = options?.body?.get?.('file_id') || '';
+  const shape = byFileId[fileId];
+  if (shape === 'gate-api') {
+    return jsonResponse({ ok: false, error_code: 400, description: 'Bad Request: file is too big' });
+  }
+  if (shape === 'gate-client') {
+    return jsonResponse({ ok: true, result: { file_id: fileId, file_path: 'x', file_size: 30 * 1024 * 1024 } });
+  }
+  if (shape === 'gone') {
+    return jsonResponse({ ok: false, error_code: 400, description: 'Bad Request: invalid file id' });
+  }
+  if (shape === 'http500') {
+    return { ok: false, status: 500, json: async () => ({}), text: async () => 'boom' };
+  }
+  return jsonResponse({ ok: true, result: { file_id: fileId, file_path: 'x', file_size: 100 } });
+};
+
+const telegramSceneItem = (id, spzFileId, texFileId, messageId = 500) => ({
+  id,
+  fileName: `${id}.spz`,
+  extraMetadata: {
+    sceneFiles: {
+      telegram: {
+        spz: { fileId: spzFileId, filename: `${id}.spz`, messageId: String(messageId) },
+        texture: { fileId: texFileId, filename: `${id}.webp`, messageId: String(messageId + 1) },
+      },
+    },
+  },
+});
+
+test('2.19.26 (2026-11-20): telegram scene check — small spz + small texture is found, with both file ids matched', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = telegramSceneFetch({});
+  const items = [telegramSceneItem('small', 'spz-small', 'tex-small')];
+  try {
+    const result = await checkTelegramSceneIntegrity(items, items, { token: 'fake-token', channel: '-1003959088547' });
+    assert.equal(result.found.length, 1);
+    assert.equal(result.found[0].spzMatched.file_id, 'spz-small');
+    assert.equal(result.found[0].texMatched.file_id, 'tex-small');
+    assert.equal(result.found[0].spzPageUrl, 'https://t.me/c/3959088547/500');
+    assert.deepEqual(result.missing, []);
+    assert.deepEqual(result.unverified, []);
+    assert.deepEqual(result.noUrl, []);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): telegram scene check — the buckets partition the items: found + missing + unverified + noUrl counts every scene exactly once', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = telegramSceneFetch({ 'gone-spz': 'gone', 'big-spz': 'gate-api' });
+  const items = [
+    telegramSceneItem('found-one', 'spz-a', 'tex-a', 500),
+    telegramSceneItem('gone-one', 'gone-spz', 'tex-b', 510),
+    telegramSceneItem('gated-one', 'big-spz', 'tex-c', 520),
+    { id: 'no-ref-one', fileName: 'no-ref.spz' },
+  ];
+  try {
+    const result = await checkTelegramSceneIntegrity(items, items, { token: 'fake-token', channel: '-1003959088547' });
+    assert.deepEqual(result.found.map((e) => e.item.id), ['found-one']);
+    assert.deepEqual(result.missing.map((e) => e.item.id), ['gone-one']);
+    assert.deepEqual(result.unverified.map((e) => e.item.id), ['gated-one']);
+    assert.deepEqual(result.noUrl.map((e) => e.item.id), ['no-ref-one']);
+    assert.deepEqual(result.extra, []);
+    const total = result.found.length + result.missing.length + result.unverified.length + result.noUrl.length;
+    assert.equal(total, items.length);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): telegram scene check — a gated TEXTURE alone (spz fine) is unverified, not broken, and the spz match is kept', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = telegramSceneFetch({ 'big-tex': 'gate-client' });
+  const items = [telegramSceneItem('tex-gated', 'spz-ok', 'big-tex')];
+  try {
+    const result = await checkTelegramSceneIntegrity(items, items, { token: 'fake-token', channel: '-1003959088547' });
+    assert.equal(result.unverified.length, 1);
+    assert.equal(result.unverified[0].spzMatched.file_id, 'spz-ok');
+    assert.equal(result.unverified[0].texMatched, null);
+    assert.equal(result.missing.length, 0);
+    assert.ok((result.unverified[0].reasons || []).join(' ').match(/too big/i));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): telegram scene check — a 5xx probe failure THROWS (an outage is never reported as data loss)', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = telegramSceneFetch({ 'spz-500': 'http500' });
+  const items = [telegramSceneItem('outage', 'spz-500', 'tex-ok')];
+  try {
+    await assert.rejects(
+      () => checkTelegramSceneIntegrity(items, items, { token: 'fake-token', channel: '-1003959088547' }),
+      /HTTP 500/,
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('2.19.26 (2026-11-20): the Resolve page All chip counts unverified scenes, and the Unverified chip names the 20 MB gate', () => {
+  const page = src('../src/pages/ResolvePage.jsx');
+  assert.ok(page.includes("count: sceneIntegrity.found.length + sceneIntegrity.missing.length + sceneIntegrity.noUrl.length + sceneIntegrity.extra.length + (sceneIntegrity.unverified?.length || 0)"));
+  assert.ok(page.includes("{ value: 'unverified', label: 'Unverified', count: sceneIntegrity.unverified?.length || 0"));
+  assert.ok(page.includes("the file exceeds Telegram\\'s 20 MB getFile limit, so the probe cannot confirm it"));
+});
+
+test('2.19.26 (2026-11-20): unverified scene rows get NO Fix button — re-uploading a file that is probably there would duplicate it', () => {
+  const page = src('../src/pages/ResolvePage.jsx');
+  // The scene-row Fix button is gated to noUrl + missing only.
+  assert.ok(page.includes("{(status === 'noUrl' || status === 'missing') && ("));
+  // And the unverified explainer says plainly there is nothing to fix.
+  assert.ok(page.includes('this is not a broken link, and there is nothing to fix.'));
+});
+
+test('2.19.26 (2026-11-20): the scene notice line names the unverified count and the gate', () => {
+  const page = src('../src/pages/ResolvePage.jsx');
+  assert.ok(page.includes('unverified (over the 20 MB getFile limit — not broken)'));
+});
+

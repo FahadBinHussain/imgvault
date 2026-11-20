@@ -139,6 +139,38 @@ describe('audio services ride the video hosts minus video-only ones', () => {
     assert.deepEqual(AUDIO_SOURCE_OPTIONS.map((o) => o.value).sort(), ['telegram', 'terabox', 'udrop']);
     assert.notStrictEqual(AUDIO_SOURCE_OPTIONS, VIDEO_SOURCE_OPTIONS);
   });
+  test('AUDIO_UPLOAD_SERVICES is derived by rule, not by a hardcoded list — it is exactly the video list minus video-only hosts', () => {
+    // A future video host flows into audio automatically unless it opts out
+    // with videoOnly: true — this pins the derivation, so adding a host to
+    // VIDEO_UPLOAD_SERVICES cannot silently leave audio behind (or sneak a
+    // video-only host into the audio picker).
+    assert.deepEqual(
+      AUDIO_UPLOAD_SERVICES,
+      VIDEO_UPLOAD_SERVICES.filter((service) => !service.videoOnly),
+    );
+  });
+  test('no audio service carries videoOnly: true', () => {
+    assert.deepEqual(AUDIO_UPLOAD_SERVICES.filter((s) => s.videoOnly), []);
+  });
+  test('every non-video-only video host is an audio host (completeness — nothing is dropped by accident)', () => {
+    const audioKeys = new Set(AUDIO_UPLOAD_SERVICES.map((s) => s.key));
+    for (const service of VIDEO_UPLOAD_SERVICES.filter((s) => !s.videoOnly)) {
+      assert.ok(audioKeys.has(service.key), `${service.key} is a video host but not an audio host`);
+    }
+  });
+  test('the audio default is itself a valid audio host', () => {
+    assert.ok(AUDIO_UPLOAD_SERVICES.some((s) => s.key === DEFAULT_AUDIO_SOURCE));
+    assert.notEqual(DEFAULT_AUDIO_SOURCE, DEFAULT_VIDEO_SOURCE, 'filemoon is the video default and is video-only');
+  });
+  test('a filemoon API key alone configures NO filemoon audio host (terabox is always configured, filemoon never is)', () => {
+    // terabox auto-reads its cookie, so it is always in the configured set;
+    // the point is filemoon must never appear there no matter the keys.
+    assert.deepEqual(getConfiguredServices(AUDIO_UPLOAD_SERVICES, { filemoonApiKey: 'k' }).map((s) => s.key), ['terabox']);
+    assert.deepEqual(
+      getConfiguredServices(AUDIO_UPLOAD_SERVICES, { filemoonApiKey: 'k', udropKey1: 'a', udropKey2: 'b' }).map((s) => s.key),
+      ['udrop', 'terabox'],
+    );
+  });
 });
 
 describe('3D hosts', () => {
