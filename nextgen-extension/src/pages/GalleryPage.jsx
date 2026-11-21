@@ -78,6 +78,7 @@ import { cacheUploadFile, getCachedUploadFile, listCachedUploadFiles, removeCach
 import { partitionHostsByUploadLimit } from '../utils/hostUploadLimits.js';
 import { captureVideoSnapshotBlob } from '../utils/videoSnapshot.js';
 import { setCachedThumb } from '../utils/thumbCache.js';
+import { formatVideoDuration, getFilemoonTooLongWarning, getHostUnsupportedFlag } from '../utils/hostUnsupported.js';
 
 // How long the page waits for the worker to acknowledge that the upload run
 // is closed. The worker is a message away and the record is one storage key,
@@ -498,6 +499,12 @@ export default function GalleryPage() {
   const [uploadQueuePreviewUrls, setUploadQueuePreviewUrls] = useState([]);
   const [activeUploadQueueIndex, setActiveUploadQueueIndex] = useState(0);
   const [uploadAttemptStarted, setUploadAttemptStarted] = useState(false);
+  // The filemoon duration rejection for THIS upload attempt, if any —
+  // rendered LOUDLY in the modal the moment it happens (upload time is
+  // where the problem is caught, not days later on the resolve page).
+  // Session-local only: the durable record is the per-item flag the
+  // worker writes at finalize/save time from the same error list.
+  const [filemoonTooLongWarning, setFilemoonTooLongWarning] = useState(null);
   const [batchUploadState, setBatchUploadState] = useState({
     active: false,
     index: 0,
@@ -658,6 +665,25 @@ export default function GalleryPage() {
   const uploadWaitingMessage = uploadIsActive
     ? 'Waiting for uploader logs...'
     : 'No uploader logs were saved for the last run.';
+
+  // The LOUD upload-time warning for a filemoon duration rejection. It
+  // renders in both upload-progress spots (dropzone layout + picked-file
+  // layout) the moment the rejection lands, and stays until dismissed
+  // or the next upload starts.
+  const filemoonTooLongBanner = filemoonTooLongWarning ? (
+    <div className="rounded-[var(--radius-box)] border border-warning/40 bg-warning/15 px-3 py-2.5 text-sm text-base-content">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-warning">Filemoon won't take this video</p>
+          <p className="mt-0.5 text-xs leading-5 text-base-content/75">{filemoonTooLongWarning.message}</p>
+        </div>
+        <button type="button" onClick={() => setFilemoonTooLongWarning(null)} className="btn btn-ghost btn-xs shrink-0" aria-label="Dismiss warning">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  ) : null;
   
   // IndexedDB helpers for storing directory handle
   const saveDirectoryHandle = async (handle) => {
@@ -948,11 +974,20 @@ export default function GalleryPage() {
     modalSceneConfig && (modalSceneConfig.position || modalSceneConfig.rotation || modalSceneConfig.cameraRadius || modalSceneConfig.scene || modalSceneConfig.controls)
   );
   const missingVideoServices = getMissingVideoUploadServices(modalImage);
+  // A filemoon duration rejection is permanent — never offer the retry
+  // again for a flagged item. (The worker also refuses it, belt and
+  // braces, so a stale modal cannot start a doomed upload.)
+  const selectedVideoUnsupportedFlag = getHostUnsupportedFlag(modalImage, 'filemoon');
+  const selectedVideoUnsupportedDuration = selectedVideoUnsupportedFlag
+    ? formatVideoDuration(selectedVideoUnsupportedFlag.durationSeconds)
+    : '';
   const hasRetryableVideoSource = Boolean(
     hasAnyVideoProviderLink(modalImage) ||
     isHttpUrl(modalImage?.sourceImageUrl)
   );
-  const retryableVideoServices = isSelectedVideo && hasRetryableVideoSource ? missingVideoServices : [];
+  const retryableVideoServices = isSelectedVideo && hasRetryableVideoSource
+    ? missingVideoServices.filter((service) => !(service.key === 'filemoon' && selectedVideoUnsupportedFlag))
+    : [];
   const displayedBaseFieldEntries = getOverviewEntries(modalImage || selectedItemForType);
   const overviewValueByKey = Object.fromEntries(displayedBaseFieldEntries.map((entry) => [entry.key, entry.value]));
   const inlineActionClass = 'shrink-0 inline-flex items-center gap-1.5 rounded-full border border-base-300 bg-base-200/70 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-base-content/72 transition-all duration-200 hover:border-base-content/22 hover:bg-base-200 hover:text-base-content hover:shadow-sm active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40';
@@ -1401,6 +1436,7 @@ export default function GalleryPage() {
   const uploadVideoDirectly = async (uploadData) => {
     const uploadController = new AbortController();
     activeVideoUploadControllerRef.current = uploadController;
+    setFilemoonTooLongWarning(null);
 
     await chrome.storage.local.set({
       uploadActive: true,
@@ -1685,6 +1721,16 @@ export default function GalleryPage() {
 
       if (uploadErrors.length > 0) {
         await appendClientUploadLog(`Partial upload success. Saved host URLs and left failed host ready for retry. ${uploadErrors.join(' | ')}`, 'warning');
+        // Filemoon rejecting for duration is permanent for this file —
+        // say so LOUDLY in the modal right now, instead of failing
+        // silently and leaving a no-url gap for the resolve page to find
+        // days later. (The worker records the per-item flag at
+        // finalize/save time from the same error list.)
+        const tooLongWarning = getFilemoonTooLongWarning(uploadErrors, uploadData.duration);
+        if (tooLongWarning) {
+          setFilemoonTooLongWarning({ ...tooLongWarning, fileName: uploadData.fileName || '' });
+          await appendClientUploadLog(tooLongWarning.message, 'warning');
+        }
       }
 
       await chrome.storage.local.set({ uploadStatus: 'Saving video metadata...' });
@@ -3901,6 +3947,13 @@ export default function GalleryPage() {
 
     const hostLabel = getVideoProviderLabel(host);
     const retryItem = modalImage || selectedImage;
+    // Belt and braces with the worker guard: never start a doomed filemoon
+    // retry for a flagged item (covers the local-file path too, which never
+    // reaches the worker).
+    if (String(host).toLowerCase() === 'filemoon' && getHostUnsupportedFlag(retryItem, 'filemoon')) {
+      showToast('Filemoon already rejected this video — it will never upload there, so the retry was not attempted.', 'warning', 5000);
+      return;
+    }
     setRetryingVideoHost(host);
     showToast(`Retrying ${hostLabel} upload...`, 'info', 3000);
 
@@ -4877,6 +4930,17 @@ export default function GalleryPage() {
           </Button>
         </div>
       )}
+      {isSelectedVideo && selectedVideoUnsupportedFlag && (
+        <div className="mb-4 rounded-[var(--radius-box)] border border-warning/20 bg-warning/10 p-3 text-sm text-base-content">
+          <div className="mb-2 flex items-center gap-2 font-semibold">
+            <AlertTriangle className="h-4 w-4 text-warning" />
+            Filemoon won't support this
+          </div>
+          <p className="text-xs leading-5 text-base-content/70">
+            Filemoon rejected this video: "{selectedVideoUnsupportedFlag.reason}"{selectedVideoUnsupportedDuration ? ` (duration ${selectedVideoUnsupportedDuration})` : ''}. It stays on your other hosts — the resolve page records it so it won't keep coming up as a missing link.
+          </p>
+        </div>
+      )}
       {isSelectedVideo && retryableVideoServices.length > 0 && (
         <div className="mb-4 rounded-[var(--radius-box)] border border-warning/20 bg-warning/10 p-3 text-sm text-base-content">
           <div className="mb-2 flex items-center gap-2 font-semibold">
@@ -5812,6 +5876,7 @@ export default function GalleryPage() {
                         {uploadIsActive && (<div className="w-full h-2 bg-base-300 rounded-full overflow-hidden"><div className="h-full bg-gradient-to-r from-primary-500 to-secondary-500 animate-pulse" /></div>)}
                       </div>
                     </div>
+                    {filemoonTooLongBanner}
                     <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-100/70 p-3">
                       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                         <div><h4 className="text-sm font-semibold text-base-content">{uploadLogTitle}</h4><p className="text-xs text-base-content/60">{uploadLogDescription}</p></div>
@@ -6201,6 +6266,7 @@ export default function GalleryPage() {
                             )}
                           </div>
                         </div>
+                        {filemoonTooLongBanner}
                         <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-100/70 p-3">
                           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                             <div>

@@ -30,6 +30,7 @@ import {
 } from '../utils/imageProviderLinks.js';
 import { extractFilemoonFilecode, getFilemoonDirectLink, getFilemoonHlsLink } from '../utils/filemoonApi.js';
 import { getFilemoonStreamSource } from '../utils/filemoonSpa.js';
+import { FILEMOON_TOO_LONG_REASON, findFilemoonTooLongError, formatVideoDuration, getHostUnsupportedFlag, isFilemoonTooLongError, withHostUnsupportedFlag } from '../utils/hostUnsupported.js';
 import { resolveTeraBoxThumbnail, resolveTeraBoxPlaybackUrl, resolveTeraBoxFilePath, deleteTeraBoxFiles, listAllTeraBoxFiles, teraBoxFsIdFromUrl, isTeraBoxUrl, isTeraBoxHost, resolveTeraBoxDownloadTarget } from '../utils/teraBoxApi.js';
 import { isSunoHost, isSunoUrl, resolveSunoDownloadTarget, decryptSunoEncryptedClip, bytesToBase64 } from '../utils/sunoApi.js';
 import { PENDING_UPLOAD_EXTRA_KEYS, withoutPendingUploadFlags } from '../utils/pendingUpload.js';
@@ -4949,7 +4950,19 @@ class ImgVaultServiceWorker {
       if (uploadErrors.length > 0) {
         await this.updateStatusWithLog(`⚠️ Partial upload success. ${uploadErrors.join(' | ')}`, 'warning');
       }
-      
+
+      // A filemoon duration rejection is permanent for this file: flag it
+      // now, at upload time, so the resolve page never has to rediscover
+      // it as a no-url gap days later.
+      const filemoonTooLong = findFilemoonTooLongError(uploadErrors);
+      if (filemoonTooLong) {
+        const durationLabel = formatVideoDuration(data.duration);
+        await this.appendUploadLog(
+          `Filemoon rejected this video: "video is too long"${durationLabel ? ` (duration ${durationLabel})` : ''}. Filemoon caps video length — this file will never upload there and will not be retried.`,
+          'warning'
+        );
+      }
+
       await this.updateStatusWithLog('💾 Saving to Firebase...');
       
       // Clean sourceImageUrl
@@ -4999,6 +5012,14 @@ class ImgVaultServiceWorker {
         videoMetadata = mergeVideoProviderResult(videoMetadata, providerKey, result);
       }
 
+      if (filemoonTooLong) {
+        videoMetadata.extraMetadata = withHostUnsupportedFlag(
+          videoMetadata.extraMetadata,
+          'filemoon',
+          { reason: FILEMOON_TOO_LONG_REASON, durationSeconds: data.duration }
+        );
+      }
+
       // Sanitize data for Neon database compatibility
       const sanitizedVideoMetadata = sanitizeForNeon(videoMetadata);
 
@@ -5011,7 +5032,7 @@ class ImgVaultServiceWorker {
       await finishUploadRun(
         uploadErrors.length > 0 ? UPLOAD_RUN_STATUS.WARNING : UPLOAD_RUN_STATUS.SUCCESS,
         uploadErrors.length > 0
-          ? `Video upload completed with partial success. ${uploadErrors.join(' | ')}`
+          ? `Video upload completed with partial success. ${uploadErrors.join(' | ')}${filemoonTooLong ? ' Filemoon rejected this video: video is too long — it will never upload there.' : ''}`
           : 'Video upload completed successfully.'
       );
 
@@ -5141,6 +5162,20 @@ class ImgVaultServiceWorker {
     }
     if (!item.isVideo && !item.isAudio && !String(item.fileType || '').startsWith('video/') && !String(item.fileType || '').startsWith('audio/')) {
       throw new Error('Only saved videos can retry video hosts.');
+    }
+
+    // A filemoon duration rejection is permanent for this file — do not
+    // download the bytes and re-upload just to be rejected again. The flag
+    // is the record; the resolve page shows it, and the gallery detail
+    // modal hides the filemoon retry for flagged items.
+    if (targetHost === 'filemoon') {
+      const unsupportedFlag = getHostUnsupportedFlag(item, 'filemoon');
+      if (unsupportedFlag) {
+        const durationLabel = formatVideoDuration(unsupportedFlag.durationSeconds);
+        throw new Error(
+          `Filemoon already rejected this video (${unsupportedFlag.reason}${durationLabel ? `, duration ${durationLabel}` : ''}). It will never upload there, so the retry was not attempted.`
+        );
+      }
     }
 
     const settings = await this.getMergedVideoHostSettings();
@@ -5299,6 +5334,24 @@ class ImgVaultServiceWorker {
       };
     } catch (error) {
       await this.updateStatusWithLog(`${hostLabel} retry failed: ${error.message || String(error)}`, 'error');
+      // A filemoon duration rejection on retry flags the item the same way
+      // an upload-time rejection does — this is the path that catches
+      // pre-existing items. The flag write must never mask the real error.
+      if (targetHost === 'filemoon' && isFilemoonTooLongError(error)) {
+        try {
+          const fresh = await this.storage.getImageById(imageId);
+          if (fresh && !getHostUnsupportedFlag(fresh, 'filemoon')) {
+            await this.storage.updateImage(imageId, {
+              extraMetadata: withHostUnsupportedFlag(fresh.extraMetadata, 'filemoon', {
+                reason: FILEMOON_TOO_LONG_REASON,
+                durationSeconds: fresh.duration,
+              }),
+            });
+          }
+        } catch (flagError) {
+          console.warn('[retryVideoHostUpload] could not record the filemoon unsupported flag:', flagError);
+        }
+      }
       throw error;
     } finally {
       await chrome.storage.local.set({ uploadActive: false });
@@ -6872,6 +6925,17 @@ class ImgVaultServiceWorker {
       videoMetadata = mergeVideoProviderResult(videoMetadata, providerKey, result);
     }
 
+    // The page passes its per-host failures along (videoUploadErrors) — a
+    // filemoon duration rejection is permanent for this file, so flag it
+    // now instead of leaving a no-url gap for the resolve page to find.
+    if (findFilemoonTooLongError(data.videoUploadErrors)) {
+      videoMetadata.extraMetadata = withHostUnsupportedFlag(
+        videoMetadata.extraMetadata,
+        'filemoon',
+        { reason: FILEMOON_TOO_LONG_REASON, durationSeconds: data.duration }
+      );
+    }
+
     await this.updateStatusWithLog('Saving video metadata...');
     // Sanitize data for Neon database compatibility
     const sanitizedVideoMetadata = sanitizeForNeon(videoMetadata);
@@ -6973,7 +7037,7 @@ class ImgVaultServiceWorker {
       merged = mergeVideoProviderResult(merged, providerKey, result);
     }
 
-    const extraMetadata = withoutPendingUploadFlags(
+    let extraMetadata = withoutPendingUploadFlags(
       merged.extraMetadata && typeof merged.extraMetadata === 'object' ? merged.extraMetadata : {}
     );
     // The row mirrors every extra key top-level as well, so the mirrored copy
@@ -6984,6 +7048,15 @@ class ImgVaultServiceWorker {
     // "pending" offers to "recover" a file that is already linked.
     for (const key of PENDING_UPLOAD_EXTRA_KEYS) {
       delete merged[key];
+    }
+
+    // Same as saveUploadedVideo: a filemoon duration rejection in the
+    // page's error list flags the item now, at upload time.
+    if (findFilemoonTooLongError(data.videoUploadErrors)) {
+      extraMetadata = withHostUnsupportedFlag(extraMetadata, 'filemoon', {
+        reason: FILEMOON_TOO_LONG_REASON,
+        durationSeconds: current.duration,
+      });
     }
 
     await this.storage.updateImage(

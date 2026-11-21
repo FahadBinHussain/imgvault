@@ -5,6 +5,7 @@
  */
 
 import { getVideoProviderLinks } from './videoProviderLinks.js';
+import { getHostUnsupportedFlag } from './hostUnsupported.js';
 
 const BYSE_API_BASE = 'https://api.byse.sx';
 
@@ -147,15 +148,24 @@ export async function deleteFilemoonFile(apiKey, filecode) {
  * Listing failures THROW — a partial/empty listing flips every healthy video
  * to "broken" (the 2.12.78 udrop failure mode); per-file probing is NOT a
  * fallback, the check either has the full account list or reports nothing.
+ *
+ * Items the host already rejected (extraMetadata.hostUnsupported.filemoon)
+ * land in `unsupported` (or `dismissed` once the user dismisses the flag)
+ * instead of `noUrl` — a rejected file is not a gap to fix, and counting it
+ * as one resurfaces the same dead issue on every run. A flag is inert once
+ * the item carries a filemoon URL: the link is judged found/broken as
+ * normal, flag or not.
  * @param {Array} items - DB media items with filemoonUrl/filemoonWatchUrl/filemoonDirectUrl
  * @param {string} apiKey
- * @returns {Promise<{found:[],missing:[],noUrl:[],extra:[]}>}
+ * @returns {Promise<{found:[],missing:[],noUrl:[],extra:[],unsupported:[],dismissed:[]}>}
  */
 export async function checkFilemoonIntegrity(items, apiKey) {
   const found = [];
   const missing = [];
   const noUrl = [];
   const extra = [];
+  const unsupported = [];
+  const dismissed = [];
 
   const filemoonFiles = await listAllFilemoonFiles(apiKey);
   const filemoonMap = new Map();
@@ -188,7 +198,18 @@ export async function checkFilemoonIntegrity(items, apiKey) {
     const uniqueCodes = [...new Set(codes)];
 
     if (!uniqueCodes.length) {
-      noUrl.push({ item, codes: [] });
+      // No link at all. A rejected file is not a gap: it goes to the
+      // unsupported bucket (or dismissed once acknowledged) so it never
+      // counts in noUrl again. Every entry carries `codes` (possibly
+      // empty) — the scene rows crash without it (2.12.56 rule).
+      const flag = getHostUnsupportedFlag(item, 'filemoon');
+      if (flag && flag.dismissedAt) {
+        dismissed.push({ item, codes: [], flag });
+      } else if (flag) {
+        unsupported.push({ item, codes: [], flag });
+      } else {
+        noUrl.push({ item, codes: [] });
+      }
       continue;
     }
 
@@ -210,5 +231,27 @@ export async function checkFilemoonIntegrity(items, apiKey) {
     }
   }
 
-  return { found, missing, noUrl, extra };
+  return { found, missing, noUrl, extra, unsupported, dismissed };
+}
+
+/**
+ * Format the resolve-page notice for a filemoon check result. The
+ * unsupported/dismissed segments appear only when non-zero, so the normal
+ * all-green notice is unchanged — but whenever a flagged item exists its
+ * count is named, so the arithmetic never silently drops an item.
+ * @param {{found:[],missing:[],noUrl:[],extra:[],unsupported:[],dismissed:[]}} result
+ * @returns {string}
+ */
+export function formatFilemoonCheckNotice(result) {
+  const r = result || {};
+  const found = r.found?.length || 0;
+  const missing = r.missing?.length || 0;
+  const noUrl = r.noUrl?.length || 0;
+  const extra = r.extra?.length || 0;
+  const unsupported = r.unsupported?.length || 0;
+  const dismissed = r.dismissed?.length || 0;
+  let message = `Filemoon check: ${found} found, ${missing} broken links, ${noUrl} no url, ${extra} extra on filemoon.`;
+  if (unsupported > 0) message += ` ${unsupported} unsupported on filemoon.`;
+  if (dismissed > 0) message += ` ${dismissed} dismissed.`;
+  return message;
 }

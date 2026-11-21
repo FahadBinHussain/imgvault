@@ -7,6 +7,7 @@ import {
   checkFilemoonIntegrity,
   deleteFilemoonFile,
   extractFilemoonFilecode,
+  formatFilemoonCheckNotice,
   getFilemoonDirectLink,
   getFilemoonFileInfo,
   getFilemoonHlsLink,
@@ -286,6 +287,101 @@ describe('checkFilemoonIntegrity', () => {
     ], FAKE_KEY);
     assert.deepEqual(out.found.map((f) => f.item.id), ['1']);
     assert.deepEqual(out.found[0].codes, ['aaa']);
+  });
+});
+
+describe('checkFilemoonIntegrity — host-unsupported bucket (2.19.28)', () => {
+  const listing = (files) => () => jsonResponse({ status: 200, result: { files, results_total: files.length } });
+  const tooLongFlag = {
+    reason: 'video is too long',
+    durationSeconds: 42900,
+    recordedAt: '2026-11-21T08:00:00.000Z',
+    dismissedAt: null,
+  };
+  test('a flagged item with no URL lands in unsupported, NOT in noUrl', async () => {
+    fetchHandler = listing([]);
+    const out = await checkFilemoonIntegrity([
+      { id: 'defb04cd', fileName: 'videoplayback.mp4', extraMetadata: { hostUnsupported: { filemoon: tooLongFlag } } },
+    ], FAKE_KEY);
+    assert.deepEqual(out.unsupported.map((f) => f.item.id), ['defb04cd']);
+    assert.deepEqual(out.unsupported[0].flag, tooLongFlag);
+    assert.deepEqual(out.unsupported[0].codes, []);
+    assert.deepEqual(out.noUrl, []);
+    assert.deepEqual(out.missing, []);
+  });
+  test('a dismissed flagged item lands in dismissed, never in noUrl or unsupported', async () => {
+    fetchHandler = listing([]);
+    const out = await checkFilemoonIntegrity([
+      { id: 'defb04cd', extraMetadata: { hostUnsupported: { filemoon: { ...tooLongFlag, dismissedAt: '2026-11-21T09:00:00.000Z' } } } },
+    ], FAKE_KEY);
+    assert.deepEqual(out.dismissed.map((f) => f.item.id), ['defb04cd']);
+    assert.deepEqual(out.unsupported, []);
+    assert.deepEqual(out.noUrl, []);
+  });
+  test('a NON-flagged item with no URL still counts as a gap', async () => {
+    fetchHandler = listing([]);
+    const out = await checkFilemoonIntegrity([
+      { id: 'plain', fileName: 'clip.mp4' },
+    ], FAKE_KEY);
+    assert.deepEqual(out.noUrl.map((f) => f.item.id), ['plain']);
+    assert.deepEqual(out.unsupported, []);
+    assert.deepEqual(out.dismissed, []);
+  });
+  test('a flagged item WITH a filemoon URL is judged by the link — the flag is inert', async () => {
+    fetchHandler = listing([{ file_code: 'aaa' }]);
+    const out = await checkFilemoonIntegrity([
+      { id: 'linked', filemoonWatchUrl: 'https://filemoon.sx/d/aaa', extraMetadata: { hostUnsupported: { filemoon: tooLongFlag } } },
+      { id: 'dead', filemoonWatchUrl: 'https://filemoon.sx/d/bbb', extraMetadata: { hostUnsupported: { filemoon: tooLongFlag } } },
+    ], FAKE_KEY);
+    assert.deepEqual(out.found.map((f) => f.item.id), ['linked']);
+    assert.deepEqual(out.missing.map((f) => f.item.id), ['dead']);
+    assert.deepEqual(out.unsupported, []);
+    assert.deepEqual(out.dismissed, []);
+  });
+  test('the flag is also read from the top-level mirror', async () => {
+    fetchHandler = listing([]);
+    const out = await checkFilemoonIntegrity([
+      { id: 'mirrored', hostUnsupported: { filemoon: tooLongFlag } },
+    ], FAKE_KEY);
+    assert.deepEqual(out.unsupported.map((f) => f.item.id), ['mirrored']);
+    assert.deepEqual(out.noUrl, []);
+  });
+  test('a malformed flag does not hide a real gap', async () => {
+    fetchHandler = listing([]);
+    const out = await checkFilemoonIntegrity([
+      { id: 'broken-flag', extraMetadata: { hostUnsupported: { filemoon: 'not-an-object' } } },
+    ], FAKE_KEY);
+    assert.deepEqual(out.noUrl.map((f) => f.item.id), ['broken-flag']);
+    assert.deepEqual(out.unsupported, []);
+  });
+});
+
+describe('formatFilemoonCheckNotice', () => {
+  test('the all-green notice is unchanged (no empty segments)', () => {
+    assert.equal(
+      formatFilemoonCheckNotice({ found: [1, 2], missing: [], noUrl: [], extra: [], unsupported: [], dismissed: [] }),
+      'Filemoon check: 2 found, 0 broken links, 0 no url, 0 extra on filemoon.'
+    );
+  });
+  test('unsupported and dismissed counts are named when non-zero', () => {
+    assert.equal(
+      formatFilemoonCheckNotice({ found: new Array(145), missing: [], noUrl: [], extra: [], unsupported: [1], dismissed: [] }),
+      'Filemoon check: 145 found, 0 broken links, 0 no url, 0 extra on filemoon. 1 unsupported on filemoon.'
+    );
+    assert.equal(
+      formatFilemoonCheckNotice({ found: new Array(145), missing: [], noUrl: [], extra: [], unsupported: [], dismissed: [1, 2] }),
+      'Filemoon check: 145 found, 0 broken links, 0 no url, 0 extra on filemoon. 2 dismissed.'
+    );
+    assert.equal(
+      formatFilemoonCheckNotice({ found: [], missing: [1], noUrl: [1], extra: [1], unsupported: [1], dismissed: [1] }),
+      'Filemoon check: 0 found, 1 broken links, 1 no url, 1 extra on filemoon. 1 unsupported on filemoon. 1 dismissed.'
+    );
+  });
+  test('tolerates a result without the new buckets (old callers)', () => {
+    assert.equal(
+      formatFilemoonCheckNotice({ found: [], missing: [], noUrl: [1], extra: [] }),
+      'Filemoon check: 0 found, 0 broken links, 1 no url, 0 extra on filemoon.'
+    );
   });
 });
 

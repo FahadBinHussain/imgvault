@@ -317,3 +317,63 @@ describe('toMediaDbPayload — deletedAt / ensureExtraMetadata', () => {
     assert.equal(seen.isSystem, true);
   });
 });
+
+describe('toMediaDbPayload — hostUnsupported flag round-trips (2.19.28)', () => {
+  // These model updateImageNeon exactly: source is the merged item
+  // ({...existing, ...updates}), existing is the row as read (every extra
+  // key mirrored top-level). The flag must survive the mirror merge or
+  // the resolve page would lose the dismissal on the next write.
+  const flag = {
+    reason: 'video is too long',
+    durationSeconds: 42900,
+    recordedAt: '2026-11-21T08:00:00.000Z',
+    dismissedAt: null,
+  };
+  test('a fresh flag write lands in extra_metadata', () => {
+    const existing = {
+      id: 'defb04cd',
+      fileName: 'videoplayback.mp4',
+      isVideo: true,
+      extraMetadata: { videoHosts: { udrop: { watchUrl: 'https://www.udrop.com/2624798' } } },
+    };
+    const updates = {
+      extraMetadata: {
+        ...existing.extraMetadata,
+        hostUnsupported: { filemoon: flag },
+      },
+    };
+    const payload = toMediaDbPayload({ ...existing, ...updates }, { existing });
+    assert.deepEqual(payload.extraMetadata.hostUnsupported.filemoon, flag);
+    assert.equal(payload.extraMetadata.videoHosts.udrop.watchUrl, 'https://www.udrop.com/2624798');
+  });
+  test('a dismiss (dismissedAt change) beats the stale top-level mirror', () => {
+    const existing = {
+      id: 'defb04cd',
+      fileName: 'videoplayback.mp4',
+      isVideo: true,
+      // fromNeonMediaRow mirrors the flag top-level on read.
+      hostUnsupported: { filemoon: flag },
+      extraMetadata: { hostUnsupported: { filemoon: flag } },
+    };
+    const dismissedFlag = { ...flag, dismissedAt: '2026-11-21T09:30:00.000Z' };
+    const updates = {
+      extraMetadata: { hostUnsupported: { filemoon: dismissedFlag } },
+    };
+    const payload = toMediaDbPayload({ ...existing, ...updates }, { existing });
+    assert.equal(payload.extraMetadata.hostUnsupported.filemoon.dismissedAt, '2026-11-21T09:30:00.000Z');
+    assert.equal(payload.extraMetadata.hostUnsupported.filemoon.reason, 'video is too long');
+  });
+  test('an undismiss (dismissedAt back to null) beats the stale mirror too', () => {
+    const dismissedFlag = { ...flag, dismissedAt: '2026-11-21T09:30:00.000Z' };
+    const existing = {
+      id: 'defb04cd',
+      hostUnsupported: { filemoon: dismissedFlag },
+      extraMetadata: { hostUnsupported: { filemoon: dismissedFlag } },
+    };
+    const updates = {
+      extraMetadata: { hostUnsupported: { filemoon: flag } },
+    };
+    const payload = toMediaDbPayload({ ...existing, ...updates }, { existing });
+    assert.equal(payload.extraMetadata.hostUnsupported.filemoon.dismissedAt, null);
+  });
+});

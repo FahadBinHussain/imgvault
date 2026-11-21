@@ -46,6 +46,9 @@ const SHIM_ALLOWLIST = {
   // the pending-upload reservation flags: the flag decides whether the
   // resolve page offers to re-upload a file that is already saved
   'nextgen-extension/src/utils/pendingUpload.js': ['imgvault-shared/pendingUpload.js'],
+  // per-item "this host will not take this file" flags (filemoon duration
+  // rejection): the flag decides the resolve bucket + the retry guard
+  'nextgen-extension/src/utils/hostUnsupported.js': ['imgvault-shared/hostUnsupported.js'],
   // phase 3b: extension detail modal is a re-export of the canonical packages/ui copy
   'nextgen-extension/src/components/MediaDetailModal.jsx': ['imgvault-ui'],
   // vault crypto must be byte-identical on extension + web (same blobs, same KDF)
@@ -93,6 +96,7 @@ const TWIN_BASENAMES = new Set([
   'telegramLimits.js',
   'teraboxRefs.js',
   'pendingUpload.js',
+  'hostUnsupported.js',
 ]);
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.next', 'artifacts', 'target', 'coverage']);
 const scan = (dir) => {

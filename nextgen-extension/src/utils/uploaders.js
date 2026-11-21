@@ -322,7 +322,13 @@ export class FilemoonUploader extends BaseUploader {
       const result = await response.json();
       
       if (result.status !== 200 || !result.files || result.files.length === 0) {
-        throw new Error(result.msg || result.error?.message || 'Upload failed');
+        // Keep the raw API status in the error: filemoon reports the
+        // duration rejection AS the status ('0:0:0:video is too long') with
+        // no msg, so dropping it would turn a permanent rejection into a
+        // generic 'Upload failed' and the auto-flag could never see it.
+        // (A 200 with no files still falls through to 'Upload failed'.)
+        const rawStatus = result.status !== 200 && result.status != null ? String(result.status) : '';
+        throw new Error(result.msg || result.error?.message || rawStatus || 'Upload failed');
       }
 
       const fileData = result.files[0];
@@ -363,7 +369,10 @@ export class FilemoonUploader extends BaseUploader {
       const result = await this.xhrUpload(uploadServerUrl, formData, onProgress, signal);
 
       if (result.status !== 200 || !result.files || result.files.length === 0) {
-        throw new Error(result.msg || result.error?.message || 'Upload failed');
+        // Same as upload(): the duration rejection arrives as the status
+        // itself ('0:0:0:video is too long'), keep it in the error.
+        const rawStatus = result.status !== 200 && result.status != null ? String(result.status) : '';
+        throw new Error(result.msg || result.error?.message || rawStatus || 'Upload failed');
       }
 
       const fileData = result.files[0];

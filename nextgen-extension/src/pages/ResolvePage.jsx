@@ -5,12 +5,14 @@ import {
   Box,
   CheckCircle2,
   ExternalLink,
+  EyeOff,
   Film,
   Image as ImageIcon,
   Info,
   Link2,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Search,
   Send,
   Settings,
@@ -44,7 +46,9 @@ import {
 import {
   checkFilemoonIntegrity,
   deleteFilemoonFile,
+  formatFilemoonCheckNotice,
 } from '../utils/filemoonApi';
+import { formatVideoDuration, withHostUnsupportedDismissed, withHostUnsupportedUndismissed } from '../utils/hostUnsupported.js';
 import {
   checkTeraBoxIntegrity,
   checkTeraBoxSceneIntegrity,
@@ -182,7 +186,7 @@ export default function ResolvePage() {
   const sceneUserPickedRef = useRef(false);
 
   // ---- Filemoon integrity check state ----
-  const [filemoonIntegrity, setFilemoonIntegrity] = useState({ found: [], missing: [], noUrl: [], extra: [] });
+  const [filemoonIntegrity, setFilemoonIntegrity] = useState({ found: [], missing: [], noUrl: [], extra: [], unsupported: [], dismissed: [] });
   const [filemoonLoading, setFilemoonLoading] = useState(false);
   const [filemoonError, setFilemoonError] = useState(null);
   const [filemoonFilter, setFilemoonFilter] = useState('all');
@@ -190,6 +194,7 @@ export default function ResolvePage() {
   // Empty results are valid — this flag stops the auto-check retriggering forever.
   const [filemoonHasChecked, setFilemoonHasChecked] = useState(false);
   const [fixingFilemoon, setFixingFilemoon] = useState({});
+  const [dismissingFilemoon, setDismissingFilemoon] = useState({});
   const [fixingUdrop, setFixingUdrop] = useState({});
   const [fixProgress, setFixProgress] = useState({});
   const [fixSourcePicker, setFixSourcePicker] = useState(null); // { targetHost, item, hostSettings, sources, label, recheck }
@@ -487,11 +492,11 @@ export default function ResolvePage() {
       setFilemoonIntegrity(result);
       setNotice({
         type: result.missing.length > 0 ? 'error' : 'success',
-        message: `Filemoon check: ${result.found.length} found, ${result.missing.length} broken links, ${result.noUrl.length} no url, ${result.extra.length} extra on filemoon.`,
+        message: formatFilemoonCheckNotice(result),
       });
     } catch (err) {
       setFilemoonError(err.message || String(err));
-      setFilemoonIntegrity({ found: [], missing: [], noUrl: [], extra: [] });
+      setFilemoonIntegrity({ found: [], missing: [], noUrl: [], extra: [], unsupported: [], dismissed: [] });
     } finally {
       setFilemoonLoading(false);
       setFilemoonHasChecked(true);
@@ -503,6 +508,39 @@ export default function ResolvePage() {
       runFilemoonIntegrityCheck();
     }
   }, [activeTab, videoSubTab, filemoonLoading, filemoonHasChecked, runFilemoonIntegrityCheck]);
+
+  // Dismiss / un-dismiss a filemoon "won't support this" flag. The
+  // dismissal is part of the persisted flag (dismissedAt), so it survives
+  // reloads and re-runs — a dismissed item moves to the Dismissed bucket
+  // and never resurfaces as an issue. The fresh item is read first so the
+  // extraMetadata spread cannot clobber another host's links.
+  const setFilemoonUnsupportedDismissed = useCallback(async (item, dismissed) => {
+    if (!item?.id || dismissingFilemoon[item.id]) return;
+    setDismissingFilemoon((prev) => ({ ...prev, [item.id]: true }));
+    try {
+      const fresh = await sendMessage('getImageById', { id: item.id });
+      if (!fresh) throw new Error('Saved video was not found.');
+      const extraMetadata = dismissed
+        ? withHostUnsupportedDismissed(fresh.extraMetadata, 'filemoon', new Date().toISOString())
+        : withHostUnsupportedUndismissed(fresh.extraMetadata, 'filemoon');
+      await sendMessage('updateImage', { id: item.id, extraMetadata });
+      await runFilemoonIntegrityCheck();
+      setNotice({
+        type: 'success',
+        message: dismissed
+          ? `Dismissed — "${item.fileName || item.pageTitle || 'video'}" will no longer show as a Filemoon issue. It stays visible under the Dismissed filter.`
+          : `Undismissed — "${item.fileName || item.pageTitle || 'video'}" is back in the Unsupported list.`,
+      });
+    } catch (err) {
+      setNotice({ type: 'error', message: `Could not ${dismissed ? 'dismiss' : 'undismiss'}: ${err.message || err}` });
+    } finally {
+      setDismissingFilemoon((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+    }
+  }, [dismissingFilemoon, runFilemoonIntegrityCheck, sendMessage]);
 
   // ---- TeraBox integrity helpers ----
   const checkTeraBoxKeysConfigured = useCallback(() => {
@@ -2369,10 +2407,12 @@ export default function ResolvePage() {
 
             <section className="flex flex-wrap gap-2">
               {[
-                { value: 'all', label: 'All', count: filemoonIntegrity.found.length + filemoonIntegrity.missing.length + filemoonIntegrity.noUrl.length + filemoonIntegrity.extra.length, tip: 'Every saved video, counted once. This is the full list.' },
+                { value: 'all', label: 'All', count: filemoonIntegrity.found.length + filemoonIntegrity.missing.length + filemoonIntegrity.noUrl.length + filemoonIntegrity.extra.length + filemoonIntegrity.unsupported.length + filemoonIntegrity.dismissed.length, tip: 'Every saved video, counted once. This is the full list.' },
                 { value: 'missing', label: 'Broken links', count: filemoonIntegrity.missing.length, tip: 'Videos whose Filemoon link is broken or whose file was deleted from Filemoon. These need fixing or a fresh upload.' },
                 { value: 'found', label: 'Found', count: filemoonIntegrity.found.length, tip: 'Videos with a working file on Filemoon. Nothing to do.' },
                 { value: 'noUrl', label: 'No Filemoon URL', count: filemoonIntegrity.noUrl.length, tip: 'Saved videos that have no Filemoon link at all — they were never uploaded to Filemoon.' },
+                { value: 'unsupported', label: 'Unsupported', count: filemoonIntegrity.unsupported.length, tip: 'Videos Filemoon rejected (e.g. too long) — they will never upload there, so they are not counted as missing links. Dismiss them to hide them from this list.' },
+                { value: 'dismissed', label: 'Dismissed', count: filemoonIntegrity.dismissed.length, tip: 'Rejected videos you dismissed — hidden from the issue lists, still visible here. Undismiss to bring one back.' },
                 { value: 'extra', label: 'Extra on Filemoon', count: filemoonIntegrity.extra.length, tip: 'Files on Filemoon that are not linked to any saved video. Likely old uploads or duplicates.' },
               ].map((option) => (
                 <StatChip
@@ -2400,8 +2440,10 @@ export default function ResolvePage() {
                 if (filemoonFilter === 'all') {
                   displayItems = [
                     ...filemoonIntegrity.missing.map((i) => ({ ...i, status: 'missing' })),
+                    ...filemoonIntegrity.unsupported.map((i) => ({ ...i, status: 'unsupported' })),
                     ...filemoonIntegrity.found.map((i) => ({ ...i, status: 'found' })),
                     ...filemoonIntegrity.noUrl.map((i) => ({ ...i, status: 'noUrl' })),
+                    ...filemoonIntegrity.dismissed.map((i) => ({ ...i, status: 'dismissed' })),
                     ...filemoonIntegrity.extra.map((i) => ({ ...i, status: 'extra' })),
                   ];
                 } else if (filemoonFilter === 'missing') {
@@ -2410,6 +2452,10 @@ export default function ResolvePage() {
                   displayItems = filemoonIntegrity.found.map((i) => ({ ...i, status: 'found' }));
                 } else if (filemoonFilter === 'noUrl') {
                   displayItems = filemoonIntegrity.noUrl.map((i) => ({ ...i, status: 'noUrl' }));
+                } else if (filemoonFilter === 'unsupported') {
+                  displayItems = filemoonIntegrity.unsupported.map((i) => ({ ...i, status: 'unsupported' }));
+                } else if (filemoonFilter === 'dismissed') {
+                  displayItems = filemoonIntegrity.dismissed.map((i) => ({ ...i, status: 'dismissed' }));
                 } else if (filemoonFilter === 'extra') {
                   displayItems = filemoonIntegrity.extra.map((i) => ({ ...i, status: 'extra' }));
                 }
@@ -2421,7 +2467,7 @@ export default function ResolvePage() {
                       <div>
                         <h2 className="text-lg font-semibold text-base-content">No items in this view</h2>
                         <p className="mt-1 text-sm text-base-content/60">
-                          {filemoonFilter === 'missing' ? 'All Filemoon videos are accounted for.' : 'Nothing to show here.'}
+                          {filemoonFilter === 'missing' ? 'All Filemoon videos are accounted for.' : filemoonFilter === 'unsupported' ? 'No video has been rejected by Filemoon.' : filemoonFilter === 'dismissed' ? 'No dismissed Filemoon items.' : 'Nothing to show here.'}
                         </p>
                       </div>
                     </div>
@@ -2429,7 +2475,7 @@ export default function ResolvePage() {
                 }
 
                 return displayItems.map((entry) => {
-                  const { item, status, matchedFile, codes } = entry;
+                  const { item, status, matchedFile, codes, flag } = entry;
 
                   if (status === 'extra') {
                     const file = entry.file || {};
@@ -2650,6 +2696,16 @@ export default function ResolvePage() {
                                 <AlertCircle className="h-3 w-3" /> No Filemoon URL
                               </span>
                             )}
+                            {status === 'unsupported' && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-warning/20 bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">
+                                <ShieldAlert className="h-3 w-3" /> Won't work on Filemoon
+                              </span>
+                            )}
+                            {status === 'dismissed' && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-base-300 bg-base-200 px-2 py-0.5 text-xs font-semibold text-base-content/60">
+                                <EyeOff className="h-3 w-3" /> Dismissed
+                              </span>
+                            )}
                           </div>
                           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/55">
                             {item.fileName && <span className="truncate">{item.fileName}</span>}
@@ -2673,12 +2729,25 @@ export default function ResolvePage() {
                             <div className="mt-1 text-base-content/50">These files are no longer on Filemoon. They may have been deleted, the upload may have failed, or the platform may have removed them.</div>
                           </div>
                         )}
+                        {(status === 'unsupported' || status === 'dismissed') && (
+                          <div className="text-xs text-base-content/70">
+                            <div className="font-medium text-warning">Filemoon won't support this video.</div>
+                            <div className="mt-1">
+                              Filemoon rejected it: "{flag?.reason || 'video is too long'}"{flag?.durationSeconds ? ` — duration ${formatVideoDuration(flag.durationSeconds)} exceeds Filemoon's video length cap` : ''}. It stays on your other hosts; there is nothing to fix here.
+                            </div>
+                            {flag?.recordedAt && (
+                              <div className="mt-1 text-base-content/50">Recorded {formatDate(flag.recordedAt)}.</div>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div className="flex flex-col justify-between gap-3 sm:w-52">
                         <div className="rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 px-3 py-2 text-xs text-base-content/65">
                           {status === 'missing' && 'Needs re-upload'}
                           {status === 'found' && 'Verified on Filemoon'}
                           {status === 'noUrl' && 'No Filemoon URL stored'}
+                          {status === 'unsupported' && 'Not supported on Filemoon'}
+                          {status === 'dismissed' && 'Dismissed — hidden from issues'}
                         </div>
                         <div className="flex flex-col gap-2">
                           {filemoonUrl && (
@@ -2702,6 +2771,28 @@ export default function ResolvePage() {
                             </Button>
                             );
                           })()}
+                          {status === 'unsupported' && (
+                            <Button
+                              variant="outline"
+                              className="h-9 justify-center gap-2 text-sm"
+                              disabled={Boolean(dismissingFilemoon[item.id])}
+                              onClick={() => setFilemoonUnsupportedDismissed(item, true)}
+                            >
+                              {dismissingFilemoon[item.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <EyeOff className="h-4 w-4" />}
+                              {dismissingFilemoon[item.id] ? 'Dismissing...' : 'Dismiss'}
+                            </Button>
+                          )}
+                          {status === 'dismissed' && (
+                            <Button
+                              variant="outline"
+                              className="h-9 justify-center gap-2 text-sm"
+                              disabled={Boolean(dismissingFilemoon[item.id])}
+                              onClick={() => setFilemoonUnsupportedDismissed(item, false)}
+                            >
+                              {dismissingFilemoon[item.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                              {dismissingFilemoon[item.id] ? 'Undismissing...' : 'Undismiss'}
+                            </Button>
+                          )}
                            {fixProgress[item.id] && (
                              <div className="flex flex-col gap-1.5">
                                <div className="text-[11px] leading-tight text-base-content/70">
