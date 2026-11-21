@@ -467,9 +467,12 @@ const isGetFileGateError = (message) => /file is too big|getFile gate/i.test(Str
  * 3D scene integrity check against Telegram — symmetric to the UDrop/TeraBox
  * scene checks. Two documents per scene (spz + texture) are probed with
  * getFile: a deleted post is a broken link, while a network/5xx failure
- * THROWS (an outage is never reported as data loss). An over-20 MB file is
- * UNVERIFIED, not broken — the getFile gate blocks the probe, which proves
- * nothing about the file (2.19.26: the 30 MB ceramic spz sat in "broken"
+ * THROWS (an outage is never reported as data loss). An over-20 MB file
+ * gets a second opinion from the native host's Telethon session (2.19.30),
+ * which CAN read the post: found only on an exact size match against the
+ * stored size, broken on a size mismatch, and UNVERIFIED when the native
+ * verify is unavailable (host down, no message id, no stored size) — never
+ * broken on the gate alone (2.19.26: the 30 MB ceramic spz sat in "broken"
  * for a file that was right there on Telegram).
  *
  * The channel is enumerable through `t.me/s/` (message ids only), so "extra"
@@ -527,12 +530,10 @@ export async function checkTelegramSceneIntegrity(items, allItems, { token, chan
     }
     const spzProbe = refs.spzFileId ? probe.get(refs.spzFileId) : null;
     const texProbe = refs.texFileId ? probe.get(refs.texFileId) : null;
-    const spzMatched = spzProbe?.ok ? { name: refs.spzName || 'scene.spz', file_id: refs.spzFileId } : null;
-    const texMatched = texProbe?.ok ? { name: refs.texName || 'texture.webp', file_id: refs.texFileId } : null;
+    let spzMatched = spzProbe?.ok ? { name: refs.spzName || 'scene.spz', file_id: refs.spzFileId } : null;
+    let texMatched = texProbe?.ok ? { name: refs.texName || 'texture.webp', file_id: refs.texFileId } : null;
     const needsSpz = Boolean(refs.spzFileId);
     const needsTex = Boolean(refs.texFileId);
-    const spzOk = !needsSpz || Boolean(spzMatched);
-    const texOk = !needsTex || Boolean(texMatched);
     // The getFile gate is distinguishable from a genuinely missing file:
     // the API answers 400 "file is too big" for a file that exists, and
     // our own getTelegramFileInfo throws the same verdict client-side when
@@ -540,12 +541,50 @@ export async function checkTelegramSceneIntegrity(items, allItems, { token, chan
     // instead. Gate-blocked is UNVERIFIED, never broken.
     const spzGate = Boolean(spzProbe && !spzProbe.ok && isGetFileGateError(spzProbe.reason));
     const texGate = Boolean(texProbe && !texProbe.ok && isGetFileGateError(texProbe.reason));
-    const spzBroken = Boolean(spzProbe && !spzProbe.ok && !spzGate);
-    const texBroken = Boolean(texProbe && !texProbe.ok && !texGate);
+    let spzBroken = Boolean(spzProbe && !spzProbe.ok && !spzGate);
+    let texBroken = Boolean(texProbe && !texProbe.ok && !texGate);
+    // A gate-hit file is not gone — the Bot API just refuses to describe
+    // files over 20 MB. The native host's Telethon session CAN read the
+    // post, so verify through it: found ONLY on an exact size match
+    // against the stored size. A mismatch means the post is not the file
+    // the DB expects (broken); a failed verify leaves the file
+    // unverified with the reason named. A genuinely missing file (4xx,
+    // not the gate) never reaches the native host.
+    const nativeReasons = [];
+    for (const [which, gate, messageId] of [
+      ['spz', spzGate, refs.spzMessageId],
+      ['tex', texGate, refs.texMessageId],
+    ]) {
+      if (!gate || !messageId) continue;
+      const label = which === 'spz' ? 'SPZ' : 'Image';
+      const verdict = await verifyGateHitSceneFile({
+        messageId,
+        channel: cleanChannel,
+        expectedSize: expectedSceneFileSize(item, which),
+      });
+      if (verdict.status === 'matched') {
+        if (which === 'spz') {
+          spzMatched = { name: refs.spzName || 'scene.spz', file_id: refs.spzFileId, nativeVerified: true };
+        } else {
+          texMatched = { name: refs.texName || 'texture.webp', file_id: refs.texFileId, nativeVerified: true };
+        }
+      } else if (verdict.status === 'mismatched') {
+        if (which === 'spz') spzBroken = true;
+        else texBroken = true;
+        nativeReasons.push(`${label} native verify: ${verdict.reason}`);
+      } else {
+        nativeReasons.push(`${label} native verify unavailable: ${verdict.reason}`);
+      }
+    }
+    const spzOk = !needsSpz || Boolean(spzMatched);
+    const texOk = !needsTex || Boolean(texMatched);
     const reasons = [
-      spzProbe && !spzProbe.ok ? `SPZ: ${spzProbe.reason}` : '',
-      texProbe && !texProbe.ok ? `Image: ${texProbe.reason}` : '',
+      // A native-verified file drops its stale gate reason — the file IS
+      // verified now, and "file is too big" next to a found row would lie.
+      spzProbe && !spzProbe.ok && !(spzGate && spzMatched) ? `SPZ: ${spzProbe.reason}` : '',
+      texProbe && !texProbe.ok && !(texGate && texMatched) ? `Image: ${texProbe.reason}` : '',
       !needsSpz && !needsTex ? 'no file id stored for this scene post' : '',
+      ...nativeReasons,
     ].filter(Boolean);
     const entry = {
       item,
@@ -886,5 +925,81 @@ export async function uploadTelegramNative({ filePath, channel, caption = '', on
       caption,
     });
   });
+}
+
+/**
+ * Verify one Telegram channel file through the native host's Telethon
+ * session — the only reader that can see a file the Bot API getFile gate
+ * refuses (> 20 MB). The host reads the post by message id and returns
+ * the live file's size + name; the CALLER compares the size against the
+ * stored size (exact match = found, anything else is not a pass).
+ *
+ * Throws when the host is unreachable, the script fails, or the message
+ * has no document — the scene check treats all of those as "unverified",
+ * never as found or broken.
+ *
+ * @returns {Promise<{messageId: string, size: number, name: string}>}
+ */
+export async function verifyTelegramFileNative({ messageId, channel, timeoutMs = 60000 } = {}) {
+  const cleanId = String(messageId || '').trim();
+  if (!cleanId) throw new Error('Telegram native verify requires a message id.');
+  const cleanChannel = String(channel || '').trim().replace(/^@+/, '');
+  if (!cleanChannel) throw new Error('Telegram native verify requires a valid channel.');
+  if (typeof chrome === 'undefined' || !chrome.runtime?.connectNative) {
+    throw new Error('Telegram native verify needs the extension runtime (chrome.runtime.connectNative).');
+  }
+  const port = openNativePort();
+  try {
+    const response = await port.request(
+      { action: 'telegram_verify', message_id: cleanId, channel: cleanChannel },
+      timeoutMs,
+    );
+    let parsed = null;
+    try {
+      parsed = JSON.parse(response?.stdout || '');
+    } catch (_) {
+      throw new Error('Telegram native verify returned unreadable output (no RESULT json).');
+    }
+    const size = Number(parsed?.size);
+    if (!parsed?.ok || !Number.isFinite(size) || size < 0) {
+      throw new Error(parsed?.error || 'Telegram native verify returned no file size.');
+    }
+    return { messageId: String(parsed.messageId ?? cleanId), size, name: String(parsed.name || '') };
+  } finally {
+    port.disconnect();
+  }
+}
+
+// The size a scene file is expected to have, from the stored fields
+// (all strings in the DB — '30361257', not 30361257). Null when nothing
+// usable is stored: without an expectation there is nothing to compare
+// a native verify against, so the file stays unverified.
+const expectedSceneFileSize = (item, which) => {
+  const raw = which === 'spz' ? (item?.spzFileSize ?? item?.fileSize) : item?.textureFileSize;
+  const size = Number(raw);
+  return Number.isFinite(size) && size > 0 ? size : null;
+};
+
+// Native-verify one gate-hit scene file. 'matched' ONLY when Telethon
+// reads the post AND its size equals the stored size exactly — a gate
+// error alone never counts as found (that would pass a wrong file).
+// 'mismatched' means the post is not the file the DB expects (broken);
+// 'unverifiable' covers a missing host, a missing message, and a missing
+// stored size — all stay unverified, never broken.
+async function verifyGateHitSceneFile({ messageId, channel, expectedSize }) {
+  if (!Number.isFinite(expectedSize) || expectedSize <= 0) {
+    return { status: 'unverifiable', reason: 'no stored size to compare against' };
+  }
+  try {
+    const live = await verifyTelegramFileNative({ messageId, channel });
+    if (live.size === expectedSize) return { status: 'matched', size: live.size };
+    return {
+      status: 'mismatched',
+      size: live.size,
+      reason: `Telegram has ${live.size} bytes, expected ${expectedSize}`,
+    };
+  } catch (err) {
+    return { status: 'unverifiable', reason: err?.message || String(err) };
+  }
 }
 

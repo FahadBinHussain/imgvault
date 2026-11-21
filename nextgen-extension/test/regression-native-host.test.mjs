@@ -65,10 +65,24 @@ test('2.19.22 (2026-11-18): ping answers "Native host reachable" in the same com
 test('2.19.6 (2026-11-03): telegram_upload spawns telegram_upload.py and parses its PROGRESS:<current>:<total>:<percent> lines', () => {
   const rs = mainRs();
   assert.ok(rs.includes('"telegram_upload" => {'));
-  assert.ok(rs.includes('.join("scripts").join("telegram_upload.py")'));
+  // 2.19.30: the script lookup moved into the shared resolve_telegram_script
+  // helper (upload + verify); the upload still resolves telegram_upload.py.
+  assert.ok(rs.includes('resolve_telegram_script("telegram_upload.py")'));
+  assert.ok(rs.includes('fn resolve_telegram_script(script_name: &str) -> Option<String> {'));
+  assert.ok(rs.includes('.join("scripts").join(script_name)'));
   assert.ok(rs.includes('fn parse_telegram_uploader_line(line: &str) -> TelegramUploaderLine {'));
   assert.ok(rs.includes('PROGRESS:<current>:<total>:<percent>'));
-  assert.ok(rs.includes('message: Some(format!("telegram_upload.py script not found at {:?}", script_path))'));
+  assert.ok(rs.includes('telegram_upload.py script not found (looked beside the exe and in the dev clone)'));
+});
+
+test('2.19.30 (2026-11-21): telegram_verify spawns telegram_verify.py with --message-id and returns its RESULT json', () => {
+  const rs = mainRs();
+  assert.ok(rs.includes('"telegram_verify" => {'));
+  assert.ok(rs.includes('resolve_telegram_script("telegram_verify.py")'));
+  assert.ok(rs.includes('fn handle_telegram_verify('));
+  assert.ok(rs.includes('.arg("--message-id")'));
+  assert.ok(rs.includes('message: Some("Telegram verify succeeded".to_string())'));
+  assert.ok(rs.includes('Missing message_id or channel for telegram_verify'));
 });
 
 // ------------------------------------------------- video normalize ---

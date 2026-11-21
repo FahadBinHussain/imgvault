@@ -95,7 +95,8 @@ jobs:
           python-version: '3.12'
 
       # Stdlib unittest only — no Telethon, no ffmpeg, no network. The mp4
-      # probe is pure python by design, so it stays testable anywhere.
+      # probe and the verify helpers are pure python by design, so they
+      # stay testable anywhere.
       - name: Run telegram uploader tests
         working-directory: native-host/scripts
-        run: python -m unittest -v test_mp4_probe
+        run: python -m unittest -v test_mp4_probe test_telegram_verify

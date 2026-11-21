@@ -34,6 +34,7 @@ import {
   telegramUploadMethod,
   telegramUploadSizeCap,
   uploadTelegramNative,
+  verifyTelegramFileNative,
 } from '../src/utils/telegramApi.js';
 
 const FAKE_TOKEN = '123456:FAKE-TOKEN-FOR-TESTS-ONLY';
@@ -561,6 +562,9 @@ describe('checkTelegramSceneIntegrity', () => {
       if (fileId.endsWith('ok')) {
         return jsonResponse({ ok: true, result: { file_id: fileId, file_path: `documents/${fileId}`, file_size: 100 } });
       }
+      if (fileId.endsWith('gate')) {
+        return jsonResponse({ ok: false, error_code: 400, description: 'Bad Request: file is too big' });
+      }
       return jsonResponse({ ok: false, error_code: 400, description: 'Bad Request: file not found' });
     }
     if (url.startsWith('https://t.me/s/')) {
@@ -637,6 +641,80 @@ describe('checkTelegramSceneIntegrity', () => {
       /channel is not configured/,
     );
     assert.equal(fetchCalls.length, 0);
+  });
+
+  // --- native verify for gate-hit files (2.19.30) ----------------------
+  const nativeVerifyHandler = (size) => (message) => {
+    assert.equal(message.action, 'telegram_verify');
+    assert.equal(message.message_id, '589');
+    assert.equal(message.channel, CHANNEL);
+    return { success: true, stdout: JSON.stringify({ ok: true, messageId: 589, size, name: 'model.spz' }) };
+  };
+  const gateItem = (overrides = {}) => ({
+    ...sceneItem('s1', { fileId: 'spz-gate', messageId: '589' }, { fileId: 'tex-ok', messageId: '102' }),
+    fileSize: '30361257',
+    spzFileSize: '30361257',
+    ...overrides,
+  });
+
+  test('a gate-hit spz verified natively on exact size match is found, not unverified', async () => {
+    fetchHandler = apiMock([]);
+    installNativePort(nativeVerifyHandler(30361257));
+    const item = gateItem();
+    const out = await checkTelegramSceneIntegrity([item], [item], { token: FAKE_TOKEN, channel: CHANNEL });
+    assert.equal(out.found.length, 1);
+    assert.equal(out.found[0].spzMatched.nativeVerified, true);
+    assert.deepEqual(out.found[0].reasons, []);
+    assert.deepEqual(out.unverified, []);
+    assert.deepEqual(out.missing, []);
+  });
+  test('a gate-hit spz whose native size mismatches is broken, with the mismatch named', async () => {
+    fetchHandler = apiMock([]);
+    installNativePort(nativeVerifyHandler(12345));
+    const item = gateItem();
+    const out = await checkTelegramSceneIntegrity([item], [item], { token: FAKE_TOKEN, channel: CHANNEL });
+    assert.equal(out.missing.length, 1);
+    assert.ok(out.missing[0].reasons.some((r) => r.includes('Telegram has 12345 bytes, expected 30361257')));
+    assert.deepEqual(out.unverified, []);
+  });
+  test('a gate-hit spz stays unverified when the native host is down', async () => {
+    fetchHandler = apiMock([]);
+    installNativePort(() => ({ success: false, message: 'host down' }));
+    const item = gateItem();
+    const out = await checkTelegramSceneIntegrity([item], [item], { token: FAKE_TOKEN, channel: CHANNEL });
+    assert.equal(out.unverified.length, 1);
+    assert.ok(out.unverified[0].reasons.some((r) => r.includes('native verify unavailable: host down')));
+    assert.deepEqual(out.missing, []);
+  });
+  test('a gate-hit spz with no message id stays unverified and never calls the host', async () => {
+    fetchHandler = apiMock([]);
+    const seen = [];
+    installNativePort((message) => { seen.push(message); return { success: true, stdout: '{}' }; });
+    const item = sceneItem('s1', { fileId: 'spz-gate', messageId: '' }, { fileId: 'tex-ok', messageId: '102' });
+    item.fileSize = '30361257';
+    const out = await checkTelegramSceneIntegrity([item], [item], { token: FAKE_TOKEN, channel: CHANNEL });
+    assert.equal(out.unverified.length, 1);
+    assert.deepEqual(seen, []);
+  });
+  test('a gate-hit spz with no stored size stays unverified and never calls the host', async () => {
+    fetchHandler = apiMock([]);
+    const seen = [];
+    installNativePort((message) => { seen.push(message); return { success: true, stdout: '{}' }; });
+    const item = sceneItem('s1', { fileId: 'spz-gate', messageId: '589' }, { fileId: 'tex-ok', messageId: '102' });
+    const out = await checkTelegramSceneIntegrity([item], [item], { token: FAKE_TOKEN, channel: CHANNEL });
+    assert.equal(out.unverified.length, 1);
+    assert.ok(out.unverified[0].reasons.some((r) => r.includes('no stored size to compare against')));
+    assert.deepEqual(seen, []);
+  });
+  test('a deleted file (non-gate 4xx) is broken without ever calling the native host', async () => {
+    fetchHandler = apiMock([]);
+    const seen = [];
+    installNativePort((message) => { seen.push(message); return { success: true, stdout: '{}' }; });
+    const item = sceneItem('s1', { fileId: 'spz-gone', messageId: '101' }, { fileId: 'tex-ok', messageId: '102' });
+    item.fileSize = '30361257';
+    const out = await checkTelegramSceneIntegrity([item], [item], { token: FAKE_TOKEN, channel: CHANNEL });
+    assert.equal(out.missing.length, 1);
+    assert.deepEqual(seen, []);
   });
 });
 
@@ -905,6 +983,59 @@ describe('uploadTelegramNative', () => {
     await assert.rejects(
       () => uploadTelegramNative({ filePath: 'C:\\v.mp4', channel: CHANNEL, signal: controller.signal }),
       /Telegram native upload aborted/,
+    );
+  });
+});
+
+describe('verifyTelegramFileNative', () => {
+  test('a successful verify returns the live size + name', async () => {
+    installNativePort((message) => {
+      assert.equal(message.action, 'telegram_verify');
+      assert.equal(message.message_id, '589');
+      assert.equal(message.channel, CHANNEL);
+      return {
+        success: true,
+        stdout: JSON.stringify({ ok: true, messageId: 589, size: 30361257, name: 'model.spz' }),
+      };
+    });
+    const out = await verifyTelegramFileNative({ messageId: '589', channel: `@${CHANNEL}` });
+    assert.deepEqual(out, { messageId: '589', size: 30361257, name: 'model.spz' });
+  });
+  test('a missing message id or channel throws before connecting', async () => {
+    await assert.rejects(
+      () => verifyTelegramFileNative({ channel: CHANNEL }),
+      /requires a message id/,
+    );
+    await assert.rejects(
+      () => verifyTelegramFileNative({ messageId: '589', channel: '' }),
+      /requires a valid channel/,
+    );
+  });
+  test('a failed verify rejects with the host message', async () => {
+    installNativePort(() => ({ success: false, message: 'Message 589 not found' }));
+    await assert.rejects(
+      () => verifyTelegramFileNative({ messageId: '589', channel: CHANNEL }),
+      /Message 589 not found/,
+    );
+  });
+  test('unreadable output rejects instead of returning a guess', async () => {
+    installNativePort(() => ({ success: true, stdout: 'not json' }));
+    await assert.rejects(
+      () => verifyTelegramFileNative({ messageId: '589', channel: CHANNEL }),
+      /unreadable output/,
+    );
+  });
+  test('a payload without a size rejects', async () => {
+    installNativePort(() => ({ success: true, stdout: JSON.stringify({ ok: true, messageId: 589 }) }));
+    await assert.rejects(
+      () => verifyTelegramFileNative({ messageId: '589', channel: CHANNEL }),
+      /returned no file size/,
+    );
+  });
+  test('without connectNative it throws naming the runtime', async () => {
+    await assert.rejects(
+      () => verifyTelegramFileNative({ messageId: '589', channel: CHANNEL }),
+      /needs the extension runtime/,
     );
   });
 });
