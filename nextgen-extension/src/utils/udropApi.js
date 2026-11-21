@@ -293,16 +293,34 @@ export async function checkUdropIntegrity(items, allItems, accessToken, accountI
   // 3. Find extra files: UDrop files not referenced by any DB item.
   //    Build a comprehensive referenced set from ALL items (including scenes
   //    and vault blobs) so their files don't show as video orphans.
+  //    Scene refs ALSO live in sceneFiles.udrop.{spz,texture}.fileId — those
+  //    are numeric file_ids (or legacy short codes), NOT URLs, so the URL
+  //    scan above never sees them. An extensionless scene texture whose
+  //    textureUrl points at another host (the ceramic texture's textureUrl
+  //    is a TeraBox link) otherwise shows as a video "extra" forever, and
+  //    the extension-only scene-family skip below never fires for it
+  //    (2.19.29: the ceramic texture PU3W was mislabeled "extra" for this).
   const referencedCodes = new Set(dbCodes);
+  const sceneFileIds = new Set();
   for (const item of allItems || []) {
     if (!item) continue;
     udropUrlsOfItem(item).map(extractUdropCode).filter(Boolean).forEach((c) => referencedCodes.add(c));
+    const sceneRefs = pickUdropSceneRefs(item);
+    for (const ref of [sceneRefs.spzCode, sceneRefs.texCode]) {
+      if (ref) {
+        referencedCodes.add(ref);
+        sceneFileIds.add(ref);
+      }
+    }
   }
   for (const file of udropFiles) {
     const name = String(file.name || file.filename || '');
-    if (is3DSceneFamilyFile(name)) continue;
     const code = file.short_url || file.shortUrl || '';
     const fileId = String(file.file_id || file.id || '');
+    // Scene files are tracked on the 3D tab only: skip by extension OR by
+    // a sceneFiles fileId match (an extensionless scene texture has neither
+    // a scene extension nor a udrop URL to match on).
+    if (is3DSceneFamilyFile(name) || sceneFileIds.has(code) || sceneFileIds.has(fileId)) continue;
     const isReferenced = referencedCodes.has(code) || referencedCodes.has(fileId);
     if (!isReferenced) {
       extra.push({ file });

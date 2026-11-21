@@ -319,6 +319,73 @@ describe('checkUdropIntegrity', () => {
     ], FAKE_TOKEN, FAKE_ACCOUNT);
     assert.deepEqual(out.extra.map((e) => e.file.short_url), ['v1']);
   });
+  test('an extensionless scene texture referenced only by sceneFiles fileId is not a video extra (2.19.29)', async () => {
+    fetchHandler = folderMock({
+      '': {
+        files: [
+          { short_url: 'PU3W', file_id: '2370236', name: '70f1eebc761d414e82df2c6b462e9e13' },
+          { short_url: 'v1', file_id: '3', name: 'orphan.mp4' },
+        ],
+        folders: [],
+      },
+    });
+    // The ceramic texture: its textureUrl points at TeraBox, so no udrop URL
+    // references PU3W — only sceneFiles.udrop.texture.fileId does, and the
+    // name has no extension for the scene-family skip to match on. Before
+    // the fix this showed as a video "extra" forever.
+    const out = await checkUdropIntegrity([], [
+      {
+        id: 'ceramic',
+        kind: 'scene',
+        textureUrl: 'https://terabox.com/whatever',
+        extraMetadata: { sceneFiles: { udrop: { texture: { fileId: 2370236 } } } },
+      },
+    ], FAKE_TOKEN, FAKE_ACCOUNT);
+    assert.deepEqual(out.extra.map((e) => e.file.short_url), ['v1']);
+  });
+  test('a legacy top-level sceneFiles spz ref also exempts an extensionless file', async () => {
+    fetchHandler = folderMock({
+      '': {
+        files: [
+          { short_url: 'SP9', file_id: '555', name: 'abcdef0123456789abcdef0123456789' },
+          { short_url: 'v1', file_id: '3', name: 'orphan.mp4' },
+        ],
+        folders: [],
+      },
+    });
+    const out = await checkUdropIntegrity([], [
+      { id: 's1', kind: 'scene', sceneFiles: { udrop: { spz: { fileId: '555' } } } },
+    ], FAKE_TOKEN, FAKE_ACCOUNT);
+    assert.deepEqual(out.extra.map((e) => e.file.short_url), ['v1']);
+  });
+  test('a scene fileId holding a legacy short code exempts the file by code', async () => {
+    fetchHandler = folderMock({
+      '': {
+        files: [
+          { short_url: 'QYlj', file_id: '2625017', name: 'e161ae1cfd42cf5175de22b0ff3eae1c' },
+          { short_url: 'v1', file_id: '3', name: 'orphan.mp4' },
+        ],
+        folders: [],
+      },
+    });
+    const out = await checkUdropIntegrity([], [
+      { id: 'town', kind: 'scene', extraMetadata: { sceneFiles: { udrop: { texture: { fileId: 'QYlj' } } } } },
+    ], FAKE_TOKEN, FAKE_ACCOUNT);
+    assert.deepEqual(out.extra.map((e) => e.file.short_url), ['v1']);
+  });
+  test('an unreferenced extensionless file is still extra', async () => {
+    fetchHandler = folderMock({
+      '': {
+        files: [
+          { short_url: 'PU5e', file_id: '2370316', name: '7caaee712d87f6ba8947385fb47f9f90' },
+          { short_url: 'v1', file_id: '3', name: 'orphan.mp4' },
+        ],
+        folders: [],
+      },
+    });
+    const out = await checkUdropIntegrity([], [], FAKE_TOKEN, FAKE_ACCOUNT);
+    assert.deepEqual(out.extra.map((e) => e.file.short_url).sort(), ['PU5e', 'v1']);
+  });
   test('a listing failure THROWS', async () => {
     fetchHandler = () => jsonResponse({}, { ok: false, status: 500 });
     await assert.rejects(() => checkUdropIntegrity([], [], FAKE_TOKEN, FAKE_ACCOUNT), /HTTP 500/);
