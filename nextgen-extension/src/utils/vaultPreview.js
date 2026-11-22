@@ -64,8 +64,11 @@ async function getRemoteVaultPreview(item, sendMessage) {
  * Persist a freshly derived preview to the server-side store. Best-effort by
  * design: the card already holds the local copy, so a failed write is a loud
  * warning, never a broken tile.
+ *
+ * Exported (2.19.32): the vault upload path reuses it for the upload-time
+ * snapshot — same bytes, same encryption, one implementation.
  */
-async function persistRemoteVaultPreview(item, blob, sendMessage) {
+export async function persistRemoteVaultPreview(item, blob, sendMessage) {
   if (typeof sendMessage !== 'function') return;
   const masterKey = getVaultMasterKey();
   if (!masterKey) return;

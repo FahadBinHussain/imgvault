@@ -78,6 +78,7 @@ import { cacheUploadFile, getCachedUploadFile, listCachedUploadFiles, removeCach
 import { partitionHostsByUploadLimit } from '../utils/hostUploadLimits.js';
 import { captureVideoSnapshotBlob } from '../utils/videoSnapshot.js';
 import { setCachedThumb } from '../utils/thumbCache.js';
+import { persistRemoteVaultPreview } from '../utils/vaultPreview.js';
 import { formatVideoDuration, getFilemoonTooLongWarning, getHostUnsupportedFlag } from '../utils/hostUnsupported.js';
 
 // How long the page waits for the worker to acknowledge that the upload run
@@ -1661,12 +1662,28 @@ export default function GalleryPage() {
             blob: uploadData.fileBlob,
             settings,
             data: { ...uploadData, fileName: uploadData.fileName || 'video.mp4' },
-            onProgress: async ({ loaded, total, percent, phase }) => {
+            onProgress: async ({ loaded, total, percent, phase, text }) => {
               const totalLabel = total ? formatBytes(total) : formatBytes(uploadData.fileBlob?.size || 0);
               const loadedLabel = formatBytes(loaded);
               // A picked >50 MB file is staged to disk before the MTProto
               // upload - the progress line names the phase so staging never
               // looks like a stuck upload.
+              // Same for the native uploader's synthetic `finalizing` event:
+              // byte transfer hit 100% but Telegram still has to create the
+              // post server-side (observed ~3 min on a 72 MB blob) — name
+              // the wait instead of going silent after the 100% line.
+              if (phase === 'finalizing') {
+                const finalizingMessage = `${service.label}: ${text || `all ${totalLabel} sent — waiting for Telegram to finalize the post...`}`;
+                await chrome.storage.local.set({ uploadStatus: finalizingMessage });
+                await appendClientUploadLog(finalizingMessage);
+                await reportUploadRunProgress({
+                  percent: 100,
+                  bytesSent: loaded,
+                  bytesTotal: total || uploadData.fileBlob?.size || 0,
+                  host: service.label,
+                });
+                return;
+              }
               const actionLabel = phase === 'staging' ? 'staging for native upload' : 'upload progress';
               const message = percent !== null
                 ? `${service.label} ${actionLabel}: ${percent}% (${loadedLabel} / ${totalLabel})`
@@ -1976,6 +1993,23 @@ export default function GalleryPage() {
       const fileName = normalized.fileName || uploadData.fileName || (kind === 'video' ? 'video.mp4' : (kind === 'audio' ? 'song.m4a' : 'image.jpg'));
       const creationDate = uploadData.fileLastModified ? new Date(uploadData.fileLastModified).toISOString() : null;
 
+      // Vault videos get the same 1-frame preview snapshot gallery videos
+      // do (uploadVideoDirectly captures it too): without one, every new
+      // vault video shows DERIVING PREVIEW while the vault page decrypts
+      // the blob and locates a frame on demand. Captured from the
+      // PLAINTEXT blob before encryption — after this point only
+      // ciphertext exists in the page. Video only: images/audio have no
+      // video frame to capture. Non-fatal by design: a missing snapshot
+      // just means on-demand derivation, never a failed upload.
+      let vaultSnapshotBlob = null;
+      if (kind === 'video' && blob instanceof Blob && blob.size > 0) {
+        try {
+          vaultSnapshotBlob = await captureVideoSnapshotBlob(blob, 1.0);
+        } catch (snapErr) {
+          console.warn('[uploadVaultedDirectly] Vault preview snapshot skipped:', snapErr?.message || snapErr);
+        }
+      }
+
       // 1) Encrypt with chunked progress (log + status bar)
       let lastLogPct = -10;
       await appendClientUploadLog(`Encrypting ${formatBytes(blob.size)}...`);
@@ -2047,8 +2081,19 @@ export default function GalleryPage() {
         let uploadLogBytes = 0;
         const UPLOAD_LOG_STEP = 20 * 1024 * 1024; // log every ~20 MB so slow big uploads show movement
         await appendClientUploadLog(`Uploading ${formatBytes(encryptedBlob.size)} encrypted blob to ${vaultService.label}...`);
-        const onVaultProgress = async ({ loaded, total, percent }) => {
+        const onVaultProgress = async ({ loaded, total, percent, phase, text }) => {
           const totalLabel = total ? formatBytes(total) : formatBytes(encryptedBlob.size);
+          // The native uploader fires a synthetic `finalizing` event once
+          // byte transfer hits 100% — Telegram still has to create the
+          // post server-side (observed ~3 min on a 72 MB blob), and
+          // without this line the log goes silent and reads as stuck
+          // forever. Render it and stop: it is NOT another 100% line.
+          if (phase === 'finalizing') {
+            const finalizingMessage = `Uploading to ${vaultService.label}: ${text || `all ${totalLabel} sent — waiting for Telegram to finalize the post...`}`;
+            await chrome.storage.local.set({ uploadStatus: finalizingMessage });
+            appendClientUploadLog(finalizingMessage).catch(() => {});
+            return;
+          }
           const loadedLabel = formatBytes(loaded);
           const percentLabel = percent !== null
             ? `${percent}% (${loadedLabel} / ${totalLabel})`
@@ -2102,6 +2147,23 @@ export default function GalleryPage() {
         blobSize: blob.size,
       });
       await appendClientUploadLog(`Encrypted vault item saved with ID: ${saved.id}`, 'success');
+      // Persist the upload-time snapshot where the vault page actually
+      // reads it (2.19.32) — the vault card reads `vault-preview-<id>`,
+      // NOT the gallery `poster-<id>` key. Local tier first: this is what
+      // makes the preview instant on this machine. Remote tier second:
+      // the same bytes, encrypted with the vault key, so a clean install
+      // restores the preview with one ~60KB round-trip instead of a
+      // full on-demand derivation. Both non-fatal: a failed write just
+      // means the card derives on demand, never a failed upload.
+      if (vaultSnapshotBlob && saved?.id) {
+        try {
+          await setCachedThumb(`vault-preview-${saved.id}`, vaultSnapshotBlob);
+        } catch (cacheErr) {
+          console.warn('[uploadVaultedDirectly] Vault preview cache write failed:', cacheErr?.message || cacheErr);
+        }
+        // persistRemoteVaultPreview is already non-fatal (warns inside).
+        await persistRemoteVaultPreview({ id: saved.id }, vaultSnapshotBlob, sendMessage);
+      }
       return saved;
     } catch (error) {
       await appendClientUploadLog(`Encrypted vault upload failed: ${error.message || String(error)}`, 'error');
@@ -2175,9 +2237,18 @@ export default function GalleryPage() {
         await appendClientUploadLog(`Starting ${service.label} XHR upload for 3D model...`);
         await chrome.storage.local.set({ uploadStatus: `Uploading 3D model to ${service.label}...` });
         try {
-          const result = await service.uploadWithProgress({ uploader, blob: uploadData.fileBlob, settings, data: { ...uploadData, fileName: uploadData.fileName || 'model.glb' }, onProgress: async ({ loaded, total, percent }) => {
+          const result = await service.uploadWithProgress({ uploader, blob: uploadData.fileBlob, settings, data: { ...uploadData, fileName: uploadData.fileName || 'model.glb' }, onProgress: async ({ loaded, total, percent, phase, text }) => {
             const totalLabel = total ? formatBytes(total) : formatBytes(uploadData.fileBlob?.size || 0);
             const loadedLabel = formatBytes(loaded);
+            // Telegram is a 3D host too, so a big model can take the native
+            // route — render its synthetic `finalizing` event (100% sent,
+            // Telegram still creating the post) instead of going silent.
+            if (phase === 'finalizing') {
+              const finalizingMessage = `${service.label} 3D: ${text || `all ${totalLabel} sent — waiting for Telegram to finalize the post...`}`;
+              await chrome.storage.local.set({ uploadStatus: finalizingMessage });
+              await appendClientUploadLog(finalizingMessage);
+              return;
+            }
             const message = percent !== null ? `${service.label} 3D progress: ${percent}% (${loadedLabel} / ${totalLabel})` : `${service.label} 3D progress: ${loadedLabel} sent`;
             await chrome.storage.local.set({ uploadStatus: message });
             await appendClientUploadLog(message);
@@ -2298,7 +2369,16 @@ export default function GalleryPage() {
       // through sendMessage arrays.
       const uploadOne = async (blob, name, svc) => {
         const uploader = new svc.uploaderClass();
-        return svc.uploadWithProgress({ uploader, blob, settings, data: { fileName: name }, onProgress: async ({loaded,total,percent})=>{
+        return svc.uploadWithProgress({ uploader, blob, settings, data: { fileName: name }, onProgress: async ({loaded,total,percent,phase,text})=>{
+          // A scene file over the Bot API cap takes the native route — its
+          // synthetic `finalizing` event (100% sent, Telegram still
+          // creating the post) gets a line of its own, not silence.
+          if (phase === 'finalizing') {
+            const finalizingMsg = `${svc.label} scene ${name}: ${text || 'all bytes sent — waiting for Telegram to finalize the post...'}`;
+            await chrome.storage.local.set({ uploadStatus: finalizingMsg });
+            await appendClientUploadLog(finalizingMsg);
+            return;
+          }
           const msg = `${svc.label} scene ${name}: ${percent!==null?percent+'%':formatBytes(loaded)}`;
           await chrome.storage.local.set({ uploadStatus: msg });
           await appendClientUploadLog(msg);
@@ -3934,9 +4014,18 @@ export default function GalleryPage() {
         blob: file,
         settings,
         data: { ...item, fileName: item?.fileName || file.name || 'video.mp4' },
-        onProgress: async ({ loaded, total, percent }) => {
+        onProgress: async ({ loaded, total, percent, phase, text }) => {
           const totalLabel = total ? formatBytes(total) : formatBytes(file.size || 0);
           const loadedLabel = formatBytes(loaded);
+          // A retried >50 MB video takes the native route — render its
+          // synthetic `finalizing` event (100% sent, Telegram still
+          // creating the post) instead of going silent after the 100% line.
+          if (phase === 'finalizing') {
+            const finalizingMessage = `${hostLabel} retry: ${text || `all ${totalLabel} sent — waiting for Telegram to finalize the post...`}`;
+            await chrome.storage.local.set({ uploadStatus: finalizingMessage });
+            await appendClientUploadLog(finalizingMessage);
+            return;
+          }
           const message = percent !== null
             ? `${hostLabel} retry progress: ${percent}% (${loadedLabel} / ${totalLabel})`
             : `${hostLabel} retry progress: ${loadedLabel} sent`;

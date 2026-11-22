@@ -15,8 +15,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { preferredPreviewCopies, setVaultPreviewPaused } from '../src/utils/vaultPreview.js';
+import { preferredPreviewCopies, setVaultPreviewPaused, persistRemoteVaultPreview } from '../src/utils/vaultPreview.js';
 import { getCachedThumb } from '../src/utils/thumbCache.js';
+import { setVaultMasterKey, clearVaultMasterKey } from '../src/utils/vaultSession.js';
+import { createVaultConfig, unwrapMasterKey, decryptPreviewBytes } from '../../packages/shared/vaultCrypto.js';
 
 const src = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
@@ -171,4 +173,79 @@ test('2.12.96 (2026-09-19): Matroska probes early seconds with a 3s per-seek tim
   assert.ok(pv.includes('const res = await decodeMatroskaHead(head, total, timeouts);'));
   assert.ok(pv.includes("await waitForEvent(video, 'seeked', 3000, `matroska seek ${t.toFixed(1)}s`);"));
   assert.ok(pv.includes("throw new Error('matroska: head window did not decode (unsupported variants?)');"));
+});
+
+// ------------------------------------------- 2.19.32 upload-time snapshot ---
+
+// FIXED in 2.19.32. Gallery videos capture a 1-frame snapshot at upload
+// time (captureVideoSnapshotBlob → poster-<id> thumb cache) but the vault
+// path captured nothing, so every new vault video showed DERIVING PREVIEW
+// while the vault page decrypted the blob and located a frame on demand.
+// uploadVaultedDirectly now captures the same snapshot from the PLAINTEXT
+// blob before encryption and persists it after save — local IndexedDB
+// under `vault-preview-<id>` (NOT poster-<id>, which the vault card never
+// reads) AND the remote encrypted store via persistRemoteVaultPreview.
+// Capture + both persists are non-fatal: a missing snapshot just means
+// on-demand derivation, never a failed upload.
+
+test('2.19.32 (2026-11-22): persistRemoteVaultPreview sends vault-key-encrypted bytes the same key decrypts', async () => {
+  const config = await createVaultConfig('test passcode only');
+  const key = await unwrapMasterKey(config, 'test passcode only');
+  setVaultMasterKey(key);
+  const sent = [];
+  try {
+    const jpeg = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4])], { type: 'image/jpeg' });
+    await persistRemoteVaultPreview({ id: 'item-1' }, jpeg, async (action, data) => { sent.push([action, data]); });
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0][0], 'saveVaultPreview');
+    assert.equal(sent[0][1].id, 'item-1');
+    assert.equal(typeof sent[0][1].data, 'string');
+    assert.ok(sent[0][1].data.length > 0);
+    const roundTripped = await decryptPreviewBytes(key, sent[0][1].data);
+    assert.deepEqual(roundTripped, new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]));
+  } finally {
+    clearVaultMasterKey();
+  }
+});
+
+test('2.19.32 (2026-11-22): persistRemoteVaultPreview with no master key sends nothing (locked vault never persists)', async () => {
+  clearVaultMasterKey();
+  const sent = [];
+  await persistRemoteVaultPreview({ id: 'item-1' }, new Blob([new Uint8Array([1])]), async (action, data) => { sent.push([action, data]); });
+  assert.deepEqual(sent, []);
+});
+
+test('2.19.32 (2026-11-22): the vault upload captures a snapshot from the plaintext blob before encryption — video only, non-fatal', () => {
+  const gallery = src('../src/pages/GalleryPage.jsx');
+  const vaultFn = gallery.slice(gallery.indexOf('const uploadVaultedDirectly'));
+  // Captured from the normalized plaintext blob, video only, before the
+  // encryption step — after encryption only ciphertext exists in the page.
+  const captureAt = vaultFn.indexOf('vaultSnapshotBlob = await captureVideoSnapshotBlob(blob, 1.0);');
+  assert.ok(captureAt > 0, 'vault path never captures a snapshot');
+  assert.ok(vaultFn.slice(0, captureAt).includes("if (kind === 'video'"), 'snapshot is not gated to video');
+  assert.ok(vaultFn.indexOf('// 1) Encrypt with chunked progress') > captureAt, 'snapshot is captured AFTER encryption — too late, only ciphertext exists then');
+  // Non-fatal: a failed capture warns and the upload continues (the card
+  // just derives on demand instead).
+  const catchBlock = vaultFn.slice(captureAt, captureAt + 400);
+  assert.ok(catchBlock.includes('catch (snapErr)'), 'snapshot capture has no catch — a failure would kill the upload');
+  assert.ok(catchBlock.includes('Vault preview snapshot skipped'), 'snapshot failure is not named in the warning');
+});
+
+test('2.19.32 (2026-11-22): the vault snapshot is persisted under vault-preview-<id> locally AND the remote encrypted store after save', () => {
+  const gallery = src('../src/pages/GalleryPage.jsx');
+  const vaultFn = gallery.slice(gallery.indexOf('const uploadVaultedDirectly'));
+  // Local tier: the vault card reads `vault-preview-<id>` — the gallery
+  // `poster-<id>` key would be written and never read.
+  assert.ok(vaultFn.includes('setCachedThumb(`vault-preview-${saved.id}`, vaultSnapshotBlob)'), 'vault snapshot is not cached under vault-preview-<id>');
+  assert.ok(!vaultFn.includes('setCachedThumb(`poster-${saved.id}`, vaultSnapshotBlob)'), 'vault snapshot is cached under the gallery poster- key — the vault card never reads it');
+  // Remote tier: same bytes, vault-key-encrypted, via the existing helper.
+  assert.ok(vaultFn.includes('persistRemoteVaultPreview({ id: saved.id }, vaultSnapshotBlob, sendMessage)'), 'vault snapshot is not persisted to the remote encrypted store');
+  // Both persists happen after the save (the item id only exists then)
+  // and the local write is non-fatal.
+  const saveAt = vaultFn.indexOf("sendMessage('saveVaultedUpload'");
+  const cacheAt = vaultFn.indexOf('setCachedThumb(`vault-preview-${saved.id}`');
+  const remoteAt = vaultFn.indexOf('persistRemoteVaultPreview({ id: saved.id }');
+  assert.ok(saveAt > 0 && cacheAt > saveAt && remoteAt > saveAt, 'snapshot persists run before the save — saved.id does not exist yet');
+  assert.ok(vaultFn.slice(cacheAt, cacheAt + 400).includes('Vault preview cache write failed'), 'local cache write failure is not warned');
+  assert.ok(gallery.includes("import { persistRemoteVaultPreview } from '../utils/vaultPreview.js';"), 'persistRemoteVaultPreview is not imported in GalleryPage');
 });

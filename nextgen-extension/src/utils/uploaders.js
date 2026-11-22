@@ -9,6 +9,7 @@ import {
   assertTelegramUploadSize,
   deleteNativeTempFile,
   deleteTelegramMessage,
+  formatBytesForError,
   isNumericTelegramChannel,
   requireTelegramToken,
   scrapeTelegramPostUrl,
@@ -1575,15 +1576,39 @@ export class TelegramUploader extends BaseUploader {
       console.log(`📨 [TELEGRAM] ${filename} is over the Bot API cap with no disk path - staging it on the native host for the MTProto upload.`);
       nativePath = await stageBlobForNativeUpload(blob, filename, { onProgress, signal });
     }
+    // Telethon reports 100% when the LAST PART is sent — but the post is
+    // not created until Telegram finalizes server-side, and that gap is
+    // silent: observed live 2026-11-22 as ~3 minutes with no log line at
+    // all on a 72 MB vault blob, which reads as "stuck forever". The first
+    // 100% event names the wait (console + a synthetic `finalizing`
+    // progress event the UI renders), exactly once even though the host
+    // can emit the 100% line twice. The wrapper is always installed, so
+    // the SW path (no onProgress) still gets the console line.
+    let finalizingLogged = false;
+    const progressWithFinalizing = (event) => {
+      if (onProgress) onProgress(event);
+      const done = (event?.percent ?? 0) >= 100
+        || (Number(event?.total) > 0 && Number(event?.loaded) >= Number(event?.total));
+      if (!done || finalizingLogged) return;
+      finalizingLogged = true;
+      const line = `all ${formatBytesForError(event?.total || size)} sent — waiting for Telegram to finalize the post (this can take a few minutes on big files)...`;
+      console.log(`📨 [TELEGRAM] ${filename}: ${line}`);
+      if (onProgress) {
+        onProgress({ ...event, percent: 100, phase: 'finalizing', text: line });
+      }
+    };
     try {
       const res = await uploadTelegramNative({
         filePath: nativePath,
         channel,
-        onProgress,
+        onProgress: progressWithFinalizing,
         signal,
       });
 
       const messageId = String(res.messageId);
+      // Completion line, mirroring finishUpload's Bot API one — the native
+      // path had none, so a finished upload left no "ok" anywhere.
+      console.log(`📨 [TELEGRAM] native MTProto ok - message ${messageId}, fileId native-${messageId}`);
       const watchUrl = messageId ? telegramPostPageUrl(channel, messageId) : '';
       // The native uploader warns when it could not read video
       // dimensions — the post lands as a document, no CDN URL, no

@@ -231,3 +231,146 @@ describe('getConfiguredAudioUploadServices (2.19.25)', () => {
     assert.deepEqual(out.map((s) => s.key), ['terabox']);
   });
 });
+
+// ------------------------------------------- 2.19.32 native finalize wait ---
+
+// FIXED in 2.19.32. Telethon reports 100% when the LAST PART is sent, but
+// the post is not created until Telegram finalizes server-side — observed
+// live 2026-11-22 as ~3 silent minutes on a 72 MB vault blob (100% at
+// 13:20:54, msg 630 created 13:23:55), which reads as "stuck forever".
+// uploadViaNativeHost now fires a LOUD finalizing line once on the first
+// 100% event: a console.log line plus a synthetic phase:'finalizing'
+// progress event the UI renders. The host can emit the 100% line twice
+// (the live log showed it twice) — the line must still fire exactly once.
+
+// Minimal fake native port (same shape as regression-telegram.test.mjs):
+// postMessage hands the message to the handler, which emits responses
+// over time through port.emit.
+class FakeNativePortForUpload {
+  constructor(handler) {
+    this.handler = handler;
+    this.messageListeners = [];
+    this.disconnectListeners = [];
+    this.disconnected = false;
+    this.onMessage = { addListener: (fn) => { this.messageListeners.push(fn); } };
+    this.onDisconnect = { addListener: (fn) => { this.disconnectListeners.push(fn); } };
+  }
+  emit(response) {
+    if (this.disconnected) return;
+    for (const fn of [...this.messageListeners]) fn(response);
+  }
+  postMessage(message) {
+    this.handler(message, this);
+  }
+  disconnect() {
+    this.disconnected = true;
+  }
+}
+
+function installChromeForUpload(handler) {
+  globalThis.chrome = {
+    runtime: {
+      lastError: undefined,
+      connectNative: () => new FakeNativePortForUpload(handler),
+    },
+  };
+}
+
+function uninstallChromeForUpload() {
+  delete globalThis.chrome;
+}
+
+// A host that behaves like the live 2026-11-22 run: progress to 100% (the
+// 100% line twice, as the live log showed), then a delayed RESULT — the
+// server-side finalize gap the finalizing line exists to name.
+function delayedNativeUploadHandler({ total = 72000000, messageId = 630, resultDelayMs = 100 } = {}) {
+  return (message, port) => {
+    if (message.action !== 'telegram_upload') return;
+    const progress = (current, percent) => ({
+      event: 'progress',
+      line: `PROGRESS:${current}:${total}:${percent}`,
+      message: `uploading ${percent}%`,
+    });
+    queueMicrotask(() => port.emit(progress(Math.floor(total / 2), 50)));
+    setTimeout(() => port.emit(progress(total, 100)), 5);
+    setTimeout(() => port.emit(progress(total, 100)), 10);
+    setTimeout(() => port.emit({
+      success: true,
+      stdout: JSON.stringify({ messageId, size: total, date: '2026-11-22T07:23:55Z' }),
+    }), resultDelayMs);
+  };
+}
+
+describe('TelegramUploader.uploadViaNativeHost — finalizing line (2.19.32)', () => {
+  test('a 100% event fires exactly one phase:finalizing progress event — before the delayed result returns', async () => {
+    installChromeForUpload(delayedNativeUploadHandler());
+    const logLines = [];
+    const realLog = console.log;
+    console.log = (...args) => { logLines.push(args.join(' ')); };
+    const events = [];
+    let finalizingSeenAt = 0;
+    try {
+      const result = await uploader.uploadViaNativeHost(new Blob([new Uint8Array(100)]), {
+        channel: '-1003959088547',
+        filename: 'x.bin',
+        mimeType: 'application/octet-stream',
+        filePath: 'C:\\fake\\x.bin',
+        onProgress: (event) => {
+          events.push(event);
+          if (event.phase === 'finalizing' && !finalizingSeenAt) finalizingSeenAt = Date.now();
+        },
+      });
+      const resolvedAt = Date.now();
+      assert.equal(result.fileId, 'native-630');
+      assert.equal(result.messageId, '630');
+      // The 100% line came twice (live behavior) — the finalizing event
+      // still fires exactly once, right after the FIRST 100% event.
+      const finalizing = events.filter((e) => e.phase === 'finalizing');
+      assert.equal(finalizing.length, 1);
+      const first100 = events.findIndex((e) => e.percent === 100 && e.phase !== 'finalizing');
+      assert.equal(events.indexOf(finalizing[0]), first100 + 1);
+      assert.match(finalizing[0].text, /finalize/);
+      assert.equal(finalizing[0].percent, 100);
+      // The line was emitted while the result was still in flight, not
+      // after it — that is the whole point (the wait is named, not silent).
+      assert.ok(finalizingSeenAt > 0 && finalizingSeenAt < resolvedAt);
+      // Console channel carries both lines: the finalize wait + completion.
+      assert.ok(logLines.some((l) => /waiting for Telegram to finalize/.test(l)), `no finalize console line in: ${logLines.join(' | ')}`);
+      assert.ok(logLines.some((l) => /native MTProto ok - message 630, fileId native-630/.test(l)), `no completion console line in: ${logLines.join(' | ')}`);
+    } finally {
+      console.log = realLog;
+      uninstallChromeForUpload();
+    }
+  });
+
+  test('with no onProgress (SW path) the finalizing line still reaches the console', async () => {
+    installChromeForUpload(delayedNativeUploadHandler());
+    const logLines = [];
+    const realLog = console.log;
+    console.log = (...args) => { logLines.push(args.join(' ')); };
+    try {
+      const result = await uploader.uploadViaNativeHost(new Blob([new Uint8Array(100)]), {
+        channel: '-1003959088547',
+        filename: 'x.bin',
+        mimeType: 'application/octet-stream',
+        filePath: 'C:\\fake\\x.bin',
+      });
+      assert.equal(result.fileId, 'native-630');
+      assert.ok(logLines.some((l) => /waiting for Telegram to finalize/.test(l)), `no finalize console line in: ${logLines.join(' | ')}`);
+      assert.ok(logLines.some((l) => /native MTProto ok - message 630/.test(l)), `no completion console line in: ${logLines.join(' | ')}`);
+    } finally {
+      console.log = realLog;
+      uninstallChromeForUpload();
+    }
+  });
+
+  test('every gallery progress handler on a telegram-capable path renders the finalizing event', () => {
+    const gallery = src('../src/pages/GalleryPage.jsx');
+    // Five handlers can receive native Telegram progress: the vault loop,
+    // the gallery video upload, the 3D upload, the scene upload, and the
+    // video-host retry. A handler that ignores `phase` would print a
+    // second bare 100% line instead of naming the finalize wait.
+    const branches = gallery.match(/if \(phase === 'finalizing'\) \{/g) || [];
+    assert.ok(branches.length >= 5, `expected >= 5 finalizing branches in GalleryPage, found ${branches.length}`);
+  });
+});
