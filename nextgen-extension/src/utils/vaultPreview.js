@@ -1,5 +1,5 @@
 /**
- * Vault video previews (2.12.74).
+ * Vault video previews (2.12.74) + vault image previews (2.19.33).
  *
  * Encrypted vault videos have no thumbnail anywhere — the only copy of the
  * media is the encrypted blob. This module derives a thumbnail ON DEMAND after
@@ -8,6 +8,16 @@
  * same plumbing the detail player uses), seeking to the MIDDLE of the video,
  * scoring the frame for black/fade (industry practice: never trust frame 0),
  * and retrying at 25%/75% until a usable frame is found.
+ *
+ * Encrypted vault IMAGES had no preview path at all until 2.19.33 (the grid
+ * showed a static lock for every non-video encrypted item). The image
+ * derivation mirrors the video one: same cache key (`vault-preview-<id>`),
+ * same remote encrypted tier, same per-host queue — but it reads the WHOLE
+ * plaintext (images are small; a video reads moov + one frame) and downscales
+ * it on a canvas. Legacy single-shot blobs are fully decrypted like the
+ * detail modal does — the video grid deliberately skips those (a full video
+ * decrypt blows up SW memory), but an image decrypt is bounded by
+ * IMAGE_PREVIEW_MAX_BYTES.
  *
  * Nothing is fetched "at upload" and nothing about the video is stored except
  * the final small JPEG in the shared IndexedDB thumb cache — so vault videos
@@ -85,6 +95,7 @@ import { getCachedThumb, setCachedThumb } from './thumbCache.js';
 import { encryptPreviewBytes, decryptPreviewBytes } from './vaultCrypto.js';
 import { getVaultMasterKey } from './vaultSession.js';
 import { locateVideoFrame, buildSingleFrameMp4, findMoov, findBox } from './mp4MinFrame.js';
+import { captureImageSnapshotBlob } from './imageSnapshot.js';
 
 const CANDIDATE_RATIOS = [0.5, 0.25, 0.75];
 // frame passes the "usable" test when it is neither black (mean luma) nor a
@@ -110,6 +121,11 @@ const DEFAULT_HOST_TIMEOUTS = { metadata: 60000, seek: 45000 };
 // thumb TTL (2.12.76: re-deriving terabox previews weekly on terabox is
 // minutes of chunk fetches for a frame that cannot change).
 const PREVIEW_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
+// Image derivations hold the WHOLE plaintext in memory (a video reads moov +
+// one frame, an image needs every byte to decode). 64 MiB bounds the
+// allocation — a bigger "image" is not a thumbnail candidate, and the card
+// says so loudly instead of crashing the tab.
+const IMAGE_PREVIEW_MAX_BYTES = 64 * 1024 * 1024;
 
 function previewKey(item) {
   return `vault-preview-${item.id}`;
@@ -273,6 +289,65 @@ function detectContainer(bytes) {
   return 'unknown';
 }
 
+/**
+ * Fetch a decrypted plaintext byte range from a vault blob, in 1 MiB
+ * messages (2.12.88). Factored out of runExtraction in 2.19.33 so the
+ * image derivation reads the whole blob through the same plumbing —
+ * one implementation, one 64 MiB cap workaround.
+ */
+// chrome.runtime.sendMessage caps the response at 64MiB. An 8MiB Uint8Array
+// SHOULD fit, but Chrome's structured-clone overhead for typed arrays can
+// push it over (observed: an 8MiB head fetch blew the cap on 9cc25ea7).
+// So large ranges are split into 1MiB messages and reassembled here. The
+// background's chunk cache makes the extra round-trips cheap — the same
+// 8MiB encrypted chunk is fetched once and the slices are served from
+// memory.
+const PLAIN_FETCH_CHUNK = 1 * 1024 * 1024;
+const normalizeBytes = (part) => {
+  if (part instanceof Uint8Array) return part;
+  if (part instanceof ArrayBuffer) return new Uint8Array(part);
+  if (Array.isArray(part)) return new Uint8Array(part);
+  if (part && typeof part === 'object') {
+    // structured-clone may deliver a plain object with numeric keys
+    const vals = Object.values(part);
+    if (vals.length && typeof vals[0] === 'number') return new Uint8Array(vals);
+  }
+  return part;
+};
+export async function fetchPlaintextRange(sendMessage, item, copies, start, end) {
+  const len = end - start + 1;
+  if (len <= PLAIN_FETCH_CHUNK) {
+    console.log(`[VaultPreview] ${item.id}: fetching range ${start}-${end} (${len}B)`);
+    const oneRaw = await sendMessage('vaultFetchPlaintextRange', {
+      id: item.id, copies, fileName: item.encryptedFileName || '',
+      start, end,
+    });
+    const one = normalizeBytes(oneRaw);
+    console.log(`[VaultPreview] ${item.id}: received ${one?.length || 0}B for ${start}-${end} (raw type ${Object.prototype.toString.call(oneRaw)})`);
+    return one;
+  }
+  console.log(`[VaultPreview] ${item.id}: chunked fetch ${start}-${end} (${len}B) in ${Math.ceil(len / PLAIN_FETCH_CHUNK)} parts`);
+  const out = new Uint8Array(len);
+  let off = 0;
+  for (let s = start; s <= end; s += PLAIN_FETCH_CHUNK) {
+    const e = Math.min(s + PLAIN_FETCH_CHUNK - 1, end);
+    const partRaw = await sendMessage('vaultFetchPlaintextRange', {
+      id: item.id, copies, fileName: item.encryptedFileName || '',
+      start: s, end: e,
+    });
+    console.log(`[VaultPreview] ${item.id}: chunk ${s}-${e} raw type=${Object.prototype.toString.call(partRaw)} len=${partRaw?.length} byteLen=${partRaw?.byteLength} keys=${partRaw && typeof partRaw === 'object' ? Object.keys(partRaw).length : 'n/a'} sampleKeys=${partRaw && typeof partRaw === 'object' ? Object.keys(partRaw).slice(0,3).join(',') : ''}`);
+    const part = normalizeBytes(partRaw);
+    console.log(`[VaultPreview] ${item.id}: chunk ${s}-${e} normalized ${part?.length || 0}B type=${Object.prototype.toString.call(part)}`);
+    if (!part || !part.length) {
+      console.error(`[VaultPreview] ${item.id}: chunk ${s}-${e} returned no bytes — raw:`, partRaw);
+      throw new Error(`chunk ${s}-${e} returned no bytes (expected ${e - s + 1}) — got ${Object.prototype.toString.call(partRaw)} len=${partRaw?.length} keys=${partRaw && typeof partRaw === 'object' ? Object.keys(partRaw).length : 0}`);
+    }
+    out.set(part, off);
+    off += part.length;
+  }
+  return out;
+}
+
 async function runExtraction(item, getStreamUrl, sendMessage) {
   const key = previewKey(item);
   const host = primaryHost(item);
@@ -331,57 +406,11 @@ async function runExtraction(item, getStreamUrl, sendMessage) {
   // cap. So the window GROWS until moov fits completely: read a chunk, look
   // for a complete moov, read another chunk if it is truncated. Bounded, and
   // loud if it never fits.
-  // chrome.runtime.sendMessage caps the response at 64MiB. An 8MiB Uint8Array
-  // SHOULD fit, but Chrome's structured-clone overhead for typed arrays can
-  // push it over (observed: an 8MiB head fetch blew the cap on 9cc25ea7).
-  // So large ranges are split into 1MiB messages and reassembled here. The
-  // background's chunk cache makes the extra round-trips cheap — the same
-  // 8MiB encrypted chunk is fetched once and the slices are served from
-  // memory.
-  const PLAIN_FETCH_CHUNK = 1 * 1024 * 1024;
-  const normalizeBytes = (part) => {
-    if (part instanceof Uint8Array) return part;
-    if (part instanceof ArrayBuffer) return new Uint8Array(part);
-    if (Array.isArray(part)) return new Uint8Array(part);
-    if (part && typeof part === 'object') {
-      // structured-clone may deliver a plain object with numeric keys
-      const vals = Object.values(part);
-      if (vals.length && typeof vals[0] === 'number') return new Uint8Array(vals);
-    }
-    return part;
-  };
+  // Plaintext ranges come from the module-level helper (2.19.33: the
+  // image derivation reads the whole blob through the same 1 MiB
+  // messages). Thin wrapper keeps the call sites below unchanged.
   const fetchPlain = async (start, end) => {
-    const len = end - start + 1;
-    if (len <= PLAIN_FETCH_CHUNK) {
-      console.log(`[VaultPreview] ${item.id}: fetching range ${start}-${end} (${len}B)`);
-      const oneRaw = await sendMessage('vaultFetchPlaintextRange', {
-        id: item.id, copies, fileName: item.encryptedFileName || '',
-        start, end,
-      });
-      const one = normalizeBytes(oneRaw);
-      console.log(`[VaultPreview] ${item.id}: received ${one?.length || 0}B for ${start}-${end} (raw type ${Object.prototype.toString.call(oneRaw)})`);
-      return one;
-    }
-    console.log(`[VaultPreview] ${item.id}: chunked fetch ${start}-${end} (${len}B) in ${Math.ceil(len / PLAIN_FETCH_CHUNK)} parts`);
-    const out = new Uint8Array(len);
-    let off = 0;
-    for (let s = start; s <= end; s += PLAIN_FETCH_CHUNK) {
-      const e = Math.min(s + PLAIN_FETCH_CHUNK - 1, end);
-      const partRaw = await sendMessage('vaultFetchPlaintextRange', {
-        id: item.id, copies, fileName: item.encryptedFileName || '',
-        start: s, end: e,
-      });
-      console.log(`[VaultPreview] ${item.id}: chunk ${s}-${e} raw type=${Object.prototype.toString.call(partRaw)} len=${partRaw?.length} byteLen=${partRaw?.byteLength} keys=${partRaw && typeof partRaw === 'object' ? Object.keys(partRaw).length : 'n/a'} sampleKeys=${partRaw && typeof partRaw === 'object' ? Object.keys(partRaw).slice(0,3).join(',') : ''}`);
-      const part = normalizeBytes(partRaw);
-      console.log(`[VaultPreview] ${item.id}: chunk ${s}-${e} normalized ${part?.length || 0}B type=${Object.prototype.toString.call(part)}`);
-      if (!part || !part.length) {
-        console.error(`[VaultPreview] ${item.id}: chunk ${s}-${e} returned no bytes — raw:`, partRaw);
-        throw new Error(`chunk ${s}-${e} returned no bytes (expected ${e - s + 1}) — got ${Object.prototype.toString.call(partRaw)} len=${partRaw?.length} keys=${partRaw && typeof partRaw === 'object' ? Object.keys(partRaw).length : 0}`);
-      }
-      out.set(part, off);
-      off += part.length;
-    }
-    return out;
+    return fetchPlaintextRange(sendMessage, item, copies, start, end);
   };
 
   const MOOV_MAX_WINDOW = 32 * 1024 * 1024;
@@ -637,6 +666,26 @@ async function resolveCopiesForPreview(item, streamUrl, sendMessage) {
 }
 
 /**
+ * Resolve the fresh host URLs a preview actually reads (2.19.33): the
+ * fast-copy subset from preferredPreviewCopies, resolved once through the
+ * SW (terabox dlinks are single-use and expire; udrop/telegram pass
+ * through). Returns null when nothing resolves — callers fail loudly
+ * instead of reading a stale URL. The video stream-URL builder and the
+ * image derivation share this; before 2.19.33 the resolve was inlined
+ * in VaultPage.getPreviewStreamUrl only.
+ */
+export async function resolvePreviewCopies(item, sendMessage) {
+  const baseCopies = preferredPreviewCopies(item);
+  const res = await sendMessage('vaultResolveStreamUrls', {
+    id: item.id,
+    copies: baseCopies,
+    fileName: item.encryptedFileName || '',
+  });
+  const copies = Array.isArray(res?.copies) && res.copies.length > 0 ? res.copies : null;
+  return copies;
+}
+
+/**
  * Extract (or reuse) a thumbnail for an encrypted vault video.
  * Deduped per item, serialized through a per-host concurrency queue.
  * @param {object} item vault item with encryptedBlobUrl
@@ -651,6 +700,115 @@ export function requestVaultPreview(item, { getStreamUrl, sendMessage }) {
   const task = enqueueForHost(primaryHost(item), () => runExtraction(item, getStreamUrl, sendMessage))
     .catch((err) => {
       console.warn(`[VaultPreview] preview failed for ${item.id}: ${err.message || String(err)}`);
+      throw err;
+    })
+    .finally(() => inflight.delete(key));
+  inflight.set(key, task);
+  return task;
+}
+
+/**
+ * Derive a thumbnail for an encrypted vault IMAGE (2.19.33). Same tiers as
+ * the video path — local IndexedDB, then the remote encrypted store, then
+ * on-demand derivation — and the same cache key, so an upload-time snapshot
+ * and a derivation are interchangeable. The difference is the bytes: an
+ * image needs the WHOLE plaintext to decode (a video needs moov + one
+ * frame), so chunked blobs are range-fetched end to end (bounded by
+ * IMAGE_PREVIEW_MAX_BYTES) and legacy single-shot blobs are fully decrypted
+ * exactly like the detail modal does (vaultDecryptBlob).
+ *
+ * NOTE on the vaultDecryptBlob response: useChromeMessage UNWRAPS .data, so
+ * the resolved value is `{ blob }` — NOT `{ success, data }`. The detail
+ * modal checks result.success on the unwrapped value (VaultPage.jsx), which
+ * reads as always-failed; this derivation reads `decrypted?.blob` directly.
+ * See AGENTS.md (2.19.33) — the modal check needs its own fix.
+ */
+async function runImageExtraction(item, sendMessage) {
+  const key = previewKey(item);
+
+  const cached = await getCachedThumb(key, PREVIEW_MAX_AGE_MS);
+  if (cached) {
+    const url = URL.createObjectURL(cached);
+    objectUrlMap.set(key, url);
+    return url;
+  }
+
+  const remote = await getRemoteVaultPreview(item, sendMessage);
+  if (remote) {
+    await setCachedThumb(key, remote);
+    const url = URL.createObjectURL(remote);
+    objectUrlMap.set(key, url);
+    return url;
+  }
+
+  const copies = await resolvePreviewCopies(item, sendMessage);
+  if (!copies) throw new Error('no readable copy (resolve failed or vault locked)');
+
+  const probe = await sendMessage('vaultProbeBlobFormat', {
+    id: item.id,
+    url: copies[0]?.encryptedBlobUrl || item.encryptedBlobUrl,
+    fileId: copies[0]?.encryptedBlobFileId || item.encryptedBlobFileId || '',
+    chunks: item.encryptedBlobChunks || [],
+    vaultHost: copies[0]?.host || item.vaultHost || 'udrop',
+    hostCopies: copies,
+  });
+
+  let plainBytes;
+  if (probe?.chunked) {
+    const { total } = probe;
+    if (!Number.isFinite(total) || total <= 0) throw new Error('probe returned no plaintext size');
+    if (total > IMAGE_PREVIEW_MAX_BYTES) {
+      throw new Error(`image too large to thumbnail in memory (${total}B > ${IMAGE_PREVIEW_MAX_BYTES}B)`);
+    }
+    plainBytes = await fetchPlaintextRange(sendMessage, item, copies, 0, total - 1);
+  } else {
+    // Legacy single-shot blob: the video grid deliberately skips these (a
+    // full video decrypt blows up SW memory), but images are small — mirror
+    // the detail modal's full decrypt instead of leaving the card locked.
+    if (Number.isFinite(item.fileSize) && item.fileSize > IMAGE_PREVIEW_MAX_BYTES) {
+      throw new Error(`image too large to thumbnail in memory (${item.fileSize}B > ${IMAGE_PREVIEW_MAX_BYTES}B)`);
+    }
+    const decrypted = await sendMessage('vaultDecryptBlob', {
+      id: item.id,
+      url: copies[0]?.encryptedBlobUrl || item.encryptedBlobUrl,
+      fileId: copies[0]?.encryptedBlobFileId || item.encryptedBlobFileId || '',
+      chunks: item.encryptedBlobChunks || [],
+      mimeType: item.encryptedMimeType || 'application/octet-stream',
+      vaultHost: copies[0]?.host || item.vaultHost || 'udrop',
+      hostCopies: copies,
+    });
+    const blob = decrypted?.blob;
+    if (!blob || !(blob instanceof Blob) || blob.size === 0) {
+      throw new Error('legacy decrypt returned no bytes');
+    }
+    plainBytes = new Uint8Array(await blob.arrayBuffer());
+  }
+  if (!plainBytes || !plainBytes.length) throw new Error('plaintext fetch returned no bytes');
+
+  const thumb = await captureImageSnapshotBlob(new Blob([plainBytes]));
+  if (!thumb || thumb.size < 64) throw new Error('image thumbnail encode failed (implausibly small output)');
+  await setCachedThumb(key, thumb);
+  persistRemoteVaultPreview(item, thumb, sendMessage);
+  const url = URL.createObjectURL(thumb);
+  objectUrlMap.set(key, url);
+  return url;
+}
+
+/**
+ * Extract (or reuse) a thumbnail for an encrypted vault image.
+ * Deduped per item, serialized through the same per-host concurrency queue
+ * as videos (one queue — an image job and a video job share the host's
+ * slots, and the modal pause switch gates both).
+ * @param {object} item vault item with encryptedBlobUrl
+ * @param {{ sendMessage?: (action: string, data?: object) => Promise<any> }} opts
+ * @returns {Promise<string>} object URL of a JPEG preview
+ */
+export function requestVaultImagePreview(item, { sendMessage }) {
+  const key = previewKey(item);
+  if (inflight.has(key)) return inflight.get(key);
+  const task = enqueueForHost(primaryHost(item), () => runImageExtraction(item, sendMessage))
+    .catch((err) => {
+      console.warn(`[VaultPreview] image preview failed for ${item.id}: ${err.message || String(err)}`);
       throw err;
     })
     .finally(() => inflight.delete(key));

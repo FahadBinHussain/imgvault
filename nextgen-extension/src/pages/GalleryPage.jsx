@@ -77,6 +77,7 @@ import {
 import { cacheUploadFile, getCachedUploadFile, listCachedUploadFiles, removeCachedUploadFile } from '../utils/uploadFileCache.js';
 import { partitionHostsByUploadLimit } from '../utils/hostUploadLimits.js';
 import { captureVideoSnapshotBlob } from '../utils/videoSnapshot.js';
+import { captureImageSnapshotBlob } from '../utils/imageSnapshot.js';
 import { setCachedThumb } from '../utils/thumbCache.js';
 import { persistRemoteVaultPreview } from '../utils/vaultPreview.js';
 import { formatVideoDuration, getFilemoonTooLongWarning, getHostUnsupportedFlag } from '../utils/hostUnsupported.js';
@@ -1996,15 +1997,23 @@ export default function GalleryPage() {
       // Vault videos get the same 1-frame preview snapshot gallery videos
       // do (uploadVideoDirectly captures it too): without one, every new
       // vault video shows DERIVING PREVIEW while the vault page decrypts
-      // the blob and locates a frame on demand. Captured from the
-      // PLAINTEXT blob before encryption — after this point only
-      // ciphertext exists in the page. Video only: images/audio have no
-      // video frame to capture. Non-fatal by design: a missing snapshot
-      // just means on-demand derivation, never a failed upload.
+      // the blob and locates a frame on demand. Vault IMAGES get the same
+      // treatment (2.19.33) — a canvas downscale of the file itself, no
+      // video element needed. Captured from the PLAINTEXT blob before
+      // encryption — after this point only ciphertext exists in the page.
+      // Audio has no snapshot (nothing to see). Non-fatal by design: a
+      // missing snapshot just means on-demand derivation, never a failed
+      // upload.
       let vaultSnapshotBlob = null;
       if (kind === 'video' && blob instanceof Blob && blob.size > 0) {
         try {
           vaultSnapshotBlob = await captureVideoSnapshotBlob(blob, 1.0);
+        } catch (snapErr) {
+          console.warn('[uploadVaultedDirectly] Vault preview snapshot skipped:', snapErr?.message || snapErr);
+        }
+      } else if (kind === 'image' && blob instanceof Blob && blob.size > 0) {
+        try {
+          vaultSnapshotBlob = await captureImageSnapshotBlob(blob);
         } catch (snapErr) {
           console.warn('[uploadVaultedDirectly] Vault preview snapshot skipped:', snapErr?.message || snapErr);
         }

@@ -54,7 +54,7 @@ import {
   clearVaultMasterKey,
   importMasterKeyFromB64,
 } from '../utils/vaultSession.js';
-import { requestVaultPreview, getCachedVaultPreview, setVaultPreviewPaused, preferredPreviewCopies } from '../utils/vaultPreview.js';
+import { requestVaultPreview, requestVaultImagePreview, getCachedVaultPreview, setVaultPreviewPaused, resolvePreviewCopies } from '../utils/vaultPreview.js';
 import { deleteCachedThumb } from '../utils/thumbCache.js';
 
 const VAULT_CONFIG_KEY = 'secretVaultConfig';
@@ -145,6 +145,86 @@ function VaultEncryptedVideoThumb({ item, getStreamUrl, sendMessage, paused }) {
             <svg width="36" height="36" viewBox="0 0 24 24" fill="oklch(from var(--color-base-content) l c h / 0.7)"><path d="M8 5v14l11-7z"/></svg>
           </div>
         </div>
+        <LockKeyhole className="absolute top-2 right-2 h-4 w-4 opacity-80" style={{ color: 'var(--color-base-100)', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.6))' }} />
+      </div>
+    );
+  }
+
+  if (pending) {
+    return (
+      <div ref={holderRef} className="w-full aspect-video flex flex-col items-center justify-center gap-2" style={{ background: 'var(--color-base-200)', color: 'oklch(from var(--color-base-content) l c h / 0.45)' }}>
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <span className="text-[9px] uppercase tracking-wide">deriving preview</span>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={holderRef} className="relative w-full aspect-video flex items-center justify-center" style={{ background: 'var(--color-base-200)', color: 'oklch(from var(--color-base-content) l c h / 0.4)' }}>
+      <LockKeyhole className="h-10 w-10" />
+      {failed && (
+        <span className="absolute bottom-1.5 left-0 right-0 text-center text-[9px] uppercase tracking-wide opacity-60" title="Preview failed — see console for the exact reason">
+          preview unavailable
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Encrypted vault IMAGES had no preview path at all until 2.19.33 — the grid
+// showed a static lock for every non-video encrypted item. This card mirrors
+// VaultEncryptedVideoThumb exactly (same states, same strings, same lazy
+// IntersectionObserver start, same cache-first read) but derives through
+// requestVaultImagePreview: whole-plaintext decrypt + canvas downscale. The
+// thumbnail is object-contain, not object-cover — a photo must not be
+// cropped to fit the card (the gallery image branch renders contain too).
+function VaultEncryptedImageThumb({ item, sendMessage, paused }) {
+  const holderRef = useRef(null);
+  const [visible, setVisible] = useState(false);
+  const [url, setUrl] = useState(null);
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const el = holderRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setVisible(true);
+      return undefined;
+    }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setVisible(true);
+        io.disconnect();
+      }
+    }, { rootMargin: '200px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!visible || paused) return undefined;
+    let cancelled = false;
+    (async () => {
+      const cached = await getCachedVaultPreview(item, sendMessage);
+      if (cancelled) return;
+      if (cached) { setUrl(cached); return; }
+      setPending(true);
+      try {
+        const next = await requestVaultImagePreview(item, { sendMessage });
+        if (!cancelled) setUrl(next);
+      } catch {
+        if (!cancelled) setFailed(true);
+      } finally {
+        if (!cancelled) setPending(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [visible, paused, item.id]);
+
+  if (url) {
+    return (
+      <div ref={holderRef} className="relative w-full aspect-video overflow-hidden" style={{ background: 'var(--color-base-200)' }}>
+        <img src={url} alt={item.fileName || 'Vault image preview'} className="absolute inset-0 w-full h-full object-contain" />
         <LockKeyhole className="absolute top-2 right-2 h-4 w-4 opacity-80" style={{ color: 'var(--color-base-100)', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.6))' }} />
       </div>
     );
@@ -268,6 +348,7 @@ export default function VaultPage() {
   };
 
   const isEncryptedVideoItem = (item) => Boolean(item?.encryptedBlobUrl) && getMediaItemKind(item) === 'video';
+  const isEncryptedImageItem = (item) => Boolean(item?.encryptedBlobUrl) && getMediaItemKind(item) === 'image';
 
   // Stream URL for grid previews: resolve fresh host URLs first (terabox
   // resolve is slow — page-side, once per item), then build the same
@@ -282,13 +363,7 @@ export default function VaultPage() {
     // seconds not minutes). Deliberately NOT ensureStreamResolved: that
     // resolves every copy (slow terabox dlink for reads we skip) and caches
     // consumed dlinks into the modal's state.
-    const baseCopies = preferredPreviewCopies(item);
-    const res = await sendMessage('vaultResolveStreamUrls', {
-      id: item.id,
-      copies: baseCopies,
-      fileName: item.encryptedFileName || '',
-    });
-    const copies = Array.isArray(res?.copies) && res.copies.length > 0 ? res.copies : null;
+    const copies = await resolvePreviewCopies(item, sendMessage);
     if (!copies) return '';
     const probe = await sendMessage('vaultProbeBlobFormat', {
       id: item.id,
@@ -319,13 +394,13 @@ export default function VaultPage() {
       warmAbortRef.current = true;
       return;
     }
-    const targets = filteredItems.filter(isEncryptedVideoItem);
+    const targets = filteredItems.filter((item) => isEncryptedVideoItem(item) || isEncryptedImageItem(item));
     const uncached = [];
     for (const item of targets) {
       if (!(await getCachedVaultPreview(item, sendMessage))) uncached.push(item);
     }
     if (uncached.length === 0) {
-      showToast('All video previews are already cached.', 'info');
+      showToast('All previews are already cached.', 'info');
       return;
     }
     setWarmProgress({ done: 0, total: uncached.length, failed: 0 });
@@ -337,7 +412,11 @@ export default function VaultPage() {
       }
       if (warmAbortRef.current) break;
       try {
-        await requestVaultPreview(item, { getStreamUrl: getPreviewStreamUrl, sendMessage });
+        if (isEncryptedImageItem(item)) {
+          await requestVaultImagePreview(item, { sendMessage });
+        } else {
+          await requestVaultPreview(item, { getStreamUrl: getPreviewStreamUrl, sendMessage });
+        }
       } catch {
         failed += 1;
       }
@@ -1479,6 +1558,8 @@ export default function VaultPage() {
                           {item.encryptedBlobUrl ? (
                             kind === 'Video' ? (
                               <VaultEncryptedVideoThumb item={item} getStreamUrl={getPreviewStreamUrl} sendMessage={sendMessage} paused={Boolean(selectedItem)} />
+                            ) : kind === 'Image' ? (
+                              <VaultEncryptedImageThumb item={item} sendMessage={sendMessage} paused={Boolean(selectedItem)} />
                             ) : (
                               <div className="relative w-full aspect-video flex items-center justify-center" style={{ background: 'var(--color-base-200)', color: 'oklch(from var(--color-base-content) l c h / 0.4)' }}>
                                 <LockKeyhole className="h-10 w-10" />

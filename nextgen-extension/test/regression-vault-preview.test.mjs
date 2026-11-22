@@ -15,7 +15,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { preferredPreviewCopies, setVaultPreviewPaused, persistRemoteVaultPreview } from '../src/utils/vaultPreview.js';
+import { preferredPreviewCopies, setVaultPreviewPaused, persistRemoteVaultPreview, fetchPlaintextRange, resolvePreviewCopies, requestVaultImagePreview } from '../src/utils/vaultPreview.js';
 import { getCachedThumb } from '../src/utils/thumbCache.js';
 import { setVaultMasterKey, clearVaultMasterKey } from '../src/utils/vaultSession.js';
 import { createVaultConfig, unwrapMasterKey, decryptPreviewBytes } from '../../packages/shared/vaultCrypto.js';
@@ -79,12 +79,18 @@ test('2.12.76 (2026-09-13): the preview TTL is 365 days (vault blobs are immutab
 // ------------------------------------------------------- derivation shape ---
 
 test('2.12.99 (2026-09-20): fetchPlain is declared BEFORE the container branch — no TDZ when the head read runs', () => {
+  // 2.19.33: the range reader is factored to module level
+  // (fetchPlaintextRange) so the image derivation shares it; runExtraction
+  // keeps a thin `fetchPlain` wrapper above the head read, so the no-TDZ
+  // property this test pins is unchanged.
   const pv = preview();
   const fetchPlainAt = pv.indexOf('const fetchPlain = async (start, end) => {');
   const headFirstAt = pv.indexOf('const headFirst = await fetchPlain(0, Math.min(chunkSize, total) - 1);');
   assert.ok(fetchPlainAt > 0 && headFirstAt > fetchPlainAt);
   const normalizeAt = pv.indexOf('const normalizeBytes = (part) => {');
   assert.ok(normalizeAt > 0 && normalizeAt < fetchPlainAt);
+  assert.ok(pv.includes('export async function fetchPlaintextRange(sendMessage, item, copies, start, end) {'));
+  assert.ok(pv.includes('return fetchPlaintextRange(sendMessage, item, copies, start, end);'));
 });
 
 test('2.12.88 (2026-09-17): large plaintext ranges split into 1 MiB messages — an 8 MiB structured clone blows the 64 MiB cap', () => {
@@ -248,4 +254,279 @@ test('2.19.32 (2026-11-22): the vault snapshot is persisted under vault-preview-
   assert.ok(saveAt > 0 && cacheAt > saveAt && remoteAt > saveAt, 'snapshot persists run before the save — saved.id does not exist yet');
   assert.ok(vaultFn.slice(cacheAt, cacheAt + 400).includes('Vault preview cache write failed'), 'local cache write failure is not warned');
   assert.ok(gallery.includes("import { persistRemoteVaultPreview } from '../utils/vaultPreview.js';"), 'persistRemoteVaultPreview is not imported in GalleryPage');
+});
+
+// ------------------------------------------- 2.19.33 vault image previews ---
+
+// FIXED in 2.19.33. The vault grid rendered a hardcoded static lock tile for
+// ANY encrypted item that was not a Video — only Video went through
+// VaultEncryptedVideoThumb. All 8 vault images ALWAYS showed locks; there
+// was no image-preview path at all. The image derivation mirrors the video
+// system: same cache key (vault-preview-<id>), same remote encrypted tier,
+// same per-host queue — but it reads the WHOLE plaintext (images are small)
+// and downscales it on a canvas. Legacy single-shot blobs are fully
+// decrypted like the detail modal does. Upload-time snapshots cover images
+// too (canvas downscale of the plaintext file, before encryption).
+
+function installImageDomStubs({ width = 1000, height = 500 } = {}) {
+  const calls = { drawImage: [], toBlob: [] };
+  const fakeCtx = {
+    fillStyle: '',
+    fillRect() {},
+    drawImage(...args) { calls.drawImage.push(args); },
+  };
+  const fakeCanvas = {
+    width: 0,
+    height: 0,
+    getContext: () => fakeCtx,
+    toBlob(cb, type, quality) {
+      calls.toBlob.push([type, quality]);
+      cb(new Blob([new Uint8Array(100).fill(7)], { type: 'image/jpeg' }));
+    },
+  };
+  const prevBitmap = globalThis.createImageBitmap;
+  const prevDocument = globalThis.document;
+  globalThis.createImageBitmap = async () => ({ width, height, close() {} });
+  globalThis.document = { createElement: () => fakeCanvas };
+  return {
+    calls,
+    fakeCanvas,
+    restore() {
+      if (prevBitmap === undefined) delete globalThis.createImageBitmap;
+      else globalThis.createImageBitmap = prevBitmap;
+      if (prevDocument === undefined) delete globalThis.document;
+      else globalThis.document = prevDocument;
+    },
+  };
+}
+
+function makeRangeMock(pattern) {
+  const calls = [];
+  const sendMessage = async (action, data) => {
+    if (action === 'vaultResolveStreamUrls') {
+      return { copies: [{ host: 'udrop', encryptedBlobUrl: 'https://ud.example/b.bin', encryptedBlobFileId: '9' }] };
+    }
+    if (action === 'vaultProbeBlobFormat') {
+      return { chunked: true, total: pattern.length, chunkSize: 8 * 1024 * 1024 };
+    }
+    if (action === 'vaultFetchPlaintextRange') {
+      calls.push([data.start, data.end]);
+      return pattern.subarray(data.start, data.end + 1);
+    }
+    throw new Error(`unexpected action ${action}`);
+  };
+  return { sendMessage, calls };
+}
+
+test('2.19.33 (2026-11-22): fetchPlaintextRange fetches a small range in one call, exact bytes', async () => {
+  const pattern = new Uint8Array([9, 8, 7, 6, 5]);
+  const seen = [];
+  const out = await fetchPlaintextRange(async (action, data) => {
+    seen.push([action, data.start, data.end]);
+    return pattern.subarray(data.start, data.end + 1);
+  }, { id: 'i-small', encryptedFileName: '' }, [], 1, 3);
+  assert.deepEqual(out, new Uint8Array([8, 7, 6]));
+  assert.deepEqual(seen, [['vaultFetchPlaintextRange', 1, 3]]);
+});
+
+test('2.19.33 (2026-11-22): fetchPlaintextRange splits a 2.5 MiB range into 1 MiB messages and reassembles in order', async () => {
+  const total = Math.floor(2.5 * 1024 * 1024);
+  const pattern = new Uint8Array(total);
+  for (let i = 0; i < total; i += 1) pattern[i] = i % 251;
+  const seen = [];
+  const out = await fetchPlaintextRange(async (action, data) => {
+    seen.push([data.start, data.end]);
+    return pattern.subarray(data.start, data.end + 1);
+  }, { id: 'i-big', encryptedFileName: '' }, [], 0, total - 1);
+  assert.deepEqual(seen, [[0, 1048575], [1048576, 2097151], [2097152, total - 1]]);
+  assert.deepEqual(out, pattern);
+});
+
+test('2.19.33 (2026-11-22): fetchPlaintextRange normalizes a structured-clone plain object (numeric keys, no .length)', async () => {
+  const out = await fetchPlaintextRange(async () => ({ 0: 10, 1: 20, 2: 30 }), { id: 'i-obj', encryptedFileName: '' }, [], 0, 2);
+  assert.deepEqual(out, new Uint8Array([10, 20, 30]));
+});
+
+test('2.19.33 (2026-11-22): fetchPlaintextRange throws loudly when a part comes back empty (never a silently short blob)', async () => {
+  const total = 2 * 1024 * 1024;
+  await assert.rejects(
+    () => fetchPlaintextRange(async (action, data) => {
+      if (data.start === 0) return new Uint8Array(1024 * 1024);
+      return new Uint8Array(0);
+    }, { id: 'i-empty', encryptedFileName: '' }, [], 0, total - 1),
+    /returned no bytes/,
+  );
+});
+
+test('2.19.33 (2026-11-22): resolvePreviewCopies returns the resolved copies, null when nothing resolves', async () => {
+  const copies = [{ host: 'udrop', encryptedBlobUrl: 'https://ud.example/b.bin', encryptedBlobFileId: '9' }];
+  assert.deepEqual(
+    await resolvePreviewCopies({ id: 'i-res', encryptedFileName: '' }, async () => ({ copies })),
+    copies,
+  );
+  assert.equal(
+    await resolvePreviewCopies({ id: 'i-res', encryptedFileName: '' }, async () => ({})),
+    null,
+  );
+  assert.equal(
+    await resolvePreviewCopies({ id: 'i-res', encryptedFileName: '' }, async () => ({ copies: [] })),
+    null,
+  );
+});
+
+test('2.19.33 (2026-11-22): requestVaultImagePreview derives a chunked image end to end — 1 MiB parts, 480-wide JPEG', async () => {
+  clearVaultMasterKey();
+  setVaultPreviewPaused(false);
+  const stubs = installImageDomStubs({ width: 1000, height: 500 });
+  try {
+    const total = Math.floor(2.5 * 1024 * 1024);
+    const pattern = new Uint8Array(total);
+    for (let i = 0; i < total; i += 1) pattern[i] = (i * 7) % 251;
+    const { sendMessage, calls } = makeRangeMock(pattern);
+    const url = await requestVaultImagePreview(
+      { id: 'img-chunked-1', encryptedBlobUrl: 'https://ud.example/b.bin' },
+      { sendMessage },
+    );
+    assert.equal(typeof url, 'string');
+    assert.ok(url.startsWith('blob:'));
+    assert.deepEqual(calls, [[0, 1048575], [1048576, 2097151], [2097152, total - 1]]);
+    assert.equal(stubs.fakeCanvas.width, 480);
+    assert.equal(stubs.fakeCanvas.height, 240);
+    assert.deepEqual(stubs.calls.toBlob, [['image/jpeg', 0.75]]);
+  } finally {
+    stubs.restore();
+  }
+});
+
+test('2.19.33 (2026-11-22): requestVaultImagePreview decrypts a legacy blob whole (vaultDecryptBlob, unwrapped { blob })', async () => {
+  clearVaultMasterKey();
+  setVaultPreviewPaused(false);
+  const stubs = installImageDomStubs({ width: 640, height: 480 });
+  try {
+    const seen = [];
+    const legacyBytes = new Uint8Array(4096).fill(3);
+    const sendMessage = async (action, data) => {
+      seen.push(action);
+      if (action === 'vaultResolveStreamUrls') {
+        return { copies: [{ host: 'udrop', encryptedBlobUrl: 'https://ud.example/b.bin', encryptedBlobFileId: '9' }] };
+      }
+      if (action === 'vaultProbeBlobFormat') return { chunked: false };
+      if (action === 'vaultDecryptBlob') return { blob: new Blob([legacyBytes], { type: 'image/png' }) };
+      throw new Error(`unexpected action ${action}`);
+    };
+    const url = await requestVaultImagePreview(
+      { id: 'img-legacy-1', encryptedBlobUrl: 'https://ud.example/b.bin' },
+      { sendMessage },
+    );
+    assert.ok(url.startsWith('blob:'));
+    assert.ok(seen.includes('vaultDecryptBlob'));
+    assert.ok(!seen.includes('vaultFetchPlaintextRange'), 'legacy path must not range-fetch');
+    assert.equal(stubs.fakeCanvas.width, 480);
+    assert.equal(stubs.fakeCanvas.height, 360);
+  } finally {
+    stubs.restore();
+  }
+});
+
+test('2.19.33 (2026-11-22): a legacy decrypt with no blob rejects — never a fake frame', async () => {
+  clearVaultMasterKey();
+  setVaultPreviewPaused(false);
+  const sendMessage = async (action) => {
+    if (action === 'vaultResolveStreamUrls') {
+      return { copies: [{ host: 'udrop', encryptedBlobUrl: 'https://ud.example/b.bin', encryptedBlobFileId: '9' }] };
+    }
+    if (action === 'vaultProbeBlobFormat') return { chunked: false };
+    if (action === 'vaultDecryptBlob') return {};
+    throw new Error(`unexpected action ${action}`);
+  };
+  await assert.rejects(
+    () => requestVaultImagePreview({ id: 'img-legacy-empty', encryptedBlobUrl: 'https://ud.example/b.bin' }, { sendMessage }),
+    /no bytes/,
+  );
+});
+
+test('2.19.33 (2026-11-22): an oversize image rejects BEFORE any range fetch (memory bound, loud)', async () => {
+  clearVaultMasterKey();
+  setVaultPreviewPaused(false);
+  let rangeCalls = 0;
+  const sendMessage = async (action) => {
+    if (action === 'vaultResolveStreamUrls') {
+      return { copies: [{ host: 'udrop', encryptedBlobUrl: 'https://ud.example/b.bin', encryptedBlobFileId: '9' }] };
+    }
+    if (action === 'vaultProbeBlobFormat') return { chunked: true, total: 65 * 1024 * 1024, chunkSize: 8 * 1024 * 1024 };
+    if (action === 'vaultFetchPlaintextRange') { rangeCalls += 1; return new Uint8Array(0); }
+    throw new Error(`unexpected action ${action}`);
+  };
+  await assert.rejects(
+    () => requestVaultImagePreview({ id: 'img-huge', encryptedBlobUrl: 'https://ud.example/b.bin' }, { sendMessage }),
+    /too large to thumbnail/,
+  );
+  assert.equal(rangeCalls, 0);
+});
+
+test('2.19.33 (2026-11-22): an unresolvable copy rejects loudly (no stale-URL read)', async () => {
+  clearVaultMasterKey();
+  setVaultPreviewPaused(false);
+  const sendMessage = async (action) => {
+    if (action === 'vaultResolveStreamUrls') return {};
+    throw new Error(`unexpected action ${action}`);
+  };
+  await assert.rejects(
+    () => requestVaultImagePreview({ id: 'img-nocopy', encryptedBlobUrl: 'https://ud.example/b.bin' }, { sendMessage }),
+    /no readable copy/,
+  );
+});
+
+test('2.19.33 (2026-11-22): the image derivation reads decrypted?.blob — NOT result.success (useChromeMessage unwraps .data)', () => {
+  const pv = preview();
+  const imageFn = pv.slice(pv.indexOf('async function runImageExtraction'));
+  assert.ok(imageFn.includes("const decrypted = await sendMessage('vaultDecryptBlob', {"));
+  assert.ok(imageFn.includes('const blob = decrypted?.blob;'));
+  assert.ok(!imageFn.includes('result.success'), 'image path checks result.success — the unwrapped response has no success field (see the modal bug in AGENTS.md)');
+  assert.ok(pv.includes('const IMAGE_PREVIEW_MAX_BYTES = 64 * 1024 * 1024;'));
+  assert.ok(pv.includes('export function requestVaultImagePreview(item, { sendMessage }) {'));
+  assert.ok(pv.includes('export async function resolvePreviewCopies(item, sendMessage) {'));
+});
+
+test('2.19.33 (2026-11-22): the vault grid renders encrypted images through VaultEncryptedImageThumb (same states as video)', () => {
+  const vault = src('../src/pages/VaultPage.jsx');
+  assert.ok(vault.includes('function VaultEncryptedImageThumb({ item, sendMessage, paused }) {'));
+  assert.ok(vault.includes("const next = await requestVaultImagePreview(item, { sendMessage });"));
+  // Same user-visible strings as the video card — symmetry, one vocabulary.
+  const imageCard = vault.slice(vault.indexOf('function VaultEncryptedImageThumb'));
+  assert.ok(imageCard.includes('deriving preview'));
+  assert.ok(imageCard.includes('preview unavailable'));
+  assert.ok(imageCard.includes('object-contain'), 'image thumbnail crops with object-cover — a photo must not be cropped to fit');
+  // Wired: the encrypted branch sends Image items to the image thumb (before
+  // 2.19.33 every non-Video encrypted item fell through to the static lock).
+  const branch = vault.slice(vault.indexOf('{item.encryptedBlobUrl ? ('));
+  assert.ok(branch.includes("kind === 'Image' ? ("));
+  assert.ok(branch.includes('<VaultEncryptedImageThumb item={item} sendMessage={sendMessage} paused={Boolean(selectedItem)} />'));
+  assert.ok(vault.includes("import { requestVaultPreview, requestVaultImagePreview, getCachedVaultPreview, setVaultPreviewPaused, resolvePreviewCopies } from '../utils/vaultPreview.js';"));
+});
+
+test('2.19.33 (2026-11-22): Warm previews covers encrypted images too, not just videos', () => {
+  const vault = src('../src/pages/VaultPage.jsx');
+  assert.ok(vault.includes("const isEncryptedImageItem = (item) => Boolean(item?.encryptedBlobUrl) && getMediaItemKind(item) === 'image';"));
+  const warm = vault.slice(vault.indexOf('const warmAllPreviews'));
+  assert.ok(warm.includes('isEncryptedVideoItem(item) || isEncryptedImageItem(item)'));
+  assert.ok(warm.includes('await requestVaultImagePreview(item, { sendMessage });'));
+  assert.ok(warm.includes("showToast('All previews are already cached.', 'info');"));
+  assert.ok(!warm.includes('All video previews are already cached.'), 'warm toast still says videos only');
+});
+
+test('2.19.33 (2026-11-22): the vault upload captures an image snapshot from the plaintext blob before encryption — non-fatal', () => {
+  const gallery = src('../src/pages/GalleryPage.jsx');
+  const vaultFn = gallery.slice(gallery.indexOf('const uploadVaultedDirectly'));
+  const captureAt = vaultFn.indexOf('vaultSnapshotBlob = await captureImageSnapshotBlob(blob);');
+  assert.ok(captureAt > 0, 'vault path never captures an image snapshot');
+  assert.ok(vaultFn.slice(0, captureAt).includes("else if (kind === 'image'"), 'image snapshot is not gated to kind image');
+  assert.ok(vaultFn.indexOf('// 1) Encrypt with chunked progress') > captureAt, 'image snapshot is captured AFTER encryption — too late, only ciphertext exists then');
+  const catchBlock = vaultFn.slice(captureAt, captureAt + 400);
+  assert.ok(catchBlock.includes('catch (snapErr)'), 'image snapshot capture has no catch — a failure would kill the upload');
+  assert.ok(catchBlock.includes('Vault preview snapshot skipped'), 'image snapshot failure is not named in the warning');
+  assert.ok(gallery.includes("import { captureImageSnapshotBlob } from '../utils/imageSnapshot.js';"), 'captureImageSnapshotBlob is not imported in GalleryPage');
+  // The persist block is kind-agnostic: the same vaultSnapshotBlob variable
+  // feeds the vault-preview-<id> local + remote writes for video and image.
+  assert.ok(vaultFn.includes('setCachedThumb(`vault-preview-${saved.id}`, vaultSnapshotBlob)'));
 });
