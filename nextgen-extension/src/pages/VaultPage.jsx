@@ -291,6 +291,19 @@ export default function VaultPage() {
   const [streamResolving, setStreamResolving] = useState({}); // itemId -> bool (pre-resolving fresh dlinks)
   const [freshStreamCopies, setFreshStreamCopies] = useState({}); // itemId -> fresh copies with fresh:true
 
+  // Vault media kind for LABELS (2.19.35): video and audio genuinely stream
+  // (the SW serves decrypted bytes to a <video>/<audio> element), images do
+  // not — an <img> just loads. The modal's loading/error labels must match
+  // the element that will render: never say "stream" for an image. Same
+  // classification renderVaultMedia uses to pick the element, factored here
+  // so the label and the element can never disagree.
+  const getVaultMediaKind = (item) => {
+    const isAudio = Boolean(item?.isAudio || item?._decryptedMeta?.isAudio || item?._decryptedMeta?.kind === 'audio' || String(item?.encryptedMimeType || '').startsWith('audio/'));
+    if (isAudio) return 'audio';
+    const isVideo = Boolean(item?.isVideo || item?._decryptedMeta?.isVideo || String(item?.encryptedMimeType || '').startsWith('video/'));
+    return isVideo ? 'video' : 'image';
+  };
+
   // Pre-resolve fresh signed download URLs for a chunked item BEFORE the video
   // element mounts. TeraBox's dlink resolve (hidden-tab jsToken + full root
   // folder list + filemetas) can take 30s+ — it must NEVER run inside the SW's
@@ -311,7 +324,9 @@ export default function VaultPage() {
         fileName: item.encryptedFileName || '',
       });
       if (!res?.copies || !Array.isArray(res.copies) || res.copies.length === 0) {
-        throw new Error('Failed to resolve stream link');
+        // This message surfaces as the detail text under the modal error
+        // heading — an image must never read "stream link" (2.19.35).
+        throw new Error(getVaultMediaKind(item) === 'image' ? 'Failed to resolve image link' : 'Failed to resolve stream link');
       }
       setFreshStreamCopies((prev) => ({ ...prev, [item.id]: res.copies }));
       return res.copies;
@@ -1208,8 +1223,9 @@ export default function VaultPage() {
     const isEncrypted = Boolean(item?.encryptedBlobUrl);
     if (isEncrypted) {
       // songs were vaulted with kind 'audio' - they play in an <audio> element
-      const isAudio = Boolean(item.isAudio || item._decryptedMeta?.isAudio || item._decryptedMeta?.kind === 'audio' || String(item.encryptedMimeType || '').startsWith('audio/'));
-      const isVideo = !isAudio && Boolean(item.isVideo || item._decryptedMeta?.isVideo || String(item.encryptedMimeType || '').startsWith('video/'));
+      const mediaKind = getVaultMediaKind(item);
+      const isAudio = mediaKind === 'audio';
+      const isVideo = mediaKind === 'video';
       // Chunked (IVG1) blobs stream through the SW endpoint; legacy
       // single-shot blobs use the fully-decrypted object URL.
       const fmt = streamFormat[item.id];
@@ -1223,7 +1239,7 @@ export default function VaultPage() {
           <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 flex items-center justify-center bg-base-200 transition-all duration-700 ease-out ${animCls}`}>
             <div className="text-center text-base-content/50">
               <Loader2 className="mx-auto mb-3 h-12 w-12 animate-spin" />
-              <p className="text-sm">Resolving stream link...</p>
+              <p className="text-sm">{mediaKind === 'image' ? 'Loading image...' : 'Resolving stream link...'}</p>
             </div>
           </div>
         );
@@ -1233,7 +1249,7 @@ export default function VaultPage() {
           <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 flex items-center justify-center bg-base-200 transition-all duration-700 ease-out ${animCls}`}>
             <div className="text-center text-base-content/70 max-w-sm px-4">
               <AlertTriangle className="mx-auto mb-3 h-12 w-12 text-warning" />
-              <p className="text-sm font-medium mb-1">Stream unavailable</p>
+              <p className="text-sm font-medium mb-1">{mediaKind === 'image' ? 'Image unavailable' : 'Stream unavailable'}</p>
               <p className="text-xs break-words">{fmt.error}</p>
             </div>
           </div>

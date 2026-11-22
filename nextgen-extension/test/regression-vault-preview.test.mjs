@@ -596,3 +596,73 @@ test('2.19.34 (2026-11-22): decryptLegacyVaultBlob lets a rejected sendMessage t
   const sendMessage = async () => { throw new Error('vault locked'); };
   await assert.rejects(() => decryptLegacyVaultBlob(sendMessage, legacyParams), /vault locked/);
 });
+
+// ------------------------------------------- 2.19.35 image loading labels ---
+
+// FIXED in 2.19.35. User report (2026-11-22): opening a vault IMAGE showed
+// "Resolving stream link..." while it loaded — images have no stream, they
+// are decrypted and loaded. The grid card was innocent (it says "deriving
+// preview"); the leak was the detail modal's renderVaultMedia, whose
+// resolving + error labels were kind-agnostic: every encrypted item,
+// image included, read "Resolving stream link..." / "Stream unavailable"
+// during the terabox dlink resolve (up to 30s+). The modal now classifies
+// the item with getVaultMediaKind — the SAME classification that picks the
+// <video>/<audio>/<img> element, so the label and the element can never
+// disagree — and images get "Loading image..." / "Image unavailable".
+// Video and audio wording is byte-identical (they genuinely stream).
+
+test('2.19.35 (2026-11-22): the modal resolving label is kind-aware — images load, videos/audio resolve a stream link', () => {
+  const vault = src('../src/pages/VaultPage.jsx');
+  const media = vault.slice(vault.indexOf('const renderVaultMedia'));
+  assert.ok(media.includes("{mediaKind === 'image' ? 'Loading image...' : 'Resolving stream link...'}"), 'resolving label is not kind-aware');
+});
+
+test('2.19.35 (2026-11-22): the modal error heading is kind-aware — "Image unavailable" for images, "Stream unavailable" kept for video/audio', () => {
+  const vault = src('../src/pages/VaultPage.jsx');
+  const media = vault.slice(vault.indexOf('const renderVaultMedia'));
+  assert.ok(media.includes("{mediaKind === 'image' ? 'Image unavailable' : 'Stream unavailable'}"), 'error heading is not kind-aware');
+});
+
+test('2.19.35 (2026-11-22): the resolve-failure detail is kind-aware — it surfaces under the modal heading, so an image must never read "stream link"', () => {
+  const vault = src('../src/pages/VaultPage.jsx');
+  const resolve = vault.slice(vault.indexOf('const ensureStreamResolved'));
+  assert.ok(resolve.includes("getVaultMediaKind(item) === 'image' ? 'Failed to resolve image link' : 'Failed to resolve stream link'"), 'resolve failure message is not kind-aware');
+});
+
+test('2.19.35 (2026-11-22): the modal labels and the rendered element share one classification — getVaultMediaKind, audio checked before video', () => {
+  const vault = src('../src/pages/VaultPage.jsx');
+  const helperAt = vault.indexOf('const getVaultMediaKind');
+  assert.ok(helperAt > 0, 'getVaultMediaKind is missing');
+  const helper = vault.slice(helperAt, vault.indexOf('};', helperAt));
+  // Songs were vaulted with kind 'audio' — the audio check must come first,
+  // exactly like the classification renderVaultMedia used to inline.
+  assert.ok(helper.indexOf("return 'audio'") > 0 && helper.indexOf("return 'audio'") < helper.indexOf("return isVideo ? 'video' : 'image'"), 'audio is not classified before video');
+  const media = vault.slice(vault.indexOf('const renderVaultMedia'));
+  assert.ok(media.includes('const mediaKind = getVaultMediaKind(item);'), 'renderVaultMedia does not use the shared classifier');
+  assert.ok(media.includes('const isAudio = mediaKind === \'audio\';'), 'isAudio is not derived from the shared classifier');
+  assert.ok(media.includes('const isVideo = mediaKind === \'video\';'), 'isVideo is not derived from the shared classifier');
+});
+
+test('2.19.35 (2026-11-22): the grid image card contains NO "stream" wording anywhere — it derives, it never streams', () => {
+  const vault = src('../src/pages/VaultPage.jsx');
+  const thumb = vault.slice(vault.indexOf('function VaultEncryptedImageThumb'), vault.indexOf('export default function VaultPage'));
+  assert.ok(thumb.length > 0, 'VaultEncryptedImageThumb not found');
+  assert.ok(!/stream/i.test(thumb), 'image thumb component mentions "stream"');
+});
+
+test('2.19.35 (2026-11-22): the grid image card keeps exactly one loading label — "deriving preview"; the modal label never leaks into the card', () => {
+  const vault = src('../src/pages/VaultPage.jsx');
+  const thumb = vault.slice(vault.indexOf('function VaultEncryptedImageThumb'), vault.indexOf('export default function VaultPage'));
+  assert.equal((thumb.match(/deriving preview/g) || []).length, 1, 'image card does not have exactly one "deriving preview" label');
+  assert.ok(!thumb.includes('Loading image...'), 'modal loading label leaked into the grid card');
+});
+
+test('2.19.35 (2026-11-22): the image derivation errors never mention "stream" — no stream wording on any image path', () => {
+  const pv = preview();
+  const imageFn = pv.slice(pv.indexOf('async function runImageExtraction'), pv.indexOf('export function requestVaultImagePreview'));
+  assert.ok(imageFn.length > 0, 'runImageExtraction not found');
+  // The 'application/octet-stream' MIME fallback is a technical constant,
+  // not a label — exclude it before checking.
+  const withoutMime = imageFn.replaceAll('application/octet-stream', '');
+  assert.ok(!/stream/i.test(withoutMime), 'image derivation mentions "stream"');
+});
