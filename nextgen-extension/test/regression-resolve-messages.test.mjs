@@ -216,3 +216,41 @@ test('2.16.4/2.19.8 (2026-10/11): the duplicate finder skips the resumed row (ex
   assert.ok(fn.includes("const targetSha256 = String(target.sha256 || '').trim().toLowerCase();"));
   assert.ok(fn.includes('String(item.sha256).trim().toLowerCase() === targetSha256;'));
 });
+
+// ---------------------------------------------------------- 2.19.34 ---
+
+// FIXED in 2.19.34 — the second instance of the 2.12.12 unwrap trap. The
+// detail modal's legacy decrypt check read `result.success` on the
+// UNWRAPPED sendMessage value and threw 'Decrypt failed' for every legacy
+// blob even when the decrypt succeeded. The modal now goes through the
+// shared `decryptLegacyVaultBlob` helper (vaultPreview.js), which reads
+// `decrypted?.blob` directly. The SW response shape is unchanged.
+
+test('2.19.34 (2026-11-22): the detail modal decrypts legacy blobs through decryptLegacyVaultBlob — no .success/.data reads on the unwrapped value', () => {
+  const page = vaultPage();
+  assert.ok(page.includes('decryptLegacyVaultBlob } from \'../utils/vaultPreview.js\';'), 'decryptLegacyVaultBlob is not imported in VaultPage');
+  const block = page.slice(page.indexOf('const blob = await decryptLegacyVaultBlob(sendMessage, {'));
+  assert.ok(block.length > 0, 'the modal never calls decryptLegacyVaultBlob');
+  const modalBlock = block.slice(0, 900);
+  assert.ok(modalBlock.includes('URL.createObjectURL(blob)'), 'the modal does not build the object URL from the helper result');
+  // The old bug, pinned gone: no .success / .data reads anywhere in the
+  // modal decrypt block (failures reject from the hook instead).
+  assert.ok(!modalBlock.includes('.success'), 'the modal still reads .success on an unwrapped value');
+  assert.ok(!modalBlock.includes('.data'), 'the modal still reads .data on an unwrapped value');
+  assert.ok(!page.includes("sendMessage('vaultDecryptBlob'"), 'VaultPage still calls vaultDecryptBlob directly instead of the helper');
+});
+
+test('2.19.34 (2026-11-22): the SW still answers vaultDecryptBlob as { success, data: { blob } } — the fix is caller-side only', () => {
+  const bg = background();
+  const branch = bg.slice(bg.indexOf("case 'vaultDecryptBlob':"));
+  assert.ok(branch.includes('.then((blob) => sendResponse({ success: true, data: { blob } }))'));
+  assert.ok(branch.includes(".catch(error => sendResponse({ success: false, error: error.message }));"));
+});
+
+test('2.19.34 (2026-11-22): useChromeMessage unwraps .data on success and rejects on failure — the contract the modal relies on', () => {
+  const hook = hooks();
+  assert.ok(hook.includes('} else if (response?.success) {'));
+  assert.ok(hook.includes('resolve(response.data);'));
+  assert.ok(hook.includes("const error = new Error(response?.error || 'Unknown error');"));
+  assert.ok(hook.includes('reject(error);'));
+});

@@ -15,7 +15,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { preferredPreviewCopies, setVaultPreviewPaused, persistRemoteVaultPreview, fetchPlaintextRange, resolvePreviewCopies, requestVaultImagePreview } from '../src/utils/vaultPreview.js';
+import { preferredPreviewCopies, setVaultPreviewPaused, persistRemoteVaultPreview, fetchPlaintextRange, resolvePreviewCopies, requestVaultImagePreview, decryptLegacyVaultBlob } from '../src/utils/vaultPreview.js';
 import { getCachedThumb } from '../src/utils/thumbCache.js';
 import { setVaultMasterKey, clearVaultMasterKey } from '../src/utils/vaultSession.js';
 import { createVaultConfig, unwrapMasterKey, decryptPreviewBytes } from '../../packages/shared/vaultCrypto.js';
@@ -479,10 +479,16 @@ test('2.19.33 (2026-11-22): an unresolvable copy rejects loudly (no stale-URL re
 
 test('2.19.33 (2026-11-22): the image derivation reads decrypted?.blob — NOT result.success (useChromeMessage unwraps .data)', () => {
   const pv = preview();
+  // 2.19.34: the decrypt step is the shared decryptLegacyVaultBlob helper
+  // (the detail modal uses it too) — the derivation calls it, the helper
+  // reads decrypted?.blob directly.
   const imageFn = pv.slice(pv.indexOf('async function runImageExtraction'));
-  assert.ok(imageFn.includes("const decrypted = await sendMessage('vaultDecryptBlob', {"));
-  assert.ok(imageFn.includes('const blob = decrypted?.blob;'));
+  assert.ok(imageFn.includes('const blob = await decryptLegacyVaultBlob(sendMessage, {'));
+  assert.ok(!imageFn.includes("sendMessage('vaultDecryptBlob'"), 'image path calls vaultDecryptBlob directly instead of the shared helper');
   assert.ok(!imageFn.includes('result.success'), 'image path checks result.success — the unwrapped response has no success field (see the modal bug in AGENTS.md)');
+  const helper = pv.slice(pv.indexOf('export async function decryptLegacyVaultBlob'));
+  assert.ok(helper.includes("const decrypted = await sendMessage('vaultDecryptBlob', {"));
+  assert.ok(helper.includes('const blob = decrypted?.blob;'));
   assert.ok(pv.includes('const IMAGE_PREVIEW_MAX_BYTES = 64 * 1024 * 1024;'));
   assert.ok(pv.includes('export function requestVaultImagePreview(item, { sendMessage }) {'));
   assert.ok(pv.includes('export async function resolvePreviewCopies(item, sendMessage) {'));
@@ -502,7 +508,9 @@ test('2.19.33 (2026-11-22): the vault grid renders encrypted images through Vaul
   const branch = vault.slice(vault.indexOf('{item.encryptedBlobUrl ? ('));
   assert.ok(branch.includes("kind === 'Image' ? ("));
   assert.ok(branch.includes('<VaultEncryptedImageThumb item={item} sendMessage={sendMessage} paused={Boolean(selectedItem)} />'));
-  assert.ok(vault.includes("import { requestVaultPreview, requestVaultImagePreview, getCachedVaultPreview, setVaultPreviewPaused, resolvePreviewCopies } from '../utils/vaultPreview.js';"));
+  // (the import grew in 2.19.34: decryptLegacyVaultBlob is the shared
+  // legacy-decrypt helper the detail modal uses too.)
+  assert.ok(vault.includes("import { requestVaultPreview, requestVaultImagePreview, getCachedVaultPreview, setVaultPreviewPaused, resolvePreviewCopies, decryptLegacyVaultBlob } from '../utils/vaultPreview.js';"));
 });
 
 test('2.19.33 (2026-11-22): Warm previews covers encrypted images too, not just videos', () => {
@@ -529,4 +537,62 @@ test('2.19.33 (2026-11-22): the vault upload captures an image snapshot from the
   // The persist block is kind-agnostic: the same vaultSnapshotBlob variable
   // feeds the vault-preview-<id> local + remote writes for video and image.
   assert.ok(vaultFn.includes('setCachedThumb(`vault-preview-${saved.id}`, vaultSnapshotBlob)'));
+});
+
+// ------------------------------------------- 2.19.34 legacy decrypt fix ---
+
+// FIXED in 2.19.34. The detail modal's legacy decrypt check read
+// `result.success` on the UNWRAPPED sendMessage value — useChromeMessage
+// resolves with response.data, so the value is `{ blob }` with no
+// `.success` field, and the modal threw 'Decrypt failed' for EVERY legacy
+// blob even when the decrypt succeeded. Legacy blobs are rare
+// (pre-chunking single-shot, vaulted before IVG1 landed in 2.12.8), so it
+// went unnoticed. The decrypt step is now the shared helper
+// `decryptLegacyVaultBlob` (used by the modal AND the image derivation),
+// which reads `decrypted?.blob` directly. The SW response shape is
+// unchanged — the caller was fixed, not the contract.
+
+const legacyParams = {
+  id: 'legacy-1',
+  url: 'https://ud.example/b.bin',
+  fileId: '9',
+  chunks: [],
+  mimeType: 'image/png',
+  vaultHost: 'udrop',
+  hostCopies: [{ host: 'udrop', encryptedBlobUrl: 'https://ud.example/b.bin', encryptedBlobFileId: '9' }],
+};
+
+test('2.19.34 (2026-11-22): decryptLegacyVaultBlob returns the blob from an unwrapped { blob } value — no .success field anywhere', async () => {
+  const bytes = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
+  const seen = [];
+  const sendMessage = async (action, data) => {
+    seen.push([action, data]);
+    // Exactly what useChromeMessage resolves with: response.data, no
+    // success/error wrapper. The old modal check read .success off this
+    // and always threw.
+    return { blob: new Blob([bytes], { type: 'image/png' }) };
+  };
+  const blob = await decryptLegacyVaultBlob(sendMessage, legacyParams);
+  assert.ok(blob instanceof Blob);
+  assert.equal(blob.size, bytes.length);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0][0], 'vaultDecryptBlob');
+  assert.equal(seen[0][1].id, 'legacy-1');
+  assert.equal(seen[0][1].vaultHost, 'udrop');
+  assert.deepEqual(await new Uint8Array(await blob.arrayBuffer()), bytes);
+});
+
+test('2.19.34 (2026-11-22): decryptLegacyVaultBlob throws loudly when the decrypt resolves with no blob — never a silently empty decrypt', async () => {
+  const sendMessage = async () => ({});
+  await assert.rejects(() => decryptLegacyVaultBlob(sendMessage, legacyParams), /no bytes/);
+});
+
+test('2.19.34 (2026-11-22): decryptLegacyVaultBlob throws loudly on an empty blob', async () => {
+  const sendMessage = async () => ({ blob: new Blob([], { type: 'image/png' }) });
+  await assert.rejects(() => decryptLegacyVaultBlob(sendMessage, legacyParams), /no bytes/);
+});
+
+test('2.19.34 (2026-11-22): decryptLegacyVaultBlob lets a rejected sendMessage through — the real SW error surfaces, not a generic failure', async () => {
+  const sendMessage = async () => { throw new Error('vault locked'); };
+  await assert.rejects(() => decryptLegacyVaultBlob(sendMessage, legacyParams), /vault locked/);
 });

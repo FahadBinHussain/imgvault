@@ -54,7 +54,7 @@ import {
   clearVaultMasterKey,
   importMasterKeyFromB64,
 } from '../utils/vaultSession.js';
-import { requestVaultPreview, requestVaultImagePreview, getCachedVaultPreview, setVaultPreviewPaused, resolvePreviewCopies } from '../utils/vaultPreview.js';
+import { requestVaultPreview, requestVaultImagePreview, getCachedVaultPreview, setVaultPreviewPaused, resolvePreviewCopies, decryptLegacyVaultBlob } from '../utils/vaultPreview.js';
 import { deleteCachedThumb } from '../utils/thumbCache.js';
 
 const VAULT_CONFIG_KEY = 'secretVaultConfig';
@@ -462,7 +462,7 @@ export default function VaultPage() {
           return;
         }
         setStreamFormat((prev) => ({ ...prev, [selectedItem.id]: { chunked: false } }));
-        const result = await sendMessage('vaultDecryptBlob', {
+        const blob = await decryptLegacyVaultBlob(sendMessage, {
           id: selectedItem.id,
           url: (freshCopies?.[0]?.encryptedBlobUrl) || selectedItem.encryptedBlobUrl,
           fileId: (freshCopies?.[0]?.encryptedBlobFileId) || selectedItem.encryptedBlobFileId || '',
@@ -472,8 +472,7 @@ export default function VaultPage() {
           hostCopies: probeCopies,
         });
         if (cancelled) return;
-        if (!result.success || !result.data?.blob) throw new Error(result.error || 'Decrypt failed');
-        const url = URL.createObjectURL(result.data.blob);
+        const url = URL.createObjectURL(blob);
         if (!cancelled) setDecryptedUrls((prev) => ({ ...prev, [selectedItem.id]: url }));
       } catch (e) {
         console.warn('[Vault] decrypt blob failed:', e.message);

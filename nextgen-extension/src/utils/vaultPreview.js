@@ -686,6 +686,31 @@ export async function resolvePreviewCopies(item, sendMessage) {
 }
 
 /**
+ * Full-decrypt a legacy (non-chunked) vault blob via the service worker.
+ * Shared by the detail modal (VaultPage.jsx) and the image derivation
+ * below — both used to call vaultDecryptBlob inline.
+ *
+ * NOTE on the response shape: useChromeMessage UNWRAPS .data, so the
+ * resolved value is `{ blob }` — NOT `{ success, data }`. Reading
+ * `result.success` on it is always-failed (2.19.34: the detail modal did
+ * exactly that and threw 'Decrypt failed' for every legacy blob even
+ * when the decrypt succeeded). Failures reject from the hook; a resolved
+ * value with no usable blob throws loudly here — never a silently empty
+ * decrypt.
+ * @returns {Promise<Blob>} the decrypted plaintext blob
+ */
+export async function decryptLegacyVaultBlob(sendMessage, { id, url, fileId, chunks, mimeType, vaultHost, hostCopies }) {
+  const decrypted = await sendMessage('vaultDecryptBlob', {
+    id, url, fileId, chunks, mimeType, vaultHost, hostCopies,
+  });
+  const blob = decrypted?.blob;
+  if (!blob || !(blob instanceof Blob) || blob.size === 0) {
+    throw new Error('legacy decrypt returned no bytes');
+  }
+  return blob;
+}
+
+/**
  * Extract (or reuse) a thumbnail for an encrypted vault video.
  * Deduped per item, serialized through a per-host concurrency queue.
  * @param {object} item vault item with encryptedBlobUrl
@@ -718,10 +743,11 @@ export function requestVaultPreview(item, { getStreamUrl, sendMessage }) {
  * exactly like the detail modal does (vaultDecryptBlob).
  *
  * NOTE on the vaultDecryptBlob response: useChromeMessage UNWRAPS .data, so
- * the resolved value is `{ blob }` — NOT `{ success, data }`. The detail
- * modal checks result.success on the unwrapped value (VaultPage.jsx), which
- * reads as always-failed; this derivation reads `decrypted?.blob` directly.
- * See AGENTS.md (2.19.33) — the modal check needs its own fix.
+ * the resolved value is `{ blob }` — NOT `{ success, data }`. Both this
+ * derivation and the detail modal go through `decryptLegacyVaultBlob`
+ * (2.19.34), which reads `decrypted?.blob` directly — the modal used to
+ * check `result.success` on the unwrapped value and threw 'Decrypt failed'
+ * for every legacy blob even when the decrypt succeeded.
  */
 async function runImageExtraction(item, sendMessage) {
   const key = previewKey(item);
@@ -768,7 +794,7 @@ async function runImageExtraction(item, sendMessage) {
     if (Number.isFinite(item.fileSize) && item.fileSize > IMAGE_PREVIEW_MAX_BYTES) {
       throw new Error(`image too large to thumbnail in memory (${item.fileSize}B > ${IMAGE_PREVIEW_MAX_BYTES}B)`);
     }
-    const decrypted = await sendMessage('vaultDecryptBlob', {
+    const blob = await decryptLegacyVaultBlob(sendMessage, {
       id: item.id,
       url: copies[0]?.encryptedBlobUrl || item.encryptedBlobUrl,
       fileId: copies[0]?.encryptedBlobFileId || item.encryptedBlobFileId || '',
@@ -777,10 +803,6 @@ async function runImageExtraction(item, sendMessage) {
       vaultHost: copies[0]?.host || item.vaultHost || 'udrop',
       hostCopies: copies,
     });
-    const blob = decrypted?.blob;
-    if (!blob || !(blob instanceof Blob) || blob.size === 0) {
-      throw new Error('legacy decrypt returned no bytes');
-    }
     plainBytes = new Uint8Array(await blob.arrayBuffer());
   }
   if (!plainBytes || !plainBytes.length) throw new Error('plaintext fetch returned no bytes');
