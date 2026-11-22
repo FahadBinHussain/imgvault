@@ -12,11 +12,14 @@ import {
   checkTelegramSceneIntegrity,
   deleteNativeTempFile,
   deleteTelegramMessage,
+  downloadTelegramFileNative,
   fetchTelegramFile,
   formatBytesForError,
   getTelegramFileInfo,
+  isNativeTelegramFileId,
   isNumericTelegramChannel,
   listTelegramPosts,
+  nativeTelegramMessageId,
   probeNativeHost,
   scrapeTelegramPostMedia,
   scrapeTelegramPostUrl,
@@ -896,6 +899,105 @@ describe('stageBlobForNativeUpload', () => {
     );
     // the abort fires before the start request, so no staged path exists yet
     assert.deepEqual(deleted, []);
+  });
+});
+
+describe('native telegram file ids (2.19.31)', () => {
+  test('isNativeTelegramFileId matches the native- prefix only', () => {
+    assert.equal(isNativeTelegramFileId('native-619'), true);
+    assert.equal(isNativeTelegramFileId('native-'), true);
+    assert.equal(isNativeTelegramFileId('BAACAgIAAxkBAAI...'), false);
+    assert.equal(isNativeTelegramFileId(''), false);
+    assert.equal(isNativeTelegramFileId(null), false);
+  });
+  test('nativeTelegramMessageId strips the prefix, digits only', () => {
+    assert.equal(nativeTelegramMessageId('native-619'), '619');
+    assert.equal(nativeTelegramMessageId('native-619 '), '619');
+    assert.equal(nativeTelegramMessageId('native-abc'), '');
+    assert.equal(nativeTelegramMessageId('native-'), '');
+    assert.equal(nativeTelegramMessageId('BAACAgIAAxkBAAI...'), '');
+    assert.equal(nativeTelegramMessageId(''), '');
+  });
+});
+
+describe('downloadTelegramFileNative (2.19.31)', () => {
+  const toB64 = (bytes) => Buffer.from(bytes).toString('base64');
+  // The host forwards each DATA line as its own message, then a complete
+  // message whose stdout carries the RESULT json — the fake port answers
+  // with the whole array, in order, on the next tick.
+  const downloadHandler = (parts, { resultLength = null, result = null, seen = null } = {}) => (message) => {
+    seen?.push(message);
+    assert.equal(message.action, 'telegram_download');
+    assert.equal(message.message_id, '619');
+    assert.equal(message.channel, CHANNEL);
+    const total = resultLength ?? parts.reduce((n, p) => n + p.length, 0);
+    const stdout = result ?? JSON.stringify({ ok: true, messageId: 619, offset: 0, length: total, totalSize: 1024, fileName: 'blob.bin' });
+    return [
+      ...parts.map((part) => ({ success: true, event: 'data', line: `DATA:${toB64(part)}` })),
+      { success: true, event: 'complete', stdout },
+    ];
+  };
+
+  test('multiple DATA lines join into the exact bytes, in order', async () => {
+    const parts = [
+      new Uint8Array([0, 1, 2, 3]),
+      new Uint8Array([4, 5, 6, 7, 8, 9]),
+      new Uint8Array([10]),
+    ];
+    installNativePort(downloadHandler(parts));
+    const out = await downloadTelegramFileNative({ messageId: '619', channel: CHANNEL });
+    assert.deepEqual([...out], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+  test('offset + length are passed through to the host', async () => {
+    const seen = [];
+    const part = new Uint8Array([7, 8, 9]);
+    installNativePort(downloadHandler([part], { seen }));
+    const out = await downloadTelegramFileNative({ messageId: '619', channel: CHANNEL, offset: 4, length: 3 });
+    assert.deepEqual([...out], [7, 8, 9]);
+    assert.equal(seen[0].offset, 4);
+    assert.equal(seen[0].max_bytes, 3);
+  });
+  test('a RESULT length mismatch throws instead of returning short bytes', async () => {
+    installNativePort(downloadHandler([new Uint8Array([1, 2])], { resultLength: 5 }));
+    await assert.rejects(
+      () => downloadTelegramFileNative({ messageId: '619', channel: CHANNEL }),
+      /short: served 2 bytes, RESULT says 5/,
+    );
+  });
+  test('a failed RESULT surfaces the host error', async () => {
+    installNativePort(downloadHandler([], { result: JSON.stringify({ ok: false, error: 'message not found' }) }));
+    await assert.rejects(
+      () => downloadTelegramFileNative({ messageId: '619', channel: CHANNEL }),
+      /message not found/,
+    );
+  });
+  test('a host failure message rejects', async () => {
+    installNativePort(() => ({ success: false, event: 'complete', message: 'telegram_download.py script not found' }));
+    await assert.rejects(
+      () => downloadTelegramFileNative({ messageId: '619', channel: CHANNEL }),
+      /telegram_download\.py script not found/,
+    );
+  });
+  test('a missing message id or channel throws before connecting', async () => {
+    await assert.rejects(() => downloadTelegramFileNative({ channel: CHANNEL }), /requires a message id/);
+    await assert.rejects(() => downloadTelegramFileNative({ messageId: '619' }), /requires a valid channel/);
+  });
+  test('a negative offset or length throws before connecting', async () => {
+    installNativePort(() => { throw new Error('should not be called'); });
+    await assert.rejects(
+      () => downloadTelegramFileNative({ messageId: '619', channel: CHANNEL, offset: -1 }),
+      /offset -1 is negative/,
+    );
+    await assert.rejects(
+      () => downloadTelegramFileNative({ messageId: '619', channel: CHANNEL, length: -5 }),
+      /length -5 is negative/,
+    );
+  });
+  test('without connectNative it throws naming the runtime', async () => {
+    await assert.rejects(
+      () => downloadTelegramFileNative({ messageId: '619', channel: CHANNEL }),
+      /needs the extension runtime/,
+    );
   });
 });
 

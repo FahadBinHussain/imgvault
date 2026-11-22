@@ -234,3 +234,50 @@ test('2.12.19 (2026-09-01): the modal overview skips the raw imageHosts/videoHos
   const registry = src('../../packages/shared/mediaFieldRegistry.js');
   assert.ok(registry.includes("if (key === 'imageHosts' || key === 'videoHosts') continue;"));
 });
+
+// ------------------------------------------- native vault route (2.19.31) ---
+
+test('2.19.31 (2026-11-22): fetchVaultBlobRange reads native- telegram copies through the native host, never getFile', () => {
+  const bg = background();
+  const fn = bg.slice(bg.indexOf('async fetchVaultBlobRange('));
+  assert.ok(fn.includes("if (isNativeTelegramFileId(fileId)) {"));
+  assert.ok(fn.includes('downloadTelegramFileNative({ messageId, channel, offset: start, length: end - start + 1 })'));
+  assert.ok(fn.includes("const messageId = nativeTelegramMessageId(fileId);"));
+  // the native branch sits BEFORE the Bot API token check — a native copy
+  // needs the channel, not the bot token
+  assert.ok(fn.indexOf('isNativeTelegramFileId(fileId)') < fn.indexOf("telegram vault read needs the bot token"));
+});
+
+test('2.19.31 (2026-11-22): decryptVaultBlob downloads a native telegram copy whole through the native host BEFORE any URL fetch', () => {
+  const bg = background();
+  const fn = bg.slice(bg.indexOf('async decryptVaultBlob('));
+  const nativeBranch = fn.indexOf("isNativeTelegramFileId(candidate.fileId)");
+  assert.ok(nativeBranch > 0);
+  assert.ok(fn.includes('downloadTelegramFileNative({ messageId, channel, offset: 0, length: 0 })'));
+  // the stored URL of a native copy is a t.me post page — fetching it
+  // would return HTML and poison the blob, so the native branch must come
+  // before the first fetch(candidate.url)
+  assert.ok(nativeBranch < fn.indexOf('const resp = await fetch(candidate.url);'));
+});
+
+test('2.19.31 (2026-11-22): both vault upload paths probe the native host for over-20 MB telegram blobs and pass the answer to the gate', () => {
+  const bg = background();
+  const swFn = bg.slice(bg.indexOf('async encryptAndUploadVaultedBlob('));
+  assert.ok(swFn.includes("await this.handleNativeHostCommand('ping', {})"));
+  assert.ok(swFn.includes('assertVaultBlobHostSizes(targetHosts, encryptedBlob.size, undefined, { hasNativeHost, nativeProbeError })'));
+  assert.ok(swFn.includes('nativeAboveBytes: TELEGRAM_GETFILE_MAX_BYTES'));
+
+  const gallery = src('../src/pages/GalleryPage.jsx');
+  const pageFn = gallery.slice(gallery.indexOf('const uploadVaultedDirectly = async (uploadData) => {'));
+  assert.ok(pageFn.includes('const probe = await probeNativeHost();'));
+  assert.ok(pageFn.includes('assertVaultBlobHostSizes(vaultHostKeys, encryptedBlob.size, undefined, { hasNativeHost, nativeProbeError })'));
+  assert.ok(pageFn.includes('nativeAboveBytes: TELEGRAM_GETFILE_MAX_BYTES'));
+  assert.ok(pageFn.includes('Native host reachable — the Telegram vault copy'));
+  // the probe happens before the gate call it feeds
+  assert.ok(pageFn.indexOf('const probe = await probeNativeHost();') < pageFn.indexOf('assertVaultBlobHostSizes(vaultHostKeys'));
+});
+
+test('2.19.31 (2026-11-22): background.js imports the native telegram download helpers', () => {
+  const bg = background();
+  assert.ok(bg.includes('downloadTelegramFileNative, fetchTelegramFile, deleteTelegramMessage, isNativeTelegramFileId, nativeTelegramMessageId'));
+});

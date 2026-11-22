@@ -523,8 +523,10 @@ test('2.19.6 (2026-11-04): telegramLocalMediaUrl carries the mime on the mt quer
 
 test('2.19.22 (2026-11-18): uploaders.js stages ONLY picked files and deletes ONLY staged files', () => {
   const uploaders = src('../src/utils/uploaders.js');
-  // Native branch keys on the >50 MB size, stages when there is no disk path.
-  assert.ok(uploaders.includes('if (size > TELEGRAM_UPLOAD_MAX_BYTES)'));
+  // Native branch keys on size over the threshold — 2.19.31 routes through
+  // nativeThreshold (nativeAboveBytes when a caller lowers it, 50 MB default).
+  assert.ok(uploaders.includes('if (size > nativeThreshold)'));
+  assert.ok(uploaders.includes('? nativeAboveBytes\n      : TELEGRAM_UPLOAD_MAX_BYTES;'));
   assert.ok(uploaders.includes('let nativePath = filePath || \'\';'));
   assert.ok(uploaders.includes('const staged = !nativePath;'));
   assert.ok(uploaders.includes('nativePath = await stageBlobForNativeUpload(blob, filename, { onProgress, signal });'));

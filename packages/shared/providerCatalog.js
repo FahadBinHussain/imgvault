@@ -3,6 +3,8 @@
 // app's catalog layer — the extension binds them in nextgen-extension/src/config/providerCatalog.js;
 // the web re-exports this file as-is (web/src/lib/providerCatalog.js).
 
+import { TELEGRAM_NATIVE_MAX_BYTES } from './telegramLimits.js';
+
 const hasText = (value) => String(value || '').trim().length > 0;
 
 export const DEFAULT_IMAGE_SOURCE = 'imgbb';
@@ -119,9 +121,15 @@ export const VIDEO_UPLOAD_SERVICES = [
     threeDLabel: 'Telegram (≤ 20 MB docs)',
     // phase 3a of plan.md: the encrypted vault .bin is a document too, so the same
     // getFile gate is the vault cap (20 MB read-back, never a silent partial blob).
+    // 2.19.31: over 20 MB the copy goes through the native host (MTProto) instead
+    // of the Bot API — upload AND read both, because a Telethon-uploaded file
+    // has no Bot API file_id and getFile could never read it back anyway.
+    // vaultMaxBytes is the Bot API cap (what applies with no native host);
+    // vaultNativeMaxBytes is the MTProto cap (what applies with one).
     vaultBlobHost: true,
-    vaultLabel: 'Telegram (≤ 20 MB)',
+    vaultLabel: 'Telegram (native MTProto over 20 MB)',
     vaultMaxBytes: 20 * 1024 * 1024,
+    vaultNativeMaxBytes: TELEGRAM_NATIVE_MAX_BYTES,
     vaultCapNote: 'the Bot API only reads files back through getFile',
     // The REGULAR video path (not the vault path): an mp4 goes out as
     // sendVideo (50 MB cap), everything else as a document (20 MB getFile
@@ -237,29 +245,54 @@ export function getVaultBlobHostServices(services = VIDEO_UPLOAD_SERVICES) {
  * @param {string[]} hostKeys selected vault hosts
  * @param {number} blobSize size in bytes of the ENCRYPTED blob (not the original)
  * @param {Array} [services] catalog entries
+ * @param {{hasNativeHost?:boolean, nativeProbeError?:string}} [options] — when the
+ *   native host is reachable, telegram's cap lifts from vaultMaxBytes (20 MB Bot
+ *   API) to vaultNativeMaxBytes (2 GB MTProto); when it is not, an over-20 MB
+ *   telegram copy fails naming the native host as the requirement.
  */
-export function assertVaultBlobHostSizes(hostKeys, blobSize, services = VIDEO_UPLOAD_SERVICES) {
+export function assertVaultBlobHostSizes(hostKeys, blobSize, services = VIDEO_UPLOAD_SERVICES, options = {}) {
   const selected = new Set((hostKeys || []).map((key) => String(key || '').toLowerCase()));
+  const { hasNativeHost = false, nativeProbeError = '' } = options || {};
+  const size = Number(blobSize) || 0;
   // raw defs, not the vaultLabel-mapped list — the message states the cap itself
   const over = services.filter(
     (service) =>
       service.vaultBlobHost &&
       service.vaultMaxBytes &&
       selected.has(service.key) &&
-      Number(blobSize) > service.vaultMaxBytes
+      size > service.vaultMaxBytes
   );
   if (over.length === 0) return;
 
-  const sizeMb = (Number(blobSize) / (1024 * 1024)).toFixed(1);
-  throw new Error(
-    over
-      .map((service) =>
+  const sizeMb = (size / (1024 * 1024)).toFixed(1);
+  const failures = [];
+  for (const service of over) {
+    // A native-capable host lifts its cap when the host is reachable — the
+    // copy goes through MTProto instead of the Bot API, so the Bot API cap
+    // no longer applies. Past the native cap even MTProto cannot help.
+    if (hasNativeHost && service.vaultNativeMaxBytes) {
+      if (size <= service.vaultNativeMaxBytes) continue;
+      failures.push(
         `${service.label} cannot store this encrypted blob: ${sizeMb} MiB is over its ` +
-        `${(service.vaultMaxBytes / (1024 * 1024)).toFixed(0)} MB vault cap ` +
-        `(${service.vaultCapNote}). Unselect it in the Vault blob host picker and ` +
-        `vault to a host without the cap, or keep the original small enough to fit.`)
-      .join('\n')
-  );
+        `${(service.vaultNativeMaxBytes / (1024 * 1024 * 1024)).toFixed(0)} GB native-host (MTProto) vault cap. ` +
+        `Vault to a host without the cap, or keep the original small enough to fit.`
+      );
+      continue;
+    }
+    const nativeNote = service.vaultNativeMaxBytes
+      ? ` Blobs over ${(service.vaultMaxBytes / (1024 * 1024)).toFixed(0)} MB need the native host (MTProto upload + read)` +
+        `${nativeProbeError ? ` — native host unreachable (${nativeProbeError})` : ' — the native host was not reachable'}. ` +
+        `Start the native host, unselect ${service.label} in the Vault blob host picker and vault to a host without the cap, ` +
+        `or keep the original small enough to fit.`
+      : ` Unselect it in the Vault blob host picker and vault to a host without the cap, or keep the original small enough to fit.`;
+    failures.push(
+      `${service.label} cannot store this encrypted blob: ${sizeMb} MiB is over its ` +
+      `${(service.vaultMaxBytes / (1024 * 1024)).toFixed(0)} MB vault cap ` +
+      `(${service.vaultCapNote}).${nativeNote}`
+    );
+  }
+  if (failures.length === 0) return;
+  throw new Error(failures.join('\n'));
 }
 
 /**

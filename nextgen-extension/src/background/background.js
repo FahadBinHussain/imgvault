@@ -8,7 +8,7 @@ import { StorageManager } from '../utils/storage.js';
 import { DuplicateDetector } from '../utils/duplicate-detector.js';
 import { URLNormalizer } from '../utils/url-normalizer.js';
 import { PixvidUploader, ImgbbUploader, FilemoonUploader, UDropUploader, TeraBoxUploader, TelegramUploader } from '../utils/uploaders.js';
-import { TELEGRAM_LOCAL_MEDIA_PREFIX, fetchTelegramFile, deleteTelegramMessage } from '../utils/telegramApi.js';
+import { TELEGRAM_GETFILE_MAX_BYTES, TELEGRAM_LOCAL_MEDIA_PREFIX, downloadTelegramFileNative, fetchTelegramFile, deleteTelegramMessage, isNativeTelegramFileId, nativeTelegramMessageId } from '../utils/telegramApi.js';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig.js';
 import {
   IMAGE_UPLOAD_SERVICES,
@@ -1385,8 +1385,23 @@ class ImgVaultServiceWorker {
     const targetHosts = normalizeVaultBlobHostKeys(vaultHosts);
     // Telegram's getFile read-back caps its vault copies at 20 MB — checked on the
     // ENCRYPTED size, before any host is touched, so an over-cap selection can
-    // never leave half the copies sitting on the other accounts.
-    assertVaultBlobHostSizes(targetHosts, encryptedBlob.size);
+    // never leave half the copies sitting on the other accounts. Over 20 MB the
+    // copy goes through the native host (MTProto) instead — upload AND read both,
+    // because a Telethon-uploaded file has no Bot API file_id — so probe the host
+    // first (directly: the worker IS the native-host command route, no
+    // self-messaging needed): the answer decides whether Telegram can take it.
+    let hasNativeHost = false;
+    let nativeProbeError = '';
+    if (targetHosts.includes('telegram') && encryptedBlob.size > TELEGRAM_GETFILE_MAX_BYTES) {
+      try {
+        await this.handleNativeHostCommand('ping', {});
+        hasNativeHost = true;
+        console.log(`[VAULT] Native host reachable — the Telegram vault copy (${this.formatBytes(encryptedBlob.size)}) goes via MTProto; the Bot API only reads files back up to 20 MB.`);
+      } catch (probeError) {
+        nativeProbeError = probeError?.message || String(probeError);
+      }
+    }
+    assertVaultBlobHostSizes(targetHosts, encryptedBlob.size, undefined, { hasNativeHost, nativeProbeError });
 
     if (typeof onProgress === 'function') {
       onProgress({ loaded: 0, total: 1, percent: 50, stage: 'upload' });
@@ -1411,7 +1426,17 @@ class ImgVaultServiceWorker {
       }
       // NOTE: must use the fetch-based upload() here — XHR is not available in
       // the MV3 service worker context (uploadWithProgress uses XMLHttpRequest).
-      const result = await service.upload({ uploader, blob: encryptedBlob, settings, data: { fileName: opaqueName } });
+      // Telegram vault blobs are documents: the Bot API ceiling is the 20 MB
+      // getFile read-back cap, not the 50 MB sendVideo cap — so the native
+      // route kicks in above 20 MB for telegram only.
+      const result = await service.upload({
+        uploader,
+        blob: encryptedBlob,
+        settings,
+        data: targetHost === 'telegram'
+          ? { fileName: opaqueName, nativeAboveBytes: TELEGRAM_GETFILE_MAX_BYTES }
+          : { fileName: opaqueName },
+      });
       copies.push(buildVaultBlobCopy(targetHost, result));
     }
 
@@ -1539,7 +1564,6 @@ class ImgVaultServiceWorker {
       let lastErr;
       for (let ci = 0; ci < candidates.length; ci += 1) {
         const candidate = candidates[ci];
-        if (!candidate.url) continue;
         const served = () => {
           if (ci > 0) {
             this._noteVaultReadFallback(itemId, {
@@ -1549,6 +1573,29 @@ class ImgVaultServiceWorker {
             });
           }
         };
+        // A Telethon-uploaded Telegram copy stores `native-<messageId>` — the
+        // Bot API has no file_id for it, so the stored URL (a t.me post page)
+        // would fetch HTML, not bytes. The whole blob comes through the
+        // native host instead, BEFORE any URL is touched; a failure here
+        // falls through to the next copy like any other host failure.
+        if (String(candidate.host || '').toLowerCase() === 'telegram' && isNativeTelegramFileId(candidate.fileId)) {
+          try {
+            const messageId = nativeTelegramMessageId(candidate.fileId);
+            if (!messageId) throw new Error(`malformed native file id (${candidate.fileId}) — no message id to read`);
+            const settings = await this.getMergedVideoHostSettings();
+            const channel = String(settings?.telegramChannel || '').trim();
+            if (!channel) throw new Error('telegram vault read needs the channel in Settings → API Keys');
+            const bytes = await downloadTelegramFileNative({ messageId, channel, offset: 0, length: 0 });
+            emit(bytes.length, bytes.length, 'download');
+            served();
+            return new Blob([bytes], { type: 'application/octet-stream' });
+          } catch (err) {
+            lastErr = err;
+            failures.push(`telegram: ${err?.message || err}`);
+            continue;
+          }
+        }
+        if (!candidate.url) continue;
         // 1) stored URL first
         try {
           const resp = await fetch(candidate.url);
@@ -2262,10 +2309,22 @@ class ImgVaultServiceWorker {
         // Over 20 MB getFile itself throws naming the cap (phase 3a limit).
         if (host === 'telegram') {
           telegramSettings ??= await this.getMergedVideoHostSettings();
-          const token = String(telegramSettings?.telegramBotToken || '').trim();
           const fileId = String(copy.encryptedBlobFileId || '').trim();
-          if (!token) throw new Error('telegram vault read needs the bot token in Settings → API Keys');
           if (!fileId) throw new Error('telegram copy has no encryptedBlobFileId — cannot read the blob');
+          // A Telethon-uploaded copy stores `native-<messageId>` — the Bot API
+          // has no file_id for it and getFile could never read it back anyway
+          // (> 20 MB). The range comes through the native host instead.
+          if (isNativeTelegramFileId(fileId)) {
+            const messageId = nativeTelegramMessageId(fileId);
+            if (!messageId) throw new Error(`telegram copy has a malformed native file id (${fileId}) — no message id to read`);
+            const channel = String(telegramSettings?.telegramChannel || '').trim();
+            if (!channel) throw new Error('telegram vault read needs the channel in Settings → API Keys');
+            const nativeBytes = await downloadTelegramFileNative({ messageId, channel, offset: start, length: end - start + 1 });
+            if (copyIndex > 0) this._noteVaultReadFallback(item?.id, { host, primaryHost, failures });
+            return nativeBytes;
+          }
+          const token = String(telegramSettings?.telegramBotToken || '').trim();
+          if (!token) throw new Error('telegram vault read needs the bot token in Settings → API Keys');
           const tgResp = await fetchTelegramFile(token, fileId, { range: `bytes=${start}-${end}` });
           const tgBytes = new Uint8Array(await tgResp.arrayBuffer());
           const tgOut = tgResp.status === 206 ? tgBytes : tgBytes.slice(start, end + 1);

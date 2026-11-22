@@ -42,6 +42,9 @@ const telegramUploadOptions = (settings, data, blob, onProgress, signal) => ({
     String(data?.filePath || '').split(/[\\/]/).pop() ||
     (blob?.type?.startsWith('image/') ? 'image' : 'file'),
   mimeType: data?.mimeType || blob?.type || '',
+  // vault callers pass a lower native threshold (20 MB getFile) through
+  // data — the uploader defaults to 50 MB when it is absent.
+  ...(Number.isFinite(data?.nativeAboveBytes) ? { nativeAboveBytes: data.nativeAboveBytes } : {}),
   ...(onProgress ? { onProgress } : {}),
   ...(signal ? { signal } : {}),
 });

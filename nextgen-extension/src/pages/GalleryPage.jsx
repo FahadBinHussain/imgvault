@@ -36,7 +36,7 @@ import {
   getVideoUploadService,
 } from '../config/providerCatalog';
 import { FilemoonUploader, UDropUploader, TeraBoxUploader, TelegramUploader } from '../utils/uploaders';
-import { assertTelegramUploadSize, probeNativeHost, telegramUploadSizeCap } from '../utils/telegramApi.js';
+import { TELEGRAM_GETFILE_MAX_BYTES, assertTelegramUploadSize, probeNativeHost, telegramUploadSizeCap } from '../utils/telegramApi.js';
 import { encryptBlob, encryptMetadata } from '../utils/vaultCrypto.js';
 import { getVaultMasterKey, importMasterKeyFromB64 } from '../utils/vaultSession.js';
 import { getPreferredImageProviderLink, getPlayableImageProviderLink, getImageProviderLabel } from '../utils/imageProviderLinks';
@@ -2013,8 +2013,21 @@ export default function GalleryPage() {
       const vaultHostKeys = normalizeVaultBlobHostKeys(stored?.selectedVaultHostKeys);
       // Telegram vault copies stop at the getFile 20 MB read-back cap — checked on
       // the ENCRYPTED size before the first host is touched, so an over-cap
-      // selection never leaves half the copies uploaded.
-      assertVaultBlobHostSizes(vaultHostKeys, encryptedBlob.size);
+      // selection never leaves half the copies uploaded. Over 20 MB the copy
+      // goes through the native host (MTProto) instead — upload AND read both,
+      // because a Telethon-uploaded file has no Bot API file_id — so probe the
+      // host first: the answer decides whether Telegram can take this blob.
+      let hasNativeHost = false;
+      let nativeProbeError = '';
+      if (vaultHostKeys.includes('telegram') && encryptedBlob.size > TELEGRAM_GETFILE_MAX_BYTES) {
+        const probe = await probeNativeHost();
+        hasNativeHost = probe.ok;
+        nativeProbeError = probe.ok ? '' : (probe.error || 'unknown error');
+        if (probe.ok) {
+          await appendClientUploadLog(`Native host reachable — the Telegram vault copy (${formatBytes(encryptedBlob.size)}) goes via MTProto; the Bot API only reads files back up to 20 MB.`);
+        }
+      }
+      assertVaultBlobHostSizes(vaultHostKeys, encryptedBlob.size, undefined, { hasNativeHost, nativeProbeError });
 
       const opaqueName = `${Array.from(crypto.getRandomValues(new Uint8Array(16)))
         .map((b) => b.toString(16).padStart(2, '0')).join('')}.bin`;
@@ -2052,7 +2065,12 @@ export default function GalleryPage() {
           uploader,
           blob: encryptedBlob,
           settings,
-          data: { fileName: opaqueName },
+          // Telegram vault blobs are documents: the Bot API ceiling is the
+          // 20 MB getFile read-back cap, not the 50 MB sendVideo cap — so
+          // the native route kicks in above 20 MB for telegram only.
+          data: vaultHost === 'telegram'
+            ? { fileName: opaqueName, nativeAboveBytes: TELEGRAM_GETFILE_MAX_BYTES }
+            : { fileName: opaqueName },
           onProgress: onVaultProgress,
           signal: uploadController.signal,
         });

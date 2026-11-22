@@ -970,6 +970,141 @@ export async function verifyTelegramFileNative({ messageId, channel, timeoutMs =
   }
 }
 
+const fromBase64 = (b64) => {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+};
+
+/**
+ * A Telethon-uploaded Telegram file has no Bot API file_id at all, so the
+ * extension stores `native-<messageId>` as its fileId — every read of one
+ * must branch to the native host instead of getFile (which would 400 on
+ * the shape alone, and refuses any file over 20 MB anyway).
+ */
+export function isNativeTelegramFileId(fileId) {
+  return String(fileId || '').startsWith('native-');
+}
+
+/** The channel message id behind a `native-<messageId>` fileId, or '' when the id is not native-shaped. */
+export function nativeTelegramMessageId(fileId) {
+  const raw = String(fileId || '');
+  if (!raw.startsWith('native-')) return '';
+  const id = raw.slice('native-'.length).trim();
+  return /^\d+$/.test(id) ? id : '';
+}
+
+/**
+ * Download a byte range of one Telegram channel file through the native
+ * host's Telethon session — the only reader for a file the Bot API can
+ * never serve: a Telethon-uploaded file has no Bot API file_id (see
+ * isNativeTelegramFileId), and getFile refuses any file over 20 MB
+ * anyway. The host streams DATA lines (<=512 KiB of bytes each,
+ * base64) and finishes with a RESULT json; the caller gets the exact
+ * requested bytes, verified against the RESULT length.
+ *
+ * Length 0 means "to end of file". Throws when the host is unreachable,
+ * the script fails, or the bytes served do not match the RESULT length.
+ *
+ * @returns {Promise<Uint8Array>}
+ */
+export async function downloadTelegramFileNative({ messageId, channel, offset = 0, length = 0, timeoutMs = 300000, onProgress } = {}) {
+  const cleanId = String(messageId || '').trim();
+  if (!cleanId) throw new Error('Telegram native download requires a message id.');
+  const cleanChannel = String(channel || '').trim().replace(/^@+/, '');
+  if (!cleanChannel) throw new Error('Telegram native download requires a valid channel.');
+  if (typeof chrome === 'undefined' || !chrome.runtime?.connectNative) {
+    throw new Error('Telegram native download needs the extension runtime (chrome.runtime.connectNative).');
+  }
+  const start = Number(offset) || 0;
+  const wanted = Number(length) || 0;
+  if (start < 0) throw new Error(`Telegram native download: offset ${start} is negative.`);
+  if (wanted < 0) throw new Error(`Telegram native download: length ${wanted} is negative.`);
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let port;
+    try {
+      port = chrome.runtime.connectNative('com.imgvault.nativehost');
+    } catch (err) {
+      reject(new Error(`Failed to connect to native host: ${err.message}`));
+      return;
+    }
+
+    const chunks = [];
+    let received = 0;
+    const finish = (fn, val) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { port.disconnect(); } catch (_) {}
+      fn(val);
+    };
+    const timer = setTimeout(() => {
+      finish(reject, new Error(`Telegram native download timed out after ${timeoutMs / 1000}s (message ${cleanId}).`));
+    }, timeoutMs);
+
+    port.onMessage.addListener((res) => {
+      if (res?.event === 'data' && typeof res.line === 'string' && res.line.startsWith('DATA:')) {
+        try {
+          const bytes = fromBase64(res.line.slice(5));
+          chunks.push(bytes);
+          received += bytes.length;
+          onProgress?.({ loaded: received, total: wanted || null, phase: 'downloading' });
+        } catch (err) {
+          finish(reject, new Error(`Telegram native download got an unreadable data line: ${err.message}`));
+        }
+        return;
+      }
+
+      if (res?.success) {
+        let parsed = {};
+        try {
+          parsed = JSON.parse(res.stdout || '{}');
+        } catch (_) {}
+        const served = Number(parsed?.length);
+        if (!parsed?.ok || !Number.isFinite(served)) {
+          finish(reject, new Error(parsed?.error || 'Telegram native download returned no RESULT.'));
+          return;
+        }
+        if (served !== received) {
+          finish(reject, new Error(`Telegram native download short: served ${received} bytes, RESULT says ${served}.`));
+          return;
+        }
+        const out = new Uint8Array(received);
+        let at = 0;
+        for (const part of chunks) {
+          out.set(part, at);
+          at += part.length;
+        }
+        finish(resolve, out);
+        return;
+      }
+
+      if (res?.event === 'complete' || res?.success === false) {
+        finish(reject, new Error(res?.message || 'Telegram native download failed.'));
+      }
+      // progress events (if any) are ignored — a download emits data, not progress.
+    });
+
+    port.onDisconnect.addListener(() => {
+      if (!settled) {
+        const err = chrome.runtime.lastError;
+        finish(reject, new Error(err?.message || 'Native host disconnected unexpectedly during Telegram download.'));
+      }
+    });
+
+    port.postMessage({
+      action: 'telegram_download',
+      message_id: cleanId,
+      channel: cleanChannel,
+      offset: start,
+      max_bytes: wanted,
+    });
+  });
+}
+
 // The size a scene file is expected to have, from the stored fields
 // (all strings in the DB — '30361257', not 30361257). Null when nothing
 // usable is stored: without an expectation there is nothing to compare

@@ -221,16 +221,17 @@ describe('vault blob hosts', () => {
   test('vault blob hosts are udrop / terabox / telegram (filemoon rejects .bin)', () => {
     assert.deepEqual(getVaultBlobHostServices().map((s) => s.key), ['udrop', 'terabox', 'telegram']);
   });
-  test('telegram shows its vault cap in the picker label', () => {
+  test('telegram shows its native-MTProto route in the picker label (2.19.31)', () => {
     const telegram = getVaultBlobHostServices().find((s) => s.key === 'telegram');
-    assert.equal(telegram.label, 'Telegram (≤ 20 MB)');
+    assert.equal(telegram.label, 'Telegram (native MTProto over 20 MB)');
     assert.equal(telegram.vaultMaxBytes, 20 * 1024 * 1024);
+    assert.equal(telegram.vaultNativeMaxBytes, 2000 * 1024 * 1024);
   });
   test('getVaultBlobHostOptions returns key + label pairs', () => {
     assert.deepEqual(getVaultBlobHostOptions(), [
       { key: 'udrop', label: 'UDrop' },
       { key: 'terabox', label: 'TeraBox' },
-      { key: 'telegram', label: 'Telegram (≤ 20 MB)' },
+      { key: 'telegram', label: 'Telegram (native MTProto over 20 MB)' },
     ]);
   });
 });
@@ -245,7 +246,25 @@ describe('assertVaultBlobHostSizes', () => {
       (err) => err.message.includes('Telegram cannot store this encrypted blob')
         && err.message.includes('21.0 MiB')
         && err.message.includes('20 MB vault cap')
-        && err.message.includes('getFile'),
+        && err.message.includes('getFile')
+        && err.message.includes('native host'),
+    );
+  });
+  test('an over-cap blob on telegram throws naming the probe error (2.19.31)', () => {
+    assert.throws(
+      () => assertVaultBlobHostSizes(['telegram'], 72 * 1024 * 1024, undefined, { hasNativeHost: false, nativeProbeError: 'No native host found' }),
+      (err) => err.message.includes('native host')
+        && err.message.includes('No native host found'),
+    );
+  });
+  test('an over-20 MB blob on telegram passes when the native host is reachable (2.19.31)', () => {
+    assert.doesNotThrow(() => assertVaultBlobHostSizes(['telegram'], 72 * 1024 * 1024, undefined, { hasNativeHost: true }));
+    assert.doesNotThrow(() => assertVaultBlobHostSizes(['telegram'], 2000 * 1024 * 1024, undefined, { hasNativeHost: true }));
+  });
+  test('an over-2 GB blob on telegram still throws even with the native host (2.19.31)', () => {
+    assert.throws(
+      () => assertVaultBlobHostSizes(['telegram'], 3 * 1024 * 1024 * 1024, undefined, { hasNativeHost: true }),
+      (err) => err.message.includes('2 GB native-host (MTProto) vault cap'),
     );
   });
   test('an over-cap blob on an uncapped host passes', () => {
@@ -272,6 +291,18 @@ describe('buildVaultBlobCopy', () => {
     assert.equal(copy.encryptedBlobWatchUrl, 'https://t.me/chan/90');
     assert.equal(copy.encryptedBlobFileId, 'abc123');
     assert.equal(copy.encryptedBlobMessageId, '90');
+  });
+  test('a native-host telegram copy keeps its native-<messageId> fileId (2.19.31)', () => {
+    const copy = buildVaultBlobCopy('telegram', {
+      watchUrl: 'https://t.me/c/3959088547/619',
+      directUrl: 'https://t.me/c/3959088547/619',
+      fileId: 'native-619',
+      messageId: '619',
+    });
+    assert.equal(copy.host, 'telegram');
+    assert.equal(copy.encryptedBlobUrl, 'https://t.me/c/3959088547/619');
+    assert.equal(copy.encryptedBlobFileId, 'native-619');
+    assert.equal(copy.encryptedBlobMessageId, '619');
   });
   test('other hosts keep the watch URL as the blob URL', () => {
     const copy = buildVaultBlobCopy('udrop', {

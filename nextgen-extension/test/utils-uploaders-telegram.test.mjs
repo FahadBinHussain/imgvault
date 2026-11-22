@@ -157,8 +157,12 @@ describe('private channels skip the CDN scrape (2.19.24) — wiring pins', () =>
   });
   test('the native (>50 MB) upload path also skips the scrape on a numeric channel', () => {
     const uploaders = src('../src/utils/uploaders.js');
-    const fn = uploaders.slice(uploaders.indexOf('async uploadWithProgress'));
-    assert.ok(fn.includes('if (isNumericTelegramChannel(channel)) {'));
+    // 2.19.31: the native branch moved into uploadViaNativeHost, shared by
+    // upload() and uploadWithProgress() — pin the shared method, not the
+    // page-side wrapper (a slice from 'uploadWithProgress' starts at the
+    // Filemoon method and proves nothing).
+    const fn = uploaders.slice(uploaders.indexOf('async uploadViaNativeHost'));
+    assert.ok(fn.includes('isNumericTelegramChannel(channel)'));
     assert.ok(fn.includes('is a private channel — no public post page, skipping the CDN scrape'));
   });
   test('telegram_upload.py maps channel ids the same way as the Bot API chat_id rule', () => {
@@ -167,6 +171,43 @@ describe('private channels skip the CDN scrape (2.19.24) — wiring pins', () =>
     assert.ok(py.includes('elif target.startswith("-"):\n        entity = int(target)'), 'an explicit -100 id passes through');
     assert.ok(py.includes('entity = "me"'), '"me" stays "me"');
     assert.ok(py.includes('entity = f"@{clean}"'), 'a username gets the @ prefix');
+  });
+});
+
+describe('native vault route (2.19.31) — wiring pins', () => {
+  test('the native branch is one shared method used by BOTH upload() and uploadWithProgress()', () => {
+    const uploaders = src('../src/utils/uploaders.js');
+    assert.ok(uploaders.includes('async uploadViaNativeHost('));
+    const swUpload = uploaders.slice(
+      uploaders.indexOf('async upload(blob, options = {})'),
+      uploaders.indexOf('async uploadViaNativeHost'),
+    );
+    assert.ok(swUpload.includes('uploadViaNativeHost('), 'the SW fetch path routes over-threshold blobs to the native host');
+    const pageUpload = uploaders.slice(uploaders.indexOf('async uploadWithProgress(blob, options = {})'));
+    assert.ok(pageUpload.includes('uploadViaNativeHost('), 'the page-side path routes over-threshold blobs to the native host');
+  });
+  test('nativeAboveBytes lowers the native threshold; the default stays 50 MB', () => {
+    const uploaders = src('../src/utils/uploaders.js');
+    const fn = uploaders.slice(uploaders.indexOf('async upload(blob, options = {})'));
+    assert.ok(fn.includes('Number.isFinite(nativeAboveBytes)'));
+    assert.ok(fn.includes(': TELEGRAM_UPLOAD_MAX_BYTES'));
+    assert.ok(fn.includes('if (size > nativeThreshold)'));
+  });
+  test('the shared native method stages in-memory blobs and deletes the staged file either way', () => {
+    const uploaders = src('../src/utils/uploaders.js');
+    const fn = uploaders.slice(uploaders.indexOf('async uploadViaNativeHost'));
+    assert.ok(fn.includes('stageBlobForNativeUpload(blob, filename'));
+    assert.ok(fn.includes('deleteNativeTempFile(nativePath)'));
+    assert.ok(fn.includes("fileId: `native-${messageId}`"));
+  });
+  test('the native branch skips the CDN scrape for documents (only an mp4 can have one)', () => {
+    const uploaders = src('../src/utils/uploaders.js');
+    const fn = uploaders.slice(uploaders.indexOf('async uploadViaNativeHost'));
+    assert.ok(fn.includes("telegramUploadField(filename, mimeType) === 'video'"));
+  });
+  test('telegramUploadOptions passes nativeAboveBytes through to the uploader', () => {
+    const catalog = src('../src/config/providerCatalog.js');
+    assert.ok(catalog.includes('nativeAboveBytes: data.nativeAboveBytes'));
   });
 });
 

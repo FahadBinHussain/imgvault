@@ -19,6 +19,7 @@ import {
   telegramChatId,
   telegramLocalMediaUrl,
   telegramPostPageUrl,
+  telegramUploadField,
   telegramUploadMethod,
   uploadTelegramNative,
 } from './telegramApi.js';
@@ -1533,22 +1534,116 @@ export class TelegramUploader extends BaseUploader {
 
   /**
    * @param {Blob} blob
-   * @param {{token: string, channel: string, filename?: string, mimeType?: string, signal?: AbortSignal}} options
+   * @param {{token: string, channel: string, filename?: string, mimeType?: string, signal?: AbortSignal, filePath?: string, nativeAboveBytes?: number}} options
+   *   nativeAboveBytes: route to the native host above this size instead of
+   *   the 50 MB default — the vault passes 20 MB (the getFile read-back cap)
+   *   because a vault .bin is a document, never a sendVideo mp4.
    */
   async upload(blob, options = {}) {
-    const { token, channel, filename = 'file', mimeType = '', signal } = options;
+    const { token, channel, filename = 'file', mimeType = '', signal, filePath, nativeAboveBytes } = options;
     requireTelegramToken(token);
     telegramChatId(channel);
-    assertTelegramUploadSize(blob?.size || 0, filename, mimeType);
+
+    const size = blob?.size || 0;
+    const nativeThreshold = Number.isFinite(nativeAboveBytes) && nativeAboveBytes > 0
+      ? nativeAboveBytes
+      : TELEGRAM_UPLOAD_MAX_BYTES;
+    if (size > nativeThreshold) {
+      return this.uploadViaNativeHost(blob, { token, channel, filename, mimeType, filePath, signal });
+    }
+    assertTelegramUploadSize(size, filename, mimeType);
 
     const method = telegramUploadMethod(filename, mimeType);
     const message = await sendTelegramFile({ token, channel, blob, filename, mimeType, method, signal });
     return this.finishUpload({ message, token, channel, filename, method, signal });
   }
 
+  /**
+   * One native-host MTProto upload, shared by the page-side XHR path and the
+   * service-worker fetch path: stage the blob to a temp file when there is no
+   * disk path, upload through Telethon, delete the staged file either way.
+   * The result carries fileId `native-<messageId>` — a Telethon-uploaded
+   * file has no Bot API file_id, so every read of it must go back through
+   * the native host (see downloadTelegramFileNative).
+   */
+  async uploadViaNativeHost(blob, { token, channel, filename = 'file', mimeType = '', filePath, onProgress, signal } = {}) {
+    const size = blob?.size || 0;
+    assertTelegramUploadSize(size, filename, mimeType, true);
+    let nativePath = filePath || '';
+    const staged = !nativePath;
+    if (staged) {
+      console.log(`📨 [TELEGRAM] ${filename} is over the Bot API cap with no disk path - staging it on the native host for the MTProto upload.`);
+      nativePath = await stageBlobForNativeUpload(blob, filename, { onProgress, signal });
+    }
+    try {
+      const res = await uploadTelegramNative({
+        filePath: nativePath,
+        channel,
+        onProgress,
+        signal,
+      });
+
+      const messageId = String(res.messageId);
+      const watchUrl = messageId ? telegramPostPageUrl(channel, messageId) : '';
+      // The native uploader warns when it could not read video
+      // dimensions — the post lands as a document, no CDN URL, no
+      // in-gallery playback. Say so loudly on the result instead of
+      // letting a document post look like a successful video upload.
+      if (res.warning) {
+        console.warn(`[telegram-native] ${res.warning}`);
+      }
+      let cdnUrl = '';
+      let posterUrl = '';
+      // Only an mp4 can ever have a CDN url to scrape — a document
+      // (.bin, .mkv, .spz) never does, so scraping it burns 4 doomed
+      // attempts per upload. A private channel has no public post page
+      // either — skip the scrape instead of burning those attempts.
+      const mayHaveCdn = telegramUploadField(filename, mimeType) === 'video' && !isNumericTelegramChannel(channel);
+      if (!mayHaveCdn) {
+        if (isNumericTelegramChannel(channel)) {
+          console.warn(`[telegram-native] ${channel} is a private channel — no public post page, skipping the CDN scrape (watchUrl is stored instead).`);
+        }
+      } else {
+        try {
+          const postMedia = await scrapeTelegramPostMedia(channel, messageId, { attempts: 4, signal });
+          cdnUrl = postMedia.mp4Url;
+          posterUrl = postMedia.posterUrl;
+        } catch (err) {
+          console.warn(`[telegram-native] Scrape CDN warning for message ${messageId}:`, err);
+        }
+      }
+
+      return {
+        watchUrl,
+        displayUrl: watchUrl,
+        directUrl: cdnUrl || watchUrl,
+        thumbUrl: posterUrl || null,
+        thumbnailUrl: posterUrl || null,
+        deleteUrl: null,
+        fileId: `native-${messageId}`,
+        messageId,
+        filename,
+        apiStatus: 'success',
+        apiMessage: res.warning
+          ? `Uploaded via native host MTProto — ${res.warning}`
+          : 'Uploaded via native host MTProto',
+      };
+    } finally {
+      // A staged temp file is deleted whether the upload succeeded or not;
+      // a real download path is the user's file and is never touched.
+      if (staged && nativePath) {
+        try {
+          await deleteNativeTempFile(nativePath);
+        } catch (cleanupError) {
+          console.warn(`[telegram-native] Staged temp file was NOT deleted: ${nativePath} (${cleanupError.message})`);
+        }
+      }
+    }
+  }
+
   /** Page-side XHR variant with real byte progress (same post-send steps). */
   async uploadWithProgress(blob, options = {}) {
-    const { token, channel, filename = 'file', mimeType = '', filePath, onProgress, signal } = options;
+    const { token, channel, filename = 'file', mimeType = '', filePath, onProgress, signal, nativeAboveBytes } = options;
     requireTelegramToken(token);
     telegramChatId(channel);
 
@@ -1557,73 +1652,13 @@ export class TelegramUploader extends BaseUploader {
     // (up to 2 GB). A native download already has its disk path; a picked
     // file has none, so it is staged to a temp file on the host first -
     // without that the native route was unreachable for every picked file.
-    if (size > TELEGRAM_UPLOAD_MAX_BYTES) {
-      assertTelegramUploadSize(size, filename, mimeType, true);
-      let nativePath = filePath || '';
-      const staged = !nativePath;
-      if (staged) {
-        console.log(`📨 [TELEGRAM] ${filename} is over 50 MB with no disk path - staging it on the native host for the MTProto upload.`);
-        nativePath = await stageBlobForNativeUpload(blob, filename, { onProgress, signal });
-      }
-      try {
-        const res = await uploadTelegramNative({
-          filePath: nativePath,
-          channel,
-          onProgress,
-          signal,
-        });
-
-        const messageId = String(res.messageId);
-        const watchUrl = messageId ? telegramPostPageUrl(channel, messageId) : '';
-        // The native uploader warns when it could not read video
-        // dimensions — the post lands as a document, no CDN URL, no
-        // in-gallery playback. Say so loudly on the result instead of
-        // letting a document post look like a successful video upload.
-        if (res.warning) {
-          console.warn(`[telegram-native] ${res.warning}`);
-        }
-        let cdnUrl = '';
-        let posterUrl = '';
-        // A private channel has no public post page — skip the scrape
-        // instead of burning 4 doomed attempts per upload.
-        if (isNumericTelegramChannel(channel)) {
-          console.warn(`[telegram-native] ${channel} is a private channel — no public post page, skipping the CDN scrape (watchUrl is stored instead).`);
-        } else {
-          try {
-            const postMedia = await scrapeTelegramPostMedia(channel, messageId, { attempts: 4, signal });
-            cdnUrl = postMedia.mp4Url;
-            posterUrl = postMedia.posterUrl;
-          } catch (err) {
-            console.warn(`[telegram-native] Scrape CDN warning for message ${messageId}:`, err);
-          }
-        }
-
-        return {
-          watchUrl,
-          displayUrl: watchUrl,
-          directUrl: cdnUrl || watchUrl,
-          thumbUrl: posterUrl || null,
-          thumbnailUrl: posterUrl || null,
-          deleteUrl: null,
-          fileId: `native-${messageId}`,
-          messageId,
-          filename,
-          apiStatus: 'success',
-          apiMessage: res.warning
-            ? `Uploaded via native host MTProto — ${res.warning}`
-            : 'Uploaded via native host MTProto',
-        };
-      } finally {
-        // A staged temp file is deleted whether the upload succeeded or not;
-        // a real download path is the user's file and is never touched.
-        if (staged && nativePath) {
-          try {
-            await deleteNativeTempFile(nativePath);
-          } catch (cleanupError) {
-            console.warn(`[telegram-native] Staged temp file was NOT deleted: ${nativePath} (${cleanupError.message})`);
-          }
-        }
-      }
+    // Callers with a lower Bot API ceiling (the vault: 20 MB getFile) pass
+    // nativeAboveBytes to route sooner.
+    const nativeThreshold = Number.isFinite(nativeAboveBytes) && nativeAboveBytes > 0
+      ? nativeAboveBytes
+      : TELEGRAM_UPLOAD_MAX_BYTES;
+    if (size > nativeThreshold) {
+      return this.uploadViaNativeHost(blob, { token, channel, filename, mimeType, filePath, onProgress, signal });
     }
 
     assertTelegramUploadSize(size, filename, mimeType, false);

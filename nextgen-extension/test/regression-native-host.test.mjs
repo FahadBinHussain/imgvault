@@ -85,6 +85,32 @@ test('2.19.30 (2026-11-21): telegram_verify spawns telegram_verify.py with --mes
   assert.ok(rs.includes('Missing message_id or channel for telegram_verify'));
 });
 
+test('2.19.31 (2026-11-22): telegram_download spawns telegram_download.py with --offset/--length and streams each DATA line as a native message', () => {
+  const rs = mainRs();
+  assert.ok(rs.includes('"telegram_download" => {'));
+  assert.ok(rs.includes('resolve_telegram_script("telegram_download.py")'));
+  assert.ok(rs.includes('fn handle_telegram_download('));
+  const fn = rs.slice(rs.indexOf('fn handle_telegram_download('));
+  assert.ok(fn.includes('.arg("--offset")'));
+  assert.ok(fn.includes('.arg("--length")'));
+  assert.ok(fn.includes('TelegramUploaderLine::Data(_)'));
+  assert.ok(fn.includes('event: Some("data".to_string())'));
+  assert.ok(fn.includes('message: Some("Telegram download succeeded".to_string())'));
+  assert.ok(rs.includes('Missing message_id or channel for telegram_download'));
+  // the range comes in on the existing offset / max_bytes fields
+  const dispatch = rs.slice(rs.indexOf('"telegram_download" => {'));
+  assert.ok(dispatch.includes('native_msg.offset.unwrap_or(0)'));
+  assert.ok(dispatch.includes('native_msg.max_bytes.unwrap_or(0)'));
+});
+
+test('2.19.31 (2026-11-22): the uploader line parser recognizes DATA:<base64> lines', () => {
+  const rs = mainRs();
+  assert.ok(rs.includes('Data(String)'));
+  const fn = rs.slice(rs.indexOf('fn parse_telegram_uploader_line('));
+  assert.ok(fn.includes('line.strip_prefix("DATA:")'));
+  assert.ok(fn.includes('TelegramUploaderLine::Data(data.to_string())'));
+});
+
 // ------------------------------------------------- video normalize ---
 
 // FIXED 2.19.23: AGENTS.md 2.13.14 says the ffmpeg preset is `slow`,

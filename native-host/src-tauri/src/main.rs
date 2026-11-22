@@ -745,7 +745,8 @@ fn resolve_telegram_upload_args(
     }
 }
 
-// One stdout line from telegram_upload.py: PROGRESS:<current>:<total>:<percent>,
+// One stdout line from telegram_upload.py / telegram_download.py:
+// PROGRESS:<current>:<total>:<percent>, DATA:<base64 of <=512 KiB>,
 // RESULT:<json>, ERROR:<message>, or anything else (ignored).
 #[derive(Debug, PartialEq)]
 enum TelegramUploaderLine {
@@ -754,6 +755,7 @@ enum TelegramUploaderLine {
         total: String,
         percent: String,
     },
+    Data(String),
     Result(String),
     Error(String),
     Other,
@@ -771,6 +773,9 @@ fn parse_telegram_uploader_line(line: &str) -> TelegramUploaderLine {
         }
         return TelegramUploaderLine::Other;
     }
+    if let Some(data) = line.strip_prefix("DATA:") {
+        return TelegramUploaderLine::Data(data.to_string());
+    }
     if let Some(res) = line.strip_prefix("RESULT:") {
         return TelegramUploaderLine::Result(res.to_string());
     }
@@ -780,8 +785,8 @@ fn parse_telegram_uploader_line(line: &str) -> TelegramUploaderLine {
     TelegramUploaderLine::Other
 }
 
-// Where a telegram helper script (telegram_upload.py, telegram_verify.py)
-// lives: next to the exe in `scripts/`, with the dev-clone path as the
+// Where a telegram helper script (telegram_upload.py, telegram_verify.py,
+// telegram_download.py) lives: next to the exe in `scripts/`, with the dev-clone path as the
 // fallback (the release exe ships beside the repo checkout, so both
 // resolve to the same file on the laptop).
 fn resolve_telegram_script(script_name: &str) -> Option<String> {
@@ -919,6 +924,7 @@ fn handle_telegram_upload(
                     }
                     TelegramUploaderLine::Result(res) => final_result = Some(res),
                     TelegramUploaderLine::Error(err) => last_error = Some(err),
+                    TelegramUploaderLine::Data(_) => {}
                     TelegramUploaderLine::Other => {}
                 }
             }
@@ -1111,6 +1117,187 @@ fn handle_telegram_verify(
                 }
             })
             .unwrap_or_else(|| format!("Verifier exited with code {:?}", status.ok().and_then(|s| s.code())));
+
+        NativeResponse {
+            success: false,
+            event: Some("complete".to_string()),
+            request_id: request_id.map(|s| s.to_string()),
+            message: Some(err_msg),
+            line: None,
+            stream: None,
+            file_path: None,
+            stdout: None,
+            stderr: Some(stderr_text),
+        }
+    }
+}
+
+// Download a byte range of one Telegram channel file through the Telethon
+// session — the only reader for a vault blob the Bot API can never serve:
+// a Telethon-uploaded file has no Bot API file_id (the extension stores
+// `native-<messageId>`), and getFile refuses any file over 20 MB anyway.
+// telegram_download.py prints DATA:<base64> lines (<=512 KiB of bytes
+// each) plus a final RESULT:{ok, messageId, offset, length, size}; each
+// DATA line goes out to the extension as its own native message (event
+// "data") the moment it arrives, so a 72 MB blob never sits in one
+// 1 MiB-capped native message. Length 0 means "to end of file".
+fn handle_telegram_download(
+    stdout: &mut io::Stdout,
+    request_id: Option<&str>,
+    message_id: &str,
+    channel: &str,
+    offset: u64,
+    length: u64,
+    session_path: Option<&str>,
+    api_id: Option<&str>,
+    api_hash: Option<&str>,
+) -> NativeResponse {
+    let app_data = env::var("APPDATA").unwrap_or_default();
+    let account_dir = telegram_account_dir(&app_data);
+    let api_id_file = if api_id.filter(|s| !s.trim().is_empty()).is_none() {
+        fs::read_to_string(format!(r"{}\api-id.txt", account_dir)).ok()
+    } else {
+        None
+    };
+    let api_hash_file = if api_hash.filter(|s| !s.trim().is_empty()).is_none() {
+        fs::read_to_string(format!(r"{}\api-hash.txt", account_dir)).ok()
+    } else {
+        None
+    };
+    let resolved = resolve_telegram_upload_args(
+        &app_data,
+        session_path,
+        api_id,
+        api_hash,
+        api_id_file.as_deref(),
+        api_hash_file.as_deref(),
+    );
+
+    let script_str = match resolve_telegram_script("telegram_download.py") {
+        Some(path) => path,
+        None => {
+            return NativeResponse {
+                success: false,
+                event: Some("complete".to_string()),
+                request_id: request_id.map(|s| s.to_string()),
+                message: Some("telegram_download.py script not found (looked beside the exe and in the dev clone)".to_string()),
+                line: None,
+                stream: None,
+                file_path: None,
+                stdout: None,
+                stderr: None,
+            };
+        }
+    };
+
+    let mut cmd = Command::new("python");
+    cmd.arg(&script_str)
+        .arg("--session")
+        .arg(&resolved.session)
+        .arg("--api-id")
+        .arg(&resolved.api_id)
+        .arg("--api-hash")
+        .arg(&resolved.api_hash)
+        .arg("--channel")
+        .arg(channel)
+        .arg("--message-id")
+        .arg(message_id)
+        .arg("--offset")
+        .arg(offset.to_string())
+        .arg("--length")
+        .arg(length.to_string());
+
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            return NativeResponse {
+                success: false,
+                event: Some("complete".to_string()),
+                request_id: request_id.map(|s| s.to_string()),
+                message: Some(format!("Failed to spawn python downloader: {}", e)),
+                line: None,
+                stream: None,
+                file_path: None,
+                stdout: None,
+                stderr: None,
+            };
+        }
+    };
+
+    let child_stdout = child.stdout.take();
+    let child_stderr = child.stderr.take();
+
+    let mut final_result: Option<String> = None;
+    let mut last_error: Option<String> = None;
+
+    if let Some(out) = child_stdout {
+        let reader = BufReader::new(out);
+        for line_res in reader.lines() {
+            if let Ok(line) = line_res {
+                match parse_telegram_uploader_line(&line) {
+                    TelegramUploaderLine::Data(_) => {
+                        let _ = send_native_response(
+                            stdout,
+                            &NativeResponse {
+                                success: true,
+                                event: Some("data".to_string()),
+                                request_id: request_id.map(|s| s.to_string()),
+                                message: None,
+                                line: Some(line.clone()),
+                                stream: Some("stdout".to_string()),
+                                file_path: None,
+                                stdout: None,
+                                stderr: None,
+                            },
+                        );
+                    }
+                    TelegramUploaderLine::Result(res) => final_result = Some(res),
+                    TelegramUploaderLine::Error(err) => last_error = Some(err),
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    let status = child.wait();
+    let stderr_text = child_stderr
+        .map(|err| {
+            let mut buf = String::new();
+            let _ = BufReader::new(err).read_to_string(&mut buf);
+            buf
+        })
+        .unwrap_or_default();
+
+    if let Some(res_json) = final_result {
+        NativeResponse {
+            success: true,
+            event: Some("complete".to_string()),
+            request_id: request_id.map(|s| s.to_string()),
+            message: Some("Telegram download succeeded".to_string()),
+            line: None,
+            stream: None,
+            file_path: None,
+            stdout: Some(res_json),
+            stderr: None,
+        }
+    } else {
+        let err_msg = last_error
+            .or_else(|| {
+                if !stderr_text.trim().is_empty() {
+                    Some(stderr_text.trim().to_string())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| format!("Downloader exited with code {:?}", status.ok().and_then(|s| s.code())));
 
         NativeResponse {
             success: false,
@@ -2295,6 +2482,34 @@ fn handle_native_messaging() {
                             },
                         }
                     }
+                    "telegram_download" => {
+                        match (native_msg.message_id.as_deref(), native_msg.channel.as_deref()) {
+                            (Some(mid), Some(ch)) => {
+                                handle_telegram_download(
+                                    &mut stdout,
+                                    native_msg.request_id.as_deref(),
+                                    mid,
+                                    ch,
+                                    native_msg.offset.unwrap_or(0),
+                                    native_msg.max_bytes.unwrap_or(0) as u64,
+                                    native_msg.session_path.as_deref(),
+                                    native_msg.api_id.as_deref(),
+                                    native_msg.api_hash.as_deref(),
+                                )
+                            }
+                            _ => NativeResponse {
+                                success: false,
+                                event: Some("complete".to_string()),
+                                request_id: native_msg.request_id.clone(),
+                                message: Some("Missing message_id or channel for telegram_download".to_string()),
+                                line: None,
+                                stream: None,
+                                file_path: None,
+                                stdout: None,
+                                stderr: None,
+                            },
+                        }
+                    }
                     "get_default_video_directory" => {
                         match get_default_videos_directory() {
                             Ok(path) => NativeResponse {
@@ -2864,6 +3079,29 @@ mod tests {
     }
 
     #[test]
+    fn native_message_telegram_download_deserializes_with_range() {
+        let msg: NativeMessage = serde_json::from_str(
+            r#"{"action":"telegram_download","message_id":"589","channel":"-1003959088547","offset":1048576,"max_bytes":8388608}"#,
+        )
+        .unwrap();
+        assert_eq!(msg.action, "telegram_download");
+        assert_eq!(msg.message_id.as_deref(), Some("589"));
+        assert_eq!(msg.channel.as_deref(), Some("-1003959088547"));
+        assert_eq!(msg.offset, Some(1048576));
+        assert_eq!(msg.max_bytes, Some(8388608));
+    }
+
+    #[test]
+    fn native_message_telegram_download_range_defaults_to_zero() {
+        let msg: NativeMessage = serde_json::from_str(
+            r#"{"action":"telegram_download","message_id":"589","channel":"-1003959088547"}"#,
+        )
+        .unwrap();
+        assert_eq!(msg.offset, None);
+        assert_eq!(msg.max_bytes, None);
+    }
+
+    #[test]
     fn resolve_telegram_script_missing_name_returns_none() {
         // No script by this name exists beside any exe or in the dev clone.
         assert_eq!(resolve_telegram_script("telegram_no_such_script.py"), None);
@@ -2906,10 +3144,24 @@ mod tests {
     }
 
     #[test]
+    fn parse_telegram_uploader_line_data() {
+        assert_eq!(
+            parse_telegram_uploader_line("DATA:aGVsbG8="),
+            TelegramUploaderLine::Data("aGVsbG8=".to_string())
+        );
+        // A DATA line with no payload is still a data line (empty chunk).
+        assert_eq!(
+            parse_telegram_uploader_line("DATA:"),
+            TelegramUploaderLine::Data(String::new())
+        );
+    }
+
+    #[test]
     fn parse_telegram_uploader_line_other() {
         assert_eq!(parse_telegram_uploader_line("Connecting..."), TelegramUploaderLine::Other);
         assert_eq!(parse_telegram_uploader_line(""), TelegramUploaderLine::Other);
         assert_eq!(parse_telegram_uploader_line("progress:1:2:3"), TelegramUploaderLine::Other);
+        assert_eq!(parse_telegram_uploader_line("data:aGVsbG8="), TelegramUploaderLine::Other);
     }
 
     // ---- truncate_for_native_message ----------------------------------------
