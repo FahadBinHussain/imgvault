@@ -30,6 +30,7 @@ import {
   getStrictVideoProviderLink,
 } from '../utils/videoProviderLinks';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
+import { pickLinkPreviewImage, addFailedPreviewId, hasFailedPreviewId } from '../utils/linkPreview';
 import {
   getMediaItemKind,
   getOverviewEntries,
@@ -276,6 +277,11 @@ export default function VaultPage() {
   const [selectedItem, setSelectedItem] = useState(null);
   const [activeTab, setActiveTab] = useState('noobs');
   const [loadedImages, setLoadedImages] = useState(new Set());
+  // Link ids whose preview <img> errored this session — a dead hotlinked
+  // og:image renders the clean Link2 placeholder instead of the browser's
+  // broken-image icon. Session-only: the URL can come back, so failures
+  // are never persisted.
+  const [failedLinkPreviews, setFailedLinkPreviews] = useState(new Set());
   const [toast, setToast] = useState(null);
   const [readFallbacks, setReadFallbacks] = useState({}); // itemId -> {host, primaryHost, failures}
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
@@ -779,14 +785,9 @@ export default function VaultPage() {
     getStrictVideoProviderLink(item, defaultVideoSource, 'watchUrl')
   );
 
-  const getLinkPreviewImage = (item) => (
-    item?.linkPreviewImageUrl ||
-    item?.previewImageUrl ||
-    item?.ogImage ||
-    item?.thumbnailUrl ||
-    item?.faviconUrl ||
-    ''
-  );
+  // The preview chain lives in utils/linkPreview.js: a stored og:image is a
+  // hotlink that rots, and a 16px favicon is never a full-card preview.
+  const getLinkPreviewImage = (item) => pickLinkPreviewImage(item);
 
   const getVideoPosterUrl = (item) => {
     const isLikelyVideoUrl = (url) => typeof url === 'string' && /\.(mp4|webm|mov|m4v|mkv|avi|ogv)(?:[?#].*)?$/i.test(url.trim());
@@ -853,6 +854,10 @@ export default function VaultPage() {
       next.add(id);
       return next;
     });
+  };
+
+  const handleLinkPreviewError = (id) => {
+    setFailedLinkPreviews((prev) => addFailedPreviewId(prev, id));
   };
 
   const groupItemsByDate = (items) => {
@@ -1322,8 +1327,8 @@ export default function VaultPage() {
                   </a>
                 </div>
                 <div className="md:w-[42%] lg:w-[40%] h-48 md:h-auto bg-base-200 border-t md:border-t-0 md:border-l border-base-300">
-                  {getLinkPreviewImage(item) ? (
-                    <img src={getLinkPreviewImage(item)} alt={item.pageTitle || 'Link preview'} className="w-full h-full object-contain" loading="lazy" />
+                  {getLinkPreviewImage(item) && !hasFailedPreviewId(failedLinkPreviews, item.id) ? (
+                    <img src={getLinkPreviewImage(item)} alt={item.pageTitle || 'Link preview'} className="w-full h-full object-contain" loading="lazy" onError={() => handleLinkPreviewError(item.id)} />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-base-content/45">
                       <Link2 className="w-12 h-12" />
@@ -1590,8 +1595,8 @@ export default function VaultPage() {
 
                           {kind === 'Link' ? (
                             <div className="relative w-full aspect-video" style={{ background: 'var(--color-base-200)' }}>
-                              {linkPreviewImage ? (
-                                <img src={linkPreviewImage} alt={item.pageTitle || 'Link preview'} className="w-full h-full object-contain" loading="lazy" onLoad={() => handleMediaLoad(item.id)} />
+                              {linkPreviewImage && !hasFailedPreviewId(failedLinkPreviews, item.id) ? (
+                                <img src={linkPreviewImage} alt={item.pageTitle || 'Link preview'} className="w-full h-full object-contain" loading="lazy" onLoad={() => handleMediaLoad(item.id)} onError={() => handleLinkPreviewError(item.id)} />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.3)' }}>
                                   <Link2 style={{ width: 32, height: 32 }} />

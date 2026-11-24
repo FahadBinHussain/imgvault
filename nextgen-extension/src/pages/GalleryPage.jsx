@@ -4629,12 +4629,13 @@ export default function GalleryPage() {
                   </a>
                 </div>
                 <div className="md:w-[42%] lg:w-[40%] h-48 md:h-auto bg-base-200 border-t md:border-t-0 md:border-l border-base-300">
-                  {linkPreviewImage ? (
+                  {linkPreviewImage && !failedImages.has(modalImage.id) ? (
                     <img
                       src={linkPreviewImage}
                       alt={modalImage?.pageTitle || 'Link preview'}
                       className="w-full h-full object-contain"
                       loading="lazy"
+                      onError={() => handleImageLoad(modalImage.id, true)}
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-base-content/45">
@@ -5566,7 +5567,7 @@ export default function GalleryPage() {
                         const linkPreviewImage = getLinkPreviewImage(img);
                         return (
                           <div className="relative w-full aspect-video" style={{ background: 'var(--color-base-200)' }}>
-                            {linkPreviewImage ? (
+                            {linkPreviewImage && !failedImages.has(img.id) ? (
                               <CachedImg
                                 thumbKey={`link-${img.id}`}
                                 src={linkPreviewImage}
@@ -5574,6 +5575,7 @@ export default function GalleryPage() {
                                 className="w-full h-full object-contain"
                                 loading="lazy"
                                 onLoad={() => handleImageLoad(img.id)}
+                                onError={() => handleImageLoad(img.id, true)}
                               />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.3)' }}>
