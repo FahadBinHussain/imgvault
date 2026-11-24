@@ -86,3 +86,35 @@ test('2.19.42 (2026-11-24): a dead video poster falls to the icon tile, never a 
   // ... landing on the Video-icon tile with its Open-video link.
   assert.ok(branch.includes('Open video'));
 });
+
+// ------------------------------------------------- 2.19.43: the race ---
+//
+// The 2.19.42 fallback made a transient error permanent. useThumbUrl
+// started the <img> on the REMOTE url (useState(remoteUrl)) while the
+// cache lookup ran async — and the remote is usually a dead signed URL
+// (a TeraBox thumb dies 8h after upload). The 403 error fired before the
+// blob swap landed, the 2.19.42 onError marked the card failed, and the
+// !posterFailed gate unmounted the CachedImg — so all 10 of the
+// 11/17-11/22 video cards showed the icon tile although every poster sat
+// in the cache (verified live: 10/10 poster rows present). Before 2.19.42
+// the same race was invisible: the error only marked the card loaded, and
+// the blob swap landed on the still-mounted img.
+//
+// The fix: the hook starts unresolved (null) and the img gets no src
+// until getThumbUrl resolves — the resolved URL is the first src the img
+// ever sees, so an error on it is real and the fallback is correct.
+
+test('2.19.43 (2026-11-24): the thumb hook starts unresolved — the img must never mount the dead remote first', () => {
+  const hook = src('../src/hooks/useThumbUrl.js');
+  assert.ok(hook.includes('const [url, setUrl] = useState(null);'));
+  assert.ok(!hook.includes('useState(remoteUrl)'), 'the img starts on the remote URL again — the dead-remote error beats the blob swap');
+  // the resolved URL is always applied (it is the first src the img sees)
+  assert.ok(hook.includes('setUrl(resolved);'));
+  assert.ok(!hook.includes('if (resolved !== remoteUrl) setUrl(resolved);'), 'the guarded setUrl strands the img at null when the remote IS the answer (no cache)');
+});
+
+test('2.19.43 (2026-11-24): CachedImg renders the hook value as-is — null means no src attribute, not an empty one', () => {
+  const cached = src('../src/components/CachedThumb.jsx');
+  assert.ok(cached.includes('src={cachedSrc}'));
+  assert.ok(!cached.includes('src={cachedSrc ||'), 'a fallback here would re-mount the remote URL the hook deliberately withholds');
+});
