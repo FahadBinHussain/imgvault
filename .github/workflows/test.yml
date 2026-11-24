@@ -175,4 +175,4 @@ jobs:
       # stay testable anywhere.
       - name: Run telegram uploader tests
         working-directory: native-host/scripts
-        run: python -m unittest -v test_mp4_probe test_telegram_verify
+        run: python -m unittest -v test_mp4_probe test_telegram_verify test_telegram_upload_aes
