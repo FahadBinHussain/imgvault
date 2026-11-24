@@ -80,6 +80,9 @@ import { captureVideoSnapshotBlob } from '../utils/videoSnapshot.js';
 import { captureImageSnapshotBlob } from '../utils/imageSnapshot.js';
 import { setCachedThumb } from '../utils/thumbCache.js';
 import { persistRemoteVaultPreview } from '../utils/vaultPreview.js';
+import { createUploadLogAppender } from '../utils/uploadLog.js';
+import { createUploadProgressTracker, vaultUploadProgressLabel } from '../utils/uploadProgress.js';
+import { withTimeout } from '../utils/withTimeout.js';
 import { formatVideoDuration, getFilemoonTooLongWarning, getHostUnsupportedFlag } from '../utils/hostUnsupported.js';
 
 // How long the page waits for the worker to acknowledge that the upload run
@@ -88,21 +91,11 @@ import { formatVideoDuration, getFilemoonTooLongWarning, getHostUnsupportedFlag 
 // upload's `finally` block forever.
 const UPLOAD_RUN_CLOSE_TIMEOUT_MS = 15000;
 
-const withTimeout = (promise, ms, label) => new Promise((resolve, reject) => {
-  const timer = setTimeout(() => {
-    reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`));
-  }, ms);
-  Promise.resolve(promise).then(
-    (value) => {
-      clearTimeout(timer);
-      resolve(value);
-    },
-    (error) => {
-      clearTimeout(timer);
-      reject(error);
-    }
-  );
-});
+// How long the vault upload waits for each post-save snapshot persist
+// (local thumb cache + remote encrypted row). Both have no timeout of
+// their own — without this a never-settling persist hangs the modal
+// after a successful save (2.19.36).
+const VAULT_SNAPSHOT_PERSIST_TIMEOUT_MS = 30 * 1000;
 
 const createVideoUploader = (service) => {
   if (service?.uploaderKey === 'filemoonUploader') return new FilemoonUploader();
@@ -1282,16 +1275,18 @@ export default function GalleryPage() {
     );
   };
 
-  const appendClientUploadLog = async (message, type = 'info') => {
-    const result = await chrome.storage.local.get(['uploadStatusLogs']);
-    const entry = {
-      timestamp: new Date().toLocaleTimeString(),
-      message,
-      type,
-    };
-    const nextLogs = [entry, ...(result.uploadStatusLogs || [])].slice(0, 200);
-    await chrome.storage.local.set({ uploadStatusLogs: nextLogs });
-  };
+  // The upload log is a read-modify-write on chrome.storage.local, and the
+  // progress handlers fire-and-forget their appends — two appends in the
+  // same tick used to read the same list and lose one line (2.19.36: the
+  // 100% line of a 128 MB vault upload vanished this way). The appender
+  // serializes every append through one promise chain, and the ref keeps
+  // exactly one chain per page — a fresh appender per render would break
+  // the serialization.
+  const appendClientUploadLogRef = useRef(null);
+  if (appendClientUploadLogRef.current === null) {
+    appendClientUploadLogRef.current = createUploadLogAppender(chrome.storage.local);
+  }
+  const appendClientUploadLog = appendClientUploadLogRef.current;
 
   /**
    * Hold a runtime port open for as long as this page owns a running upload.
@@ -1671,8 +1666,10 @@ export default function GalleryPage() {
               // looks like a stuck upload.
               // Same for the native uploader's synthetic `finalizing` event:
               // byte transfer hit 100% but Telegram still has to create the
-              // post server-side (observed ~3 min on a 72 MB blob) — name
-              // the wait instead of going silent after the 100% line.
+              // post server-side — name the wait instead of going silent
+              // after the 100% line. (2.19.36: the ~3 min once blamed on
+              // finalization was the Telethon upload itself going silent
+              // behind a poisoned log watermark; finalization is ~instant.)
               if (phase === 'finalizing') {
                 const finalizingMessage = `${service.label}: ${text || `all ${totalLabel} sent — waiting for Telegram to finalize the post...`}`;
                 await chrome.storage.local.set({ uploadStatus: finalizingMessage });
@@ -2087,16 +2084,21 @@ export default function GalleryPage() {
           throw new Error(`${vaultService.label} is not configured. Encrypted vault items need a ${vaultService.label} account.`);
         }
 
-        let uploadLogBytes = 0;
-        const UPLOAD_LOG_STEP = 20 * 1024 * 1024; // log every ~20 MB so slow big uploads show movement
+        // Phase-aware progress logging (2.19.36): staging and the real
+        // upload are separate phases with separate watermarks — staging-100%
+        // used to poison the shared uploadLogBytes and silence the whole
+        // Telethon upload (4.5 min with no log line on a 128 MB blob).
+        const vaultProgressTracker = createUploadProgressTracker();
         await appendClientUploadLog(`Uploading ${formatBytes(encryptedBlob.size)} encrypted blob to ${vaultService.label}...`);
         const onVaultProgress = async ({ loaded, total, percent, phase, text }) => {
           const totalLabel = total ? formatBytes(total) : formatBytes(encryptedBlob.size);
           // The native uploader fires a synthetic `finalizing` event once
           // byte transfer hits 100% — Telegram still has to create the
-          // post server-side (observed ~3 min on a 72 MB blob), and
-          // without this line the log goes silent and reads as stuck
-          // forever. Render it and stop: it is NOT another 100% line.
+          // post server-side. (2.19.36 correction: the ~3 min "finalizing"
+          // wait once blamed here was the Telethon upload itself — the
+          // staging-100% line had poisoned the log watermark and the
+          // upload went silent. Finalization itself was ~instant on a
+          // 128 MB blob.) Render it and stop: it is NOT another 100% line.
           if (phase === 'finalizing') {
             const finalizingMessage = `Uploading to ${vaultService.label}: ${text || `all ${totalLabel} sent — waiting for Telegram to finalize the post...`}`;
             await chrome.storage.local.set({ uploadStatus: finalizingMessage });
@@ -2107,10 +2109,13 @@ export default function GalleryPage() {
           const percentLabel = percent !== null
             ? `${percent}% (${loadedLabel} / ${totalLabel})`
             : `${loadedLabel} sent`;
-          await chrome.storage.local.set({ uploadStatus: `Uploading to ${vaultService.label}: ${percentLabel}` });
-          if (percent === 100 || loaded - uploadLogBytes >= UPLOAD_LOG_STEP) {
-            uploadLogBytes = loaded;
-            appendClientUploadLog(`Uploading to ${vaultService.label}: ${percentLabel}`).catch(() => {});
+          // Staging renders as staging, never as an upload — the 47%→100%
+          // "Uploading to Telegram" lines on a 128 MB blob were staging
+          // progress, and the real upload then went silent for 4.5 min.
+          const message = vaultUploadProgressLabel({ serviceLabel: vaultService.label, phase, percentLabel });
+          await chrome.storage.local.set({ uploadStatus: message });
+          if (vaultProgressTracker.shouldLog({ loaded, percent, phase })) {
+            appendClientUploadLog(message).catch(() => {});
           }
         };
 
@@ -2165,14 +2170,49 @@ export default function GalleryPage() {
       // full on-demand derivation. Both non-fatal: a failed write just
       // means the card derives on demand, never a failed upload.
       if (vaultSnapshotBlob && saved?.id) {
+        // Both persists are bounded (2.19.36): setCachedThumb's IndexedDB
+        // open has no timeout and no onblocked handler, and
+        // persistRemoteVaultPreview's sendMessage has no timeout either —
+        // a never-settling await would freeze the modal exactly like a
+        // stuck upload. On timeout the snapshot is skipped LOUDLY in the
+        // upload log (the card derives on demand) and the upload continues.
         try {
-          await setCachedThumb(`vault-preview-${saved.id}`, vaultSnapshotBlob);
+          await withTimeout(
+            setCachedThumb(`vault-preview-${saved.id}`, vaultSnapshotBlob),
+            VAULT_SNAPSHOT_PERSIST_TIMEOUT_MS,
+            'vault preview cache write',
+          );
         } catch (cacheErr) {
-          console.warn('[uploadVaultedDirectly] Vault preview cache write failed:', cacheErr?.message || cacheErr);
+          if (cacheErr?.name === 'TimeoutError') {
+            await appendClientUploadLog(`⚠️ Vault preview cache write timed out after ${VAULT_SNAPSHOT_PERSIST_TIMEOUT_MS / 1000}s — snapshot skipped, the card will derive on demand.`, 'warning');
+          } else {
+            console.warn('[uploadVaultedDirectly] Vault preview cache write failed:', cacheErr?.message || cacheErr);
+          }
         }
-        // persistRemoteVaultPreview is already non-fatal (warns inside).
-        await persistRemoteVaultPreview({ id: saved.id }, vaultSnapshotBlob, sendMessage);
+        // persistRemoteVaultPreview is already non-fatal on rejection
+        // (warns inside) — the timeout only covers the never-settling case.
+        try {
+          await withTimeout(
+            persistRemoteVaultPreview({ id: saved.id }, vaultSnapshotBlob, sendMessage),
+            VAULT_SNAPSHOT_PERSIST_TIMEOUT_MS,
+            'remote vault preview persist',
+          );
+        } catch (remoteErr) {
+          if (remoteErr?.name === 'TimeoutError') {
+            await appendClientUploadLog(`⚠️ Remote vault preview persist timed out after ${VAULT_SNAPSHOT_PERSIST_TIMEOUT_MS / 1000}s — snapshot skipped, the card will derive on demand.`, 'warning');
+          } else {
+            console.warn('[uploadVaultedDirectly] Remote vault preview persist failed:', remoteErr?.message || remoteErr);
+          }
+        }
       }
+      // Terminal completion (2.19.36): without this the log ends at "saved"
+      // and uploadStatus stays "Saving encrypted item..." forever — a
+      // finished 128 MB upload read as stuck. The status must never claim
+      // "Saving..." after a successful save.
+      const hostLabels = vaultHostCopies.map((copy) => getVideoProviderLabel(copy.host)).join(' + ');
+      const completionMessage = `✅ Vault upload complete — ${fileName} saved to ${hostLabels || 'vault hosts'}`;
+      await chrome.storage.local.set({ uploadStatus: completionMessage });
+      await appendClientUploadLog(completionMessage, 'success');
       return saved;
     } catch (error) {
       await appendClientUploadLog(`Encrypted vault upload failed: ${error.message || String(error)}`, 'error');

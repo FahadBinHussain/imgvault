@@ -252,7 +252,10 @@ test('2.19.32 (2026-11-22): the vault snapshot is persisted under vault-preview-
   const cacheAt = vaultFn.indexOf('setCachedThumb(`vault-preview-${saved.id}`');
   const remoteAt = vaultFn.indexOf('persistRemoteVaultPreview({ id: saved.id }');
   assert.ok(saveAt > 0 && cacheAt > saveAt && remoteAt > saveAt, 'snapshot persists run before the save — saved.id does not exist yet');
-  assert.ok(vaultFn.slice(cacheAt, cacheAt + 400).includes('Vault preview cache write failed'), 'local cache write failure is not warned');
+  // 2.19.36: the cache write is wrapped in withTimeout, so the failure warn
+  // sits past the old 400-char window — the warn still exists, search the
+  // whole function for it.
+  assert.ok(vaultFn.includes('Vault preview cache write failed'), 'local cache write failure is not warned');
   assert.ok(gallery.includes("import { persistRemoteVaultPreview } from '../utils/vaultPreview.js';"), 'persistRemoteVaultPreview is not imported in GalleryPage');
 });
 

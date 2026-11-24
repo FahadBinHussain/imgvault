@@ -22,9 +22,9 @@ const gallery = () => src('../src/pages/GalleryPage.jsx');
 
 // ------------------------------------------------- manifest / build ---
 
-test('2.19.35 (2026-11-22): the manifest is at 2.19.35, carries unlimitedStorage, and lists scene-viewer.js concretely', () => {
+test('2.19.36 (2026-11-24): the manifest is at 2.19.36, carries unlimitedStorage, and lists scene-viewer.js concretely', () => {
   const manifest = JSON.parse(src('../public/manifest.json'));
-  assert.equal(manifest.version, '2.19.35');
+  assert.equal(manifest.version, '2.19.36');
   assert.ok(manifest.permissions.includes('unlimitedStorage'));
   const resources = manifest.web_accessible_resources.flatMap((entry) => entry.resources);
   assert.ok(resources.includes('scene-viewer.js'));
@@ -250,9 +250,15 @@ test('2.13.20 (2026-10-04): video thumbnail healing is session-only — React st
 });
 
 test('2.8.0 (2026-08-26): vault upload progress logs are gated on BYTES (~20 MB), never on percent', () => {
+  // 2.19.36: the gate moved out of GalleryPage into utils/uploadProgress.js
+  // (same semantics — 20 MB step, 100% always logs — plus a per-phase
+  // watermark reset). The live behavior is covered by the 2.19.36 tracker
+  // tests; this pins the wiring + the constant's home.
+  const progress = src('../src/utils/uploadProgress.js');
+  assert.ok(progress.includes('export const UPLOAD_LOG_STEP_BYTES = 20 * 1024 * 1024;'));
+  assert.ok(progress.includes('if (percent === 100 || loaded - loggedBytes >= stepBytes) {'));
   const page = gallery();
-  assert.ok(page.includes('const UPLOAD_LOG_STEP = 20 * 1024 * 1024;'));
-  assert.ok(page.includes('if (percent === 100 || loaded - uploadLogBytes >= UPLOAD_LOG_STEP) {'));
+  assert.ok(page.includes('vaultProgressTracker.shouldLog({ loaded, percent, phase })'));
 });
 
 test('Ctrl+S (2.16.x): the save shortcut submits through uploadSubmitRef, never a bare handleSave', () => {
