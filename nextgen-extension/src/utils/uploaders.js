@@ -1541,7 +1541,7 @@ export class TelegramUploader extends BaseUploader {
    *   because a vault .bin is a document, never a sendVideo mp4.
    */
   async upload(blob, options = {}) {
-    const { token, channel, filename = 'file', mimeType = '', signal, filePath, nativeAboveBytes } = options;
+    const { token, channel, filename = 'file', mimeType = '', signal, filePath, nativeAboveBytes, nativeRequestId } = options;
     requireTelegramToken(token);
     telegramChatId(channel);
 
@@ -1550,7 +1550,7 @@ export class TelegramUploader extends BaseUploader {
       ? nativeAboveBytes
       : TELEGRAM_UPLOAD_MAX_BYTES;
     if (size > nativeThreshold) {
-      return this.uploadViaNativeHost(blob, { token, channel, filename, mimeType, filePath, signal });
+      return this.uploadViaNativeHost(blob, { token, channel, filename, mimeType, filePath, signal, nativeRequestId });
     }
     assertTelegramUploadSize(size, filename, mimeType);
 
@@ -1567,7 +1567,7 @@ export class TelegramUploader extends BaseUploader {
    * file has no Bot API file_id, so every read of it must go back through
    * the native host (see downloadTelegramFileNative).
    */
-  async uploadViaNativeHost(blob, { token, channel, filename = 'file', mimeType = '', filePath, onProgress, signal } = {}) {
+  async uploadViaNativeHost(blob, { token, channel, filename = 'file', mimeType = '', filePath, onProgress, signal, nativeRequestId = '' } = {}) {
     const size = blob?.size || 0;
     assertTelegramUploadSize(size, filename, mimeType, true);
     let nativePath = filePath || '';
@@ -1603,12 +1603,23 @@ export class TelegramUploader extends BaseUploader {
         channel,
         onProgress: progressWithFinalizing,
         signal,
+        // The caller owns the request id when it needs to find the journal
+        // later (the vault flow records it on the run + intent BEFORE the
+        // upload starts, so a dead page can still reconcile it); without
+        // one the uploader mints its own.
+        requestId: nativeRequestId || undefined,
       });
 
       const messageId = String(res.messageId);
       // Completion line, mirroring finishUpload's Bot API one — the native
-      // path had none, so a finished upload left no "ok" anywhere.
-      console.log(`📨 [TELEGRAM] native MTProto ok - message ${messageId}, fileId native-${messageId}`);
+      // path had none, so a finished upload left no "ok" anywhere. A
+      // journal recovery is labelled as one (2.19.40): the live port died
+      // and the result came from the host journal instead — never silent.
+      if (res.recoveredViaJournal) {
+        console.warn(`📨 [TELEGRAM] native MTProto ok via JOURNAL RECOVERY - message ${messageId}, fileId native-${messageId} (the live event stream died mid-upload; the result was recovered from the host journal).`);
+      } else {
+        console.log(`📨 [TELEGRAM] native MTProto ok - message ${messageId}, fileId native-${messageId}`);
+      }
       const watchUrl = messageId ? telegramPostPageUrl(channel, messageId) : '';
       // The native uploader warns when it could not read video
       // dimensions — the post lands as a document, no CDN URL, no
@@ -1649,9 +1660,13 @@ export class TelegramUploader extends BaseUploader {
         messageId,
         filename,
         apiStatus: 'success',
-        apiMessage: res.warning
-          ? `Uploaded via native host MTProto — ${res.warning}`
-          : 'Uploaded via native host MTProto',
+        apiMessage: res.recoveredViaJournal
+          ? 'Uploaded via native host MTProto (result recovered from the host journal — the live event stream died mid-upload)'
+          : (res.warning
+            ? `Uploaded via native host MTProto — ${res.warning}`
+            : 'Uploaded via native host MTProto'),
+        nativeRequestId: res.requestId || nativeRequestId || '',
+        recoveredViaJournal: Boolean(res.recoveredViaJournal),
       };
     } finally {
       // A staged temp file is deleted whether the upload succeeded or not;
@@ -1668,7 +1683,7 @@ export class TelegramUploader extends BaseUploader {
 
   /** Page-side XHR variant with real byte progress (same post-send steps). */
   async uploadWithProgress(blob, options = {}) {
-    const { token, channel, filename = 'file', mimeType = '', filePath, onProgress, signal, nativeAboveBytes } = options;
+    const { token, channel, filename = 'file', mimeType = '', filePath, onProgress, signal, nativeAboveBytes, nativeRequestId } = options;
     requireTelegramToken(token);
     telegramChatId(channel);
 
@@ -1683,7 +1698,7 @@ export class TelegramUploader extends BaseUploader {
       ? nativeAboveBytes
       : TELEGRAM_UPLOAD_MAX_BYTES;
     if (size > nativeThreshold) {
-      return this.uploadViaNativeHost(blob, { token, channel, filename, mimeType, filePath, onProgress, signal });
+      return this.uploadViaNativeHost(blob, { token, channel, filename, mimeType, filePath, onProgress, signal, nativeRequestId });
     }
 
     assertTelegramUploadSize(size, filename, mimeType, false);

@@ -8,7 +8,7 @@ import { StorageManager } from '../utils/storage.js';
 import { DuplicateDetector } from '../utils/duplicate-detector.js';
 import { URLNormalizer } from '../utils/url-normalizer.js';
 import { PixvidUploader, ImgbbUploader, FilemoonUploader, UDropUploader, TeraBoxUploader, TelegramUploader } from '../utils/uploaders.js';
-import { TELEGRAM_GETFILE_MAX_BYTES, TELEGRAM_LOCAL_MEDIA_PREFIX, downloadTelegramFileNative, fetchTelegramFile, deleteTelegramMessage, isNativeTelegramFileId, nativeTelegramMessageId } from '../utils/telegramApi.js';
+import { TELEGRAM_GETFILE_MAX_BYTES, TELEGRAM_LOCAL_MEDIA_PREFIX, downloadTelegramFileNative, fetchTelegramFile, deleteTelegramMessage, isNativeTelegramFileId, nativeTelegramMessageId, telegramPostPageUrl } from '../utils/telegramApi.js';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig.js';
 import {
   IMAGE_UPLOAD_SERVICES,
@@ -37,6 +37,7 @@ import { PENDING_UPLOAD_EXTRA_KEYS, withoutPendingUploadFlags } from '../utils/p
 import { LINK_PREVIEW_RETRY_EXTRA_KEY, getLinkPreviewRetryAt, isLinkPreviewRefreshGated, planLinkPreviewRefresh } from '../utils/linkPreviewRefresh.js';
 import { deleteUdropFile } from '../utils/udropApi.js';
 import { flattenSceneConfig } from '../utils/sceneConfig.js';
+import { getVaultUploadIntent, clearVaultUploadIntent, decideVaultUploadRecovery } from '../utils/vaultUploadIntent.js';
 import {
   getConfiguredVideoUploadServices,
   getStrictVideoProviderLink,
@@ -3889,6 +3890,53 @@ class ImgVaultServiceWorker {
     }
   }
 
+  // Read the native host's TELEGRAM UPLOAD journal for one request
+  // (2.19.40) — the upload twin of checkNativeDownloadJournal. Pure read:
+  // unlike the download check it settles NOTHING itself, so the caller
+  // (the stale-run settle path) decides what the outcome means for the run.
+  // @returns {{status: 'completed'|'failed'|'running'|'unreachable', journal: Object}}
+  async checkNativeUploadJournal(requestId = '') {
+    const activeRequestId = String(requestId || '').trim();
+    if (!activeRequestId) return { status: 'unreachable', journal: {} };
+
+    try {
+      const result = await this.handleNativeHostCommand('read_upload_journal', {
+        request_id: activeRequestId,
+      }, 3000);
+
+      const journalStatus = String(result?.message || '');
+      // "missing" means the host that answered never saw this request — the
+      // original host process is still busy uploading and will write the
+      // journal when it finishes (same rule as the download journal).
+      if (journalStatus === 'missing') return { status: 'running', journal: {} };
+
+      let journal = {};
+      try {
+        journal = JSON.parse(result?.stdout || '{}');
+      } catch (_) {
+        journal = {};
+      }
+      if (journalStatus === 'completed' || journalStatus === 'failed' || journalStatus === 'running') {
+        return { status: journalStatus, journal };
+      }
+      return { status: 'unreachable', journal: {} };
+    } catch (error) {
+      return { status: 'unreachable', journal: {} };
+    }
+  }
+
+  async cleanupNativeUploadJournal(requestId = '') {
+    const activeRequestId = String(requestId || '').trim();
+    if (!activeRequestId) return;
+    try {
+      await this.handleNativeHostCommand('delete_upload_journal', {
+        request_id: activeRequestId,
+      }, 3000);
+    } catch (_) {
+      // Best effort — stale temp files are harmless.
+    }
+  }
+
   // The service worker restarts whenever the extension reloads or the browser
   // kills an idle worker, and the native messaging port dies with the old
   // context — no onDisconnect fires and nothing ever settles the record, so
@@ -4130,6 +4178,158 @@ class ImgVaultServiceWorker {
   }
 
   /**
+   * Recover a native Telegram upload's result from a completed host
+   * journal (2.19.40). The page that owned the upload port is gone, but
+   * the Telethon child finished on the host — the journal's RESULT json
+   * carries the message id, and the stored vault intent carries the rest
+   * of the save inputs. For a vault run with every leg recorded, the save
+   * completes here exactly as the live flow would have done it; anything
+   * else reports the recovered copy LOUDLY instead of dropping it.
+   *
+   * This method saves + cleans up but never closes the run — the caller
+   * owns the run record (a live run closes via finishUploadRun, an
+   * already-terminal run is rewritten directly).
+   * @param {Object} run - the run record being reconciled
+   * @param {Object} journal - the completed journal entry
+   * @returns {Promise<{recovered: boolean, savedItemId: string,
+   *   messageId: string, missingLegs: string[], telegramCopy: Object|null}>}
+   */
+  async recoverNativeUploadResult(run, journal) {
+    let result = {};
+    try {
+      result = JSON.parse(journal?.stdout || '{}');
+    } catch (_) {
+      result = {};
+    }
+    const messageId = String(result.messageId || '');
+    const channel = String(journal?.channel || '');
+    const watchUrl = telegramPostPageUrl(channel, messageId);
+    const telegramCopy = messageId
+      ? buildVaultBlobCopy('telegram', {
+        fileId: `native-${messageId}`,
+        messageId,
+        watchUrl,
+        directUrl: watchUrl,
+      })
+      : null;
+
+    const empty = { recovered: false, savedItemId: '', messageId, missingLegs: [], telegramCopy };
+    if (!telegramCopy) return empty;
+    if (run?.kind !== 'vault') return empty;
+
+    let intent = null;
+    try {
+      intent = await getVaultUploadIntent();
+    } catch (error) {
+      console.error('[UPLOAD RUN] Could not read the vault upload intent for recovery:', error);
+      return empty;
+    }
+    // Only recover the intent that belongs to THIS run — a newer upload
+    // may already have overwritten the single intent slot.
+    if (intent && intent.runId && run?.id && intent.runId !== run.id) {
+      return { ...empty, missingLegs: ['intent belongs to another run'] };
+    }
+    const decision = decideVaultUploadRecovery({ intent, telegramCopy });
+    if (decision.action !== 'save') {
+      return { ...empty, missingLegs: decision.missingLegs };
+    }
+
+    const saved = await this.saveVaultedUpload({
+      uploadData: decision.uploadData,
+      encrypted: decision.encrypted,
+      blobSize: decision.blobSize,
+    });
+    await this.notifyVaultMembershipChanged();
+    await clearVaultUploadIntent().catch(() => {});
+    await this.cleanupNativeUploadJournal(run.nativeUploadRequestId);
+    return {
+      recovered: true,
+      savedItemId: String(saved?.id || ''),
+      messageId,
+      missingLegs: [],
+      telegramCopy,
+    };
+  }
+
+  /**
+   * Settle a dead run whose Telegram leg went through the native host,
+   * consulting the host journal FIRST (2.19.40). Returns the settled run
+   * when the journal decided the outcome, or null when the journal said
+   * nothing useful (still running / host unreachable) and the caller must
+   * run the normal interrupted settle.
+   */
+  async settleInterruptedUploadViaJournal(run, reason) {
+    const requestId = String(run?.nativeUploadRequestId || '').trim();
+    if (!requestId) return null;
+    let checked;
+    try {
+      checked = await this.checkNativeUploadJournal(requestId);
+    } catch (error) {
+      console.error('[UPLOAD RUN] Native upload journal check failed:', error);
+      return null;
+    }
+
+    if (checked.status === 'failed') {
+      const journalError = checked.journal?.message || 'Native Telegram upload failed on the host.';
+      const summary = `${reason} The Telegram copy failed on the native host: ${journalError}`;
+      await this.updateStatusWithLog(`❌ ${summary}`, 'error');
+      await this.cleanupNativeUploadJournal(requestId);
+      return finishUploadRun(UPLOAD_RUN_STATUS.ERROR, summary, {
+        savedItemId: run.savedItemId || '',
+      });
+    }
+
+    if (checked.status !== 'completed') return null;
+
+    let recovered;
+    try {
+      recovered = await this.recoverNativeUploadResult(run, checked.journal);
+    } catch (error) {
+      let journalMessageId = 'unknown';
+      try {
+        journalMessageId = String(JSON.parse(checked.journal?.stdout || '{}').messageId || 'unknown');
+      } catch (_) {}
+      console.error('[UPLOAD RUN] Native upload journal recovery failed:', error);
+      await this.updateStatusWithLog(
+        `⚠️ The Telegram copy finished on the host (message ${journalMessageId}) but the vault item could not be saved from the recovery: ${error.message || String(error)}`,
+        'error'
+      );
+      return null;
+    }
+
+    if (recovered.recovered) {
+      const summary = `Upload recovered after the page died — the Telegram copy finished on the host (message ${recovered.messageId}) and the vault item was saved (id ${recovered.savedItemId}). The live event stream never delivered the result.`;
+      await this.updateStatusWithLog(`✅ ${summary}`, 'success');
+      return finishUploadRun(UPLOAD_RUN_STATUS.SUCCESS, summary, {
+        savedItemId: recovered.savedItemId,
+      });
+    }
+
+    // The Telegram copy finished on the host but the save cannot complete
+    // (no intent, or legs missing): settle interrupted, but name the
+    // recovered copy in the sentence — "nothing was saved" would be a lie
+    // about the host side, and the message id is what a manual recovery
+    // needs. The intent is dropped: it cannot complete, and the next
+    // upload overwrites the slot anyway.
+    await clearVaultUploadIntent().catch(() => {});
+    await this.cleanupNativeUploadJournal(requestId);
+    const missing = recovered.missingLegs.length > 0
+      ? ` Missing legs: ${recovered.missingLegs.join(', ')}.`
+      : '';
+    const recoveryTail = run?.kind === 'vault'
+      ? `but the vault item could not be saved from the recovery.${missing} The copy is on the channel; re-upload to complete the vault item.`
+      : `but the item could not be finalized from the recovery.${missing} The copy is on the channel (message ${recovered.messageId || 'unknown'}); the resolve page can match it to the pending item.`;
+    const reportSummary = `${reason} The Telegram copy DID finish on the host (message ${recovered.messageId || 'unknown'}) ${recoveryTail}`;
+    await this.updateStatusWithLog(`⚠️ ${reportSummary}`, 'warning');
+    return settleInterruptedUploadRun(reportSummary, {
+      interruptedReason: reason,
+      interruptedAt: Date.now(),
+      savedItemId: run.savedItemId || '',
+      recoveredTelegramMessageId: recovered.messageId || '',
+    });
+  }
+
+  /**
    * Settle an upload run whose owner died, and say what was lost.
    *
    * The upload used to be two flags in storage with no owner and no record of
@@ -4146,6 +4346,16 @@ class ImgVaultServiceWorker {
   async settleInterruptedUpload(run, reason) {
     if (!run || isTerminalUploadStatus(run.status)) {
       return run || null;
+    }
+
+    // A run whose Telegram leg went through the native host may have
+    // FINISHED on the host after the page died — check the journal before
+    // calling it interrupted (2.19.40). A journal failure never blocks
+    // the settle: null means "the journal said nothing", and the normal
+    // path below runs.
+    const journalSettled = await this.settleInterruptedUploadViaJournal(run, reason);
+    if (journalSettled) {
+      return journalSettled;
     }
 
     // The sentence has to be TRUE. A run whose item was already finalised
@@ -4197,6 +4407,54 @@ class ImgVaultServiceWorker {
     // database with its host links. Nothing would ever rewrite it - the run
     // is closed - so the correction happens here.
     if (isTerminalUploadStatus(run.status)) {
+      // Late journal completion (2.19.40): the run was already settled as
+      // interrupted while the host was still uploading — the host may have
+      // finished since. Re-check once per reconcile; a completed journal
+      // upgrades the run to a recovered success (or names the recovered
+      // copy in the summary) instead of leaving the lie ("nothing was
+      // saved") in place. finishUploadRun refuses terminal runs, so the
+      // rewrite is direct, mirroring repairInterruptedUploadSummary.
+      if (run.status === UPLOAD_RUN_STATUS.INTERRUPTED && run.nativeUploadRequestId && !run.savedItemId) {
+        try {
+          const checked = await this.checkNativeUploadJournal(run.nativeUploadRequestId);
+          if (checked.status === 'completed') {
+            const recovered = await this.recoverNativeUploadResult(run, checked.journal);
+            if (recovered.recovered) {
+              const summary = `Upload recovered after the page died — the Telegram copy finished on the host (message ${recovered.messageId}) and the vault item was saved (id ${recovered.savedItemId}). The live event stream never delivered the result.`;
+              const next = {
+                ...run,
+                status: UPLOAD_RUN_STATUS.SUCCESS,
+                summary,
+                savedItemId: recovered.savedItemId,
+                completedAt: Date.now(),
+                updatedAt: Date.now(),
+              };
+              await chrome.storage.local.set({ [UPLOAD_RUN_KEY]: next });
+              await archiveUploadRun(next);
+              await this.updateStatusWithLog(`✅ ${summary}`, 'success');
+              return next;
+            }
+            if (recovered.messageId && !String(run.summary || '').includes(recovered.messageId)) {
+              const missing = recovered.missingLegs.length > 0
+                ? ` Missing legs: ${recovered.missingLegs.join(', ')}.`
+                : '';
+              const recoveryTail = run.kind === 'vault'
+                ? `but the vault item could not be saved from the recovery.${missing} The copy is on the channel; re-upload to complete the vault item.`
+                : `but the item could not be finalized from the recovery.${missing} The copy is on the channel; the resolve page can match it to the pending item.`;
+              const summary = `${run.summary || ''} The Telegram copy DID finish on the host (message ${recovered.messageId}) ${recoveryTail}`;
+              const next = { ...run, summary, updatedAt: Date.now() };
+              await chrome.storage.local.set({ [UPLOAD_RUN_KEY]: next });
+              await archiveUploadRun(next);
+              await this.updateStatusWithLog(`⚠️ Upload message corrected: ${summary}`, 'warning');
+              await clearVaultUploadIntent().catch(() => {});
+              await this.cleanupNativeUploadJournal(run.nativeUploadRequestId);
+              return next;
+            }
+          }
+        } catch (error) {
+          console.error('[UPLOAD RUN] Late native upload journal recovery failed:', error);
+        }
+      }
       return this.repairInterruptedUploadSummary(run);
     }
 

@@ -1036,10 +1036,10 @@ describe('uploadTelegramNative', () => {
         stdout: JSON.stringify({ messageId: 90, size: 177099614, date: 1799999999 }),
       };
     });
-    const out = await uploadTelegramNative({ filePath: 'C:\\v.mp4', channel: '@testchannel' });
+    const out = await uploadTelegramNative({ filePath: 'C:\\v.mp4', channel: '@testchannel', requestId: 'tg-upload-utils-1' });
     assert.deepEqual(out, {
       ok: true, messageId: 90, size: 177099614, date: 1799999999,
-      warning: '', videoAttributes: false,
+      warning: '', videoAttributes: false, requestId: 'tg-upload-utils-1',
     });
   });
   test('progress lines reach onProgress with loaded + total + percent', async () => {

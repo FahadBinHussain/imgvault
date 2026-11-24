@@ -479,6 +479,57 @@ fn remove_download_journal(request_id: &str) {
     let _ = fs::remove_file(get_request_journal_path(request_id));
 }
 
+// Upload completion journal: same shape as the download journal, for the
+// native Telegram upload. The page that owns the upload port can die (tab
+// frozen/discarded by Edge sleeping tabs, extension reload, crash) while
+// the Telethon child keeps running in its own process — the upload then
+// completes server-side but the result never reaches any live context,
+// and the run stays "running" forever (2026-11-24: a 381 MB vault upload
+// stuck at 74%, post msg 701 landed, no vault item saved). The host
+// records the outcome to a per-request journal file in the temp dir; the
+// extension re-checks it when the event stream goes silent or when it
+// reconciles a stale run, and adopts the real result instead of guessing.
+fn get_upload_journal_path(request_id: &str) -> PathBuf {
+    env::temp_dir().join(format!(
+        "imgvault-tg-upload-journal-{}.json",
+        sanitize_request_id(request_id)
+    ))
+}
+
+fn write_upload_journal(
+    request_id: &str,
+    status: &str,
+    file_path: Option<&str>,
+    channel: Option<&str>,
+    message: Option<&str>,
+    stdout: Option<&str>,
+    stderr: Option<&str>,
+) -> Result<(), String> {
+    let entry = serde_json::json!({
+        "requestId": request_id,
+        "status": status,
+        "file_path": file_path,
+        "channel": channel,
+        "message": message,
+        "stdout": stdout,
+        "stderr": stderr,
+        "completedAt": chrono_now_ms(),
+    });
+    let path = get_upload_journal_path(request_id);
+    fs::write(&path, serde_json::to_string_pretty(&entry).map_err(|e| e.to_string())?)
+        .map_err(|e| format!("Failed to write upload journal {}: {}", path.display(), e))
+}
+
+fn read_upload_journal(request_id: &str) -> Option<serde_json::Value> {
+    let path = get_upload_journal_path(request_id);
+    let raw = fs::read_to_string(&path).ok()?;
+    serde_json::from_str::<serde_json::Value>(&raw).ok()
+}
+
+fn remove_upload_journal(request_id: &str) {
+    let _ = fs::remove_file(get_upload_journal_path(request_id));
+}
+
 fn chrono_now_ms() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     match SystemTime::now().duration_since(UNIX_EPOCH) {
@@ -898,6 +949,38 @@ fn handle_telegram_upload(
     let child_stdout = child.stdout.take();
     let child_stderr = child.stderr.take();
 
+    // Drain stderr on its own thread from the start: the old code only
+    // read it AFTER child.wait(), so a chatty child (Telethon warnings,
+    // tracebacks) could fill the pipe buffer and block forever mid-upload
+    // — the page would see a stuck upload with no error at all. The yt-dlp
+    // handler already drains both streams concurrently; this is the same
+    // fix for the telegram path.
+    let stderr_handle = child_stderr.map(|err| {
+        std::thread::spawn(move || {
+            let mut buf = String::new();
+            let _ = BufReader::new(err).read_to_string(&mut buf);
+            buf
+        })
+    });
+
+    // The journal is the only record that survives the extension page
+    // dying mid-upload (tab freeze/discard, reload, crash): "running"
+    // goes down at spawn so a later re-check can tell "still uploading"
+    // from "never started", and the terminal entry lands below.
+    if let Some(active_request_id) = request_id {
+        if let Err(error) = write_upload_journal(
+            active_request_id,
+            "running",
+            Some(file_path),
+            Some(channel),
+            Some("Telegram upload started"),
+            None,
+            None,
+        ) {
+            eprintln!("[NATIVE] Failed to persist upload journal: {}", error);
+        }
+    }
+
     let mut final_result: Option<String> = None;
     let mut last_error: Option<String> = None;
 
@@ -932,15 +1015,11 @@ fn handle_telegram_upload(
     }
 
     let status = child.wait();
-    let stderr_text = child_stderr
-        .map(|err| {
-            let mut buf = String::new();
-            let _ = BufReader::new(err).read_to_string(&mut buf);
-            buf
-        })
+    let stderr_text = stderr_handle
+        .and_then(|handle| handle.join().ok())
         .unwrap_or_default();
 
-    if let Some(res_json) = final_result {
+    let response = if let Some(res_json) = final_result {
         NativeResponse {
             success: true,
             event: Some("complete".to_string()),
@@ -972,9 +1051,44 @@ fn handle_telegram_upload(
             stream: None,
             file_path: None,
             stdout: None,
-            stderr: Some(stderr_text),
+            stderr: Some(stderr_text.clone()),
+        }
+    };
+
+    // Terminal journal entry: this is what the extension reads when the
+    // page that owned the port is gone. Best-effort only — a failed
+    // journal write must never turn a successful upload into a failure.
+    // The stderr tail is trimmed: a traceback can be long and the journal
+    // is a file, not a message, but there is no reason to keep megabytes.
+    if let Some(active_request_id) = request_id {
+        let stderr_tail: String = stderr_text.chars().rev().take(4096).collect::<String>().chars().rev().collect();
+        let journal_result = if response.success {
+            write_upload_journal(
+                active_request_id,
+                "completed",
+                Some(file_path),
+                Some(channel),
+                Some("Telegram upload succeeded"),
+                response.stdout.as_deref(),
+                None,
+            )
+        } else {
+            write_upload_journal(
+                active_request_id,
+                "failed",
+                Some(file_path),
+                Some(channel),
+                response.message.as_deref(),
+                None,
+                if stderr_tail.trim().is_empty() { None } else { Some(stderr_tail.as_str()) },
+            )
+        };
+        if let Err(error) = journal_result {
+            eprintln!("[NATIVE] Failed to persist upload journal: {}", error);
         }
     }
+
+    response
 }
 
 // Verify one Telegram channel file through the Telethon session — the
@@ -2339,6 +2453,57 @@ fn handle_native_messaging() {
                             stderr: None,
                         }
                     }
+                    "read_upload_journal" => {
+                        match native_msg.request_id.as_deref().and_then(read_upload_journal) {
+                            Some(journal) => NativeResponse {
+                                success: true,
+                                event: Some("complete".to_string()),
+                                request_id: native_msg.request_id.clone(),
+                                message: Some(
+                                    journal
+                                        .get("status")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("unknown")
+                                        .to_string(),
+                                ),
+                                line: None,
+                                stream: None,
+                                file_path: journal
+                                    .get("file_path")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string()),
+                                stdout: Some(serde_json::to_string(&journal).unwrap_or_else(|_| "{}".to_string())),
+                                stderr: None,
+                            },
+                            None => NativeResponse {
+                                success: true,
+                                event: Some("complete".to_string()),
+                                request_id: native_msg.request_id.clone(),
+                                message: Some("missing".to_string()),
+                                line: None,
+                                stream: None,
+                                file_path: None,
+                                stdout: None,
+                                stderr: None,
+                            },
+                        }
+                    }
+                    "delete_upload_journal" => {
+                        if let Some(active_request_id) = native_msg.request_id.as_deref() {
+                            remove_upload_journal(active_request_id);
+                        }
+                        NativeResponse {
+                            success: true,
+                            event: Some("complete".to_string()),
+                            request_id: native_msg.request_id.clone(),
+                            message: Some("Upload journal cleaned up".to_string()),
+                            line: None,
+                            stream: None,
+                            file_path: None,
+                            stdout: None,
+                            stderr: None,
+                        }
+                    }
                     "check_yt_dlp" => {
                         match find_yt_dlp() {
                             Ok(message) => NativeResponse {
@@ -3652,6 +3817,87 @@ mod tests {
 
         remove_download_journal(&id);
         assert_eq!(read_download_journal(&id), None);
+    }
+
+    #[test]
+    fn upload_journal_write_read_remove_round_trip() {
+        let id = unique_request_id("upload-journal");
+        let path = get_upload_journal_path(&id);
+        let mut cleanup = TestCleanup::new();
+        cleanup.track(path.clone());
+
+        assert_eq!(read_upload_journal(&id), None);
+        write_upload_journal(
+            &id,
+            "running",
+            Some(r"C:\Temp\imgvault-tg-stage\blob.bin"),
+            Some("3959088547"),
+            Some("Telegram upload started"),
+            None,
+            None,
+        )
+        .unwrap();
+        let running = read_upload_journal(&id).expect("running journal readable");
+        assert_eq!(running["requestId"], id);
+        assert_eq!(running["status"], "running");
+        assert_eq!(running["channel"], "3959088547");
+
+        // The terminal write replaces the running entry in place.
+        write_upload_journal(
+            &id,
+            "completed",
+            Some(r"C:\Temp\imgvault-tg-stage\blob.bin"),
+            Some("3959088547"),
+            Some("Telegram upload succeeded"),
+            Some(r#"{"ok":true,"messageId":701,"size":399456568}"#),
+            None,
+        )
+        .unwrap();
+        let journal = read_upload_journal(&id).expect("journal readable");
+        assert_eq!(journal["status"], "completed");
+        assert_eq!(journal["stdout"], r#"{"ok":true,"messageId":701,"size":399456568}"#);
+        assert!(journal["completedAt"].as_i64().unwrap() > 0);
+
+        remove_upload_journal(&id);
+        assert_eq!(read_upload_journal(&id), None);
+    }
+
+    #[test]
+    fn upload_journal_path_uses_sanitized_request_id() {
+        let id = unique_request_id("upload-journal-path");
+        let path = get_upload_journal_path(&id);
+        assert_eq!(
+            path,
+            env::temp_dir().join(format!("imgvault-tg-upload-journal-{}.json", id))
+        );
+        // A hostile request id cannot escape the temp dir or pick another file.
+        assert_eq!(
+            get_upload_journal_path("../download-journal-x"),
+            env::temp_dir().join("imgvault-tg-upload-journal-___download-journal-x.json")
+        );
+    }
+
+    #[test]
+    fn upload_journal_failed_entry_carries_the_error() {
+        let id = unique_request_id("upload-journal-failed");
+        let path = get_upload_journal_path(&id);
+        let mut cleanup = TestCleanup::new();
+        cleanup.track(path.clone());
+
+        write_upload_journal(
+            &id,
+            "failed",
+            Some(r"C:\Temp\imgvault-tg-stage\blob.bin"),
+            Some("3959088547"),
+            Some("Uploader exited with code Some(1)"),
+            None,
+            Some("Traceback (most recent call last): ..."),
+        )
+        .unwrap();
+        let journal = read_upload_journal(&id).expect("journal readable");
+        assert_eq!(journal["status"], "failed");
+        assert_eq!(journal["message"], "Uploader exited with code Some(1)");
+        assert!(journal["stderr"].as_str().unwrap().contains("Traceback"));
     }
 
     #[test]

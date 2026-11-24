@@ -337,11 +337,12 @@ test('2.19.6 (2026-11-04): uploadTelegramNative surfaces progress (loaded byte c
     const result = await uploadTelegramNative({
       filePath: 'C:\\x\\clip.mp4',
       channel: 'chan',
+      requestId: 'tg-upload-2-19-6',
       onProgress: (e) => progress.push(e),
     });
     assert.deepEqual(result, {
       ok: true, messageId: 90, size: 1000, date: 1730000000,
-      warning: '', videoAttributes: false,
+      warning: '', videoAttributes: false, requestId: 'tg-upload-2-19-6',
     });
     assert.equal(progress.length, 1);
     assert.equal(progress[0].phase, 'uploading');
@@ -537,9 +538,12 @@ test('2.19.22 (2026-11-18): uploaders.js stages ONLY picked files and deletes ON
   assert.ok(uploaders.includes("fileId: `native-${messageId}`"));
   // 2.19.23: the apiMessage names the uploader warning when one is present
   // (mp4 posted as a document), plain 'Uploaded via native host MTProto'
-  // otherwise.
+  // otherwise. 2.19.40 nests that inside the journal-recovery branch, so
+  // the plain arm ends with a paren now — the wording is unchanged.
   assert.ok(uploaders.includes("? `Uploaded via native host MTProto — ${res.warning}`"));
-  assert.ok(uploaders.includes(": 'Uploaded via native host MTProto',"));
+  assert.ok(uploaders.includes(": 'Uploaded via native host MTProto'),"));
+  // 2.19.40: a journal-recovered result says so in its apiMessage
+  assert.ok(uploaders.includes('result recovered from the host journal'));
 });
 
 test('2.19.22 (2026-11-18): providerCatalog forwards data.filePath into the telegram upload options', () => {

@@ -45,6 +45,10 @@ const telegramUploadOptions = (settings, data, blob, onProgress, signal) => ({
   // vault callers pass a lower native threshold (20 MB getFile) through
   // data — the uploader defaults to 50 MB when it is absent.
   ...(Number.isFinite(data?.nativeAboveBytes) ? { nativeAboveBytes: data.nativeAboveBytes } : {}),
+  // vault callers pass the journal request id through data too (2.19.40):
+  // the run + intent record it BEFORE the upload starts, so a dead page
+  // can still reconcile the Telegram leg from the host journal.
+  ...(data?.nativeRequestId ? { nativeRequestId: data.nativeRequestId } : {}),
   ...(onProgress ? { onProgress } : {}),
   ...(signal ? { signal } : {}),
 });

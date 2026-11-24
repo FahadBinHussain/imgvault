@@ -845,16 +845,107 @@ export async function deleteNativeTempFile(filePath) {
 }
 
 /**
+ * Read the native host's upload completion journal for one telegram_upload
+ * request (2.19.40). The journal is the only record that survives the
+ * extension page dying mid-upload — the host writes "running" at spawn and
+ * "completed"/"failed" at the end, so a silent event stream or a stale run
+ * can be reconciled against the real outcome instead of guessed at.
+ *
+ * Never throws: {status:'unreachable'} is a normal answer (host not
+ * installed, worker busy), and the caller falls back to the live port.
+ * @returns {Promise<{status: 'completed'|'failed'|'running'|'unreachable', journal: Object|null, message: string}>}
+ *   'missing' from the host means the answering host never saw this
+ *   request — the original host process is still busy uploading and will
+ *   write the journal when it finishes (same rule as the download
+ *   journal), so it reads as 'running' here.
+ */
+export async function readUploadJournal(requestId, { timeoutMs = 15000 } = {}) {
+  const cleanId = String(requestId || '').trim();
+  if (!cleanId) return { status: 'running', journal: null, message: 'no request id' };
+  if (typeof chrome === 'undefined' || !chrome.runtime?.connectNative) {
+    return { status: 'unreachable', journal: null, message: 'extension runtime unavailable' };
+  }
+  const port = openNativePort();
+  try {
+    const response = await port.request({ action: 'read_upload_journal', request_id: cleanId }, timeoutMs);
+    const status = String(response?.message || '');
+    if (status === 'missing') return { status: 'running', journal: null, message: 'missing' };
+    let journal = null;
+    try {
+      journal = JSON.parse(response?.stdout || '');
+    } catch (_) {
+      journal = null;
+    }
+    if (status === 'completed' || status === 'failed' || status === 'running') {
+      return { status, journal, message: journal?.message || status };
+    }
+    return { status: 'unreachable', journal: null, message: status };
+  } catch (error) {
+    return { status: 'unreachable', journal: null, message: error?.message || String(error) };
+  } finally {
+    port.disconnect();
+  }
+}
+
+/**
+ * Delete a consumed upload journal. Best-effort: returns false when the
+ * host is unreachable or the journal was already gone.
+ */
+export async function deleteUploadJournal(requestId) {
+  const cleanId = String(requestId || '').trim();
+  if (!cleanId) return false;
+  if (typeof chrome === 'undefined' || !chrome.runtime?.connectNative) return false;
+  const port = openNativePort();
+  try {
+    await port.request({ action: 'delete_upload_journal', request_id: cleanId }, 15000);
+    return true;
+  } catch (_) {
+    return false;
+  } finally {
+    port.disconnect();
+  }
+}
+
+/**
+ * How long the native upload's event stream may go silent before the page
+ * stops trusting it and re-checks the host journal (2.19.40). Progress
+ * events arrive about once a second during a live Telethon upload, so five
+ * silent minutes means the channel died — the upload itself may still be
+ * running on the host, and the journal is the only way to know.
+ */
+export const NATIVE_UPLOAD_SILENCE_MS = 5 * 60 * 1000;
+
+const newNativeUploadRequestId = () => {
+  try {
+    return `tg-upload-${crypto.randomUUID()}`;
+  } catch (_) {
+    return `tg-upload-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+};
+
+/**
  * Upload a large file directly via MTProto through the Rust native host (ImgVault-Native-Host).
  * Used when a video exceeds Telegram's standard 50 MB Bot API ceiling (up to 2,000 MB).
+ *
+ * The request carries a request_id (2.19.40) so the host's completion
+ * journal can be found later: if the event stream goes silent for
+ * NATIVE_UPLOAD_SILENCE_MS, the page polls the journal instead of hanging
+ * forever — a completed journal resolves the upload (flagged
+ * recoveredViaJournal so the caller says so LOUDLY), a failed journal
+ * rejects with the real error, and a still-running journal just re-arms
+ * the timer. The live port stays the primary path; the journal is the
+ * second method, and it is always labelled as such.
  */
-export async function uploadTelegramNative({ filePath, channel, caption = '', onProgress, signal } = {}) {
+export async function uploadTelegramNative({ filePath, channel, caption = '', onProgress, signal, requestId = '', silenceMs = NATIVE_UPLOAD_SILENCE_MS } = {}) {
   if (!filePath) throw new Error('Telegram native upload requires a local filePath.');
   const cleanChannel = String(channel || '').trim().replace(/^@+/, '');
   if (!cleanChannel) throw new Error('Telegram native upload requires a valid channel.');
+  const activeRequestId = String(requestId || '').trim() || newNativeUploadRequestId();
 
   return new Promise((resolve, reject) => {
     let settled = false;
+    let silenceTimer = null;
+    let journalPolling = false;
     let port;
     try {
       port = chrome.runtime.connectNative('com.imgvault.nativehost');
@@ -865,8 +956,62 @@ export async function uploadTelegramNative({ filePath, channel, caption = '', on
     const finish = (fn, val) => {
       if (settled) return;
       settled = true;
+      if (silenceTimer) clearTimeout(silenceTimer);
       port.disconnect();
       fn(val);
+    };
+
+    const parseJournalResult = (journal) => {
+      let parsed = {};
+      try {
+        parsed = JSON.parse(journal?.stdout || '{}');
+      } catch (_) {}
+      return parsed;
+    };
+
+    const armSilenceTimer = () => {
+      if (silenceTimer) clearTimeout(silenceTimer);
+      if (!Number.isFinite(silenceMs) || silenceMs <= 0) return;
+      silenceTimer = setTimeout(async () => {
+        if (settled || journalPolling) return;
+        journalPolling = true;
+        try {
+          const checked = await readUploadJournal(activeRequestId);
+          if (settled) return;
+          if (checked.status === 'completed') {
+            const parsed = parseJournalResult(checked.journal);
+            // The event stream died but the host finished the upload —
+            // recover through the journal and say so (recoveredViaJournal),
+            // never pretend the live port delivered it.
+            console.warn(`[telegram-native] Event stream went silent for ${Math.round(silenceMs / 1000)}s — result recovered from the host journal (message ${parsed.messageId || 'unknown'}).`);
+            finish(resolve, {
+              ok: true,
+              messageId: parsed.messageId,
+              size: parsed.size,
+              date: parsed.date,
+              warning: parsed.warning || '',
+              videoAttributes: parsed.videoAttributes === true,
+              requestId: activeRequestId,
+              recoveredViaJournal: true,
+            });
+            return;
+          }
+          if (checked.status === 'failed') {
+            finish(reject, new Error(checked.journal?.message || checked.message || 'Native Telegram upload failed (journal).'));
+            return;
+          }
+          // Still running (or the host could not be reached): the live
+          // port may yet deliver the result. Say so once per check — a
+          // silent stream with a live host is worth knowing about — and
+          // keep waiting.
+          console.warn(`[telegram-native] No progress event for ${Math.round(silenceMs / 1000)}s; host journal says "${checked.status}" — still waiting for the live result.`);
+        } catch (error) {
+          console.warn('[telegram-native] Upload journal check failed:', error?.message || error);
+        } finally {
+          journalPolling = false;
+          if (!settled) armSilenceTimer();
+        }
+      }, silenceMs);
     };
 
     if (signal) {
@@ -876,6 +1021,7 @@ export async function uploadTelegramNative({ filePath, channel, caption = '', on
 
     port.onMessage.addListener((res) => {
       if (res?.event === 'progress') {
+        armSilenceTimer();
         if (onProgress && res.line) {
           const parts = res.line.split(':');
           if (parts.length >= 4) {
@@ -905,6 +1051,7 @@ export async function uploadTelegramNative({ filePath, channel, caption = '', on
           // dropped silently.
           warning: parsed.warning || '',
           videoAttributes: parsed.videoAttributes === true,
+          requestId: activeRequestId,
         });
       } else {
         finish(reject, new Error(res?.message || 'Native Telegram upload failed.'));
@@ -920,10 +1067,12 @@ export async function uploadTelegramNative({ filePath, channel, caption = '', on
 
     port.postMessage({
       action: 'telegram_upload',
+      request_id: activeRequestId,
       file_path: filePath,
       channel: cleanChannel,
       caption,
     });
+    armSilenceTimer();
   });
 }
 

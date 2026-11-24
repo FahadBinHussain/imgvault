@@ -38,6 +38,7 @@ import {
 import { FilemoonUploader, UDropUploader, TeraBoxUploader, TelegramUploader } from '../utils/uploaders';
 import { TELEGRAM_GETFILE_MAX_BYTES, assertTelegramUploadSize, probeNativeHost, telegramUploadSizeCap } from '../utils/telegramApi.js';
 import { encryptBlob, encryptMetadata } from '../utils/vaultCrypto.js';
+import { createVaultUploadIntent, saveVaultUploadIntent, updateVaultUploadIntent, recordVaultUploadHostResult, clearVaultUploadIntent, buildVaultEncryptedPayload } from '../utils/vaultUploadIntent.js';
 import { getVaultMasterKey, importMasterKeyFromB64 } from '../utils/vaultSession.js';
 import { getPreferredImageProviderLink, getPlayableImageProviderLink, getImageProviderLabel } from '../utils/imageProviderLinks';
 import { downloadItemDirect } from '../utils/downloads';
@@ -1709,12 +1710,23 @@ export default function GalleryPage() {
         await appendClientUploadLog(`Starting ${service.label} XHR upload...`);
         await chrome.storage.local.set({ uploadStatus: `Uploading video to ${service.label}...` });
 
+        // The Telegram leg gets its journal request id BEFORE it starts
+        // (2.19.40, same as the vault flow): the run records it, so a page
+        // that dies mid-upload can still reconcile this leg from the host
+        // journal — the settle summary names the recovered message id
+        // instead of claiming nothing was saved.
+        let videoTelegramRequestId = '';
+        if (service.key === 'telegram') {
+          videoTelegramRequestId = `tg-upload-${crypto.randomUUID()}`;
+          await reportUploadRunProgress({ nativeUploadRequestId: videoTelegramRequestId });
+        }
+
         try {
           const result = await service.uploadWithProgress({
             uploader,
             blob: uploadData.fileBlob,
             settings,
-            data: { ...uploadData, fileName: uploadData.fileName || 'video.mp4' },
+            data: { ...uploadData, fileName: uploadData.fileName || 'video.mp4', ...(videoTelegramRequestId ? { nativeRequestId: videoTelegramRequestId } : {}) },
             onProgress: async ({ loaded, total, percent, phase, text }) => {
               const totalLabel = total ? formatBytes(total) : formatBytes(uploadData.fileBlob?.size || 0);
               const loadedLabel = formatBytes(loaded);
@@ -2143,7 +2155,7 @@ export default function GalleryPage() {
       // progress card (2.19.39) can show the Telethon upload live. The
       // vault flow is the only page-side upload that never reported to
       // the ledger; its progress went to the status string only.
-      await beginUploadRun({
+      const vaultRun = await beginUploadRun({
         kind: 'vault',
         hosts: vaultHostKeys.map((key) => getVideoProviderLabel(key)),
         hostKeys: vaultHostKeys,
@@ -2154,6 +2166,24 @@ export default function GalleryPage() {
 
       const opaqueName = `${Array.from(crypto.getRandomValues(new Uint8Array(16)))
         .map((b) => b.toString(16).padStart(2, '0')).join('')}.bin`;
+
+      // Durable intent (2.19.40): the save inputs persist to storage
+      // BEFORE the first host is touched, so a page that dies mid-upload
+      // (tab frozen/discarded, reload, crash) cannot take the vault item
+      // with it — the worker's stale-run reconciliation finishes the save
+      // from this intent + the host journal. The metadata here is
+      // ciphertext, no weaker than the vault row itself.
+      await saveVaultUploadIntent(createVaultUploadIntent({
+        runId: vaultRun?.id || '',
+        fileName,
+        blobSize: blob.size,
+        opaqueName,
+        encryptedMetadata,
+        encryptedMimeType: blob.type || 'application/octet-stream',
+        uploadData: { ...uploadData, fileSize: blob.size },
+        vaultHostKeys,
+        telegramChannel: settings?.telegramChannel || '',
+      }));
 
       // 2) Upload the encrypted blob to every selected vault blob host, so the
       // item survives a single host losing the file. Each host uploads a copy.
@@ -2214,6 +2244,18 @@ export default function GalleryPage() {
           });
         };
 
+        // The Telegram leg gets its journal request id BEFORE it starts
+        // (2.19.40): the run + intent record it, so a page that dies
+        // mid-upload can still reconcile this leg from the host journal.
+        // The id is minted here, not in the uploader — recording it from
+        // the RESULT would be too late (a dead page never sees it).
+        let telegramRequestId = '';
+        if (vaultHost === 'telegram') {
+          telegramRequestId = `tg-upload-${crypto.randomUUID()}`;
+          await reportUploadRunProgress({ nativeUploadRequestId: telegramRequestId });
+          await updateVaultUploadIntent({ telegramRequestId });
+        }
+
         const uploader = new vaultService.uploaderClass();
         const result = await vaultService.uploadWithProgress({
           uploader,
@@ -2223,30 +2265,32 @@ export default function GalleryPage() {
           // 20 MB getFile read-back cap, not the 50 MB sendVideo cap — so
           // the native route kicks in above 20 MB for telegram only.
           data: vaultHost === 'telegram'
-            ? { fileName: opaqueName, nativeAboveBytes: TELEGRAM_GETFILE_MAX_BYTES }
+            ? { fileName: opaqueName, nativeAboveBytes: TELEGRAM_GETFILE_MAX_BYTES, nativeRequestId: telegramRequestId }
             : { fileName: opaqueName },
           onProgress: onVaultProgress,
           signal: uploadController.signal,
         });
 
-        vaultHostCopies.push(buildVaultBlobCopy(vaultHost, result));
+        const vaultCopy = buildVaultBlobCopy(vaultHost, result);
+        vaultHostCopies.push(vaultCopy);
+        // Each finished leg lands on the intent as it lands — a page that
+        // dies during the NEXT leg still leaves this one recoverable.
+        await recordVaultUploadHostResult(vaultHost, vaultCopy);
+        if (result.recoveredViaJournal) {
+          await appendClientUploadLog(`Telegram copy finished, but the live event stream died mid-upload — the result was recovered from the host journal (message ${result.messageId || 'unknown'}).`, 'warning');
+        }
       }
 
-      const primary = vaultHostCopies[0] || {};
-      const encrypted = {
-        encryptedBlobUrl: primary.encryptedBlobUrl || '',
-        encryptedBlobWatchUrl: primary.encryptedBlobWatchUrl || '',
-        encryptedBlobFileId: primary.encryptedBlobFileId || '',
-        // telegram deletes its copy by post id; the mirrored top-level field keeps
-        // a legacy single-copy read (no encryptedBlobHosts) deletable.
-        encryptedBlobMessageId: primary.encryptedBlobMessageId || '',
-        encryptedBlobHosts: vaultHostCopies,
+      // The encrypted payload builds through the shared builder (2.19.40):
+      // the worker's journal recovery builds the identical shape, so a
+      // recovered save is indistinguishable from a live one.
+      const encrypted = buildVaultEncryptedPayload({
+        copies: vaultHostCopies,
         encryptedMetadata,
         encryptedMimeType: blob.type || 'application/octet-stream',
         encryptedFileName: opaqueName,
-        vaultHost: primary.host || DEFAULT_VAULT_BLOB_HOST,
-        vaultHosts: vaultHostCopies.map((c) => c.host),
-      };
+        defaultVaultHost: DEFAULT_VAULT_BLOB_HOST,
+      });
 
       // 3) Save via the SW
       await chrome.storage.local.set({ uploadStatus: 'Saving encrypted item...' });
@@ -2255,6 +2299,10 @@ export default function GalleryPage() {
         encrypted,
         blobSize: blob.size,
       });
+      // The item is saved — the intent's job is done. Clear it now, before
+      // the (non-fatal) snapshot persists, so a crash in the snapshots
+      // cannot leave a live intent for an already-saved item.
+      await clearVaultUploadIntent();
       await appendClientUploadLog(`Encrypted vault item saved with ID: ${saved.id}`, 'success');
       // Persist the upload-time snapshot where the vault page actually
       // reads it (2.19.32) — the vault card reads `vault-preview-<id>`,
@@ -2317,6 +2365,11 @@ export default function GalleryPage() {
       return saved;
     } catch (error) {
       await appendClientUploadLog(`Encrypted vault upload failed: ${error.message || String(error)}`, 'error');
+      // The page is alive and the failure is genuine (or the user stopped
+      // it) — the intent must not linger for a run that failed in front
+      // of the user. The reconciliation path is for runs whose page DIED,
+      // not for loud failures.
+      await clearVaultUploadIntent().catch(() => {});
       runOutcomeVault = {
         status: UPLOAD_RUN_STATUS.ERROR,
         summary: error.message || String(error),
