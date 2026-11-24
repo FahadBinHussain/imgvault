@@ -3,6 +3,25 @@ const DB_VERSION = 1;
 const STORE_NAME = 'thumbs';
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
+// Snapshots of immutable content — a video frame (poster-), the image
+// itself (img-), a scene texture (scene-) — never go stale: the bytes they
+// picture do not change. Their remote URLs, by contrast, are often signed
+// and dead within hours (a TeraBox thumb URL carries expires=8h), so
+// expiring the only good copy to re-fetch a dead URL just breaks the card
+// — 2026-11-24, every poster older than 7 days showed a broken image
+// (33 expired rows, the blobs still sitting in IndexedDB, TeraBox thumbs
+// answering 403). Link previews keep the 7-day default: a page's og:image
+// can change, and the 2.19.38 self-heal re-scrapes on failure.
+const SNAPSHOT_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
+const SNAPSHOT_KEY_PREFIXES = ['poster-', 'img-', 'scene-'];
+
+export function getThumbMaxAgeMs(key) {
+  const k = String(key || '');
+  return SNAPSHOT_KEY_PREFIXES.some((prefix) => k.startsWith(prefix))
+    ? SNAPSHOT_MAX_AGE_MS
+    : MAX_AGE_MS;
+}
+
 function openDb() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -137,7 +156,7 @@ export async function getThumbUrl(key, remoteUrl) {
     if (await isBlobUrlAlive(cached)) return cached;
     blobUrlMap.delete(key);
   }
-  const cached = await getCachedThumb(key);
+  const cached = await getCachedThumb(key, getThumbMaxAgeMs(key));
   if (cached) {
     if (isImageBlob(cached)) {
       const url = URL.createObjectURL(cached);

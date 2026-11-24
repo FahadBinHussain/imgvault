@@ -5786,7 +5786,16 @@ export default function GalleryPage() {
                         const videoWatchUrl = getPreferredVideoWatchUrl(img);
                         const videoPosterUrl = getVideoPosterUrl(img);
                         const isFilemoonHtml = videoDirectUrl && /filemoon\.sx\/(?:d|e)\//i.test(videoDirectUrl);
-                        return videoPosterUrl ? (
+                        // a dead poster (no cached snapshot + an expired signed
+                        // thumb URL) must never show the browser's broken-image
+                        // icon: mark it failed and fall through to the icon
+                        // tile. the direct URL is skipped too — a stored
+                        // TeraBox dlink is just as expired as the thumb URL,
+                        // and a <video> with a dead src renders an empty
+                        // black box. the icon tile's Open-video link still
+                        // works: the modal re-resolves fresh URLs.
+                        const posterFailed = failedImages.has(img.id);
+                        return videoPosterUrl && !posterFailed ? (
                           <div className="relative w-full overflow-hidden aspect-video bg-base-200">
                             <CachedImg
                               thumbKey={`poster-${img.id}`}
@@ -5795,7 +5804,7 @@ export default function GalleryPage() {
                               className={`absolute inset-0 w-full h-full object-cover transition-all duration-700 ${loadedImages.has(img.id) ? 'opacity-100' : 'opacity-0'}`}
                               loading="lazy"
                               onLoad={() => handleImageLoad(img.id)}
-                              onError={() => handleImageLoad(img.id)}
+                              onError={() => handleImageLoad(img.id, true)}
                             />
                             {videoWatchUrl && (
                               <a
@@ -5810,7 +5819,7 @@ export default function GalleryPage() {
                               </a>
                             )}
                           </div>
-                        ) : videoDirectUrl && !isFilemoonHtml ? (
+                        ) : videoDirectUrl && !isFilemoonHtml && !posterFailed ? (
                           <CachedVideo
                             thumbKey={`poster-${img.id}`}
                             src={videoDirectUrl}

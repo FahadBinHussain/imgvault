@@ -259,16 +259,16 @@ async def upload_file(session_path, api_id, api_hash, channel, file_path, captio
 
     # Slow-encryption guard: without cryptg/libssl Telethon encrypts in
     # pure Python (~0.7 MB/s) and every upload crawls no matter how fast
-    # the network is (measured 2026-11-24). Surface it LOUDLY in the
-    # result warning instead of silently uploading at a tenth of speed —
-    # the page logs result warnings on the completion line.
-    aes_warning = None
+    # the network is (measured 2026-11-24). Fold it into the single result
+    # warning instead of silently uploading at a tenth of speed — the page
+    # logs result warnings on the completion line.
     if not has_fast_aes_backend():
         aes_warning = (
             "no fast AES backend (cryptg/libssl missing) — Telethon is "
             "encrypting in pure Python, uploads run ~10x slower than they "
             "should; fix with: pip install cryptg"
         )
+        warning = f"{warning}; {aes_warning}" if warning else aes_warning
 
     clean_api_id = int(str(api_id).strip().lstrip("\ufeff"))
     clean_api_hash = str(api_hash).strip().lstrip("\ufeff")
@@ -310,9 +310,8 @@ async def upload_file(session_path, api_id, api_hash, channel, file_path, captio
         "size": os.path.getsize(file_path),
         "videoAttributes": video_attributes,
     }
-    warnings = [w for w in (warning, aes_warning) if w]
-    if warnings:
-        result["warning"] = "; ".join(warnings)
+    if warning:
+        result["warning"] = warning
     return result
 
 
