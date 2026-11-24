@@ -34,6 +34,7 @@ import { FILEMOON_TOO_LONG_REASON, findFilemoonTooLongError, formatVideoDuration
 import { resolveTeraBoxThumbnail, resolveTeraBoxPlaybackUrl, resolveTeraBoxFilePath, deleteTeraBoxFiles, listAllTeraBoxFiles, teraBoxFsIdFromUrl, isTeraBoxUrl, isTeraBoxHost, resolveTeraBoxDownloadTarget } from '../utils/teraBoxApi.js';
 import { isSunoHost, isSunoUrl, resolveSunoDownloadTarget, decryptSunoEncryptedClip, bytesToBase64 } from '../utils/sunoApi.js';
 import { PENDING_UPLOAD_EXTRA_KEYS, withoutPendingUploadFlags } from '../utils/pendingUpload.js';
+import { LINK_PREVIEW_RETRY_EXTRA_KEY, getLinkPreviewRetryAt, isLinkPreviewRefreshGated, planLinkPreviewRefresh } from '../utils/linkPreviewRefresh.js';
 import { deleteUdropFile } from '../utils/udropApi.js';
 import { flattenSceneConfig } from '../utils/sceneConfig.js';
 import {
@@ -156,6 +157,11 @@ class ImgVaultServiceWorker {
     this.cancellingNativeDownloads = new Set();
     this.vaultMasterKey = null;
     this.vaultStreamUrlCache = new Map();
+    // Link-preview refreshes in flight, by item id (2.19.38): at most one
+    // re-scrape per item at a time, even when two pages dispatch for the
+    // same dead preview at once. The UI also claims one dispatch per item
+    // per session; this is the worker-side half of that guard.
+    this.linkPreviewRefreshInFlight = new Set();
     // Small-blob plaintext cache (2.12.85). The media engine probes for the
     // MP4 moov atom by opening range requests and aborting them; every new
     // vault-stream request on a terabox-only item re-pays the serialized dlink
@@ -594,6 +600,70 @@ class ImgVaultServiceWorker {
     } catch (error) {
       console.warn('⚠️ Failed to fetch link preview image:', error?.message || error);
       return '';
+    }
+  }
+
+  /**
+   * Self-healing link-preview refresh (2.19.38). Failure-triggered only:
+   * the UI dispatches this when a link card's preview img errors and no
+   * cached copy exists — never on vault/gallery open, never in bulk.
+   *
+   * Re-fetches the item's page and runs the SAME save-time extractor
+   * (extractMetaImageFromHtml) — never a second parser. Then, per
+   * planLinkPreviewRefresh: a fresh, different URL is stored (and the
+   * retry gate is deleted via extraMetadataDeletes); a page with no
+   * usable image, or one that still serves the dead URL, gets a retry
+   * timestamp instead (7 days, no URL stored). A page FETCH failure is
+   * not a no-image verdict — it throws, nothing is written and no gate is
+   * set, so the item can re-scrape next session.
+   *
+   * @param {string} itemId
+   * @param {string} [failedUrl] - the preview URL that just failed to load
+   * @returns {Promise<{updated: boolean, linkPreviewImageUrl?: string, retryAt?: number, reason?: string}>}
+   */
+  async refreshLinkPreview(itemId = '', failedUrl = '') {
+    const id = String(itemId || '').trim();
+    if (!id) throw new Error('Item id is required');
+    if (this.linkPreviewRefreshInFlight.has(id)) {
+      return { updated: false, reason: 'in-flight' };
+    }
+    this.linkPreviewRefreshInFlight.add(id);
+    try {
+      const current = await this.storage.getImageById(id);
+      if (!current) throw new Error('Item not found');
+      const now = Date.now();
+      if (isLinkPreviewRefreshGated(current, now)) {
+        return { updated: false, reason: 'retry-gated', retryAt: getLinkPreviewRetryAt(current) };
+      }
+      const target = String(current.linkUrl || current.sourcePageUrl || '').trim();
+      if (!target) throw new Error('Item has no link URL to re-scrape');
+
+      let html = '';
+      let finalUrl = target;
+      try {
+        const response = await fetch(target, { redirect: 'follow' });
+        if (!response.ok) throw new Error(`page fetch failed: HTTP ${response.status}`);
+        finalUrl = response.url || target;
+        html = await response.text();
+      } catch (error) {
+        throw new Error(`Failed to fetch link page: ${error?.message || error}`);
+      }
+
+      const extracted = this.extractMetaImageFromHtml(html, finalUrl);
+      const plan = planLinkPreviewRefresh({ item: current, extractedUrl: extracted, failedUrl, now });
+      if (plan.action === 'update') {
+        await this.storage.updateImage(id, {
+          linkPreviewImageUrl: plan.url,
+          extraMetadata: { ...(current.extraMetadata || {}) },
+        }, { extraMetadataDeletes: [LINK_PREVIEW_RETRY_EXTRA_KEY] });
+        return { updated: true, linkPreviewImageUrl: plan.url };
+      }
+      await this.storage.updateImage(id, {
+        extraMetadata: { ...(current.extraMetadata || {}), [LINK_PREVIEW_RETRY_EXTRA_KEY]: plan.retryAt },
+      });
+      return { updated: false, reason: plan.reason, retryAt: plan.retryAt };
+    } finally {
+      this.linkPreviewRefreshInFlight.delete(id);
     }
   }
 
@@ -3087,6 +3157,12 @@ class ImgVaultServiceWorker {
         this.storage.updateImage(request.data.id, request.data)
           .then(() => sendResponse({ success: true }))
           .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'refreshLinkPreview':
+        this.refreshLinkPreview(request.data?.id, request.data?.failedUrl)
+          .then((result) => sendResponse({ success: true, data: result }))
+          .catch((error) => sendResponse({ success: false, error: error.message }));
         return true;
 
       case 'linkProviderFileToItem':

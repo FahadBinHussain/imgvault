@@ -78,7 +78,8 @@ import { cacheUploadFile, getCachedUploadFile, listCachedUploadFiles, removeCach
 import { partitionHostsByUploadLimit } from '../utils/hostUploadLimits.js';
 import { captureVideoSnapshotBlob } from '../utils/videoSnapshot.js';
 import { captureImageSnapshotBlob } from '../utils/imageSnapshot.js';
-import { setCachedThumb } from '../utils/thumbCache.js';
+import { setCachedThumb, getCachedThumb, deleteCachedThumb } from '../utils/thumbCache.js';
+import { LINK_PREVIEW_CACHE_RECHECK_MS, dispatchLinkPreviewRefresh, linkPreviewThumbKey, withLinkPreviewRetryGate, withLinkPreviewUrl } from '../utils/linkPreviewRefresh.js';
 import { persistRemoteVaultPreview } from '../utils/vaultPreview.js';
 import { createUploadLogAppender } from '../utils/uploadLog.js';
 import { createUploadProgressTracker, vaultUploadProgressLabel } from '../utils/uploadProgress.js';
@@ -774,6 +775,61 @@ export default function GalleryPage() {
     } else {
       setLoadedImages(prev => new Set(prev).add(imageId));
     }
+  };
+
+  // Self-healing link preview (2.19.38) — same flow as VaultPage's
+  // handleLinkPreviewError, adapted to the gallery's state: the grid list
+  // comes from useImages (no direct setter), so a healed preview reaches
+  // the grid through reload(), and the failed flag is only cleared AFTER
+  // the reload lands — clearing it first would re-render the grid card
+  // with the stale dead URL, which re-errors and re-marks the item failed
+  // (hiding the modal's fresh preview too, the flag is shared).
+  const handleLinkPreviewError = async (item, failedSrc = '') => {
+    if (!item?.id) return;
+    const thumbKey = linkPreviewThumbKey(item.id);
+    const failedUrl = getLinkPreviewImage(item);
+    const markFailedAndRefresh = async () => {
+      handleImageLoad(item.id, true);
+      await dispatchLinkPreviewRefresh({
+        item,
+        failedUrl,
+        sendMessage,
+        onUpdated: async (freshUrl) => {
+          setSelectedImage((prev) => (prev?.id === item.id ? withLinkPreviewUrl(prev, freshUrl) : prev));
+          setFullImageDetails((prev) => (prev?.id === item.id ? withLinkPreviewUrl(prev, freshUrl) : prev));
+          try {
+            await reload();
+          } catch {
+            return;
+          }
+          setFailedImages((prev) => {
+            const next = new Set(prev);
+            next.delete(item.id);
+            return next;
+          });
+        },
+        onGated: (retryAt) => {
+          setSelectedImage((prev) => (prev?.id === item.id ? withLinkPreviewRetryGate(prev, retryAt) : prev));
+          setFullImageDetails((prev) => (prev?.id === item.id ? withLinkPreviewRetryGate(prev, retryAt) : prev));
+        },
+      });
+    };
+    if (typeof failedSrc === 'string' && failedSrc.startsWith('blob:')) {
+      deleteCachedThumb(thumbKey).catch(() => {});
+      await markFailedAndRefresh();
+      return;
+    }
+    let cached = null;
+    try { cached = await getCachedThumb(thumbKey); } catch { cached = null; }
+    if (cached) {
+      setTimeout(async () => {
+        let still = null;
+        try { still = await getCachedThumb(thumbKey); } catch { still = null; }
+        if (!still) await markFailedAndRefresh();
+      }, LINK_PREVIEW_CACHE_RECHECK_MS);
+      return;
+    }
+    await markFailedAndRefresh();
   };
 
   // Toggle selection mode
@@ -4630,12 +4686,13 @@ export default function GalleryPage() {
                 </div>
                 <div className="md:w-[42%] lg:w-[40%] h-48 md:h-auto bg-base-200 border-t md:border-t-0 md:border-l border-base-300">
                   {linkPreviewImage && !failedImages.has(modalImage.id) ? (
-                    <img
+                    <CachedImg
+                      thumbKey={linkPreviewThumbKey(modalImage.id)}
                       src={linkPreviewImage}
                       alt={modalImage?.pageTitle || 'Link preview'}
                       className="w-full h-full object-contain"
                       loading="lazy"
-                      onError={() => handleImageLoad(modalImage.id, true)}
+                      onError={(e) => handleLinkPreviewError(modalImage, e.currentTarget?.src || '')}
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-base-content/45">
@@ -5569,13 +5626,13 @@ export default function GalleryPage() {
                           <div className="relative w-full aspect-video" style={{ background: 'var(--color-base-200)' }}>
                             {linkPreviewImage && !failedImages.has(img.id) ? (
                               <CachedImg
-                                thumbKey={`link-${img.id}`}
+                                thumbKey={linkPreviewThumbKey(img.id)}
                                 src={linkPreviewImage}
                                 alt={img.pageTitle || 'Link preview'}
                                 className="w-full h-full object-contain"
                                 loading="lazy"
                                 onLoad={() => handleImageLoad(img.id)}
-                                onError={() => handleImageLoad(img.id, true)}
+                                onError={(e) => handleLinkPreviewError(img, e.currentTarget?.src || '')}
                               />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.3)' }}>

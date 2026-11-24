@@ -30,7 +30,8 @@ import {
   getStrictVideoProviderLink,
 } from '../utils/videoProviderLinks';
 import { getPreferredImageProviderLink } from '../utils/imageProviderLinks';
-import { pickLinkPreviewImage, addFailedPreviewId, hasFailedPreviewId } from '../utils/linkPreview';
+import { pickLinkPreviewImage, addFailedPreviewId, hasFailedPreviewId, removeFailedPreviewId } from '../utils/linkPreview';
+import { LINK_PREVIEW_CACHE_RECHECK_MS, dispatchLinkPreviewRefresh, linkPreviewThumbKey, withLinkPreviewRetryGate, withLinkPreviewUrl } from '../utils/linkPreviewRefresh';
 import {
   getMediaItemKind,
   getOverviewEntries,
@@ -56,7 +57,8 @@ import {
   importMasterKeyFromB64,
 } from '../utils/vaultSession.js';
 import { requestVaultPreview, requestVaultImagePreview, getCachedVaultPreview, setVaultPreviewPaused, resolvePreviewCopies, decryptLegacyVaultBlob } from '../utils/vaultPreview.js';
-import { deleteCachedThumb } from '../utils/thumbCache.js';
+import { deleteCachedThumb, getCachedThumb } from '../utils/thumbCache.js';
+import { CachedImg } from '../components/CachedThumb';
 
 const VAULT_CONFIG_KEY = 'secretVaultConfig';
 const VAULT_SESSION_KEY = 'imgvault-vault-unlocked';
@@ -856,8 +858,65 @@ export default function VaultPage() {
     });
   };
 
-  const handleLinkPreviewError = (id) => {
-    setFailedLinkPreviews((prev) => addFailedPreviewId(prev, id));
+  // Apply a healed preview to local state (grid + open modal) so the card
+  // shows the fresh URL immediately, no reload needed. The worker already
+  // stored it and deleted the retry gate; this mirrors both locally.
+  const applyLinkPreviewUpdate = (id, freshUrl) => {
+    setVaultItems((prev) => prev.map((x) => (x.id === id ? withLinkPreviewUrl(x, freshUrl) : x)));
+    setSelectedItem((prev) => (prev?.id === id ? withLinkPreviewUrl(prev, freshUrl) : prev));
+  };
+
+  const applyLinkPreviewRetryGate = (id, retryAt) => {
+    setVaultItems((prev) => prev.map((x) => (x.id === id ? withLinkPreviewRetryGate(x, retryAt) : x)));
+    setSelectedItem((prev) => (prev?.id === id ? withLinkPreviewRetryGate(prev, retryAt) : prev));
+  };
+
+  // Self-healing link preview (2.19.38). A preview img errored — but the
+  // error alone does not mean the preview is gone:
+  //   - the failed src is a blob: URL -> the CACHED copy itself is
+  //     undecodable: prune it (or the next mount re-serves the same bad
+  //     blob), mark failed, dispatch the refresh.
+  //   - the failed src is remote and a cached copy exists -> CachedImg
+  //     starts on the remote URL and swaps to the blob once its lookup
+  //     lands, so the error may have fired before the swap: wait, then
+  //     re-check — if the blob was corrupt, getThumbUrl pruned it by
+  //     then and the card is genuinely without a preview.
+  //   - otherwise -> mark failed (the 2.19.37 placeholder) and dispatch
+  //     ONE background refresh for the item. The dispatch helper enforces
+  //     the once-per-session claim and the stored retry gate.
+  const handleLinkPreviewError = async (item, failedSrc = '') => {
+    if (!item?.id) return;
+    const thumbKey = linkPreviewThumbKey(item.id);
+    const failedUrl = getLinkPreviewImage(item);
+    const markFailedAndRefresh = async () => {
+      setFailedLinkPreviews((prev) => addFailedPreviewId(prev, item.id));
+      await dispatchLinkPreviewRefresh({
+        item,
+        failedUrl,
+        sendMessage,
+        onUpdated: (freshUrl) => {
+          applyLinkPreviewUpdate(item.id, freshUrl);
+          setFailedLinkPreviews((prev) => removeFailedPreviewId(prev, item.id));
+        },
+        onGated: (retryAt) => applyLinkPreviewRetryGate(item.id, retryAt),
+      });
+    };
+    if (typeof failedSrc === 'string' && failedSrc.startsWith('blob:')) {
+      deleteCachedThumb(thumbKey).catch(() => {});
+      await markFailedAndRefresh();
+      return;
+    }
+    let cached = null;
+    try { cached = await getCachedThumb(thumbKey); } catch { cached = null; }
+    if (cached) {
+      setTimeout(async () => {
+        let still = null;
+        try { still = await getCachedThumb(thumbKey); } catch { still = null; }
+        if (!still) await markFailedAndRefresh();
+      }, LINK_PREVIEW_CACHE_RECHECK_MS);
+      return;
+    }
+    await markFailedAndRefresh();
   };
 
   const groupItemsByDate = (items) => {
@@ -1328,7 +1387,7 @@ export default function VaultPage() {
                 </div>
                 <div className="md:w-[42%] lg:w-[40%] h-48 md:h-auto bg-base-200 border-t md:border-t-0 md:border-l border-base-300">
                   {getLinkPreviewImage(item) && !hasFailedPreviewId(failedLinkPreviews, item.id) ? (
-                    <img src={getLinkPreviewImage(item)} alt={item.pageTitle || 'Link preview'} className="w-full h-full object-contain" loading="lazy" onError={() => handleLinkPreviewError(item.id)} />
+                    <CachedImg thumbKey={linkPreviewThumbKey(item.id)} src={getLinkPreviewImage(item)} alt={item.pageTitle || 'Link preview'} className="w-full h-full object-contain" loading="lazy" onError={(e) => handleLinkPreviewError(item, e.currentTarget?.src || '')} />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-base-content/45">
                       <Link2 className="w-12 h-12" />
@@ -1596,7 +1655,7 @@ export default function VaultPage() {
                           {kind === 'Link' ? (
                             <div className="relative w-full aspect-video" style={{ background: 'var(--color-base-200)' }}>
                               {linkPreviewImage && !hasFailedPreviewId(failedLinkPreviews, item.id) ? (
-                                <img src={linkPreviewImage} alt={item.pageTitle || 'Link preview'} className="w-full h-full object-contain" loading="lazy" onLoad={() => handleMediaLoad(item.id)} onError={() => handleLinkPreviewError(item.id)} />
+                                <CachedImg thumbKey={linkPreviewThumbKey(item.id)} src={linkPreviewImage} alt={item.pageTitle || 'Link preview'} className="w-full h-full object-contain" loading="lazy" onLoad={() => handleMediaLoad(item.id)} onError={(e) => handleLinkPreviewError(item, e.currentTarget?.src || '')} />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center" style={{ color: 'oklch(from var(--color-base-content) l c h / 0.3)' }}>
                                   <Link2 style={{ width: 32, height: 32 }} />

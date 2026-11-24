@@ -82,23 +82,23 @@ test('2.19.37 (2026-11-24): hasFailedPreviewId reads the set and tolerates a mis
 
 test('2.19.37 (2026-11-24): VaultPage tracks failed link previews in session state and delegates the chain to the util', () => {
   const v = vault();
-  assert.ok(v.includes("import { pickLinkPreviewImage, addFailedPreviewId, hasFailedPreviewId } from '../utils/linkPreview';"), 'linkPreview util not imported');
+  assert.ok(v.includes("import { pickLinkPreviewImage, addFailedPreviewId, hasFailedPreviewId, removeFailedPreviewId } from '../utils/linkPreview';"), 'linkPreview util not imported');
   assert.ok(v.includes('const [failedLinkPreviews, setFailedLinkPreviews] = useState(new Set());'), 'failedLinkPreviews state missing');
   assert.ok(v.includes('const getLinkPreviewImage = (item) => pickLinkPreviewImage(item);'), 'getLinkPreviewImage does not delegate to the util');
   assert.ok(!v.includes('faviconUrl'), 'faviconUrl is still referenced in VaultPage — it must not render as a preview');
-  assert.ok(v.includes('setFailedLinkPreviews((prev) => addFailedPreviewId(prev, id));'), 'error handler does not use the failed-set helper');
+  assert.ok(v.includes('setFailedLinkPreviews((prev) => addFailedPreviewId(prev, item.id));'), 'error handler does not use the failed-set helper');
 });
 
 test('2.19.37 (2026-11-24): the vault GRID link card falls back to the placeholder when its preview img errors', () => {
   const v = vault();
   assert.ok(v.includes('{linkPreviewImage && !hasFailedPreviewId(failedLinkPreviews, item.id) ? ('), 'grid link card does not gate on the failed set');
-  assert.ok(v.includes('onLoad={() => handleMediaLoad(item.id)} onError={() => handleLinkPreviewError(item.id)}'), 'grid link img has no onError fallback');
+  assert.ok(v.includes("onError={(e) => handleLinkPreviewError(item, e.currentTarget?.src || '')}"), 'grid link img has no onError fallback');
 });
 
 test('2.19.37 (2026-11-24): the vault DETAIL MODAL link preview falls back to the placeholder when its img errors', () => {
   const v = vault();
   assert.ok(v.includes('{getLinkPreviewImage(item) && !hasFailedPreviewId(failedLinkPreviews, item.id) ? ('), 'modal link preview does not gate on the failed set');
-  assert.ok(v.includes("loading=\"lazy\" onError={() => handleLinkPreviewError(item.id)}"), 'modal link img has no onError fallback');
+  assert.ok(v.includes('onError={(e) => handleLinkPreviewError(item, e.currentTarget?.src || \'\')}'), 'modal link img has no onError fallback');
 });
 
 // ------------------------------------------------------------- GalleryPage wiring ---
@@ -106,14 +106,14 @@ test('2.19.37 (2026-11-24): the vault DETAIL MODAL link preview falls back to th
 test('2.19.37 (2026-11-24): the gallery link card falls back to the placeholder when its preview errors', () => {
   const g = gallery();
   assert.ok(g.includes('{linkPreviewImage && !failedImages.has(img.id) ? ('), 'gallery link card does not gate on failedImages');
-  const anchor = g.indexOf('thumbKey={`link-${img.id}`}');
+  const anchor = g.indexOf('thumbKey={linkPreviewThumbKey(img.id)}');
   assert.ok(anchor > 0, 'gallery link CachedImg anchor missing');
   const window = g.slice(anchor, anchor + 700);
-  assert.ok(window.includes('onError={() => handleImageLoad(img.id, true)}'), 'gallery link CachedImg has no onError fallback');
+  assert.ok(window.includes("onError={(e) => handleLinkPreviewError(img, e.currentTarget?.src || '')}"), 'gallery link CachedImg has no onError fallback');
 });
 
 test('2.19.37 (2026-11-24): the gallery DETAIL MODAL link preview falls back to the placeholder when its img errors', () => {
   const g = gallery();
   assert.ok(g.includes('{linkPreviewImage && !failedImages.has(modalImage.id) ? ('), 'gallery modal link preview does not gate on failedImages');
-  assert.ok(g.includes('onError={() => handleImageLoad(modalImage.id, true)}'), 'gallery modal link img has no onError fallback');
+  assert.ok(g.includes("onError={(e) => handleLinkPreviewError(modalImage, e.currentTarget?.src || '')}"), 'gallery modal link img has no onError fallback');
 });

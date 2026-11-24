@@ -49,3 +49,16 @@ export function addFailedPreviewId(prevSet, id) {
 export function hasFailedPreviewId(failedSet, id) {
   return Boolean(failedSet?.has(id));
 }
+
+/**
+ * Remove an item id from the failed-preview set (a refresh just healed
+ * it). Returns a NEW Set and leaves the input untouched.
+ * @param {Set<string>} prevSet
+ * @param {string} id
+ * @returns {Set<string>}
+ */
+export function removeFailedPreviewId(prevSet, id) {
+  const next = new Set(prevSet);
+  next.delete(id);
+  return next;
+}
