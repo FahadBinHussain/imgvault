@@ -164,9 +164,14 @@ jobs:
           fi
           # The Tests run starts at the same time as this one, so it may not
           # exist yet — retry the lookup for up to 5 minutes.
+          # -R is LOAD-BEARING: this job has no checkout, and gh does NOT
+          # read GITHUB_REPOSITORY — without -R every call fails with
+          # "failed to determine base repo" (proven 2026-11-24: the first
+          # gate run failed exactly this way). stderr is NOT suppressed:
+          # an empty list is not an error, so anything gh prints is real.
           RUN_ID=""
           for i in $(seq 1 10); do
-            RUN_ID=$(gh run list --workflow test.yml --commit "$SHA" --limit 5 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
+            RUN_ID=$(gh run list -R "$REPO" --workflow test.yml --commit "$SHA" --limit 5 --json databaseId --jq '.[0].databaseId // empty' || true)
             if [ -n "$RUN_ID" ]; then break; fi
             echo "No Tests run found for $SHA yet (attempt $i/10) — waiting 30s..."
             sleep 30
@@ -179,7 +184,7 @@ jobs:
           fi
           echo "Tests run: https://github.com/$REPO/actions/runs/$RUN_ID"
           echo "Waiting for it to complete..."
-          if ! gh run watch "$RUN_ID" --exit-status; then
+          if ! gh run watch -R "$REPO" "$RUN_ID" --exit-status; then
             echo "::error::RELEASE GATE BLOCKED: Tests failed on commit $SHA (run https://github.com/$REPO/actions/runs/$RUN_ID). Fix the suite and push again — nothing was published."
             exit 1
           fi

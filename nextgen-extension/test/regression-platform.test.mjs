@@ -49,8 +49,8 @@ test('2.19.41 (2026-11-24): Tests gate the release — publish-release needs gat
   const workflow = src('../../.github/workflows/nextgen-extension-crx.yml');
   assert.ok(workflow.includes('gate-tests:'), 'the gate job exists');
   assert.ok(workflow.includes('needs: [build-extension-packages, build-native-host, gate-tests]'), 'publish-release needs the gate');
-  assert.ok(workflow.includes('gh run list --workflow test.yml --commit'), 'the gate finds the Tests run for this commit');
-  assert.ok(workflow.includes("gh run watch") && workflow.includes('--exit-status'), 'the gate blocks until Tests completes and fails when Tests fails');
+  assert.ok(workflow.includes('gh run list -R "$REPO" --workflow test.yml --commit'), 'the gate finds the Tests run for this commit (with -R: the gate job has no checkout and gh does not read GITHUB_REPOSITORY)');
+  assert.ok(workflow.includes('gh run watch -R "$REPO"') && workflow.includes('--exit-status'), 'the gate blocks until Tests completes and fails when Tests fails');
   const tests = src('../../.github/workflows/test.yml');
   assert.ok(tests.includes('run-tests.mjs --skip-network-probes'), 'the gating suite skips the flaky live-network probes');
   assert.ok(tests.includes('network-probes:'), 'the probes still run in their own job');
