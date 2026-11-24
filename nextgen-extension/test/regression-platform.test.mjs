@@ -22,9 +22,9 @@ const gallery = () => src('../src/pages/GalleryPage.jsx');
 
 // ------------------------------------------------- manifest / build ---
 
-test('2.19.40 (2026-11-24): the manifest is at 2.19.40, carries unlimitedStorage, and lists scene-viewer.js concretely', () => {
+test('2.19.41 (2026-11-24): the manifest is at 2.19.41, carries unlimitedStorage, and lists scene-viewer.js concretely', () => {
   const manifest = JSON.parse(src('../public/manifest.json'));
-  assert.equal(manifest.version, '2.19.40');
+  assert.equal(manifest.version, '2.19.41');
   assert.ok(manifest.permissions.includes('unlimitedStorage'));
   const resources = manifest.web_accessible_resources.flatMap((entry) => entry.resources);
   assert.ok(resources.includes('scene-viewer.js'));
@@ -43,6 +43,19 @@ test('CI race (2026-09-19): exactly ONE release job, ONE gh-release call, and it
   assert.equal((workflow.match(/softprops\/action-gh-release@v2/g) || []).length, 1);
   assert.ok(workflow.includes('fail_on_unmatched_files: true'));
   assert.ok(workflow.includes("require('./public/manifest.json').version"));
+});
+
+test('2.19.41 (2026-11-24): Tests gate the release — publish-release needs gate-tests, and the gate waits on the Tests run for the same commit', () => {
+  const workflow = src('../../.github/workflows/nextgen-extension-crx.yml');
+  assert.ok(workflow.includes('gate-tests:'), 'the gate job exists');
+  assert.ok(workflow.includes('needs: [build-extension-packages, build-native-host, gate-tests]'), 'publish-release needs the gate');
+  assert.ok(workflow.includes('gh run list --workflow test.yml --commit'), 'the gate finds the Tests run for this commit');
+  assert.ok(workflow.includes("gh run watch") && workflow.includes('--exit-status'), 'the gate blocks until Tests completes and fails when Tests fails');
+  const tests = src('../../.github/workflows/test.yml');
+  assert.ok(tests.includes('run-tests.mjs --skip-network-probes'), 'the gating suite skips the flaky live-network probes');
+  assert.ok(tests.includes('network-probes:'), 'the probes still run in their own job');
+  assert.ok(tests.includes('continue-on-error: true'), 'the probes job never fails the workflow');
+  assert.ok(/^  lint:/m.test(tests), 'the lint job exists in the gating workflow');
 });
 
 test('pnpm workspace (2026-10-30): per-member lockfiles, root-only build approvals, no member workspace files', () => {

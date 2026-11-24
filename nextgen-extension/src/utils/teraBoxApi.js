@@ -78,8 +78,6 @@ async function writeMarker(key, value) {
 const TERABOX_THUMB_LISTING_TTL_MS = 60 * 1000;
 const _teraBoxThumbListingCache = new Map();
 
-const hasText = (value) => typeof value === 'string' && value.trim().length > 0;
-
 const userAgent = () =>
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -1176,9 +1174,6 @@ export async function checkTeraBoxSceneIntegrity(items, allItems, cookie, onProg
     // Also consider sceneFiles for texture names
     const sceneTexName = String(item.extraMetadata?.sceneFiles?.terabox?.texture?.filename || '').trim();
     const effectiveTexName = texName || sceneTexName;
-    // Keep legacy single-file vars for dbSets
-    const fileId = spzFid;
-    const fileName = spzName;
     collectTeraBoxRefs(item, dbIds, dbNames, refIndex);
     if (texFid) dbIds.add(String(texFid));
     if (effectiveTexName) dbNames.add(effectiveTexName);

@@ -8,11 +8,11 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Trash2, Download, X, FolderOpen,
-  FileText, Cloud, Link2, Tag, Video, ExternalLink,
-  File, Image as ImageIcon, LockKeyhole,
+  FileText, Cloud, Link2, Video, ExternalLink,
+  Image as ImageIcon, LockKeyhole,
   Box, AlertTriangle, RotateCcw, Music
 } from 'lucide-react';
-import { Button, Input, IconButton, Card, Modal, Spinner, Toast, Textarea } from '../components/UI';
+import { Button, Modal, Spinner, Toast, Textarea } from '../components/UI';
 import UploadHostSelector, { reconcileSelectedHostKeys } from '../components/UploadHostSelector';
 import VaultMoveModal from '../components/VaultMoveModal';
 import { useImages, useImageUpload, useTrash, useChromeStorage, useCollections, useChromeMessage } from '../hooks/useChromeExtension';
@@ -45,10 +45,8 @@ import { downloadItemDirect } from '../utils/downloads';
 import {
   getMissingVideoUploadServices,
   getPlayableVideoProviderLink,
-  getStrictVideoProviderLink,
   getVideoProviderLinks,
   hasAnyVideoProviderLink,
-  hasVideoProviderLink,
   mergeVideoProviderResult,
 } from '../utils/videoProviderLinks';
 import { isAudioUploadFile, AUDIO_ACCEPT_ATTRIBUTE } from '../utils/audioProviderLinks';
@@ -60,7 +58,6 @@ import {
 } from '@shared/mediaFieldRegistry.js';
 import SceneUploadDialog from '../components/SceneUploadDialog';
 import { flattenSceneConfig } from '../utils/sceneConfig';
-import { useThumbUrl } from '../hooks/useThumbUrl';
 import MpegtsPlayer from '../components/MpegtsPlayer';
 import { CachedImg, CachedVideo } from '../components/CachedThumb';
 import SceneViewer from '../components/SceneViewer';
@@ -72,7 +69,6 @@ import {
   UPLOAD_RUN_STATUS,
   describeUploadProgress,
   describeUploadRun,
-  isTerminalUploadStatus,
   isUploadRunStalled,
 } from '../utils/uploadRun.js';
 import { cacheUploadFile, getCachedUploadFile, listCachedUploadFiles, removeCachedUploadFile } from '../utils/uploadFileCache.js';
@@ -233,7 +229,7 @@ export default function GalleryPage() {
   const sendMessage = useChromeMessage();
   const [defaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
   const [defaultVideoSource] = useChromeStorage('defaultVideoSource', 'filemoon', 'sync');
-  const [default3DSource] = useChromeStorage('default3DSource', 'udrop', 'sync');
+  const [_default3DSource] = useChromeStorage('default3DSource', 'udrop', 'sync');
   const [firebaseConfig] = useChromeStorage('firebaseConfig', null, 'sync');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortMode, setSortMode] = useState('newest');
@@ -309,7 +305,7 @@ export default function GalleryPage() {
         return m?.[1] || null;
       }
       if (providerKey === 'udrop') {
-        const m = String(link.watchUrl || link.directUrl || '').match(/udrop\.com(?:\/file)?\/([^\/\?#]+)/i);
+        const m = String(link.watchUrl || link.directUrl || '').match(/udrop\.com(?:\/file)?\/([^/?#]+)/i);
         return m?.[1] || null;
       }
       if (providerKey === 'terabox') {
@@ -422,6 +418,7 @@ export default function GalleryPage() {
       }
     })();
     return () => { cancelled = true; setModalPlaybackUrl(''); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on selectedImage id on purpose: the object is replaced in place (link-preview refresh, field edits) and that must not re-trigger the playback-URL resolve
   }, [selectedImage?.id, defaultVideoSource, sendMessage]);
 
   // Probe the container of the resolved playback URL so the modal renders the
@@ -457,6 +454,7 @@ export default function GalleryPage() {
       }
     })();
     return () => { cancelled = true; clearTimeout(timer); controller.abort(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getPreferredVideoDirectUrl is re-created every render and selectedImage is replaced in place; listing either would re-probe the container on every render
   }, [modalPlaybackUrl, selectedImage?.id, defaultVideoSource]);
   
   // Upload modal state
@@ -477,7 +475,7 @@ export default function GalleryPage() {
   const [isManualUploadMode, setIsManualUploadMode] = useState(false); // Track if triggered by context menu with no srcUrl
   const [uploadModalMetaTab, setUploadModalMetaTab] = useState('noobs');
   const [uploadHostSettings, setUploadHostSettings] = useState({});
-  const [selectedUploadHostKeysByKind, setSelectedUploadHostKeysByKind, keysByKindLoading] = useChromeStorage('selectedUploadHostKeysByKind', {}, 'local');
+  const [selectedUploadHostKeysByKind, setSelectedUploadHostKeysByKind] = useChromeStorage('selectedUploadHostKeysByKind', {}, 'local');
   const [legacySelectedUploadHostKeys, setLegacySelectedUploadHostKeys] = useChromeStorage('selectedUploadHostKeys', [], 'local');
   const [uploadToVault, setUploadToVault] = useState(false);
   // The ledger's current run. A run that is still "running" when the gallery
@@ -486,7 +484,7 @@ export default function GalleryPage() {
   const [uploadRun] = useChromeStorage('uploadRun', null, 'local');
   const [resumingUpload, setResumingUpload] = useState(false);
   const [dismissedRunId, setDismissedRunId] = useState('');
-  const [selectedVaultHostKeys, setSelectedVaultHostKeys, vaultHostKeysLoading] = useChromeStorage('selectedVaultHostKeys', [DEFAULT_VAULT_BLOB_HOST], 'local');
+  const [selectedVaultHostKeys, setSelectedVaultHostKeys] = useChromeStorage('selectedVaultHostKeys', [DEFAULT_VAULT_BLOB_HOST], 'local');
   const [vaultLockedForUpload, setVaultLockedForUpload] = useState(false);
   const [vaultUnlockCode, setVaultUnlockCode] = useState('');
   const [vaultUnlockError, setVaultUnlockError] = useState('');
@@ -932,25 +930,6 @@ export default function GalleryPage() {
   const selectedItemForType =
     fullImageDetails?.id === selectedImage?.id ? fullImageDetails : selectedImage;
 
-  const isTruthyFlag = (value) =>
-    value === true ||
-    value === 1 ||
-    value === '1' ||
-    (typeof value === 'string' && value.trim().toLowerCase() === 'true');
-
-  const hasMeaningfulValue = (value) => {
-    if (value === undefined || value === null) return false;
-    if (typeof value === 'string') {
-      const normalized = value.trim().toLowerCase();
-      if (!normalized || normalized === 'false' || normalized === 'null' || normalized === 'n/a') {
-        return false;
-      }
-      return true;
-    }
-    if (typeof value === 'number') return Number.isFinite(value) && value > 0;
-    return Boolean(value);
-  };
-
   const handleBulkMoveToVault = async () => {
     if (selectedImages.size === 0 || isVaulting) return;
 
@@ -1253,7 +1232,11 @@ export default function GalleryPage() {
     if (!selectedImage?.id) return;
     if (fullImageDetails?.id === selectedImage.id) return;
     loadFullImageDetails(selectedImage.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFullImageDetails is re-created every render; the id guard already makes this fire once per selection
   }, [selectedImage?.id, fullImageDetails?.id]);
+
+  // Extracted from the dep array below so the hook rule can statically check it.
+  const modalVideoDirectUrl = getPreferredVideoDirectUrl(modalImage);
 
   useEffect(() => {
     const video = modalVideoRef.current;
@@ -1276,7 +1259,7 @@ export default function GalleryPage() {
       video.removeEventListener('loadeddata', onReady);
       video.removeEventListener('canplay', onReady);
     };
-  }, [selectedImage?.id, getPreferredVideoDirectUrl(modalImage)]);
+  }, [selectedImage?.id, modalVideoDirectUrl]);
 
   // Get current collection name
   const currentCollection = collectionId 
@@ -2547,7 +2530,7 @@ export default function GalleryPage() {
       // A scene is two files (spz + texture), so there is no single file to
       // cache for a byte-level resume - the run is still recorded so an
       // interrupted scene upload is reported instead of spinning forever.
-      const runScene = await beginUploadRun({
+      const _runScene = await beginUploadRun({
         kind: 'scene',
         hosts: selected.map((service) => service.threeDLabel || service.label),
         hostKeys: selected.map((service) => service.key),
@@ -2558,7 +2541,7 @@ export default function GalleryPage() {
       // Telegram uploads scene files as documents, so its getFile 20 MB read-back
       // gate applies to BOTH files. Check before the first byte goes out - a
       // mid-pair failure would leave a half-uploaded scene behind.
-      for (const svc of selected.filter((s) => s.key === 'telegram')) {
+      for (const _svc of selected.filter((s) => s.key === 'telegram')) {
         assertTelegramUploadSize(spzFile.size, spzFile.name, spzFile.type);
         assertTelegramUploadSize(textureFile.size, textureFile.name, textureFile.type);
       }
@@ -2582,7 +2565,7 @@ export default function GalleryPage() {
       // through sendMessage arrays.
       const uploadOne = async (blob, name, svc) => {
         const uploader = new svc.uploaderClass();
-        return svc.uploadWithProgress({ uploader, blob, settings, data: { fileName: name }, onProgress: async ({loaded,total,percent,phase,text})=>{
+        return svc.uploadWithProgress({ uploader, blob, settings, data: { fileName: name }, onProgress: async ({loaded,total: _total,percent,phase,text})=>{
           // A scene file over the Bot API cap takes the native route — its
           // synthetic `finalizing` event (100% sent, Telegram still
           // creating the post) gets a line of its own, not silence.
@@ -3553,6 +3536,7 @@ export default function GalleryPage() {
       window.removeEventListener('dragover', handleWindowDragOver);
       window.removeEventListener('drop', handleWindowDrop);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once listener registration; handleDrop is re-created every render so listing it would re-subscribe the window listeners on every render
   }, []);
 
   const buildUploadData = ({
@@ -4177,11 +4161,6 @@ export default function GalleryPage() {
     }
   };
 
-  const cancelEdit = () => {
-    setEditingField(null);
-    setEditValues({});
-  };
-
   const getLocalVideoFileForRetry = async (item) => {
     const expectedFileName = item?.fileName || '';
     if (!expectedFileName) {
@@ -4759,6 +4738,7 @@ export default function GalleryPage() {
       chrome.storage.local.remove('pendingAutoUpload').catch(() => {});
       navigate(location.pathname, { replace: true, state: {} });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot auto-upload handoff driven by navigation state; the helpers are re-created every render so listing them would re-fire the download flow on every render
   }, [location.state]);
 
   const galleryCSS = `
@@ -5839,7 +5819,7 @@ export default function GalleryPage() {
                             muted
                             playsInline
                             preload="metadata"
-                            onLoadedMetadata={(e) => {
+                            onLoadedMetadata={(_e) => {
                               handleImageLoad(img.id);
                             }}
                             onCanPlayThrough={() => handleImageLoad(img.id)}
@@ -7327,7 +7307,6 @@ export default function GalleryPage() {
                   {/* Display ALL metadata fields that will be saved */}
                   {uploadMetadata && (() => {
                     const isVideoUpload = Boolean(uploadImageData?.isVideo);
-                        const isAudioUpload = Boolean(uploadImageData?.isAudio);
                     const normalizedSourceUrl = /^https?:\/\//i.test(String(uploadPageUrl || ''))
                       ? String(uploadPageUrl || '')
                       : 'Uploaded manually';

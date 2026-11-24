@@ -129,7 +129,7 @@ export function buildUdropFileMap(files = []) {
     if (fileId) map.set(fileId, file);
     // Also index by url if it contains a code
     if (file.url) {
-      const urlMatch = String(file.url).match(/udrop\.com(?:\/file)?\/([^\/\?#]+)/i);
+      const urlMatch = String(file.url).match(/udrop\.com(?:\/file)?\/([^/?#]+)/i);
       if (urlMatch) map.set(urlMatch[1], file);
     }
   }
@@ -143,7 +143,7 @@ export function buildUdropFileMap(files = []) {
  */
 export function extractUdropCode(url) {
   if (!url) return null;
-  const match = String(url).match(/udrop\.com(?:\/file)?\/([^\/\?#]+)/i);
+  const match = String(url).match(/udrop\.com(?:\/file)?\/([^/?#]+)/i);
   return match ? match[1] : null;
 }
 

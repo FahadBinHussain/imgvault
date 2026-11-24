@@ -582,7 +582,8 @@ if (window.location.hostname.includes('rajce.idnes.cz')) {
   }, true);
 }
 
-// Export for testing
+// Export for testing (Node-style guard: `module` only exists under a test runner)
+/* global module */
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { getMetaContent, getHighResImageUrl };
 }

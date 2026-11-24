@@ -5,13 +5,13 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { 
   Undo2, Trash2, AlertTriangle,
   FileText, Calendar, Link2,
-  File, Image as ImageIcon, Hash, Fingerprint, Video, Music
+  Image as ImageIcon, Hash, Fingerprint, Music
 } from 'lucide-react';
-import { Button, IconButton, Card, Modal, Spinner, Toast } from '../components/UI';
+import { Modal, Spinner, Toast } from '../components/UI';
 import { useTrash, useChromeStorage } from '../hooks/useChromeExtension';
 import { useKeyboardShortcuts, SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import TimelineScrollbar from '../components/TimelineScrollbar';
@@ -915,7 +915,7 @@ export default function TrashPage() {
                         muted
                         playsInline
                         preload="metadata"
-                        onLoadedMetadata={(e) => {
+                        onLoadedMetadata={(_e) => {
                           handleImageLoad(image.id);
                         }}
                         onCanPlayThrough={() => handleImageLoad(image.id)}

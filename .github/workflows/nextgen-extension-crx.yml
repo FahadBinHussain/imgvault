@@ -1,5 +1,8 @@
 name: Build Extension + Native Host
 
+# Release publishing is GATED on the Tests workflow (see gate-tests): the
+# build jobs run in parallel with Tests, but publish-release only runs after
+# Tests passes on the same commit. No green Tests, no published build.
 on:
   push:
     branches:
@@ -124,8 +127,66 @@ jobs:
           path: nextgen-extension/artifacts/*.crx
           if-no-files-found: error
 
+  # THE RELEASE GATE. publish-release must not run unless the Tests workflow
+  # passed on this exact commit. The build jobs run in parallel with Tests
+  # (no serialization); only the PUBLISH is gated, so a red suite can never
+  # ship a release. Fail closed: anything unexpected here fails the job.
+  # No checkout: this job only talks to the GitHub API.
+  gate-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+    steps:
+      - name: Wait for Tests to pass on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Pushes that touch no file the Tests workflow covers (e.g. only
+          # this workflow file, docs) never produce a Tests run — there is
+          # nothing to gate, so skip loudly. Any doubt -> proceed to the
+          # lookup below (fail closed).
+          if [ "$EVENT" = "push" ] && [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            if FILES=$(gh api "repos/$REPO/compare/$BEFORE...$SHA" --jq '.files[].filename' 2>/dev/null); then
+              if ! printf '%s\n' "$FILES" | grep -qE '^(\.github/workflows/test\.yml|nextgen-extension/|native-host/|packages/|web/|tools/check-shared-twins\.mjs)'; then
+                echo "Gate SKIPPED: this push touched no file the Tests workflow covers (no code change to gate)."
+                printf '%s\n' "$FILES" | sed 's/^/  changed: /'
+                exit 0
+              fi
+            else
+              echo "Could not list changed files via the compare API — proceeding to the Tests lookup (fail closed)."
+            fi
+          fi
+          # The Tests run starts at the same time as this one, so it may not
+          # exist yet — retry the lookup for up to 5 minutes.
+          RUN_ID=""
+          for i in $(seq 1 10); do
+            RUN_ID=$(gh run list --workflow test.yml --commit "$SHA" --limit 5 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
+            if [ -n "$RUN_ID" ]; then break; fi
+            echo "No Tests run found for $SHA yet (attempt $i/10) — waiting 30s..."
+            sleep 30
+          done
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::RELEASE GATE BLOCKED: no Tests workflow run found for commit $SHA after 5 minutes."
+            echo "A passing Tests run for this exact commit is required before publish-release runs."
+            echo "Dispatch the Tests workflow for this commit, or push a change that triggers it."
+            exit 1
+          fi
+          echo "Tests run: https://github.com/$REPO/actions/runs/$RUN_ID"
+          echo "Waiting for it to complete..."
+          if ! gh run watch "$RUN_ID" --exit-status; then
+            echo "::error::RELEASE GATE BLOCKED: Tests failed on commit $SHA (run https://github.com/$REPO/actions/runs/$RUN_ID). Fix the suite and push again — nothing was published."
+            exit 1
+          fi
+          echo "Gate PASSED: Tests green on $SHA."
+
   publish-release:
-    needs: [build-extension-packages, build-native-host]
+    needs: [build-extension-packages, build-native-host, gate-tests]
     runs-on: ubuntu-latest
 
     if: github.event_name == 'release' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'

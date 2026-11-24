@@ -1,9 +1,14 @@
 name: Tests
 
-# Separate from the release workflow (nextgen-extension-crx.yml) on purpose:
-# a test failure here must never block a release build, and the live-network
-# legacy scripts (suno/terabox probes) can flake on network issues. This
-# workflow reports test health on push/PR; the release flow is untouched.
+# THE RELEASE GATE. The release workflow (nextgen-extension-crx.yml) waits
+# for this workflow to succeed on the same commit before it publishes
+# anything (see its gate-tests job). A failure here blocks the release —
+# that is the point: no green Tests, no published build.
+#
+# Only the DETERMINISTIC suite gates. The two live-network legacy probes
+# (suno/terabox download targets) can flake on network issues, so they run
+# in the separate network-probes job with continue-on-error: visible, never
+# gating. The gating job passes --skip-network-probes to the runner.
 on:
   push:
     branches:
@@ -53,14 +58,85 @@ jobs:
         working-directory: web
         run: pnpm install --frozen-lockfile
 
-      # Runs the 12 legacy scripts (the 2 credential-gated UDrop probes skip
+      # Runs the legacy scripts (the 2 credential-gated UDrop probes skip
       # loudly without UDROp_KEY1/UDROP_KEY2), the node:test suites, and the
       # shared-twin drift guard. Exits non-zero on any failure.
+      # --skip-network-probes: the suno/terabox live probes run in the
+      # separate network-probes job (continue-on-error) — a network flake
+      # must never block the release.
       - name: Run extension test suite
-        run: node nextgen-extension/run-tests.mjs
+        run: node nextgen-extension/run-tests.mjs --skip-network-probes
 
       - name: Run web test suite
         run: pnpm --dir web test
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: nextgen-extension/pnpm-lock.yaml
+
+      - name: Install extension dependencies
+        working-directory: nextgen-extension
+        run: pnpm install --frozen-lockfile
+
+      # ESLint 8, config in nextgen-extension/.eslintrc.cjs. Bug-catchers
+      # only (no-undef, no-unused-vars, react-hooks, ...); style rules are
+      # off by design — see the config header. --max-warnings 0: warnings
+      # fail the job too.
+      # Web (Next 16) has no lint yet: `next lint` was removed in Next 16
+      # and eslint-config-next is not installed. Vercel gates web deploys
+      # via `next build`; adding web ESLint is a follow-up, not this job.
+      - name: Lint extension
+        working-directory: nextgen-extension
+        run: pnpm lint
+
+  # Quarantined on purpose: these two probes hit live download targets and
+  # can fail on network issues alone. continue-on-error keeps them visible
+  # (a red job here still shows up) without failing the workflow — and
+  # without blocking the release gate.
+  network-probes:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: nextgen-extension/pnpm-lock.yaml
+
+      - name: Install extension dependencies
+        working-directory: nextgen-extension
+        run: pnpm install --frozen-lockfile
+
+      - name: Run suno download-target probe
+        run: node nextgen-extension/test-suno-download-target.mjs
+
+      - name: Run terabox download-target probe
+        run: node nextgen-extension/test-terabox-download-target.mjs
 
   test-rust:
     runs-on: ubuntu-latest

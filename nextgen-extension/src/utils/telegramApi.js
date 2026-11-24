@@ -138,7 +138,7 @@ export async function telegramCallApi(token, method, { body, signal, timeoutMs =
  * Send the blob. Returns the raw message object; callers shape it into a
  * provider link with `buildTelegramLink`.
  */
-export async function sendTelegramFile({ token, channel, blob, filename, mimeType, method, signal }) {
+export async function sendTelegramFile({ token, channel, blob, filename, method, signal }) {
   const field = method === 'sendVideo' ? 'video' : 'document';
   const chatId = telegramChatId(channel);
   const form = formFromEntries([

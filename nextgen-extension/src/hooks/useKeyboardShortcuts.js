@@ -61,6 +61,7 @@ export function useKeyboardShortcuts(shortcuts, enabled = true, deps = []) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps is a caller-provided array spread intentionally so callers control re-subscription.
   }, [enabled, ...deps]);
 }
 
@@ -113,6 +114,7 @@ export function useKeyboardShortcutsHelp(shortcuts) {
   // For now, just console.log available shortcuts
   useEffect(() => {
     console.log('📋 Available keyboard shortcuts:', shortcuts);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- logs the initial shortcut map once on mount; re-logging on shortcuts identity change is noise.
   }, []);
   
   return {

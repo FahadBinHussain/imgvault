@@ -44,6 +44,7 @@ export class URLNormalizer {
 
     try {
       // Basic validation - must contain :// and not have control characters
+      // eslint-disable-next-line no-control-regex -- intentional: rejects URLs containing control characters
       if (!url.includes('://') || /[\x00-\x1F\x7F-\x9F]/.test(url)) {
         return url;
       }

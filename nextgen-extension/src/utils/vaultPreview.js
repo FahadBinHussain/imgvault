@@ -654,7 +654,7 @@ async function decodeMatroskaHead(headBytes, totalBytes, timeouts) {
  * ranges from them without a DB read). Reuse those same copies for the
  * plaintext-range messages so no second resolve round-trip is paid.
  */
-async function resolveCopiesForPreview(item, streamUrl, sendMessage) {
+async function resolveCopiesForPreview(item, streamUrl, _sendMessage) {
   try {
     const q = new URL(streamUrl).searchParams.get('copies');
     if (q) {

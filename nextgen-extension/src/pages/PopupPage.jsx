@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Settings, Image as ImageIcon, Upload, X } from 'lucide-react';
-import { Button, Input, Textarea, Card, IconButton, Spinner } from '../components/UI';
+import { Spinner } from '../components/UI';
 import UploadHostSelector, { reconcileSelectedHostKeys } from '../components/UploadHostSelector';
 import { usePendingImage, useImageUpload, useCollections, useChromeStorage } from '../hooks/useChromeExtension';
 import { IMAGE_UPLOAD_SERVICES } from '../config/providerCatalog';
@@ -30,7 +30,7 @@ export default function PopupPage() {
   const [selectedCollectionId, setSelectedCollectionId] = useState('');
   const [showCreateCollection, setShowCreateCollection] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
-  const [toast, setToast] = useState(null);
+  const [, setToast] = useState(null);
   const [uploadHostSettings, setUploadHostSettings] = useState({});
   const [selectedUploadHostKeysByKind, setSelectedUploadHostKeysByKind] = useChromeStorage('selectedUploadHostKeysByKind', {}, 'local');
   const [legacySelectedUploadHostKeys, setLegacySelectedUploadHostKeys] = useChromeStorage('selectedUploadHostKeys', [], 'local');

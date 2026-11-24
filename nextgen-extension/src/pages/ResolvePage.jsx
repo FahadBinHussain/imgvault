@@ -61,7 +61,6 @@ import { retryVideoHostPageSide } from '../utils/videoRetryPageSide';
 import { getVideoProviderLinks, getVideoSourceHostOptions } from '../utils/videoProviderLinks';
 import { checkTelegramSceneIntegrity, deleteTelegramMessage, isNumericTelegramChannel, listTelegramPosts, scrapeTelegramPostUrl, telegramLocalMediaUrl, telegramPostPageUrl } from '../utils/telegramApi';
 import { flattenSceneConfig } from '../utils/sceneConfig';
-import { UDropUploader, TeraBoxUploader } from '../utils/uploaders';
 
 const IMAGE_SETTING_KEYS = Array.from(
   new Set([

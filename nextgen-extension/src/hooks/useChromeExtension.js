@@ -501,7 +501,7 @@ export function useTrash() {
  * @returns {[Object|null, Function]} [pendingImage, clearPending]
  */
 export function usePendingImage() {
-  const [pendingImage, setPendingImage] = useChromeStorage('pendingImage', null, 'local');
+  const [pendingImage] = useChromeStorage('pendingImage', null, 'local');
 
   const clearPending = useCallback(() => {
     chrome.storage.local.remove('pendingImage');

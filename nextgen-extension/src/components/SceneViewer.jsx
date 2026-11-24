@@ -137,6 +137,7 @@ export default function SceneViewer({ spzUrl, textureUrl, title, isOpen, onClose
       if (containerRef.current) {
         const canvas = containerRef.current.querySelector('canvas');
         if (canvas) {
+          // eslint-disable-next-line react-hooks/exhaustive-deps -- the container div is rendered by this component and never re-created while the effect is active; the cleanup intentionally reads the live ref.
           try { containerRef.current.removeChild(canvas); } catch {}
         }
       }

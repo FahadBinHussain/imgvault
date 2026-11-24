@@ -22,6 +22,14 @@
 // test-terabox-download-target) need no credentials and fail loudly on
 // network errors; that is pre-existing behaviour, not a runner bug — see
 // the AGENTS.md test entry.
+//
+// --skip-network-probes: skip the two live-network probes (suno + terabox
+// download targets). CI passes this flag in the gating test job: the
+// release gate must only depend on the DETERMINISTIC suite, and a network
+// flake must never block a release. the probes still run in CI, in the
+// separate network-probes job (continue-on-error), so they stay visible
+// without gating anything. a skip under this flag is reported loudly, by
+// name, in the summary — same as the credential-gated skips.
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -37,6 +45,14 @@ const CREDENTIAL_GATED = {
   'test-udrop-api.mjs': ['UDROP_KEY1', 'UDROP_KEY2'],
   'test-udrop-shorturl.mjs': ['UDROP_KEY1', 'UDROP_KEY2'],
 };
+
+// live-network probes with no credentials: deterministic code, flaky
+// transport. skipped under --skip-network-probes (see header comment).
+const NETWORK_PROBES = new Set([
+  'test-suno-download-target.mjs',
+  'test-terabox-download-target.mjs',
+]);
+const skipNetworkProbes = process.argv.includes('--skip-network-probes');
 
 const run = (label, cmd, args, { cwd = dir, timeoutMs = 180_000 } = {}) => {
   console.log(`\n=== ${label} ===`);
@@ -69,6 +85,12 @@ if (legacy.length === 0) {
   results.push({ label: 'legacy test-*.mjs', ok: false, detail: 'no test files found' });
 }
 for (const file of legacy) {
+  if (skipNetworkProbes && NETWORK_PROBES.has(file)) {
+    console.log(`\n=== legacy ${file} ===`);
+    console.log(`SKIP legacy ${file} — live-network probe skipped by --skip-network-probes (it runs in the CI network-probes job, not the gating suite). Run without the flag to run it here.`);
+    results.push({ label: `legacy ${file}`, ok: true, skipped: true, detail: 'skipped by --skip-network-probes' });
+    continue;
+  }
   const envVars = CREDENTIAL_GATED[file];
   if (envVars) {
     const keys = envVars.map((v) => process.env[v]);
@@ -118,7 +140,7 @@ if (failed.length > 0) {
   process.exit(1);
 }
 if (skipped.length > 0) {
-  console.log(`\nall runnable parts passed. ${skipped.length} credential-gated probe(s) skipped (see above) — set the env vars to run them.`);
+  console.log(`\nall runnable parts passed. ${skipped.length} part(s) skipped (see above) — credential-gated probes need their env vars, network probes need a run without --skip-network-probes.`);
 } else {
   console.log(`\nall ${results.length} parts passed.`);
 }

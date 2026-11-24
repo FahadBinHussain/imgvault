@@ -66,19 +66,11 @@ const VAULT_SESSION_KEY = 'imgvault-vault-unlocked';
 const bytesToHex = (bytes) =>
   Array.from(bytes).map((byte) => byte.toString(16).padStart(2, '0')).join('');
 
-const makeSalt = () => {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return bytesToHex(bytes);
-};
-
 const hashVaultPasscode = async (passcode, salt) => {
   const data = new TextEncoder().encode(`${salt}:${passcode}`);
   const digest = await crypto.subtle.digest('SHA-256', data);
   return bytesToHex(new Uint8Array(digest));
 };
-
-const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim());
 
 const getLocalVaultConfig = () => new Promise((resolve) => {
   chrome.storage.local.get([VAULT_CONFIG_KEY], (result) => {
@@ -137,6 +129,7 @@ function VaultEncryptedVideoThumb({ item, getStreamUrl, sendMessage, paused }) {
       }
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on item.id + visibility; getStreamUrl/item are recreated per parent render and re-running would re-derive the preview
   }, [visible, paused, item.id]);
 
   if (url) {
@@ -222,6 +215,7 @@ function VaultEncryptedImageThumb({ item, sendMessage, paused }) {
       }
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on item.id + visibility; item is recreated per parent render and re-running would re-derive the preview
   }, [visible, paused, item.id]);
 
   if (url) {
@@ -502,11 +496,13 @@ export default function VaultPage() {
       }
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on selected item id/url; ensureStreamResolved is recreated every render and selectedItem identity changes on vault reloads, either would re-run the expensive probe/decrypt
   }, [selectedItem?.id, selectedItem?.encryptedBlobUrl]);
 
   // Revoke object URLs on lock.
   useEffect(() => {
     return () => { Object.values(decryptedUrls).forEach(URL.revokeObjectURL); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount-only cleanup; adding decryptedUrls would revoke live object URLs on every change
   }, []);
 
   const showToast = (message, type = 'info', duration = 3000) => {
@@ -604,6 +600,7 @@ export default function VaultPage() {
     };
   }, [navigate]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- loadVaultItems is intentionally recreated per render; the unlock effect runs only on unlock state and the storage listener reads it via loadVaultItemsRef
   const loadVaultItems = async () => {
     if (!unlocked) return;
     setLoading(true);
@@ -735,6 +732,7 @@ export default function VaultPage() {
 
   useEffect(() => {
     loadVaultItems();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs only when unlock state changes; loadVaultItems is recreated every render so listing it would reload on every render
   }, [unlocked]);
 
   useEffect(() => {
@@ -767,8 +765,6 @@ export default function VaultPage() {
   }, [searchQuery, vaultItems]);
 
   const isLinkItem = (item) => getMediaItemKind(item) === 'link';
-
-  const isVideoItem = (item) => getMediaItemKind(item) === 'video';
 
   const getPreviewUrl = (item) => (
     item?.linkPreviewImageUrl ||
@@ -1136,6 +1132,7 @@ export default function VaultPage() {
     String(selectedItem?.encryptedMimeType || selectedItem?.fileType || '').startsWith('video/') ||
     String(selectedItem?.encryptedMimeType || selectedItem?.fileType || '').startsWith('audio/')
   );
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- restoreConfiguredServices is intentionally recomputed per render from hostSettings/kind; its consumers already list it as a dep
   const restoreConfiguredServices = hostSettings
     ? (restoreItemIsVideo
         ? getConfiguredVideoUploadServices(hostSettings)
@@ -1611,7 +1608,6 @@ export default function VaultPage() {
                     const kind = getKind(item);
                     const linkPreviewImage = getLinkPreviewImage(item);
                     const videoWatchUrl = getVideoWatchUrl(item);
-                    const videoDirectUrl = getVideoDirectUrl(item);
                     const imageUrl = getPreviewUrl(item);
 
                     return (
@@ -1674,7 +1670,7 @@ export default function VaultPage() {
                                   muted
                                   playsInline
                                   preload="metadata"
-                                  onLoadedMetadata={(e) => {
+                                  onLoadedMetadata={(_e) => {
                                     handleMediaLoad(item.id);
                                   }}
                                   onCanPlayThrough={() => handleMediaLoad(item.id)}

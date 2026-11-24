@@ -1,8 +1,6 @@
 const NORMALIZE_RE = /\.(avi|mov)$/i;
 let conversionQueue = Promise.resolve();
 
-const extensionOf = (name = '') => String(name).match(/\.([^.]+)$/)?.[1]?.toLowerCase() || '';
-
 const sendNative = (data) => new Promise((resolve, reject) => chrome.runtime.sendMessage({ action: 'nativeVideoNormalize', data }, (response) => {
   if (chrome.runtime.lastError) return reject(chrome.runtime.lastError);
   if (!response?.success) return reject(new Error(response?.error || 'Native video normalizer failed.'));

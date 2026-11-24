@@ -28,7 +28,7 @@ export default defineConfig({
           }
           return 'assets/[name]-[hash].js';
         },
-        chunkFileNames: (chunkInfo) => {
+        chunkFileNames: (_chunkInfo) => {
           return 'assets/[name]-[hash].js';
         },
         assetFileNames: 'assets/[name]-[hash].[ext]'

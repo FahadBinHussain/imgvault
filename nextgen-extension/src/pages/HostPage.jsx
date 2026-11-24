@@ -340,6 +340,7 @@ export default function HostPage() {
 
   useEffect(() => {
     refreshHostStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only status check; refreshHostStatus is recreated every render so listing it would re-ping on every render
   }, []);
 
   useEffect(() => {

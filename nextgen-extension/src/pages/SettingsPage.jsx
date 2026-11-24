@@ -250,7 +250,7 @@ export default function SettingsPage() {
   const [teraboxCookie, setTeraboxCookie] = useChromeStorage('teraboxCookie', '', 'sync');
   const [telegramBotToken, setTelegramBotToken] = useChromeStorage('telegramBotToken', '', 'sync');
   const [telegramChannel, setTelegramChannel] = useChromeStorage('telegramChannel', '', 'sync');
-  const [firebaseConfigRaw, setFirebaseConfigRaw] = useChromeStorage('firebaseConfigRaw', '', 'sync');
+  const [firebaseConfigRaw] = useChromeStorage('firebaseConfigRaw', '', 'sync');
   const [neonDatabaseUrl, setNeonDatabaseUrl] = useChromeStorage('neonDatabaseUrl', '', 'sync');
   const [defaultGallerySource, setDefaultGallerySource] = useChromeStorage('defaultGallerySource', 'imgbb', 'sync');
   const [defaultVideoSource, setDefaultVideoSource] = useChromeStorage('defaultVideoSource', 'filemoon', 'sync');
@@ -328,7 +328,8 @@ export default function SettingsPage() {
         }
       } catch { setCloudStatus('❌ Sync failed'); }
     })();
-  }, [firebaseConfigRaw, neonDatabaseUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs only when cloud credentials change; form state f is a one-time snapshot used to fill only empty fields, re-running on every keystroke would refetch cloud settings
+  }, [firebaseConfigRaw, neonDatabaseUrl, setDefault3DSource, setDefaultGallerySource, setDefaultVideoSource, setFilemoonApiKey, setImgbbApiKey, setPixvidApiKey, setTelegramBotToken, setTelegramChannel, setTeraboxCookie, setUdropKey1, setUdropKey2]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -374,7 +375,7 @@ export default function SettingsPage() {
       } catch { setCloudStatus('⚠️ Local saved, cloud sync failed'); }
       setSaved(true); setTimeout(() => setSaved(false), 2500);
     } finally { setSaving(false); }
-  }, [f]);
+  }, [f, setDefault3DSource, setDefaultGallerySource, setDefaultVideoSource, setDownloadFolder, setFilemoonApiKey, setImgbbApiKey, setNeonDatabaseUrl, setPixvidApiKey, setTelegramBotToken, setTelegramChannel, setTeraboxCookie, setUdropKey1, setUdropKey2]);
 
   useEffect(() => {
     const onKey = e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); if (!saving && section !== 'links') handleSave(); } };

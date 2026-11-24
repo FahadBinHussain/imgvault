@@ -6,9 +6,8 @@
 
 import { StorageManager } from '../utils/storage.js';
 import { DuplicateDetector } from '../utils/duplicate-detector.js';
-import { URLNormalizer } from '../utils/url-normalizer.js';
 import { PixvidUploader, ImgbbUploader, FilemoonUploader, UDropUploader, TeraBoxUploader, TelegramUploader } from '../utils/uploaders.js';
-import { TELEGRAM_GETFILE_MAX_BYTES, TELEGRAM_LOCAL_MEDIA_PREFIX, downloadTelegramFileNative, fetchTelegramFile, deleteTelegramMessage, isNativeTelegramFileId, nativeTelegramMessageId, telegramPostPageUrl } from '../utils/telegramApi.js';
+import { TELEGRAM_GETFILE_MAX_BYTES, downloadTelegramFileNative, fetchTelegramFile, deleteTelegramMessage, isNativeTelegramFileId, nativeTelegramMessageId, telegramPostPageUrl } from '../utils/telegramApi.js';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig.js';
 import {
   IMAGE_UPLOAD_SERVICES,
@@ -41,7 +40,6 @@ import { getVaultUploadIntent, clearVaultUploadIntent, decideVaultUploadRecovery
 import {
   getConfiguredVideoUploadServices,
   getStrictVideoProviderLink,
-  getVideoProviderLabel,
   getVideoProviderLinks,
   getVideoRetrySourceCandidates,
   getVideoUploadService,
@@ -105,6 +103,7 @@ function sanitizeForNeon(data) {
   if (typeof data === 'string') {
     // Remove all Unicode characters that might cause issues
     return data
+      // eslint-disable-next-line no-control-regex -- intentional: strips control + zero-width chars from stored data
       .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '') // Control chars, zero-width chars
       .replace(/[\uD800-\uDFFF]/g, '') // Surrogate pairs
       .replace(/[\uFFF0-\uFFFF]/g, '') // Special Unicode
@@ -1765,7 +1764,6 @@ class ImgVaultServiceWorker {
       // and the frame can too. Serve a repeat chunk from the granule cache
       // instead of paying another dlink resolve + 8MiB fetch for it.
       let plain = this._getCachedChunk(id, i, total, chunkSize);
-      const fromCache = !!plain;
       if (!plain) {
         const encStart = rangeLayout.encryptedChunkOffset(i);
         const encLen = rangeLayout.encryptedChunkLength(i);
@@ -1792,7 +1790,7 @@ class ImgVaultServiceWorker {
     return out.subarray(0, writeAt);
   }
 
-  async probeVaultBlobFormat({ id = '', url, fileId = '', chunks = [], vaultHost = DEFAULT_VAULT_BLOB_HOST, hostCopies = null, fileName = '' } = {}) {
+  async probeVaultBlobFormat({ id = '', url, fileId = '', vaultHost = DEFAULT_VAULT_BLOB_HOST, hostCopies = null, fileName = '' } = {}) {
     await this.ensureVaultMasterKey();
     if (!this.vaultMasterKey) {
       throw new Error('Vault is locked. Unlock the vault first.');
@@ -1826,7 +1824,6 @@ class ImgVaultServiceWorker {
   // 143MiB video entirely. Byte-aware eviction keeps at most one large entry
   // (or several small ones) and never lets the worker hold more than this.
   static PLAINTEXT_CACHE_MAX_BYTES = 192 * 1024 * 1024;
-  static CHUNK_CACHE_MAX_BYTES = 128 * 1024 * 1024;
   // Chunk-granule cache cap for the streaming path (2.12.86). ~16 decrypted
   // 8MiB chunks — enough to cover a moov probe's working set (chunk 0 + tail
   // + a mid-file probe) without letting a huge blob's chunks accumulate.
@@ -3590,7 +3587,7 @@ class ImgVaultServiceWorker {
       if (/sign in to confirm your age/i.test(details)) {
         return 'yt-dlp failed. The video appears to require an age-confirmed session.';
       }
-      if (/sign in to confirm you[\'’]?re not a bot/i.test(raw)) {
+      if (/sign in to confirm you['’]?re not a bot/i.test(raw)) {
         return 'yt-dlp failed. The site is asking for a logged-in session.';
       }
       if (/unable to open for writing/i.test(raw)) {
@@ -4629,7 +4626,6 @@ class ImgVaultServiceWorker {
    * @param {chrome.runtime.Port} port
    */
   handleUploadOwnerPort(port) {
-    const runId = String(port?.sender?.id ?? '');
     let ownedRunId = '';
 
     const onMessage = (message) => {
@@ -4899,11 +4895,10 @@ class ImgVaultServiceWorker {
    * @param {Object} data - { uploadData, encrypted: {encryptedBlobUrl, ...}, udropResult, blobSize }
    */
   async saveVaultedUpload(data) {
-    const { uploadData, encrypted, udropResult, blobSize } = data;
+    const { uploadData, encrypted, blobSize } = data;
     // songs are their own kind - they ride the video hosts but are not videos
     const isAudio = Boolean(uploadData.isAudio || uploadData.kind === 'audio');
     const kind = isAudio ? 'audio' : (uploadData.isVideo || uploadData.kind === 'video') ? 'video' : 'image';
-    const fileName = uploadData.fileName || (kind === 'video' ? 'video.mp4' : kind === 'audio' ? 'song.m4a' : 'image.jpg');
     const creationDate = uploadData.fileLastModified ? new Date(uploadData.fileLastModified).toISOString() : null;
 
     const mediaMetadata = {
@@ -5924,6 +5919,7 @@ class ImgVaultServiceWorker {
   // literal text untouched — a baked-in title must be sanitized here.
   sanitizeMediaFileNamePart(value, maxLength = 120) {
     let name = String(value || '')
+      // eslint-disable-next-line no-control-regex -- intentional: strips control chars from filenames
       .replace(/[\u0000-\u001f\u007f<>:"/\\|?*%]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
@@ -6613,11 +6609,6 @@ class ImgVaultServiceWorker {
               const currentStatus = await this.getActiveNativeDownloadStatus(activeRequestId);
               const isStatusCancelled =
                 currentStatus === 'cancelling' || currentStatus === 'cancelled';
-              // Chrome's 1 MB limit surfaces as "Error when communicating..." — if we were
-              // in the middle of cancelling, that error is expected and should be
-              // swallowed as a graceful stop, not a scary host error.
-              const isCancellationDisconnect = isMemoryCancelled || isStatusCancelled ||
-                /Error when communicating with the native messaging host/i.test(errorMsg);
               // Only treat the generic Chrome disconnect as cancellation when we
               // actually issued a stop; otherwise it's a real host crash.
               const isUserCancelled = isMemoryCancelled || isStatusCancelled;
@@ -7579,7 +7570,7 @@ class ImgVaultServiceWorker {
       let fileId = extraMetadata?.sceneSpzFileId;
       // For old scenes: extract fileId from the udrop.com/file/{code}/... URL pattern
       if (!fileId && url?.includes('udrop.com/file/')) {
-        const codeMatch = url.match(/udrop\.com\/file\/([^\/]+)/i);
+        const codeMatch = url.match(/udrop\.com\/file\/([^/]+)/i);
         if (codeMatch?.[1]) {
           fileId = codeMatch[1];
           console.log('[Fetcher] Extracted fileId from udrop URL:', fileId);

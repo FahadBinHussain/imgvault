@@ -151,6 +151,7 @@ export default function TimelineScrollbar({ dateGroups, containerRef, navbarHeig
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- updateScrollFromClientY is re-created every render; the drag listeners intentionally subscribe only when isDragging changes.
   }, [isDragging]);
 
   const handleDateMarkerClick = (element) => {

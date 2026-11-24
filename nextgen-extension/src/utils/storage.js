@@ -484,6 +484,10 @@ export class StorageManager {
       
       if (value === null) {
         fields[key] = { nullValue: null };
+      } else if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?/.test(value)) {
+        // ISO date strings are timestamps, not plain strings — this check must
+        // come BEFORE the plain-string branch or it can never execute.
+        fields[key] = { timestampValue: value };
       } else if (typeof value === 'string') {
         fields[key] = { stringValue: value };
       } else if (typeof value === 'number') {
@@ -494,8 +498,6 @@ export class StorageManager {
         }
       } else if (typeof value === 'boolean') {
         fields[key] = { booleanValue: value };
-      } else if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?/.test(value)) {
-        fields[key] = { timestampValue: value };
       } else if (Array.isArray(value)) {
         fields[key] = {
           arrayValue: {
@@ -1534,6 +1536,7 @@ export class StorageManager {
       }
       
       // Delete from ImgBB if imgbbDeleteUrl exists
+      // eslint-disable-next-line no-constant-condition -- imgbb deletion deliberately disabled by the user 2026-04-08 (commit 1db2f80); reason unrecorded, do not re-enable without asking
       if (false && imgbbDeleteUrl) {
         console.log('🌐 [PERMANENT DELETE] Deleting from ImgBB...');
         try {
@@ -2696,6 +2699,7 @@ export class StorageManager {
     if (pixvidDeleteUrl) {
       try { await fetch(pixvidDeleteUrl, { method: 'GET' }); } catch {}
     }
+    // eslint-disable-next-line no-constant-condition -- imgbb deletion deliberately disabled by the user 2026-04-08 (commit 1db2f80); reason unrecorded, do not re-enable without asking
     if (false && imgbbDeleteUrl) {
       try {
         const deleteUrl = new URL(imgbbDeleteUrl);
@@ -2723,7 +2727,7 @@ export class StorageManager {
   }
 
   async deleteVaultItemNeon(id) {
-    const sql = this.ensureNeonReady();
+    const _sql = this.ensureNeonReady();
     const current = await this.getImageByIdNeon(id);
     if (!current) {
       throw new Error('Vault item not found');

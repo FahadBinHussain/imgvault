@@ -70,6 +70,12 @@ for (const file of files) {
   const code = fs.readFileSync(file, 'utf8');
   const messages = linter.verify(code, config, file);
   for (const message of messages) {
+    // This harness runs a minimal config (no-undef only, no plugins), so a
+    // disable directive naming a rule from the repo's real .eslintrc.cjs
+    // (e.g. react-hooks/exhaustive-deps) reports "Definition for rule ...
+    // was not found" here even though the rule exists. That is a harness
+    // artifact, not an undefined reference — skip it, keep everything else.
+    if (/^Definition for rule '.*' was not found\.$/.test(message.message)) continue;
     findings.push(`${file}:${message.line}:${message.column}  ${message.message}`);
   }
 }

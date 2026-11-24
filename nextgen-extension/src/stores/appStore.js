@@ -8,7 +8,7 @@ import { create } from 'zustand';
 /**
  * App store for managing global application state
  */
-export const useAppStore = create((set, get) => ({
+export const useAppStore = create((set, _get) => ({
   // Settings
   settings: {
     pixvidApiKey: '',

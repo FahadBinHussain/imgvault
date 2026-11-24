@@ -5,14 +5,12 @@
 
 import {
   TELEGRAM_UPLOAD_MAX_BYTES,
-  TELEGRAM_NATIVE_MAX_BYTES,
   assertTelegramUploadSize,
   deleteNativeTempFile,
   deleteTelegramMessage,
   formatBytesForError,
   isNumericTelegramChannel,
   requireTelegramToken,
-  scrapeTelegramPostUrl,
   scrapeTelegramPostMedia,
   sendTelegramFile,
   stageBlobForNativeUpload,
@@ -62,7 +60,7 @@ class BaseUploader {
    * @param {string} [filename] - Optional filename
    * @returns {Promise<UploadResult>}
    */
-  async upload(blob, apiKey, filename) {
+  async upload(_blob, _apiKey, _filename) {
     throw new Error('Upload method must be implemented');
   }
 
@@ -1155,6 +1153,7 @@ export class TeraBoxUploader extends BaseUploader {
     const fallback = 'video.mp4';
     let name = String(filename || '').split('/').pop().split('?')[0] || fallback;
     // drop emoji + control chars
+    // eslint-disable-next-line no-misleading-character-class -- intentional: \u{FE0F} (variation selector) is stripped deliberately along with emoji
     name = name.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '');
     // map fullwidth → halfwidth where safe, else replace with underscore
     name = name
@@ -1166,6 +1165,7 @@ export class TeraBoxUploader extends BaseUploader {
       .replace(/[，、；]/g, '_');
     // strip chars terabox forbids outright
     name = name.replace(/[\\/:*?"<>|]/g, '_');
+    // eslint-disable-next-line no-control-regex -- intentional: strips control chars from TeraBox filenames
     name = name.replace(/[\u0000-\u001F\u007F]/g, '');
     // collapse runs of spaces / underscores, trim dots+spaces from ends
     name = name.replace(/\s+/g, ' ').trim().replace(/[._\s]+$/g, '');
@@ -1567,7 +1567,7 @@ export class TelegramUploader extends BaseUploader {
    * file has no Bot API file_id, so every read of it must go back through
    * the native host (see downloadTelegramFileNative).
    */
-  async uploadViaNativeHost(blob, { token, channel, filename = 'file', mimeType = '', filePath, onProgress, signal, nativeRequestId = '' } = {}) {
+  async uploadViaNativeHost(blob, { channel, filename = 'file', mimeType = '', filePath, onProgress, signal, nativeRequestId = '' } = {}) {
     const size = blob?.size || 0;
     assertTelegramUploadSize(size, filename, mimeType, true);
     let nativePath = filePath || '';
