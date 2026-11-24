@@ -22,9 +22,9 @@ const gallery = () => src('../src/pages/GalleryPage.jsx');
 
 // ------------------------------------------------- manifest / build ---
 
-test('2.19.38 (2026-11-24): the manifest is at 2.19.38, carries unlimitedStorage, and lists scene-viewer.js concretely', () => {
+test('2.19.39 (2026-11-24): the manifest is at 2.19.39, carries unlimitedStorage, and lists scene-viewer.js concretely', () => {
   const manifest = JSON.parse(src('../public/manifest.json'));
-  assert.equal(manifest.version, '2.19.38');
+  assert.equal(manifest.version, '2.19.39');
   assert.ok(manifest.permissions.includes('unlimitedStorage'));
   const resources = manifest.web_accessible_resources.flatMap((entry) => entry.resources);
   assert.ok(resources.includes('scene-viewer.js'));

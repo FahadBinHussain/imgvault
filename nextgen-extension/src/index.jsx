@@ -15,6 +15,7 @@ import HostPage from './pages/HostPage';
 import LogsPage from './pages/LogsPage';
 import VaultPage from './pages/VaultPage';
 import ResolvePage from './pages/ResolvePage';
+import UploadProgressWidget from './components/UploadProgressWidget';
 import './index.css';
 
 try {
@@ -42,6 +43,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route path="/popup" element={<PopupPage />} />
         <Route path="*" element={<Navigate to="/gallery" replace />} />
       </Routes>
+      {/* Floating upload-progress card (2.19.39): app level, outside the
+          routes, so it survives route changes and shows on every page
+          (including the vault page) while an upload runs with the modal
+          closed. Inside the router so it can navigate back to /gallery. */}
+      <UploadProgressWidget />
     </HashRouter>
   </React.StrictMode>
 );

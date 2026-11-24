@@ -75,6 +75,7 @@ import {
   isUploadRunStalled,
 } from '../utils/uploadRun.js';
 import { cacheUploadFile, getCachedUploadFile, listCachedUploadFiles, removeCachedUploadFile } from '../utils/uploadFileCache.js';
+import { UPLOAD_BATCH_KEY, UPLOAD_MODAL_OPEN_KEY } from '../utils/uploadWidget.js';
 import { partitionHostsByUploadLimit } from '../utils/hostUploadLimits.js';
 import { captureVideoSnapshotBlob } from '../utils/videoSnapshot.js';
 import { captureImageSnapshotBlob } from '../utils/imageSnapshot.js';
@@ -1936,6 +1937,18 @@ export default function GalleryPage() {
     });
     await appendClientUploadLog('Preparing encrypted vault upload from the extension page...');
 
+    // The outcome of the run. Declared HERE, outside the try block, on
+    // purpose — the video flow's lesson: a `let` inside the try is
+    // invisible to the catch and finally blocks, and reading it there
+    // threw "runOutcome is not defined" inside the finally, which meant
+    // the run was NEVER closed. (2.19.39: the vault flow never reported
+    // to the run ledger at all, so the floating progress card had no
+    // record to show for the longest uploads in the app.)
+    let runOutcomeVault = {
+      status: UPLOAD_RUN_STATUS.ERROR,
+      summary: 'Vault upload did not finish.',
+    };
+
     try {
       await ensureVaultKeyHydrated();
       const masterKey = getVaultMasterKey();
@@ -2125,6 +2138,20 @@ export default function GalleryPage() {
       }
       assertVaultBlobHostSizes(vaultHostKeys, encryptedBlob.size, undefined, { hasNativeHost, nativeProbeError });
 
+      // Record the run so a crash is reported honestly instead of leaving
+      // the UI stuck on "Uploading..." forever — and so the floating
+      // progress card (2.19.39) can show the Telethon upload live. The
+      // vault flow is the only page-side upload that never reported to
+      // the ledger; its progress went to the status string only.
+      await beginUploadRun({
+        kind: 'vault',
+        hosts: vaultHostKeys.map((key) => getVideoProviderLabel(key)),
+        hostKeys: vaultHostKeys,
+        fileName,
+        bytesTotal: encryptedBlob.size,
+        source: 'local-file',
+      });
+
       const opaqueName = `${Array.from(crypto.getRandomValues(new Uint8Array(16)))
         .map((b) => b.toString(16).padStart(2, '0')).join('')}.bin`;
 
@@ -2159,6 +2186,12 @@ export default function GalleryPage() {
             const finalizingMessage = `Uploading to ${vaultService.label}: ${text || `all ${totalLabel} sent — waiting for Telegram to finalize the post...`}`;
             await chrome.storage.local.set({ uploadStatus: finalizingMessage });
             appendClientUploadLog(finalizingMessage).catch(() => {});
+            await reportUploadRunProgress({
+              percent: 100,
+              bytesSent: loaded,
+              bytesTotal: total || encryptedBlob.size,
+              host: vaultService.label,
+            });
             return;
           }
           const loadedLabel = formatBytes(loaded);
@@ -2173,6 +2206,12 @@ export default function GalleryPage() {
           if (vaultProgressTracker.shouldLog({ loaded, percent, phase })) {
             appendClientUploadLog(message).catch(() => {});
           }
+          await reportUploadRunProgress({
+            percent,
+            bytesSent: loaded,
+            bytesTotal: total || encryptedBlob.size,
+            host: vaultService.label,
+          });
         };
 
         const uploader = new vaultService.uploaderClass();
@@ -2269,14 +2308,30 @@ export default function GalleryPage() {
       const completionMessage = `✅ Vault upload complete — ${fileName} saved to ${hostLabels || 'vault hosts'}`;
       await chrome.storage.local.set({ uploadStatus: completionMessage });
       await appendClientUploadLog(completionMessage, 'success');
+      await reportUploadRunProgress({ savedItemId: saved.id });
+      runOutcomeVault = {
+        status: UPLOAD_RUN_STATUS.SUCCESS,
+        summary: completionMessage,
+        savedItemId: saved.id,
+      };
       return saved;
     } catch (error) {
       await appendClientUploadLog(`Encrypted vault upload failed: ${error.message || String(error)}`, 'error');
+      runOutcomeVault = {
+        status: UPLOAD_RUN_STATUS.ERROR,
+        summary: error.message || String(error),
+      };
       throw error;
     } finally {
       if (activeVideoUploadControllerRef.current === uploadController) {
         activeVideoUploadControllerRef.current = null;
       }
+      // Close the run BEFORE the flag is cleared: the run has to be settled
+      // with a real outcome, otherwise the next launch would see a "running"
+      // upload that no longer exists.
+      await endUploadRun(runOutcomeVault.status, runOutcomeVault.summary, {
+        savedItemId: runOutcomeVault.savedItemId || '',
+      });
       await chrome.storage.local.set({ uploadActive: false });
     }
   };
@@ -2748,14 +2803,7 @@ export default function GalleryPage() {
     setNewCollectionName('');
     setUploadQueue([]);
     setUploadAttemptStarted(false);
-    setBatchUploadState({
-      active: false,
-      index: 0,
-      total: 0,
-      completed: 0,
-      failed: 0,
-      currentFile: '',
-    });
+    resetBatchUploadState();
     batchCancelRequestedRef.current = false;
     batchDuplicateBypassFileRef.current = null;
   };
@@ -2770,6 +2818,18 @@ export default function GalleryPage() {
       showToast('Upload will continue in the background. You can reopen the modal to check logs later.', 'info', 3500);
     }
   };
+
+  // Mirror the modal's open state to storage so the floating progress
+  // card (2.19.39, app level) knows when to hide itself: the card shows
+  // only while the modal is closed. The cleanup covers the unmount case
+  // (route change with the modal open) — a stale `true` would hide the
+  // card forever.
+  useEffect(() => {
+    chrome.storage.local.set({ [UPLOAD_MODAL_OPEN_KEY]: showUploadModal }).catch(() => {});
+    return () => {
+      chrome.storage.local.set({ [UPLOAD_MODAL_OPEN_KEY]: false }).catch(() => {});
+    };
+  }, [showUploadModal]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2885,7 +2945,7 @@ export default function GalleryPage() {
 
       await chrome.storage.local.set({ uploadActive: false, uploadStatus: '' });
       await endUploadRun(UPLOAD_RUN_STATUS.CANCELLED, 'Upload cancelled from the gallery.');
-      setBatchUploadState((current) => ({ ...current, active: false }));
+      setBatchUploadStateMirrored({ ...batchUploadState, active: false });
       showToast('Upload cancelled.', 'warning', 3000);
     } catch (error) {
       console.error('Failed to cancel upload:', error);
@@ -2998,8 +3058,19 @@ export default function GalleryPage() {
     setDismissedRunId(interruptedRun.id);
   };
 
+  // Batch state lives in React state, which dies with the page — but the
+  // floating progress card (2.19.39) is app level and reads storage, so
+  // every batch transition is mirrored to chrome.storage.local alongside
+  // the setState. The mirror is write-only here: the card never writes
+  // it back, and a stale mirror alone shows nothing (the card only ever
+  // renders batch counts next to a live upload).
+  const setBatchUploadStateMirrored = (next) => {
+    setBatchUploadState(next);
+    chrome.storage.local.set({ [UPLOAD_BATCH_KEY]: next }).catch(() => {});
+  };
+
   const resetBatchUploadState = () => {
-    setBatchUploadState({
+    setBatchUploadStateMirrored({
       active: false,
       index: 0,
       total: 0,
@@ -3556,7 +3627,7 @@ export default function GalleryPage() {
     setUploadAttemptStarted(true);
     setDuplicateData(null);
     setUploadQueue(files);
-    setBatchUploadState({
+    setBatchUploadStateMirrored({
       active: true,
       index: 0,
       total: files.length,
@@ -3581,7 +3652,7 @@ export default function GalleryPage() {
           ignoreDuplicates || (bypassDuplicateForFile && bypassDuplicateForFile === file)
         );
         setActiveUploadQueueIndex(index);
-        setBatchUploadState({
+        setBatchUploadStateMirrored({
           active: true,
           index: index + 1,
           total: files.length,
@@ -3612,10 +3683,16 @@ export default function GalleryPage() {
           batchDuplicateBypassFileRef.current = null;
         }
         completed += 1;
-        setBatchUploadState((current) => ({
-          ...current,
+        // Object literal, not the old updater form: the mirror needs the
+        // resolved state, and every field is in scope here.
+        setBatchUploadStateMirrored({
+          active: true,
+          index: index + 1,
+          total: files.length,
           completed,
-        }));
+          failed,
+          currentFile: file.name || `File ${index + 1}`,
+        });
 
         if (uploadData.isVideo && uploadResult?.videoUploadErrors?.length) {
           await appendClientUploadLog(`Batch video saved with retryable host errors: ${uploadResult.videoUploadErrors.join(' | ')}`, 'warning');
@@ -3640,7 +3717,7 @@ export default function GalleryPage() {
       failed += 1;
       setUploadQueue(remainingFiles);
       setActiveUploadQueueIndex(0);
-      setBatchUploadState({
+      setBatchUploadStateMirrored({
         active: false,
         index: activeIndex + 1,
         total: files.length,
@@ -4440,6 +4517,24 @@ export default function GalleryPage() {
 
     hydratePendingAutoUpload();
   }, [location.pathname, location.state?.autoOpenUpload, navigate]);
+
+  // Reopen request from the floating progress card (2.19.39): the card
+  // navigates here with `state.reopenUploadModal` set to a timestamp.
+  // Consumed exactly once — the state is cleared from the history entry
+  // (same pattern as the auto-upload consumer above) so a back/forward
+  // navigation can never reopen the modal a second time. The ref holds
+  // the latest openUploadModal so the effect never captures a stale
+  // closure of `uploading` / `uploadImageData`.
+  const openUploadModalRef = useRef(openUploadModal);
+  openUploadModalRef.current = openUploadModal;
+  const consumedReopenUploadModalRef = useRef(0);
+  useEffect(() => {
+    const requestedAt = location.state?.reopenUploadModal;
+    if (!requestedAt || requestedAt === consumedReopenUploadModalRef.current) return;
+    consumedReopenUploadModalRef.current = requestedAt;
+    navigate(location.pathname, { replace: true, state: {} });
+    openUploadModalRef.current();
+  }, [location.state?.reopenUploadModal, location.pathname, navigate]);
 
   useEffect(() => {
     const retryPendingAutoUpload = async () => {
