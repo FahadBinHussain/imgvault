@@ -22,9 +22,9 @@ const gallery = () => src('../src/pages/GalleryPage.jsx');
 
 // ------------------------------------------------- manifest / build ---
 
-test('2.19.45 (2026-11-25): the manifest is at 2.19.45, carries unlimitedStorage, and lists scene-viewer.js concretely', () => {
+test('2.19.46 (2026-11-25): the manifest is at 2.19.46, carries unlimitedStorage, and lists scene-viewer.js concretely', () => {
   const manifest = JSON.parse(src('../public/manifest.json'));
-  assert.equal(manifest.version, '2.19.45');
+  assert.equal(manifest.version, '2.19.46');
   assert.ok(manifest.permissions.includes('unlimitedStorage'));
   const resources = manifest.web_accessible_resources.flatMap((entry) => entry.resources);
   assert.ok(resources.includes('scene-viewer.js'));
@@ -39,7 +39,7 @@ test('2.12.73 (2026-09-12): postbuild copies src/scene-viewer.js into dist (the 
 
 test('CI race (2026-09-19): exactly ONE release job, ONE gh-release call, and it fails on unmatched files', () => {
   const workflow = src('../../.github/workflows/nextgen-extension-crx.yml');
-  assert.equal((workflow.match(/^  publish-release:/gm) || []).length, 1);
+  assert.equal((workflow.match(/^ {2}publish-release:/gm) || []).length, 1);
   assert.equal((workflow.match(/softprops\/action-gh-release@v2/g) || []).length, 1);
   assert.ok(workflow.includes('fail_on_unmatched_files: true'));
   assert.ok(workflow.includes("require('./public/manifest.json').version"));
@@ -55,7 +55,7 @@ test('2.19.41 (2026-11-24): Tests gate the release — publish-release needs gat
   assert.ok(tests.includes('run-tests.mjs --skip-network-probes'), 'the gating suite skips the flaky live-network probes');
   assert.ok(tests.includes('network-probes:'), 'the probes still run in their own job');
   assert.ok(tests.includes('continue-on-error: true'), 'the probes job never fails the workflow');
-  assert.ok(/^  lint:/m.test(tests), 'the lint job exists in the gating workflow');
+  assert.ok(/^ {2}lint:/m.test(tests), 'the lint job exists in the gating workflow');
 });
 
 test('pnpm workspace (2026-10-30): per-member lockfiles, root-only build approvals, no member workspace files', () => {

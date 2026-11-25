@@ -5043,7 +5043,7 @@ export default function GalleryPage() {
           <div className="w-full h-full flex flex-col gap-2">
             <MpegtsPlayer
               src={playSrc}
-              className={`w-full flex-1 rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain
+              className={`w-full flex-1 min-h-0 rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain
                        transition-all duration-700 ease-out
                        ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
             />
@@ -5056,7 +5056,7 @@ export default function GalleryPage() {
           <video
             ref={modalVideoRef}
             src={playSrc}
-            className={`w-full flex-1 rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain
+            className={`w-full flex-1 min-h-0 rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain
                      transition-all duration-700 ease-out
                      ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
             controls
@@ -5075,7 +5075,7 @@ export default function GalleryPage() {
         <div className="w-full h-full flex flex-col gap-2">
           <iframe
             src={getModalVideoEmbedUrl(modalImage)}
-            className={`w-full flex-1 rounded-[var(--radius-box)] shadow-2xl relative z-10
+            className={`w-full flex-1 min-h-0 rounded-[var(--radius-box)] shadow-2xl relative z-10
                      transition-all duration-700 ease-out
                      ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
             frameBorder="0"

@@ -134,3 +134,31 @@ test('2.19.45 (2026-11-25): the prefs source dropdowns save the moment they chan
   assert.ok(settings.includes("saveSourcePref('threeDSrc', setDefault3DSource, 'default3DSource', e.target.value)"));
   assert.ok(settings.includes('await sm.saveUserSettings({ [cloudKey]: value });'), 'the immediate save skips the cloud copy — the next visit would overwrite the choice back');
 });
+
+// ------------------------------------------------- 2.19.46: portrait video fits the modal ---
+// a 9:16 portrait video (0d1b3832, 1080x1920) blew the modal player up to
+// 2134px tall inside a 718px panel: the <video> is a flex item with
+// w-full flex-1, and flex items default to min-height: auto — the item
+// refused to shrink below its intrinsic height (width x 16/9), so only
+// the middle slice of the frame was visible. the fix is min-h-0 on the
+// players (video, TS player, iframe): the element fits the panel and
+// object-contain fits the frame inside it — small and whole, never
+// cropped, never filling by stretching.
+
+test('2.19.46 (2026-11-25): the modal players fit the panel — min-h-0 lets the flex item shrink below its intrinsic height', () => {
+  const page = gallery();
+  const playerCls = 'w-full flex-1 min-h-0 rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain';
+  const count = page.split(playerCls).length - 1;
+  assert.equal(count, 2, `expected the video + TS players to carry min-h-0 (found ${count}) — a portrait video overflows the panel again`);
+  const iframeStart = page.indexOf('src={getModalVideoEmbedUrl(modalImage)}');
+  const iframeBlock = page.slice(iframeStart, page.indexOf('/>', iframeStart));
+  assert.ok(iframeBlock.includes('w-full flex-1 min-h-0'), 'the modal iframe lost min-h-0');
+});
+
+test('2.19.46 (2026-11-25): the modal video still uses object-contain — fit, never cover/fill', () => {
+  const page = gallery();
+  const start = page.indexOf('ref={modalVideoRef}');
+  const block = page.slice(start, page.indexOf('/>', start));
+  assert.ok(block.includes('object-contain'), 'the modal <video> lost object-contain');
+  assert.ok(!block.includes('object-cover'), 'object-cover would crop the frame to fill the panel — the user asked for fit');
+});
