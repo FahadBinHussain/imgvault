@@ -17,6 +17,7 @@ import {
   isZoomed,
   panZoomState,
   pinchZoomAmount,
+  sourceResolutionZoomLevel,
   wheelZoomAmount,
   zoomFactorToLevel,
   zoomLevelToFactor,
@@ -151,7 +152,74 @@ describe('anchored zoom', () => {
 
   test('the transform string is a translate + scale pair', () => {
     const zoomed = applyZoom(base(), 1, null);
-    assert.match(zoomed.transform, /^translate3d\(-?\d+(\.\d+)?px, -?\d+(\.\d+)?px, 0\) scale\(\d+(\.\d+)?\)$/);
+    assert.match(zoomed.transform, /^translate\(-?\d+(\.\d+)?px, -?\d+(\.\d+)?px\) scale\(\d+(\.\d+)?\)$/);
+  });
+});
+
+describe('the zoom transform is 2D on purpose', () => {
+  // A promoted layer (translate3d / will-change:transform) is rasterised once
+  // and then magnified by the compositor, which is what made the zoomed photo
+  // soft. Measured live 2026-11-25: 0.67 of the ideal detail vs 0.79-0.91
+  // for the 2D form. The transform must NOT be a 3D one.
+  test('the transform never promotes the image to a composited layer', () => {
+    const zoomed = applyZoom(createZoomState({
+      containerWidth: 400,
+      containerHeight: 400,
+      imageWidth: 200,
+      imageHeight: 100,
+    }), 1, null);
+    assert.doesNotMatch(zoomed.transform, /translate3d/);
+    assert.doesNotMatch(zoomed.transform, /matrix3d/);
+    assert.match(zoomed.transform, /^translate\(/);
+  });
+});
+
+describe('the source resolution ceiling', () => {
+  test('a 5120px source in a 1200px box runs out of detail at about 4.3x', () => {
+    const level = sourceResolutionZoomLevel({
+      naturalWidth: 5120,
+      naturalHeight: 2880,
+      baseWidth: 1200,
+      baseHeight: 675,
+    });
+    assert.ok(Math.abs(Math.pow(2, level) - 4.2667) < 0.01);
+    assert.ok(level > 2 && level < 2.2);
+  });
+
+  test('a smaller photo gets a smaller ceiling — sharpness depends on the photo', () => {
+    const big = sourceResolutionZoomLevel({
+      naturalWidth: 5120, naturalHeight: 2880, baseWidth: 1200, baseHeight: 675,
+    });
+    const small = sourceResolutionZoomLevel({
+      naturalWidth: 1200, naturalHeight: 675, baseWidth: 1200, baseHeight: 675,
+    });
+    assert.ok(small < big);
+    assert.equal(small, 0); // already at its own resolution -> no headroom
+  });
+
+  test('a 2x screen halves the headroom (the raster is in device pixels)', () => {
+    const one = sourceResolutionZoomLevel({
+      naturalWidth: 5120, naturalHeight: 2880, baseWidth: 1200, baseHeight: 675, devicePixelRatio: 1,
+    });
+    const two = sourceResolutionZoomLevel({
+      naturalWidth: 5120, naturalHeight: 2880, baseWidth: 1200, baseHeight: 675, devicePixelRatio: 2,
+    });
+    assert.ok(two < one);
+    assert.ok(Math.abs(Math.pow(2, two) - Math.pow(2, one) / 2) < 0.01);
+  });
+
+  test('an unknown source size never locks the zoom out', () => {
+    assert.equal(sourceResolutionZoomLevel({}), DEFAULT_MAX_ZOOM_LEVEL);
+    assert.equal(sourceResolutionZoomLevel({
+      naturalWidth: 0, naturalHeight: 0, baseWidth: 1200, baseHeight: 675,
+    }), DEFAULT_MAX_ZOOM_LEVEL);
+  });
+
+  test('the ceiling never exceeds the engine maximum', () => {
+    const level = sourceResolutionZoomLevel({
+      naturalWidth: 50000, naturalHeight: 50000, baseWidth: 100, baseHeight: 100,
+    });
+    assert.equal(level, DEFAULT_MAX_ZOOM_LEVEL);
   });
 });
 
@@ -228,6 +296,6 @@ describe('panning', () => {
 
   test('the transform follows the pan', () => {
     const after = panZoomState(zoomed(), -10, -5);
-    assert.match(after.transform, /translate3d\(/);
+    assert.match(after.transform, /^translate\(/);
   });
 });

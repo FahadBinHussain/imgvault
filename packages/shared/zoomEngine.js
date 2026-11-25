@@ -229,9 +229,56 @@ export function panZoomState(state, dx, dy, options = {}) {
   };
 }
 
-/** The CSS transform the component writes on the image layer. */
+/**
+ * The CSS transform the component writes on the image layer.
+ *
+ * It is a 2D transform on purpose. `translate3d(...)` (and `will-change:
+ * transform`) promote the image to its own composited layer, and a promoted
+ * layer is rasterised ONCE at the size it had when it was promoted — a zoom
+ * then magnifies that frozen bitmap instead of re-rasterising the photo, so
+ * the picture goes soft. Measured live (2026-11-25, edge, a 5120x2880 source
+ * in a 1200px box): the promoted 3D form kept only 0.67 of the detail a
+ * perfect renderer produces, the 2D form kept 0.79-0.91.
+ *
+ * A 2D transform lets the browser re-raster the photo at the zoomed size,
+ * which is the whole point of zooming.
+ */
 export function formatZoomTransform(x, y, scale) {
-  return `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) scale(${scale.toFixed(5)})`;
+  return `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px) scale(${scale.toFixed(5)})`;
+}
+
+/**
+ * The zoom level at which the rendered photo reaches the source resolution.
+ *
+ * `baseWidth`/`baseHeight` are the size the photo occupies at fit (CSS px),
+ * `naturalWidth`/`naturalHeight` the size of the file the browser decoded.
+ * Past this level the browser has to upscale decoded pixels, so the picture
+ * can only get softer — this is the honest ceiling for THIS photo, and it is
+ * why the sharpness depends on the photo (a 5120px source in a 1200px box
+ * runs out of detail at ~4.3x, a 2000px source at ~1.7x).
+ *
+ * `devicePixelRatio` matters: the raster is in DEVICE pixels, so a photo that
+ * is already at its natural size on a 2x screen has no headroom at all.
+ *
+ * Returns DEFAULT_MAX_ZOOM_LEVEL when the source size is unknown (not loaded
+ * yet), so an unmeasured image is never locked out of zooming.
+ */
+export function sourceResolutionZoomLevel({
+  naturalWidth,
+  naturalHeight,
+  baseWidth,
+  baseHeight,
+  devicePixelRatio = 1,
+} = {}) {
+  const nw = Number(naturalWidth) || 0;
+  const nh = Number(naturalHeight) || 0;
+  const bw = Number(baseWidth) || 0;
+  const bh = Number(baseHeight) || 0;
+  if (!nw || !nh || !bw || !bh) return DEFAULT_MAX_ZOOM_LEVEL;
+  const dpr = Number(devicePixelRatio) || 1;
+  const limit = Math.min(nw / (bw * dpr), nh / (bh * dpr));
+  if (!(limit > 1)) return 0;
+  return Math.min(DEFAULT_MAX_ZOOM_LEVEL, zoomFactorToLevel(limit));
 }
 
 /**

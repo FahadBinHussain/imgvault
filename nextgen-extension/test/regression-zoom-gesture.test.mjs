@@ -57,3 +57,55 @@ test('2.19.47: the shared modal locks the page behind it and restores the previo
 test('2.19.47: a photo in a modal loads eagerly (a lazy image never loads in a background tab)', () => {
   assert.match(zoomable, /loading = 'eager'/);
 });
+
+// ---------------------------------------------------------------------------
+// 2.19.48: the zoomed photo was BLURRY.
+//
+// The user report (2026-11-25): "image getting blurry or pixelated when
+// zoomed, how the google photos ones stay sharp? or does it depend on the
+// photo?".
+//
+// Root cause (measured live in edge against a ground-truth resample of the
+// source file, same crop, same rect, 5120x2880 source in a 1200px box):
+//
+//   translate3d(...) + will-change:transform  ->  0.67 of the ideal detail
+//   translate3d(...), no will-change          ->  0.65-0.76
+//   2D translate(...) + scale                  ->  0.79-0.91   <- the fix
+//   the scale baked into the layout size       ->  0.80-0.94   (same sharpness,
+//                                                    but it moves the layout box)
+//
+// `translate3d` and `will-change: transform` both PROMOTE the image to its own
+// composited layer. A promoted layer is rasterised ONCE, at the size it had
+// when it was promoted, and the compositor then MAGNIFIES that frozen bitmap —
+// so the photo went soft exactly when it was zoomed in. The 2D transform lets
+// the browser re-raster the photo at the zoomed size.
+//
+// The second half of the answer: past the photo's OWN resolution the browser
+// must upscale decoded pixels, so sharpness does depend on the photo — the
+// zoom ceiling is now the level where the rendered size reaches the natural
+// size.
+// ---------------------------------------------------------------------------
+
+test('2.19.48: the zoom transform is 2D — a 3D transform promotes the image and freezes its raster', () => {
+  assert.match(zoomable, /`translate\(\$\{\(zoom\.x - origin\.x\)/);
+  assert.doesNotMatch(zoomable, /translate3d\(/);
+});
+
+test('2.19.48: the image is NOT promoted to a composited layer (will-change: transform freezes the raster)', () => {
+  assert.doesNotMatch(zoomable, /willChange:\s*zoomed\s*\?\s*'transform'/);
+  assert.doesNotMatch(zoomable, /will-change:\s*transform/);
+});
+
+test('2.19.48: the zoom ceiling follows the photo\'s own resolution', () => {
+  assert.match(zoomable, /sourceResolutionZoomLevel\(/);
+  assert.match(zoomable, /naturalSize/);
+  assert.match(zoomable, /devicePixelRatio/);
+  assert.match(zoomable, /effectiveMaxLevel/);
+});
+
+test('2.19.48: every gesture honours the source-aware ceiling', () => {
+  const zoomCalls = zoomable.match(/applyZoom\([^)]*maxLevel: effectiveMaxLevel/g) || [];
+  assert.ok(zoomCalls.length >= 4, 'every applyZoom must clamp to effectiveMaxLevel');
+  assert.doesNotMatch(zoomable, /maxLevel: maxZoomLevel/);
+  assert.match(zoomable, /doubleClickZoomLevel\(zoom\.level, 0, effectiveMaxLevel\)/);
+});

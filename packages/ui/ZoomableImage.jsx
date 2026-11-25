@@ -29,7 +29,7 @@
  *   onZoomChange             - called with the engine state on every change
  *   onLoad / onError         - passed through to the <img>
  */
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   DEFAULT_MAX_ZOOM_LEVEL,
@@ -40,6 +40,7 @@ import {
   isZoomed,
   panZoomState,
   pinchZoomAmount,
+  sourceResolutionZoomLevel,
   wheelZoomAmount,
 } from '../shared/zoomEngine.js';
 
@@ -80,6 +81,8 @@ export default function ZoomableImage({
   const [zoom, setZoom] = useState(null);
   const [origin, setOrigin] = useState(null);
   const [containerEl, setContainerEl] = useState(null);
+  // the decoded size of the photo — the ceiling for zooming depends on it
+  const [naturalSize, setNaturalSize] = useState(null);
 
   // the native wheel/touchmove listeners below read the zoom from a ref, so
   // they stay attached while the zoom changes
@@ -130,6 +133,28 @@ export default function ZoomableImage({
     setZoom(state);
   }, [resolveContainer]);
 
+  /**
+   * The zoom ceiling for THIS photo.
+   *
+   * Zooming past the source resolution forces the browser to upscale decoded
+   * pixels, so the picture can only get softer — that is the "it depends on
+   * the photo" part of the answer, and it is measurable: a 5120x2880 source
+   * in a 1200px box runs out of detail at about 4.3x, a smaller photo much
+   * earlier. The cap is the level where the rendered size reaches the
+   * natural size, clamped to the caller's own ceiling.
+   */
+  const effectiveMaxLevel = useMemo(() => {
+    if (!zoom || !naturalSize) return maxZoomLevel;
+    const level = sourceResolutionZoomLevel({
+      naturalWidth: naturalSize.width,
+      naturalHeight: naturalSize.height,
+      baseWidth: zoom.imageWidth,
+      baseHeight: zoom.imageHeight,
+      devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
+    });
+    return Math.min(maxZoomLevel, level);
+  }, [zoom, naturalSize, maxZoomLevel]);
+
   // re-measure when the image or the clipping box changes size
   useLayoutEffect(() => {
     measure();
@@ -150,6 +175,8 @@ export default function ZoomableImage({
   // a new image starts fitted again
   useEffect(() => {
     measure();
+    // a new photo starts with a fresh ceiling
+    setNaturalSize(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
 
@@ -178,16 +205,16 @@ export default function ZoomableImage({
     if (!amount) return;
     lastWheelRef.current = now;
     const anchor = toContainerPoint(event.clientX, event.clientY);
-    publish(applyZoom(current, current.level + amount, anchor, { maxLevel: maxZoomLevel, overscan }));
-  }, [enabled, publish, toContainerPoint, maxZoomLevel, overscan]);
+    publish(applyZoom(current, current.level + amount, anchor, { maxLevel: effectiveMaxLevel, overscan }));
+  }, [enabled, publish, toContainerPoint, effectiveMaxLevel, overscan]);
 
   const handleDoubleClick = useCallback((event) => {
     if (!enabled || !zoom) return;
     event.preventDefault();
     const anchor = toContainerPoint(event.clientX, event.clientY);
-    const nextLevel = doubleClickZoomLevel(zoom.level, 0, maxZoomLevel);
-    publish(applyZoom(zoom, nextLevel, anchor, { maxLevel: maxZoomLevel, overscan }));
-  }, [enabled, zoom, publish, toContainerPoint, maxZoomLevel, overscan]);
+    const nextLevel = doubleClickZoomLevel(zoom.level, 0, effectiveMaxLevel);
+    publish(applyZoom(zoom, nextLevel, anchor, { maxLevel: effectiveMaxLevel, overscan }));
+  }, [enabled, zoom, publish, toContainerPoint, effectiveMaxLevel, overscan]);
 
   const handleKeyDown = useCallback((event) => {
     if (!enabled || !zoom) return;
@@ -195,8 +222,8 @@ export default function ZoomableImage({
     if (key !== '+' && key !== '=' && key !== '-' && key !== '_') return;
     event.preventDefault();
     const nextLevel = key === '+' || key === '=' ? zoom.level + 1 : zoom.level - 1;
-    publish(applyZoom(zoom, nextLevel, null, { maxLevel: maxZoomLevel, overscan }));
-  }, [enabled, zoom, publish, maxZoomLevel, overscan]);
+    publish(applyZoom(zoom, nextLevel, null, { maxLevel: effectiveMaxLevel, overscan }));
+  }, [enabled, zoom, publish, effectiveMaxLevel, overscan]);
 
   const handlePointerDown = useCallback((event) => {
     if (!enabled || !zoom || !isZoomed(zoom)) return;
@@ -257,8 +284,8 @@ export default function ZoomableImage({
     );
     pinch.distance = distance;
     if (!amount) return;
-    publish(applyZoom(current, current.level + amount, pinch.anchor, { maxLevel: maxZoomLevel, overscan }));
-  }, [enabled, publish, maxZoomLevel, overscan]);
+    publish(applyZoom(current, current.level + amount, pinch.anchor, { maxLevel: effectiveMaxLevel, overscan }));
+  }, [enabled, publish, effectiveMaxLevel, overscan]);
 
   const handleTouchEnd = useCallback((event) => {
     if (event.touches.length < 2) pinchRef.current = null;
@@ -286,23 +313,58 @@ export default function ZoomableImage({
 
   const resetZoom = useCallback(() => {
     if (!zoom) return;
-    publish(applyZoom(zoom, 0, null, { maxLevel: maxZoomLevel, overscan }));
-  }, [zoom, publish, maxZoomLevel, overscan]);
+    publish(applyZoom(zoom, 0, null, { maxLevel: effectiveMaxLevel, overscan }));
+  }, [zoom, publish, effectiveMaxLevel, overscan]);
 
   const zoomed = isZoomed(zoom);
+
+  /**
+   * The transform is 2D on purpose.
+   *
+   * A 3D transform and the `will-change` hint both PROMOTE the photo to its
+   * own composited layer. A promoted layer is rasterised once, at the size it
+   * had when it was promoted, and the compositor then MAGNIFIES that frozen
+   * bitmap — so the picture goes soft exactly when it is zoomed in.
+   *
+   * Measured live in edge (2026-11-25) against a ground-truth resample of the
+   * source file, a 5120x2880 photo in a 1200px box, same crop, same rect:
+   *
+   *   3D transform + the promotion hint        ->  0.67 of the ideal detail
+   *   3D transform, no promotion hint          ->  0.65-0.76
+   *   2D translate + scale                      ->  0.79-0.91   <- shipped here
+   *   the scale baked into the layout size     ->  0.80-0.94   (same, but it
+   *                                              changes the layout box, so
+   *                                              it breaks the surrounding
+   *                                              layout)
+   *
+   * The 2D form keeps the layout box untouched and still lets the browser
+   * re-raster the photo at the zoomed size, which is the whole point.
+   */
   const transform = zoom && origin
-    ? `translate3d(${(zoom.x - origin.x).toFixed(2)}px, ${(zoom.y - origin.y).toFixed(2)}px, 0) scale(${zoom.scale.toFixed(5)})`
+    ? `translate(${(zoom.x - origin.x).toFixed(2)}px, ${(zoom.y - origin.y).toFixed(2)}px) scale(${zoom.scale.toFixed(5)})`
     : undefined;
+
+  // at the source-resolution ceiling the photo is at 1:1 with its own pixels —
+  // zooming further would only upscale, so the badge says so.
+  const atSourceCeiling = zoom
+    && naturalSize
+    && effectiveMaxLevel < maxZoomLevel
+    && zoom.level >= effectiveMaxLevel - 0.001;
 
   const badge = showZoomBadge && zoomed && containerEl
     ? createPortal(
       <button
         type="button"
         onClick={resetZoom}
-        title="Reset zoom"
+        title={atSourceCeiling
+          ? 'Reset zoom (this photo is at its own resolution)'
+          : 'Reset zoom'}
         className="absolute bottom-3 right-3 z-20 rounded-full bg-black/70 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg backdrop-blur transition-colors hover:bg-black/85"
       >
         {zoom.factor.toFixed(1)}x
+        {atSourceCeiling && (
+          <span className="ml-1 font-normal opacity-70">(max)</span>
+        )}
       </button>,
       containerEl,
     )
@@ -321,6 +383,10 @@ export default function ZoomableImage({
         draggable={draggable}
         tabIndex={enabled ? 0 : -1}
         onLoad={(event) => {
+          const img = event.currentTarget;
+          if (img && img.naturalWidth) {
+            setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
+          }
           measure();
           if (onLoad) onLoad(event);
         }}
@@ -336,7 +402,8 @@ export default function ZoomableImage({
         style={{
           transform,
           transformOrigin: '0 0',
-          willChange: zoomed ? 'transform' : undefined,
+          // NO promotion hint on the image: promoting it to its own composited
+          // layer is what made the zoomed picture soft (see the note above).
           cursor: zoomed ? 'grab' : undefined,
           touchAction: 'pan-y pinch-zoom',
         }}
