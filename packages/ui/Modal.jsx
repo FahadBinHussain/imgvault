@@ -4,9 +4,27 @@
  * The extension keeps its own Modal in UI.jsx for other components until the
  * extension-side swap commit re-exports it from here.
  */
+import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 
 export const Modal = ({ isOpen, onClose, title, children, className, fullscreen = false }) => {
+  // the page behind must not scroll while the modal is open — otherwise a
+  // wheel gesture over the photo scrolls the gallery in the background
+  // (the lock is restored to whatever it was, not blindly cleared)
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const body = document.body;
+    const previousOverflow = body.style.overflow;
+    const previousPaddingRight = body.style.paddingRight;
+    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
+    body.style.overflow = 'hidden';
+    if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
+    return () => {
+      body.style.overflow = previousOverflow;
+      body.style.paddingRight = previousPaddingRight;
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (

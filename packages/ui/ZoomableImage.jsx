@@ -65,7 +65,9 @@ export default function ZoomableImage({
   onZoomChange,
   onLoad,
   onError,
-  loading = 'lazy',
+  // eager by default: this image is the content of a modal, and a lazy image
+  // never loads while the tab is in the background
+  loading = 'eager',
   decoding = 'async',
   referrerPolicy,
   draggable = false,
@@ -74,9 +76,16 @@ export default function ZoomableImage({
   const lastWheelRef = useRef(0);
   const dragRef = useRef(null);
   const pinchRef = useRef(null);
+  const zoomRef = useRef(null);
   const [zoom, setZoom] = useState(null);
   const [origin, setOrigin] = useState(null);
   const [containerEl, setContainerEl] = useState(null);
+
+  // the native wheel/touchmove listeners below read the zoom from a ref, so
+  // they stay attached while the zoom changes
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
 
   /** The box that clips the photo — the visible area. */
   const resolveContainer = useCallback(() => {
@@ -159,7 +168,7 @@ export default function ZoomableImage({
 
   const handleWheel = useCallback((event) => {
     if (!enabled) return;
-    const current = zoom;
+    const current = zoomRef.current;
     if (!current) return;
     event.preventDefault();
     const now = Date.now();
@@ -170,7 +179,7 @@ export default function ZoomableImage({
     lastWheelRef.current = now;
     const anchor = toContainerPoint(event.clientX, event.clientY);
     publish(applyZoom(current, current.level + amount, anchor, { maxLevel: maxZoomLevel, overscan }));
-  }, [enabled, zoom, publish, toContainerPoint, maxZoomLevel, overscan]);
+  }, [enabled, publish, toContainerPoint, maxZoomLevel, overscan]);
 
   const handleDoubleClick = useCallback((event) => {
     if (!enabled || !zoom) return;
@@ -237,7 +246,8 @@ export default function ZoomableImage({
   const handleTouchMove = useCallback((event) => {
     const pinch = pinchRef.current;
     if (!pinch || !enabled) return;
-    if (event.touches.length !== 2 || !zoom) return;
+    const current = zoomRef.current;
+    if (event.touches.length !== 2 || !current) return;
     event.stopPropagation();
     event.preventDefault();
     const distance = touchDistance(event.touches);
@@ -247,12 +257,32 @@ export default function ZoomableImage({
     );
     pinch.distance = distance;
     if (!amount) return;
-    publish(applyZoom(zoom, zoom.level + amount, pinch.anchor, { maxLevel: maxZoomLevel, overscan }));
-  }, [enabled, zoom, publish, maxZoomLevel, overscan]);
+    publish(applyZoom(current, current.level + amount, pinch.anchor, { maxLevel: maxZoomLevel, overscan }));
+  }, [enabled, publish, maxZoomLevel, overscan]);
 
   const handleTouchEnd = useCallback((event) => {
     if (event.touches.length < 2) pinchRef.current = null;
   }, []);
+
+  /**
+   * React delegates `wheel` and `touchmove` to the root container with PASSIVE
+   * listeners, so `preventDefault()` inside onWheel/onTouchMove is IGNORED —
+   * the page behind the photo scrolls while the user zooms. The only way to
+   * actually cancel that scroll is a native, non-passive listener on the
+   * image itself.
+   */
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return undefined;
+    const onWheel = (event) => handleWheel(event);
+    const onTouchMove = (event) => handleTouchMove(event);
+    img.addEventListener('wheel', onWheel, { passive: false });
+    img.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => {
+      img.removeEventListener('wheel', onWheel);
+      img.removeEventListener('touchmove', onTouchMove);
+    };
+  }, [handleWheel, handleTouchMove, src]);
 
   const resetZoom = useCallback(() => {
     if (!zoom) return;
@@ -295,7 +325,6 @@ export default function ZoomableImage({
           if (onLoad) onLoad(event);
         }}
         onError={onError}
-        onWheel={handleWheel}
         onDoubleClick={handleDoubleClick}
         onKeyDown={handleKeyDown}
         onPointerDown={handlePointerDown}
@@ -303,7 +332,6 @@ export default function ZoomableImage({
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         style={{
           transform,
