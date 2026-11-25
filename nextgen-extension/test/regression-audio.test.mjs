@@ -57,7 +57,7 @@ test('2.19.23: the file predicates overlap on an audio-mime video extension — 
 
 test('2.19.14 (2026-11-11): the upload modal renders <audio controls> for a song and titles it "Upload Song"', () => {
   const page = gallery();
-  assert.ok(page.includes('<audio src={audioSrc} controls className="w-full" preload="metadata" />'));
+  assert.ok(page.includes('<audio src={audioSrc} controls className="w-full" preload="metadata" onError={() => audioSource && setModalMediaFailed({ sourceKey: audioSource.sourceKey, sourceLabel: audioSource.sourceLabel })} />'));
   assert.ok(page.includes("((uploadImageData?.isAudio || uploadMetadata?.isAudio) ? 'Upload Song' : 'Upload Image')"));
 });
 
@@ -87,23 +87,35 @@ test('2.19.15 (2026-11-11): the picker accept is built from AUDIO_ACCEPT_ATTRIBU
 
 // ---------------------------------------------------------- 2.19.16 ---
 
-test('2.19.16 (2026-11-11): the modal plays from the host that HAS the file — song, video, and poster all use getPlayableVideoProviderLink', () => {
+// 2.19.45 (2026-11-25) SUPERSEDES the 2.19.16 modal rule: the modal no
+// longer silently falls back to the host that HAS the file — the setting
+// is authoritative, and when the selected host has no playable link the
+// modal shows a source picker and the user picks (the user asked why the
+// modal played filemoon when terabox was selected). The fallback helper
+// still serves the grid preview, the watch/download URLs and the poster,
+// which is what the pins below cover.
+
+test('2.19.16 (2026-11-11): the modal plays from the SELECTED host — song, video, and picker all use getModalVideoSource; the grid/download/poster still use getPlayableVideoProviderLink', () => {
   const page = gallery();
   assert.ok(page.includes("return getPlayableVideoProviderLink(item, defaultVideoSource, 'watchUrl').url;"));
   assert.ok(page.includes("return getPlayableVideoProviderLink(item, defaultVideoSource, 'directUrl').url;"));
   assert.ok(page.includes("const videoThumb = getPlayableVideoProviderLink(item, defaultVideoSource, 'thumbnailUrl').url"));
-  assert.ok(page.includes("const playableAudio = getPlayableVideoProviderLink(modalImage, defaultVideoSource, 'directUrl');"));
+  assert.ok(page.includes("const audioSource = getModalVideoSource(modalImage, modalSourceKey);"));
+  assert.ok(page.includes("const modalVideoSource = getModalVideoSource(modalImage, modalSourceKey);"));
+  assert.ok(!page.includes("const playableAudio = getPlayableVideoProviderLink(modalImage, defaultVideoSource, 'directUrl');"), 'the audio modal falls back to another host again — the setting must be authoritative');
 });
 
-test('2.19.16 (2026-11-11): the modal NAMES the serving host when it is not the preferred one', () => {
+test('2.19.16 (2026-11-11): the modal NAMES the serving host — the switcher under the player, and the picker when it fails', () => {
   const page = gallery();
-  assert.ok(page.includes('`Playing from ${playableAudio.sourceLabel} — ${getVideoProviderLabel(defaultVideoSource)} has no link for this song`'));
-  assert.ok(page.includes('Playing from {modalVideoSource.sourceLabel} — {getVideoProviderLabel(defaultVideoSource)} has no link for this video'));
+  assert.ok(page.includes('Playing from {currentSource.sourceLabel}'));
+  assert.ok(page.includes('`${failed.sourceLabel} failed to load this video`'));
+  assert.ok(page.includes('`${modalMediaFailed.sourceLabel} failed to load this song. Pick another source.`'));
 });
 
 test('2.19.16 (2026-11-11): with no link anywhere the modal still says so honestly', () => {
   const page = gallery();
-  assert.ok(page.includes('No playable host link for this song yet.'));
+  assert.ok(page.includes('No host has a playable link for this song.'));
+  assert.ok(page.includes('No host has a playable link for this video.'));
 });
 
 test('2.19.16 (2026-11-11): the web lightbox also plays through getPlayableVideoProviderLink (same helper, both platforms)', () => {

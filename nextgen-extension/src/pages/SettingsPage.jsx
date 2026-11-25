@@ -377,6 +377,29 @@ export default function SettingsPage() {
     } finally { setSaving(false); }
   }, [f, setDefault3DSource, setDefaultGallerySource, setDefaultVideoSource, setDownloadFolder, setFilemoonApiKey, setImgbbApiKey, setNeonDatabaseUrl, setPixvidApiKey, setTelegramBotToken, setTelegramChannel, setTeraboxCookie, setUdropKey1, setUdropKey2]);
 
+  // The source dropdowns save the moment they change: a dropdown is a
+  // single-click choice, and the old Save-only flow silently dropped the
+  // change when the user navigated away — 2026-11-25, the user set the
+  // video source to terabox, never pressed Save, and playback kept using
+  // telegram. The cloud copy is updated too, or the next visit's
+  // cloud-load would overwrite the local choice back.
+  const saveSourcePref = useCallback(async (field, setter, cloudKey, value) => {
+    set(field, value);
+    setter(value);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+    try {
+      const fc = await new Promise(r => chrome.storage.sync.get(['firebaseConfig'], r)).then(r => r.firebaseConfig);
+      const nUrl = (neonDatabaseUrl || '').trim();
+      if (nUrl || fc) {
+        const { StorageManager } = await import('../utils/storage.js');
+        const sm = new StorageManager(); await sm.init();
+        await sm.saveUserSettings({ [cloudKey]: value });
+        setCloudStatus('✅ Synced to cloud');
+      }
+    } catch { setCloudStatus('⚠️ Saved locally, cloud sync failed'); }
+  }, [neonDatabaseUrl]);
+
   useEffect(() => {
     const onKey = e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); if (!saving && section !== 'links') handleSave(); } };
     window.addEventListener('keydown', onKey);
@@ -541,7 +564,7 @@ export default function SettingsPage() {
             </motion.div>
             <div className="s-divider" />
             <Field label="Default Image Source" icon={Image}>
-              <select className="s-sel" value={f.gallerySrc} onChange={e => set('gallerySrc', e.target.value)}>
+              <select className="s-sel" value={f.gallerySrc} onChange={e => saveSourcePref('gallerySrc', setDefaultGallerySource, 'defaultGallerySource', e.target.value)}>
                 {IMAGE_SOURCE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
@@ -550,7 +573,7 @@ export default function SettingsPage() {
               </select>
             </Field>
             <Field label="Default Video Source" icon={Film}>
-              <select className="s-sel" value={f.videoSrc} onChange={e => set('videoSrc', e.target.value)}>
+              <select className="s-sel" value={f.videoSrc} onChange={e => saveSourcePref('videoSrc', setDefaultVideoSource, 'defaultVideoSource', e.target.value)}>
                 {VIDEO_SOURCE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
@@ -559,7 +582,7 @@ export default function SettingsPage() {
               </select>
             </Field>
             <Field label="Default 3D Source" icon={Box} hint="Which host the 3D viewer and Resolve 3D tab prefer when a scene is on both UDrop and TeraBox.">
-              <select className="s-sel" value={f.threeDSrc} onChange={e => set('threeDSrc', e.target.value)}>
+              <select className="s-sel" value={f.threeDSrc} onChange={e => saveSourcePref('threeDSrc', setDefault3DSource, 'default3DSource', e.target.value)}>
                 {THREE_D_SOURCE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}

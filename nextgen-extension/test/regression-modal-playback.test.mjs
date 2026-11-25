@@ -44,31 +44,93 @@ function sliceBetween(text, startAnchor, endAnchor) {
 test('2.19.44 (2026-11-25): the modal skips a t.me post page on the preferred host instead of playing HTML', () => {
   const page = gallery();
   assert.ok(page.includes('isTelegramPostPageUrl,'), 'GalleryPage no longer imports isTelegramPostPageUrl');
-  const fn = sliceBetween(page, 'const getModalVideoSource = (item) => {', 'const shouldRenderModalVideoPlayer');
+  const fn = sliceBetween(page, 'const getModalVideoSource = (item, preferredKey = defaultVideoSource) => {', 'const getModalPlayableSources');
   assert.ok(
-    fn.includes('if (!isTelegramPostPageUrl(directUrl)) {'),
-    'the preferred branch plays directUrl verbatim again — a t.me post page mounts in the <video>',
+    fn.includes('if (isTelegramPostPageUrl(directUrl)) return null;'),
+    'the selected-host branch plays directUrl verbatim again — a t.me post page mounts in the <video>',
   );
 });
 
-test('2.19.44 (2026-11-25): the modal fallback maps a filemoon /e/ URL to the iframe player, not a <video>', () => {
+test('2.19.44 (2026-11-25): the modal maps a filemoon /e/ URL to the iframe player, not a <video>', () => {
   const page = gallery();
-  const fn = sliceBetween(page, 'const getModalVideoSource = (item) => {', 'const shouldRenderModalVideoPlayer');
-  const playableAt = fn.indexOf("const playable = getPlayableVideoProviderLink(item, defaultVideoSource, 'directUrl');");
-  assert.ok(playableAt > 0, 'the fallback lookup moved — re-check the slice');
-  const fallback = fn.slice(playableAt);
-  assert.ok(fallback.includes("if (isFilemoonHtmlUrl(playable.url)) {"));
-  assert.ok(fallback.includes("type: 'iframe',"));
-  assert.ok(fallback.includes("type: 'video',"));
+  const fn = sliceBetween(page, 'const getModalVideoSource = (item, preferredKey = defaultVideoSource) => {', 'const getModalPlayableSources');
+  assert.ok(fn.includes("if (isFilemoonHtmlUrl(directUrl)) {"));
+  assert.ok(fn.includes("type: 'iframe',"));
+  assert.ok(fn.includes("type: 'video',"));
 });
 
 test('2.19.44 (2026-11-25): the playback-URL resolve follows the host the modal actually plays from', () => {
   const page = gallery();
   const effect = sliceBetween(page, '// Refresh the playback URL when the modal opens', '// Probe the container of the resolved playback URL');
   assert.ok(
-    effect.includes('const modalSource = getModalVideoSource(selectedImage);'),
-    'the resolve effect reads the preferred host again — a TeraBox fallback plays the expired stored dlink',
+    effect.includes('const modalSource = getModalVideoSource(selectedImage, modalSourceKey);'),
+    'the resolve effect reads the preferred host again — a TeraBox pick plays the expired stored dlink',
   );
   assert.ok(effect.includes("effectiveKey !== 'terabox'"));
   assert.ok(!effect.includes("defaultVideoSource !== 'terabox'"), 'the old preferred-only gate is still there');
+});
+
+// ------------------------------------------------- 2.19.45: the setting is authoritative ---
+//
+// The 2.19.44 fix fell back to the next host when the preferred one was
+// unplayable — and the user asked why the modal played filemoon when
+// terabox was selected (2.19.45, 2026-11-25 07:42): the fallback had
+// served him a dead filemoon's 404 for a file TeraBox still holds. Two
+// defects behind it:
+// 1. The modal silently fell back to another host instead of respecting
+//    the setting. Now getModalVideoSource returns the SELECTED host only
+//    (the in-modal pick, else the setting); when it has no playable link
+//    the modal shows a source picker and the user picks. A <video> that
+//    errors swaps to the same picker, naming the failed host.
+// 2. The setting itself did not stick: the prefs dropdowns only wrote on
+//    Save, so a change without Save was silently dropped — the stored
+//    value stayed telegram while the user believed terabox was set. The
+//    dropdowns now save the moment they change (local + cloud).
+
+test('2.19.45 (2026-11-25): the modal source is the selected host only — no silent fallback to another host', () => {
+  const page = gallery();
+  const fn = sliceBetween(page, 'const getModalVideoSource = (item, preferredKey = defaultVideoSource) => {', 'const getModalPlayableSources');
+  assert.ok(!fn.includes('getPlayableVideoProviderLink('), 'getModalVideoSource falls back to another host again — the setting must be authoritative');
+  assert.ok(fn.includes('if (!preferredLink) return null;'));
+});
+
+test('2.19.45 (2026-11-25): a video with no playable link on the selected host shows the source picker', () => {
+  const page = gallery();
+  assert.ok(page.includes('const renderModalSourcePicker = (item, { isModalAnimating, failed }) => {'));
+  assert.ok(
+    page.includes("if (getMediaItemKind(modalImage) === 'video' && (modalMediaFailed || !getModalVideoSource(modalImage, modalSourceKey))) {"),
+    'the picker branch is gone — an unplayable selection falls through to a black player again',
+  );
+  assert.ok(page.includes('renderModalSourcePicker(modalImage, { isModalAnimating, failed: modalMediaFailed })'));
+  assert.ok(page.includes('Play from {source.sourceLabel}'));
+});
+
+test('2.19.45 (2026-11-25): a <video> that errors swaps to the picker naming the failed host', () => {
+  const page = gallery();
+  assert.ok(page.includes('onError={() => modalVideoSource && setModalMediaFailed({ sourceKey: modalVideoSource.sourceKey, sourceLabel: modalVideoSource.sourceLabel })}'));
+  assert.ok(page.includes('`${failed.sourceLabel} failed to load this video`'));
+});
+
+test('2.19.45 (2026-11-25): a playing player names its host and offers the other hosts as switches', () => {
+  const page = gallery();
+  assert.ok(page.includes('const renderModalSourceSwitcher = (item, currentSource) => {'));
+  assert.ok(page.includes('Playing from {currentSource.sourceLabel}'));
+  assert.ok(page.includes('renderModalSourceSwitcher(modalImage, modalVideoSource)'));
+  assert.ok(page.includes('renderModalSourceSwitcher(modalImage, embedSource)'));
+});
+
+test('2.19.45 (2026-11-25): terabox playback waits for the fresh dlink instead of mounting the expired stored one', () => {
+  const page = gallery();
+  assert.ok(page.includes("if (modalVideoSource?.sourceKey === 'terabox' && modalPlaybackPending) {"));
+  assert.ok(page.includes('setModalPlaybackPending(true);'));
+  assert.ok(page.includes('Resolving playback URL...'));
+});
+
+test('2.19.45 (2026-11-25): the prefs source dropdowns save the moment they change, local and cloud', () => {
+  const settings = src('../src/pages/SettingsPage.jsx');
+  assert.ok(settings.includes('const saveSourcePref = useCallback(async (field, setter, cloudKey, value) => {'));
+  assert.ok(settings.includes("saveSourcePref('videoSrc', setDefaultVideoSource, 'defaultVideoSource', e.target.value)"));
+  assert.ok(settings.includes("saveSourcePref('gallerySrc', setDefaultGallerySource, 'defaultGallerySource', e.target.value)"));
+  assert.ok(settings.includes("saveSourcePref('threeDSrc', setDefault3DSource, 'default3DSource', e.target.value)"));
+  assert.ok(settings.includes('await sm.saveUserSettings({ [cloudKey]: value });'), 'the immediate save skips the cloud copy — the next visit would overwrite the choice back');
 });

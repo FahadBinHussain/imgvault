@@ -22,9 +22,9 @@ const gallery = () => src('../src/pages/GalleryPage.jsx');
 
 // ------------------------------------------------- manifest / build ---
 
-test('2.19.44 (2026-11-25): the manifest is at 2.19.44, carries unlimitedStorage, and lists scene-viewer.js concretely', () => {
+test('2.19.45 (2026-11-25): the manifest is at 2.19.45, carries unlimitedStorage, and lists scene-viewer.js concretely', () => {
   const manifest = JSON.parse(src('../public/manifest.json'));
-  assert.equal(manifest.version, '2.19.44');
+  assert.equal(manifest.version, '2.19.45');
   assert.ok(manifest.permissions.includes('unlimitedStorage'));
   const resources = manifest.web_accessible_resources.flatMap((entry) => entry.resources);
   assert.ok(resources.includes('scene-viewer.js'));
@@ -164,8 +164,8 @@ test('2.13.10 (2026-09-22): modal navigation runs on filteredImages with explici
 test('2.10.6 (2026-08-16): filemoon /e/ URLs play in an iframe in the modal, never as <video src>', () => {
   const page = gallery();
   const fn = page.slice(page.indexOf('const getModalVideoSource'));
-  assert.ok(fn.includes("return { type: 'iframe', src: directUrl, sourceKey: defaultVideoSource"));
-  assert.ok(fn.includes("return { type: 'iframe', src: directUrl || watchUrl, sourceKey: defaultVideoSource"));
+  assert.ok(fn.includes("return { type: 'iframe', src: directUrl, sourceKey: preferredKey"));
+  assert.ok(fn.includes("return { type: 'iframe', src: directUrl || watchUrl, sourceKey: preferredKey"));
 });
 
 test('2.14.0 (2026-10-11): the navbar goes single-row at 1700px; the timeline rail reads document.scrollingElement with pin-aware progress', () => {

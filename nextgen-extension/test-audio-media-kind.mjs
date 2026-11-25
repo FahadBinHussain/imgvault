@@ -234,10 +234,13 @@ check('stored video item is not a song', !isAudioMediaItem({ isVideo: true, file
     getPlayableVideoProviderLink({ kind: 'audio' }, 'filemoon', 'directUrl').url === '');
 
   const galleryPage = readFileSync(join(repoRoot, 'nextgen-extension/src/pages/GalleryPage.jsx'), 'utf8');
-  check('the gallery modal plays a song through the playable-host helper',
-    galleryPage.includes('getPlayableVideoProviderLink(modalImage, defaultVideoSource'));
+  // 2.19.45: the modal plays a song from the SELECTED host (getModalVideoSource
+  // with the in-modal pick, else the setting) and offers the other hosts as
+  // picker buttons — no silent fallback to the host that HAS the file.
+  check('the gallery modal plays a song from the selected host',
+    galleryPage.includes('getModalVideoSource(modalImage, modalSourceKey)'));
   check('the gallery modal names the host it plays from',
-    galleryPage.includes('Playing from ${playableAudio.sourceLabel}'));
+    galleryPage.includes('Playing from {currentSource.sourceLabel}'));
 
   const webLightbox = readFileSync(join(repoRoot, 'web/src/app/components/GalleryLightbox.jsx'), 'utf8');
   check('the web lightbox plays a song through the playable-host helper',

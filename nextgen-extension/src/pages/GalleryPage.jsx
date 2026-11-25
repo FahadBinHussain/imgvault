@@ -253,7 +253,12 @@ export default function GalleryPage() {
   const [filemoonThumbs, setFilemoonThumbs] = useState({}); // { imageId: thumbnailUrl } live-updated from lazy fetch
   const [sceneTexThumbs, setSceneTexThumbs] = useState({}); // { sceneId: fresh textureUrl } for terabox scenes
   const [modalPlaybackUrl, setModalPlaybackUrl] = useState(''); // fresh playback URL for terabox (dlinks expire in 8h)
+  const [modalPlaybackPending, setModalPlaybackPending] = useState(false); // true while the terabox resolve is in flight — the player waits for it instead of mounting the expired stored dlink
   const [modalContainerType, setModalContainerType] = useState(''); // 'ts' | 'mp4' | 'webm' | '' after probing
+  const [modalSourceOverride, setModalSourceOverride] = useState(null); // host key the user picked in the modal picker/switcher; null = follow the setting
+  const [modalMediaFailed, setModalMediaFailed] = useState(null); // { sourceKey, sourceLabel } when the modal <video>/<audio> errors
+  // the host the modal plays from: the user's in-modal pick, else the setting
+  const modalSourceKey = modalSourceOverride || defaultVideoSource;
   
   // Timeline scrollbar refs
   const pageContainerRef = useRef(null);
@@ -388,19 +393,26 @@ export default function GalleryPage() {
     return () => { cancelled = true; };
   }, [images, sendMessage]);
 
+  // a new modal starts from the setting — the override and the failure
+  // belong to the previous item.
+  useEffect(() => {
+    setModalSourceOverride(null);
+    setModalMediaFailed(null);
+    setModalPlaybackPending(false);
+  }, [selectedImage?.id]);
+
   // Refresh the playback URL when the modal opens for a video whose provider
   // has expiring direct links (terabox dlinks last 8h; stored link is stale).
-  // Resolve for the host the modal will ACTUALLY play from: the preferred
-  // host's link may be unplayable (a t.me post page) and the modal falls to
-  // another host — a TeraBox fallback needs a fresh dlink just as much as
-  // a preferred one, or the modal plays the 8h-expired stored dlink.
+  // Resolve for the host the modal will ACTUALLY play from — the user's
+  // in-modal pick, else the setting — so a TeraBox pick gets a fresh dlink
+  // instead of the 8h-expired stored one.
   useEffect(() => {
     const selectedKind = selectedImage?.id ? getMediaItemKind(selectedImage) : '';
     if (!selectedImage?.id || (selectedKind !== 'video' && selectedKind !== 'audio')) {
       setModalPlaybackUrl('');
       return;
     }
-    const modalSource = getModalVideoSource(selectedImage);
+    const modalSource = getModalVideoSource(selectedImage, modalSourceKey);
     const effectiveKey = modalSource?.type === 'video' ? modalSource.sourceKey : '';
     const links = getVideoProviderLinks(selectedImage);
     const link = effectiveKey ? links[effectiveKey] : null;
@@ -411,6 +423,7 @@ export default function GalleryPage() {
       return;
     }
     let cancelled = false;
+    setModalPlaybackPending(true);
     (async () => {
       try {
         const res = await sendMessage('getVideoPlaybackUrl', {
@@ -422,18 +435,21 @@ export default function GalleryPage() {
         if (!cancelled) setModalPlaybackUrl(url || '');
       } catch {
         if (!cancelled) setModalPlaybackUrl('');
+      } finally {
+        if (!cancelled) setModalPlaybackPending(false);
       }
     })();
-    return () => { cancelled = true; setModalPlaybackUrl(''); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on selectedImage id on purpose: the object is replaced in place (link-preview refresh, field edits) and that must not re-trigger the playback-URL resolve; getModalVideoSource is re-created every render but its inputs (selectedImage id, defaultVideoSource) are already keys
-  }, [selectedImage?.id, defaultVideoSource, sendMessage]);
+    return () => { cancelled = true; setModalPlaybackUrl(''); setModalPlaybackPending(false); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on selectedImage id on purpose: the object is replaced in place (link-preview refresh, field edits) and that must not re-trigger the playback-URL resolve; getModalVideoSource is re-created every render but its inputs (selectedImage id, defaultVideoSource, modalSourceOverride) are already keys
+  }, [selectedImage?.id, defaultVideoSource, modalSourceOverride, sendMessage]);
 
   // Probe the container of the resolved playback URL so the modal renders the
   // right player: MPEG-TS (Chrome <video> can't decode) uses mpegts.js, mp4/webm
   // use the native <video>. Symmetric — driven by the actual file bytes, not by
-  // which provider it came from.
+  // which provider it came from. Probes the host the modal actually plays
+  // from (the in-modal pick, else the setting), not the first host with a link.
   useEffect(() => {
-    const target = modalPlaybackUrl || (selectedImage && getPreferredVideoDirectUrl(selectedImage));
+    const target = modalPlaybackUrl || (selectedImage && getModalVideoSource(selectedImage, modalSourceKey)?.src);
     if (!selectedImage?.id || getMediaItemKind(selectedImage) !== 'video' || !target) {
       setModalContainerType('');
       return;
@@ -461,8 +477,8 @@ export default function GalleryPage() {
       }
     })();
     return () => { cancelled = true; clearTimeout(timer); controller.abort(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- getPreferredVideoDirectUrl is re-created every render and selectedImage is replaced in place; listing either would re-probe the container on every render
-  }, [modalPlaybackUrl, selectedImage?.id, defaultVideoSource]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getModalVideoSource is re-created every render and selectedImage is replaced in place; listing either would re-probe the container on every render (its inputs — selectedImage id, defaultVideoSource, modalSourceOverride — are already keys)
+  }, [modalPlaybackUrl, selectedImage?.id, defaultVideoSource, modalSourceOverride]);
   
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -1173,56 +1189,46 @@ export default function GalleryPage() {
     return isLikelyVideoUrl(videoThumb) ? '' : videoThumb;
   };
   const isFilemoonHtmlUrl = (url) => typeof url === 'string' && /filemoon\.sx\/(?:d|e)\//i.test(url);
-  const getModalVideoSource = (item) => {
+  const getModalVideoSource = (item, preferredKey = defaultVideoSource) => {
     // Returns { type: 'video'|'iframe', src, sourceKey, sourceLabel, isPreferred }
-    // for the modal. Filemoon /e/ URLs are HTML embeddable players (iframe);
-    // other providers give a real file URL that plays in a <video>. The
-    // preferred host (defaultVideoSource) is used first; when the item has no
-    // link there, the host that actually holds the file is used instead and
-    // the caller names it - a file that exists must not be shown as
-    // "no playable link".
+    // for the SELECTED host only. There is deliberately NO fallback to
+    // another host here: the setting is authoritative (2.19.45 — the user
+    // asked why the modal played filemoon when terabox was selected, and
+    // a silent fallback had just served him a dead filemoon's 404). When
+    // the selected host has no playable link, the caller shows the source
+    // picker and the user picks. Filemoon /e/ URLs are HTML embeddable
+    // players (iframe); other providers give a real file URL that plays
+    // in a <video>.
     const links = getVideoProviderLinks(item);
-    const preferredLink = links[defaultVideoSource];
-    if (preferredLink) {
-      const directUrl = pickText(preferredLink.directUrl, preferredLink.downloadUrl);
-      const watchUrl = pickText(preferredLink.watchUrl, preferredLink.displayUrl, preferredLink.url);
-      // a t.me post page as directUrl is a watch page, not media — fall
-      // through to the first host with playable bytes below instead of
-      // mounting an HTML page in a <video> (black 0:00 player).
-      if (!isTelegramPostPageUrl(directUrl)) {
-        if (isFilemoonHtmlUrl(directUrl)) {
-          return { type: 'iframe', src: directUrl, sourceKey: defaultVideoSource, sourceLabel: getVideoProviderLabel(defaultVideoSource), isPreferred: true };
-        }
-        if (directUrl) {
-          return { type: 'video', src: directUrl, sourceKey: defaultVideoSource, sourceLabel: getVideoProviderLabel(defaultVideoSource), isPreferred: true };
-        }
-        if (isFilemoonHtmlUrl(watchUrl)) {
-          return { type: 'iframe', src: directUrl || watchUrl, sourceKey: defaultVideoSource, sourceLabel: getVideoProviderLabel(defaultVideoSource), isPreferred: true };
-        }
-      }
+    const preferredLink = links[preferredKey];
+    if (!preferredLink) return null;
+    const directUrl = pickText(preferredLink.directUrl, preferredLink.downloadUrl);
+    const watchUrl = pickText(preferredLink.watchUrl, preferredLink.displayUrl, preferredLink.url);
+    // a t.me post page as directUrl is a watch page, not media — no
+    // playable link on this host, the picker offers the others.
+    if (isTelegramPostPageUrl(directUrl)) return null;
+    if (isFilemoonHtmlUrl(directUrl)) {
+      return { type: 'iframe', src: directUrl, sourceKey: preferredKey, sourceLabel: getVideoProviderLabel(preferredKey), isPreferred: preferredKey === defaultVideoSource };
     }
-
-    const playable = getPlayableVideoProviderLink(item, defaultVideoSource, 'directUrl');
-    if (!playable.url) return null;
-    if (isFilemoonHtmlUrl(playable.url)) {
-      return {
-        type: 'iframe',
-        src: playable.url,
-        sourceKey: playable.sourceKey,
-        sourceLabel: playable.sourceLabel,
-        isPreferred: playable.isPreferred,
-      };
+    if (directUrl) {
+      return { type: 'video', src: directUrl, sourceKey: preferredKey, sourceLabel: getVideoProviderLabel(preferredKey), isPreferred: preferredKey === defaultVideoSource };
     }
-    return {
-      type: 'video',
-      src: playable.url,
-      sourceKey: playable.sourceKey,
-      sourceLabel: playable.sourceLabel,
-      isPreferred: playable.isPreferred,
-    };
+    if (isFilemoonHtmlUrl(watchUrl)) {
+      return { type: 'iframe', src: directUrl || watchUrl, sourceKey: preferredKey, sourceLabel: getVideoProviderLabel(preferredKey), isPreferred: preferredKey === defaultVideoSource };
+    }
+    return null;
   };
-  const shouldRenderModalVideoPlayer = (item) => getModalVideoSource(item)?.type === 'video';
-  const getModalVideoEmbedUrl = (item) => getModalVideoSource(item)?.type === 'iframe' ? getModalVideoSource(item).src : '';
+  // every host with a playable link for this item, in catalog order — the
+  // source picker/switcher options. Reuses the single-host selection so
+  // a t.me post page never appears as an option.
+  const getModalPlayableSources = (item) => {
+    const links = getVideoProviderLinks(item);
+    return Object.keys(links)
+      .map((key) => getModalVideoSource(item, key))
+      .filter(Boolean);
+  };
+  const shouldRenderModalVideoPlayer = (item) => getModalVideoSource(item, modalSourceKey)?.type === 'video';
+  const getModalVideoEmbedUrl = (item) => getModalVideoSource(item, modalSourceKey)?.type === 'iframe' ? getModalVideoSource(item, modalSourceKey).src : '';
   const getLinkPreviewImage = (item) => (
     item?.linkPreviewImageUrl ||
     getPreferredImageProviderLink(item, defaultGallerySource, 'url') ||
@@ -1257,7 +1263,8 @@ export default function GalleryPage() {
   }, [selectedImage?.id, fullImageDetails?.id]);
 
   // Extracted from the dep array below so the hook rule can statically check it.
-  const modalVideoDirectUrl = getPreferredVideoDirectUrl(modalImage);
+  // The effective source's URL — switching sources in the modal re-runs tryPlay.
+  const modalVideoDirectUrl = getModalVideoSource(modalImage, modalSourceKey)?.src || '';
 
   useEffect(() => {
     const video = modalVideoRef.current;
@@ -4800,6 +4807,81 @@ export default function GalleryPage() {
     .g-input::placeholder{color:oklch(from var(--color-base-content) l c h / 0.2)}
   `;
 
+  // The source picker: shown when the selected host has no playable link
+  // (or its player failed to load). Names the host that failed, lists
+  // every host with a playable link as a button, and links the selected
+  // host's watch page. Nothing plays here until the user picks (2.19.45:
+  // the setting is authoritative, no silent fallback).
+  const renderModalSourcePicker = (item, { isModalAnimating, failed }) => {
+    const playable = getModalPlayableSources(item);
+    const selectedLabel = getVideoProviderLabel(modalSourceKey);
+    const links = getVideoProviderLinks(item);
+    const selectedWatch = links[modalSourceKey]?.watchUrl || '';
+    return (
+      <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 overflow-hidden border border-base-300 bg-base-100
+                 transition-all duration-700 ease-out
+                 ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
+        <div className="h-full p-4 sm:p-6 flex flex-col justify-center gap-4">
+          <div className="flex items-center gap-2 text-base-content/70">
+            {failed ? <AlertTriangle className="w-4 h-4" /> : <Video className="w-4 h-4" />}
+            <span className="text-xs font-semibold uppercase tracking-wide">Video</span>
+          </div>
+          <h3 className="text-xl font-bold text-base-content leading-snug">
+            {failed ? `${failed.sourceLabel} failed to load this video` : `No playable link on ${selectedLabel}`}
+          </h3>
+          <p className="text-sm text-base-content/60">
+            {failed
+              ? 'The file may be gone from that host. Pick another source to play from.'
+              : `This video has no playable link on ${selectedLabel}. Pick a source to play from.`}
+          </p>
+          {playable.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {playable.map((source) => (
+                <button
+                  key={source.sourceKey}
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={() => { setModalMediaFailed(null); setModalSourceOverride(source.sourceKey); }}
+                >
+                  Play from {source.sourceLabel}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-base-content/60">No host has a playable link for this video.</p>
+          )}
+          {selectedWatch && (
+            <a href={selectedWatch} target="_blank" rel="noopener noreferrer" className="text-info text-sm hover:underline">
+              Open on {selectedLabel}
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // The source switcher under a playing player: names the current host
+  // and offers the other playable hosts as one-click switches.
+  const renderModalSourceSwitcher = (item, currentSource) => {
+    const playable = getModalPlayableSources(item);
+    const others = playable.filter((source) => source.sourceKey !== currentSource.sourceKey);
+    return (
+      <div className="flex flex-wrap items-center gap-2 px-1">
+        <span className="text-xs text-base-content/60">Playing from {currentSource.sourceLabel}</span>
+        {others.map((source) => (
+          <button
+            key={source.sourceKey}
+            type="button"
+            className="btn btn-xs btn-ghost"
+            onClick={() => { setModalMediaFailed(null); setModalSourceOverride(source.sourceKey); }}
+          >
+            {source.sourceLabel}
+          </button>
+        ))}
+      </div>
+    );
+  };
+
   const renderModalMedia = (item, { isModalAnimating }) => {
     if (modalImage?.isLink) {
       const linkPreviewUrl = modalImage?.linkUrl || modalImage?.sourcePageUrl || '';
@@ -4875,9 +4957,12 @@ export default function GalleryPage() {
     }
     if (getMediaItemKind(modalImage) === 'audio') {
       // a song is not a video: the host links are the same fields, but the
-      // player has to be an <audio> element
-      const playableAudio = getPlayableVideoProviderLink(modalImage, defaultVideoSource, 'directUrl');
-      const audioSrc = modalPlaybackUrl || playableAudio.url || '';
+      // player has to be an <audio> element. Plays from the selected host
+      // only — when it has no playable link (or its player errors), the
+      // card offers the other hosts as buttons instead of silently jumping.
+      const audioSource = getModalVideoSource(modalImage, modalSourceKey);
+      const audioSrc = modalMediaFailed ? '' : (modalPlaybackUrl || audioSource?.src || '');
+      const playableAudio = getModalPlayableSources(modalImage);
       return (
         <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 overflow-hidden border border-base-300 bg-base-100
                    transition-all duration-700 ease-out
@@ -4890,35 +4975,80 @@ export default function GalleryPage() {
             <h3 className="text-xl font-bold text-base-content leading-snug">
               {modalImage?.pageTitle || modalImage?.fileName || 'Untitled Song'}
             </h3>
-            {audioSrc ? (
+            {audioSource?.sourceKey === 'terabox' && modalPlaybackPending ? (
+              <div className="flex items-center gap-3 text-sm text-base-content/70">
+                <Spinner size="sm" />
+                <span>Resolving playback URL...</span>
+              </div>
+            ) : audioSrc ? (
               <>
-                <audio src={audioSrc} controls className="w-full" preload="metadata" />
-                <p className="text-xs text-base-content/60">
-                  {playableAudio.isPreferred
-                    ? `Playing from ${playableAudio.sourceLabel}`
-                    : `Playing from ${playableAudio.sourceLabel} — ${getVideoProviderLabel(defaultVideoSource)} has no link for this song`}
-                </p>
+                <audio src={audioSrc} controls className="w-full" preload="metadata" onError={() => audioSource && setModalMediaFailed({ sourceKey: audioSource.sourceKey, sourceLabel: audioSource.sourceLabel })} />
+                {audioSource && renderModalSourceSwitcher(modalImage, audioSource)}
               </>
             ) : (
-              <div className="text-sm text-base-content/60">
-                No playable host link for this song yet.
-              </div>
+              <>
+                <p className="text-sm text-base-content/60">
+                  {modalMediaFailed
+                    ? `${modalMediaFailed.sourceLabel} failed to load this song. Pick another source.`
+                    : `No playable link on ${getVideoProviderLabel(modalSourceKey)} for this song.`}
+                </p>
+                {playableAudio.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {playableAudio.map((source) => (
+                      <button
+                        key={source.sourceKey}
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        onClick={() => { setModalMediaFailed(null); setModalSourceOverride(source.sourceKey); }}
+                      >
+                        Play from {source.sourceLabel}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-base-content/60">No host has a playable link for this song.</p>
+                )}
+              </>
             )}
           </div>
         </div>
       );
     }
+    // a video whose selected host has no playable link — or whose player
+    // just failed — shows the source picker instead of a black player or
+    // a silent jump to another host.
+    if (getMediaItemKind(modalImage) === 'video' && (modalMediaFailed || !getModalVideoSource(modalImage, modalSourceKey))) {
+      return renderModalSourcePicker(modalImage, { isModalAnimating, failed: modalMediaFailed });
+    }
     if (shouldRenderModalVideoPlayer(modalImage)) {
-      const modalVideoSource = getModalVideoSource(modalImage);
+      const modalVideoSource = getModalVideoSource(modalImage, modalSourceKey);
       const playSrc = modalPlaybackUrl || modalVideoSource?.src || '';
+      // while the fresh terabox dlink resolves, wait — mounting the
+      // expired stored dlink first would flash a black player and its
+      // 403 would look like a failure.
+      if (modalVideoSource?.sourceKey === 'terabox' && modalPlaybackPending) {
+        return (
+          <div className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 flex items-center justify-center bg-black
+                     transition-all duration-700 ease-out
+                     ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
+            <div className="text-center space-y-3">
+              <Spinner size="lg" />
+              <div className="text-sm text-white/70">Resolving playback URL...</div>
+            </div>
+          </div>
+        );
+      }
       if (modalContainerType === 'ts') {
         return (
-          <MpegtsPlayer
-            src={playSrc}
-            className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain
-                     transition-all duration-700 ease-out
-                     ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
-          />
+          <div className="w-full h-full flex flex-col gap-2">
+            <MpegtsPlayer
+              src={playSrc}
+              className={`w-full flex-1 rounded-[var(--radius-box)] shadow-2xl relative z-10 bg-black object-contain
+                       transition-all duration-700 ease-out
+                       ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
+            />
+            {modalVideoSource && renderModalSourceSwitcher(modalImage, modalVideoSource)}
+          </div>
         );
       }
       return (
@@ -4933,26 +5063,27 @@ export default function GalleryPage() {
             autoPlay
             playsInline
             preload="auto"
+            onError={() => modalVideoSource && setModalMediaFailed({ sourceKey: modalVideoSource.sourceKey, sourceLabel: modalVideoSource.sourceLabel })}
           />
-          {modalVideoSource?.sourceLabel && !modalVideoSource.isPreferred && (
-            <p className="text-xs text-base-content/60 px-1">
-              Playing from {modalVideoSource.sourceLabel} — {getVideoProviderLabel(defaultVideoSource)} has no link for this video
-            </p>
-          )}
+          {modalVideoSource && renderModalSourceSwitcher(modalImage, modalVideoSource)}
         </div>
       );
     }
     if (getModalVideoEmbedUrl(modalImage)) {
+      const embedSource = getModalVideoSource(modalImage, modalSourceKey);
       return (
-        <iframe
-          src={getModalVideoEmbedUrl(modalImage)}
-          className={`w-full h-full rounded-[var(--radius-box)] shadow-2xl relative z-10
-                   transition-all duration-700 ease-out
-                   ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
-          frameBorder="0"
-          allowFullScreen
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        />
+        <div className="w-full h-full flex flex-col gap-2">
+          <iframe
+            src={getModalVideoEmbedUrl(modalImage)}
+            className={`w-full flex-1 rounded-[var(--radius-box)] shadow-2xl relative z-10
+                     transition-all duration-700 ease-out
+                     ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
+            frameBorder="0"
+            allowFullScreen
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          />
+          {embedSource && renderModalSourceSwitcher(modalImage, embedSource)}
+        </div>
       );
     }
     if (isResolvingModalMediaType) {
