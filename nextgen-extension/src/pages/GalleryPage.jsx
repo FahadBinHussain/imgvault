@@ -63,6 +63,7 @@ import MpegtsPlayer from '../components/MpegtsPlayer';
 import { CachedImg, CachedVideo } from '../components/CachedThumb';
 import SceneViewer from '../components/SceneViewer';
 import MediaDetailModal from '../components/MediaDetailModal';
+import { ZoomableImage } from 'imgvault-ui';
 import { normalizeVaultVideo } from '../utils/vaultVideoNormalizer.js';
 import {
   UPLOAD_OWNER,
@@ -4882,7 +4883,7 @@ export default function GalleryPage() {
     );
   };
 
-  const renderModalMedia = (item, { isModalAnimating }) => {
+  const renderModalMedia = (item, { isModalAnimating, mediaRef }) => {
     if (modalImage?.isLink) {
       const linkPreviewUrl = modalImage?.linkUrl || modalImage?.sourcePageUrl || '';
       const linkPreviewImage = getLinkPreviewImage(modalImage);
@@ -5103,20 +5104,20 @@ export default function GalleryPage() {
     // same as the video modal's "Playing from" label).
     const playableImage = getPlayableImageProviderLink(modalImage, defaultGallerySource, 'url');
     return (
-      <div className="w-full h-full flex flex-col gap-2 items-center">
-        <img
+      <div className={`w-full h-full flex flex-col gap-2 items-center transition-all duration-700 ease-out
+                      ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
+        <ZoomableImage
           src={
             playableImage.url ||
             modalImage.sourceImageUrl
           }
           alt={modalImage.pageTitle}
+          containerRef={mediaRef}
           className={`max-w-full max-h-full object-contain rounded-[var(--radius-box)] shadow-2xl relative z-10
-                   transition-all duration-700 ease-out
-                   hover:scale-[1.02] hover:shadow-primary/30
-                   ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}
+                   transition-opacity duration-700 ease-out`}
         />
         {playableImage.sourceLabel && !playableImage.isPreferred && (
-          <p className="text-xs text-base-content/60 px-1">
+          <p className="shrink-0 text-xs text-base-content/60 px-1">
             Showing from {playableImage.sourceLabel} — {getImageProviderLabel(defaultGallerySource)} has no link for this image
           </p>
         )}

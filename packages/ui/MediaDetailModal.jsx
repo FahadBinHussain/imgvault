@@ -10,7 +10,7 @@
  * preview (renderMedia), the header action buttons (actions), and optional
  * field renderers for page-specific editing.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, FileText, Hash, Fingerprint } from 'lucide-react';
 import { Modal } from './Modal';
 import { Spinner } from './Spinner';
@@ -128,6 +128,9 @@ export default function MediaDetailModal({
   technicalEmptyText = 'No extra technical fields on this document.',
 }) {
   const [isModalAnimating, setIsModalAnimating] = useState(false);
+  // the media pane is the visible area — a zoomable photo needs it to know
+  // where the picture may be panned to
+  const mediaRef = useRef(null);
 
   useEffect(() => {
     if (isOpen && item?.id) {
@@ -158,12 +161,12 @@ export default function MediaDetailModal({
           <div className={`absolute inset-0 bg-base-300/90 transition-opacity duration-500
                         ${isModalAnimating ? 'opacity-0' : 'opacity-100'}`} />
 
-          <div className="flex-1 min-h-[35vh] lg:min-h-0 flex items-center justify-center bg-gradient-to-br from-base-300 to-base-200 p-3 sm:p-6 lg:p-8 relative z-10">
+          <div ref={mediaRef} className="flex-1 min-h-[35vh] lg:min-h-0 flex items-center justify-center bg-gradient-to-br from-base-300 to-base-200 p-3 sm:p-6 lg:p-8 relative z-10">
             <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2
                           w-4/5 h-4/5 bg-primary/10 rounded-full blur-3xl
                           transition-all duration-700 ease-out
                           ${isModalAnimating ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`} />
-            {renderMedia(item, { isModalAnimating })}
+            {renderMedia(item, { isModalAnimating, mediaRef })}
             {(onPrevious || onNext) && (
               <>
                 <button

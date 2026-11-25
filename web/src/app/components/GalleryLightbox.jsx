@@ -17,7 +17,7 @@ import {
   AlertTriangle,
   Music,
 } from 'lucide-react'
-import { MediaDetailModal } from 'imgvault-ui'
+import { MediaDetailModal, ZoomableImage } from 'imgvault-ui'
 import { downloadFieldViaProxy } from '@/lib/downloads'
 import { getPlayableVideoProviderLink } from '@/lib/video-provider-links'
 import { getPlayableImageProviderLink, getImageProviderLabel } from '@/lib/image-provider-links'
@@ -1050,9 +1050,10 @@ export default function GalleryLightbox({
                   )}
                 </div>
               ) : currentKind === 'link' ? (
-                <img
+                <ZoomableImage
                   src={currentLinkPreview || imageUrl}
                   alt={image.pageTitle || 'Link preview'}
+                  containerRef={mediaViewportRef}
                   className={`max-w-full max-h-[40dvh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
                   onLoad={() => {
                     markImageLoaded(currentLinkPreview || imageUrl)
@@ -1062,9 +1063,10 @@ export default function GalleryLightbox({
                 />
               ) : (
                 <div className="flex max-w-full flex-col items-center gap-2">
-                  <img
+                  <ZoomableImage
                     src={imageUrl}
                     alt={image.pageTitle || 'Image'}
+                    containerRef={mediaViewportRef}
                     className={`max-w-full max-h-[40dvh] sm:max-h-[70vh] lg:max-h-[85vh] object-contain rounded-[var(--radius-box)] shadow-2xl transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
                     onLoad={() => {
                       markImageLoaded(imageUrl)

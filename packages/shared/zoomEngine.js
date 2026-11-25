@@ -100,15 +100,29 @@ export function fitScale(containerWidth, containerHeight, imageWidth, imageHeigh
  *
  * level  - zoom level (0 = fit the container)
  * x, y   - top-left of the image, in container pixels
- * scale  - rendered scale = fitScale * 2^level
+ * scale  - rendered scale = baseScale * 2^level
+ *
+ * `baseScale` is the scale the image has at level 0. It is normally the
+ * contain-fit scale, but a caller that lets the browser lay the image out
+ * (CSS max-width/max-height) passes its own baseScale of 1 and keeps the
+ * layout box untouched — the transform then works on the laid-out size.
  */
-export function createZoomState({ containerWidth, containerHeight, imageWidth, imageHeight } = {}) {
-  const scale = fitScale(containerWidth, containerHeight, imageWidth, imageHeight);
+export function createZoomState({
+  containerWidth,
+  containerHeight,
+  imageWidth,
+  imageHeight,
+  baseScale,
+} = {}) {
+  const scale = baseScale != null
+    ? Number(baseScale)
+    : fitScale(containerWidth, containerHeight, imageWidth, imageHeight);
   const width = (Number(imageWidth) || 0) * scale;
   const height = (Number(imageHeight) || 0) * scale;
   return {
     level: 0,
     scale,
+    baseScale: scale,
     factor: 1,
     x: (Number(containerWidth) || 0) / 2 - width / 2,
     y: (Number(containerHeight) || 0) / 2 - height / 2,
@@ -158,13 +172,10 @@ export function applyZoom(state, nextLevel, anchor, options = {}) {
   const prevFactor = zoomLevelToFactor(current.level) || 1;
   const ratio = factor / prevFactor;
 
-  const fit = fitScale(
-    current.containerWidth,
-    current.containerHeight,
-    current.imageWidth,
-    current.imageHeight,
-  );
-  const scale = fit * factor;
+  const baseScale = current.baseScale != null
+    ? current.baseScale
+    : (current.scale || 1) / prevFactor;
+  const scale = baseScale * factor;
   const renderedWidth = current.imageWidth * scale;
   const renderedHeight = current.imageHeight * scale;
 
@@ -188,8 +199,39 @@ export function applyZoom(state, nextLevel, anchor, options = {}) {
     scale,
     x,
     y,
-    transform: `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) scale(${scale.toFixed(5)})`,
+    transform: formatZoomTransform(x, y, scale),
   };
+}
+
+/**
+ * Move the image by a drag delta, keeping it inside the container.
+ * Panning only makes sense while zoomed in — at level 0 the image is
+ * centred and there is nothing to pan.
+ */
+export function panZoomState(state, dx, dy, options = {}) {
+  const { overscan = 0 } = options;
+  const current = state || createZoomState();
+  const prevFactor = zoomLevelToFactor(current.level) || 1;
+  const baseScale = current.baseScale != null
+    ? current.baseScale
+    : (current.scale || 1) / prevFactor;
+  const scale = baseScale * prevFactor;
+  const renderedWidth = current.imageWidth * scale;
+  const renderedHeight = current.imageHeight * scale;
+  const x = clampOffset(current.x + (Number(dx) || 0), current.containerWidth, renderedWidth, overscan);
+  const y = clampOffset(current.y + (Number(dy) || 0), current.containerHeight, renderedHeight, overscan);
+  return {
+    ...current,
+    scale,
+    x,
+    y,
+    transform: formatZoomTransform(x, y, scale),
+  };
+}
+
+/** The CSS transform the component writes on the image layer. */
+export function formatZoomTransform(x, y, scale) {
+  return `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) scale(${scale.toFixed(5)})`;
 }
 
 /**

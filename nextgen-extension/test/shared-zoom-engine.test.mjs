@@ -15,6 +15,7 @@ import {
   doubleClickZoomLevel,
   fitScale,
   isZoomed,
+  panZoomState,
   pinchZoomAmount,
   wheelZoomAmount,
   zoomFactorToLevel,
@@ -158,5 +159,75 @@ describe('double click', () => {
   test('the first double click zooms one level in, the second returns to fit', () => {
     assert.equal(doubleClickZoomLevel(0), 1);
     assert.equal(doubleClickZoomLevel(1), 0);
+  });
+});
+
+describe('a caller that lays the image out itself', () => {
+  // the browser sizes the <img> (max-width / max-height / object-contain),
+  // so the base scale is 1 and the layout box must not change
+  const laidOut = () => createZoomState({
+    containerWidth: 800,
+    containerHeight: 600,
+    imageWidth: 400,
+    imageHeight: 300,
+    baseScale: 1,
+  });
+
+  test('the base scale is honoured instead of the contain fit', () => {
+    const state = laidOut();
+    assert.equal(state.scale, 1);
+    assert.equal(state.baseScale, 1);
+  });
+
+  test('one level doubles the laid out size', () => {
+    const zoomed = applyZoom(laidOut(), 1, null);
+    assert.equal(zoomed.scale, 2);
+    assert.equal(zoomed.imageWidth * zoomed.scale, 800);
+  });
+
+  test('the anchor still holds with a laid out base', () => {
+    const state = laidOut();
+    state.x = 200;
+    state.y = 150;
+    const anchor = { x: 500, y: 400 };
+    const u = (anchor.x - state.x) / state.scale;
+    // two levels: the zoomed image is bigger than the box, so there is room
+    // to pan and the anchor is not pushed away by the centring clamp
+    const zoomed = applyZoom(state, 2, anchor);
+    assert.equal(zoomed.x + zoomed.scale * u, anchor.x);
+    assert.equal(zoomed.y + zoomed.scale * ((anchor.y - state.y) / state.scale), anchor.y);
+  });
+});
+
+describe('panning', () => {
+  const zoomed = () => applyZoom(
+    createZoomState({
+      containerWidth: 400,
+      containerHeight: 400,
+      imageWidth: 200,
+      imageHeight: 100,
+    }),
+    2,
+    null,
+  );
+
+  test('a drag moves the image', () => {
+    const before = zoomed();
+    const after = panZoomState(before, -40, -25);
+    assert.equal(after.x, before.x - 40);
+    assert.equal(after.y, before.y - 25);
+  });
+
+  test('the image never drifts off the container', () => {
+    const after = panZoomState(zoomed(), 100000, 100000);
+    // the image is 4x the fit size, so it may not be pushed past the edge
+    assert.ok(after.x <= 0);
+    assert.ok(after.y <= 0);
+    assert.ok(after.x >= after.containerWidth - after.imageWidth * after.scale);
+  });
+
+  test('the transform follows the pan', () => {
+    const after = panZoomState(zoomed(), -10, -5);
+    assert.match(after.transform, /translate3d\(/);
   });
 });
