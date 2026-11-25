@@ -15,6 +15,7 @@ import {
   getVideoUploadService,
   hasAnyVideoProviderLink,
   hasVideoProviderLink,
+  isTelegramPostPageUrl,
   mergeVideoProviderResult,
   normalizeVideoProviderLinksForStorage,
 } from '../../packages/shared/videoProviderLinks.js';
@@ -183,6 +184,83 @@ describe('getPlayableVideoProviderLink', () => {
   test('the default preferred provider is filemoon', () => {
     const item = { videoHosts: { filemoon: { directUrl: 'https://cdn.example/a.mp4' } } };
     assert.equal(getPlayableVideoProviderLink(item).isPreferred, true);
+  });
+});
+
+// 2.19.44 (2026-11-25): a t.me post page stored as directUrl is a watch
+// page, not media — the Telegram uploader stores it when the channel is
+// private and no CDN URL exists, and a <video> fed the page loads HTML
+// and dies with DEMUXER_ERROR. The modal played a black 0:00 player for
+// a native Telegram video while telegram was preferred, although the same
+// file sat on filemoon, uDrop and TeraBox.
+describe('isTelegramPostPageUrl', () => {
+  test('matches private-channel and public-channel post links', () => {
+    assert.equal(isTelegramPostPageUrl('https://t.me/c/3959088547/117'), true);
+    assert.equal(isTelegramPostPageUrl('https://t.me/somechannel/123'), true);
+    assert.equal(isTelegramPostPageUrl('https://t.me/c/3959088547/117/'), true);
+    assert.equal(isTelegramPostPageUrl('https://t.me/c/3959088547/117?single'), true);
+    assert.equal(isTelegramPostPageUrl('https://t.me/c/3959088547/117/118'), true);
+  });
+  test('does not match real media URLs or the local route', () => {
+    assert.equal(isTelegramPostPageUrl('https://cdn5.telesco.pe/file/abc123.mp4?token=x'), false);
+    assert.equal(isTelegramPostPageUrl('https://dm-d.terabox.com/file/abc?fid=1'), false);
+    assert.equal(isTelegramPostPageUrl('https://filemoon.sx/e/ok3gcuarlyc9'), false);
+    assert.equal(isTelegramPostPageUrl('https://www.udrop.com/file/QYhh/a.mkv'), false);
+    assert.equal(isTelegramPostPageUrl('/telegram-media/x?mt=audio%2Fmp4'), false);
+    assert.equal(isTelegramPostPageUrl('https://t.me/'), false);
+    assert.equal(isTelegramPostPageUrl('https://example.com/t.me/c/1/2'), false);
+    assert.equal(isTelegramPostPageUrl(''), false);
+    assert.equal(isTelegramPostPageUrl(null), false);
+    assert.equal(isTelegramPostPageUrl(undefined), false);
+    assert.equal(isTelegramPostPageUrl(42), false);
+  });
+});
+
+describe('getPlayableVideoProviderLink skips t.me post pages for directUrl', () => {
+  const multiHost = {
+    videoHosts: {
+      telegram: { watchUrl: 'https://t.me/c/3959088547/117', directUrl: 'https://t.me/c/3959088547/117' },
+      filemoon: { watchUrl: 'https://filemoon.sx/d/ok3gcuarlyc9', directUrl: 'https://filemoon.sx/e/ok3gcuarlyc9' },
+      terabox: { directUrl: 'https://dm-d.terabox.com/file/abc?fid=1' },
+    },
+  };
+  test('a t.me directUrl falls through to the next host with real bytes', () => {
+    const out = getPlayableVideoProviderLink(multiHost, 'telegram', 'directUrl');
+    assert.equal(out.url, 'https://filemoon.sx/e/ok3gcuarlyc9');
+    assert.equal(out.sourceKey, 'filemoon');
+    assert.equal(out.isPreferred, false);
+  });
+  test('a telegram-only item with just a post page yields no playable URL', () => {
+    const telegramOnly = {
+      videoHosts: { telegram: { watchUrl: 'https://t.me/c/3959088547/117', directUrl: 'https://t.me/c/3959088547/117' } },
+    };
+    assert.deepEqual(getPlayableVideoProviderLink(telegramOnly, 'telegram', 'directUrl'), {
+      url: '', sourceKey: '', sourceLabel: '', isPreferred: false,
+    });
+  });
+  test('the watchUrl fallback cannot smuggle the post page back in as directUrl', () => {
+    // directUrl requested, telegram has ONLY a t.me watchUrl: the fallback
+    // picks the watchUrl, which must still be skipped.
+    const watchOnly = {
+      videoHosts: { telegram: { watchUrl: 'https://t.me/c/3959088547/117' } },
+    };
+    assert.equal(getPlayableVideoProviderLink(watchOnly, 'telegram', 'directUrl').url, '');
+  });
+  test('watchUrl requests still return the post page — it IS the watch link', () => {
+    const out = getPlayableVideoProviderLink(multiHost, 'telegram', 'watchUrl');
+    assert.equal(out.url, 'https://t.me/c/3959088547/117');
+    assert.equal(out.sourceKey, 'telegram');
+    assert.equal(out.isPreferred, true);
+  });
+  test('a real telegram media URL (local route, CDN) still plays', () => {
+    const local = {
+      videoHosts: { telegram: { watchUrl: 'https://t.me/chan/9', directUrl: '/telegram-media/x?mt=audio%2Fmp4' } },
+    };
+    assert.equal(getPlayableVideoProviderLink(local, 'telegram', 'directUrl').url, '/telegram-media/x?mt=audio%2Fmp4');
+    const cdn = {
+      videoHosts: { telegram: { directUrl: 'https://cdn5.telesco.pe/file/abc.mp4?token=x' } },
+    };
+    assert.equal(getPlayableVideoProviderLink(cdn, 'telegram', 'directUrl').url, 'https://cdn5.telesco.pe/file/abc.mp4?token=x');
   });
 });
 

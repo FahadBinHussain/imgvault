@@ -81,6 +81,24 @@ export function getPreferredVideoProviderLink(item, preferredProvider = DEFAULT_
 }
 
 /**
+ * A t.me post page (t.me/c/<chat>/<msg> or t.me/<channel>/<msg>) is a
+ * WATCH page, not media: the Telegram uploader stores it as directUrl
+ * when the channel is private and no CDN URL exists. A <video> fed a
+ * post page loads HTML and dies with DEMUXER_ERROR — 2026-11-25, the
+ * modal played a black 0:00 player for a native Telegram video while
+ * telegram was the preferred source, although the same file sat on
+ * filemoon, uDrop and TeraBox. Playable-link selection skips these; the
+ * watchUrl field still carries them for "open" actions.
+ *
+ * @param {string} url
+ * @returns {boolean}
+ */
+export function isTelegramPostPageUrl(url) {
+  if (typeof url !== 'string') return false;
+  return /^https?:\/\/t\.me\/(?:c\/\d+|[^/?#]+)\/\d+(?:\/\d+)*\/?(?:[?#].*)?$/i.test(url.trim());
+}
+
+/**
  * The link a player can actually use, plus the host that serves it.
  *
  * The preferred source stays the first choice, but an item can live on a host
@@ -113,6 +131,10 @@ export function getPlayableVideoProviderLink(item = {}, preferredProvider = DEFA
     const fallback = field === 'watchUrl' ? link.directUrl : field === 'thumbnailUrl' ? '' : link.watchUrl;
     const url = pickText(link[field], fallback);
     if (!url) continue;
+    // a t.me post page is not playable media (see isTelegramPostPageUrl)
+    // — skip it for directUrl so the player falls to a host with real
+    // bytes instead of mounting an HTML page in a <video>.
+    if (field === 'directUrl' && isTelegramPostPageUrl(url)) continue;
     const service = getVideoUploadService(key);
     return {
       url,

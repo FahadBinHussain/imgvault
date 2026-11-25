@@ -47,6 +47,7 @@ import {
   getPlayableVideoProviderLink,
   getVideoProviderLinks,
   hasAnyVideoProviderLink,
+  isTelegramPostPageUrl,
   mergeVideoProviderResult,
 } from '../utils/videoProviderLinks';
 import { isAudioUploadFile, AUDIO_ACCEPT_ATTRIBUTE } from '../utils/audioProviderLinks';
@@ -389,17 +390,23 @@ export default function GalleryPage() {
 
   // Refresh the playback URL when the modal opens for a video whose provider
   // has expiring direct links (terabox dlinks last 8h; stored link is stale).
+  // Resolve for the host the modal will ACTUALLY play from: the preferred
+  // host's link may be unplayable (a t.me post page) and the modal falls to
+  // another host — a TeraBox fallback needs a fresh dlink just as much as
+  // a preferred one, or the modal plays the 8h-expired stored dlink.
   useEffect(() => {
     const selectedKind = selectedImage?.id ? getMediaItemKind(selectedImage) : '';
     if (!selectedImage?.id || (selectedKind !== 'video' && selectedKind !== 'audio')) {
       setModalPlaybackUrl('');
       return;
     }
+    const modalSource = getModalVideoSource(selectedImage);
+    const effectiveKey = modalSource?.type === 'video' ? modalSource.sourceKey : '';
     const links = getVideoProviderLinks(selectedImage);
-    const link = links[defaultVideoSource];
-    if (!link) { setModalPlaybackUrl(''); return; }
+    const link = effectiveKey ? links[effectiveKey] : null;
+    if (effectiveKey !== 'terabox' || !link) { setModalPlaybackUrl(''); return; }
     const filecode = pickText(link.filecode, link.fileId);
-    if (defaultVideoSource !== 'terabox' || !filecode) {
+    if (!filecode) {
       setModalPlaybackUrl('');
       return;
     }
@@ -418,7 +425,7 @@ export default function GalleryPage() {
       }
     })();
     return () => { cancelled = true; setModalPlaybackUrl(''); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on selectedImage id on purpose: the object is replaced in place (link-preview refresh, field edits) and that must not re-trigger the playback-URL resolve
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on selectedImage id on purpose: the object is replaced in place (link-preview refresh, field edits) and that must not re-trigger the playback-URL resolve; getModalVideoSource is re-created every render but its inputs (selectedImage id, defaultVideoSource) are already keys
   }, [selectedImage?.id, defaultVideoSource, sendMessage]);
 
   // Probe the container of the resolved playback URL so the modal renders the
@@ -1179,19 +1186,33 @@ export default function GalleryPage() {
     if (preferredLink) {
       const directUrl = pickText(preferredLink.directUrl, preferredLink.downloadUrl);
       const watchUrl = pickText(preferredLink.watchUrl, preferredLink.displayUrl, preferredLink.url);
-      if (isFilemoonHtmlUrl(directUrl)) {
-        return { type: 'iframe', src: directUrl, sourceKey: defaultVideoSource, sourceLabel: getVideoProviderLabel(defaultVideoSource), isPreferred: true };
-      }
-      if (directUrl) {
-        return { type: 'video', src: directUrl, sourceKey: defaultVideoSource, sourceLabel: getVideoProviderLabel(defaultVideoSource), isPreferred: true };
-      }
-      if (isFilemoonHtmlUrl(watchUrl)) {
-        return { type: 'iframe', src: directUrl || watchUrl, sourceKey: defaultVideoSource, sourceLabel: getVideoProviderLabel(defaultVideoSource), isPreferred: true };
+      // a t.me post page as directUrl is a watch page, not media — fall
+      // through to the first host with playable bytes below instead of
+      // mounting an HTML page in a <video> (black 0:00 player).
+      if (!isTelegramPostPageUrl(directUrl)) {
+        if (isFilemoonHtmlUrl(directUrl)) {
+          return { type: 'iframe', src: directUrl, sourceKey: defaultVideoSource, sourceLabel: getVideoProviderLabel(defaultVideoSource), isPreferred: true };
+        }
+        if (directUrl) {
+          return { type: 'video', src: directUrl, sourceKey: defaultVideoSource, sourceLabel: getVideoProviderLabel(defaultVideoSource), isPreferred: true };
+        }
+        if (isFilemoonHtmlUrl(watchUrl)) {
+          return { type: 'iframe', src: directUrl || watchUrl, sourceKey: defaultVideoSource, sourceLabel: getVideoProviderLabel(defaultVideoSource), isPreferred: true };
+        }
       }
     }
 
     const playable = getPlayableVideoProviderLink(item, defaultVideoSource, 'directUrl');
     if (!playable.url) return null;
+    if (isFilemoonHtmlUrl(playable.url)) {
+      return {
+        type: 'iframe',
+        src: playable.url,
+        sourceKey: playable.sourceKey,
+        sourceLabel: playable.sourceLabel,
+        isPreferred: playable.isPreferred,
+      };
+    }
     return {
       type: 'video',
       src: playable.url,
