@@ -56,11 +56,17 @@ class VaultViewModel : ViewModel() {
             }
             _error.value = null
             try {
-                _items.value = repository.loadVaultItems()
+                val result = repository.loadVaultItems()
+                _items.value = result.items
                 _locked.value = false
+                _error.value = unreadableMessage(result.failed, result.total)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
+                // the vault cannot be read - it goes back to locked so the
+                // passcode can be entered again
+                _locked.value = true
+                _items.value = emptyList()
                 _error.value = error.message
                     ?: "The vault could not be read: ${error::class.java.simpleName}"
             }
@@ -80,11 +86,14 @@ class VaultViewModel : ViewModel() {
                 // the key derivation is deliberately slow, so it must not run on
                 // the main thread
                 withContext(Dispatchers.IO) { repository.unlock(passcode) }
-                _items.value = repository.loadVaultItems()
+                val result = repository.loadVaultItems()
+                _items.value = result.items
                 _locked.value = false
+                _error.value = unreadableMessage(result.failed, result.total)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
+                _locked.value = true
                 _error.value = error.message
                     ?: "The vault could not be unlocked: ${error::class.java.simpleName}"
             } finally {
@@ -103,5 +112,17 @@ class VaultViewModel : ViewModel() {
         }
         _items.value = emptyList()
         _locked.value = true
+    }
+
+    /**
+     * What to say about the items that could not be read.
+     *
+     * Nothing is hidden here: an item that was encrypted with a different vault
+     * key stays visible and says so.
+     */
+    private fun unreadableMessage(failed: Int, total: Int): String? {
+        if (failed <= 0) return null
+        return "$failed of $total vault items could not be decrypted with this vault key. " +
+            "They were encrypted with a different key - open them in the extension."
     }
 }

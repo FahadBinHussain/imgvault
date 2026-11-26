@@ -59,5 +59,6 @@ class SecureStore(context: Context) {
         const val KEY_TERABOX_COOKIE = "teraboxCookie"
         const val KEY_VAULT_MASTER_KEY = "vaultMasterKeyB64"
         const val KEY_VAULT_CONFIG = "vaultConfigJson"
+        const val KEY_VAULT_KEY_BINDING = "vaultKeyBinding"
     }
 }

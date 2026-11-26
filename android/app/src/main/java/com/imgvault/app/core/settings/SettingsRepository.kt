@@ -104,6 +104,19 @@ class SettingsRepository(
         get() = secureStore.get(SecureStore.KEY_VAULT_CONFIG)
         set(value) = store(SecureStore.KEY_VAULT_CONFIG, value)
 
+    /**
+     * WHICH vault configuration the stored master key belongs to.
+     *
+     * The master key on the phone is only meaningful together with the config
+     * it was unwrapped from: change the account, the database or the vault
+     * passcode and the old key decrypts nothing. The binding is the config's
+     * `passHash` (a hash of the passcode, not the passcode), so a mismatch can
+     * be detected WITHOUT ever touching the secret itself.
+     */
+    var vaultKeyBinding: String?
+        get() = secureStore.get(SecureStore.KEY_VAULT_KEY_BINDING)
+        set(value) = store(SecureStore.KEY_VAULT_KEY_BINDING, value)
+
     private fun store(key: String, value: String?) {
         if (value.isNullOrBlank()) {
             secureStore.remove(key)

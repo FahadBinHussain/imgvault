@@ -2,6 +2,7 @@ package com.imgvault.app.data
 
 import com.imgvault.app.core.crypto.VaultCrypto
 import com.imgvault.app.core.crypto.VaultConfig
+import com.imgvault.app.core.crypto.VaultKeyBinding
 import com.imgvault.app.core.neon.NeonClient
 import com.imgvault.app.core.neon.asJsonObjectOrEmpty
 import com.imgvault.app.core.neon.asTextOrEmpty
@@ -27,6 +28,26 @@ data class VaultItem(
     val sizeBytes: Long,
     val hosts: List<String>,
     val raw: MediaItem,
+    /**
+     * why this item's metadata could not be read (null = it was read).
+     *
+     * One unreadable item must not take the whole vault down: the item keeps
+     * its place in the list and says what is wrong with it.
+     */
+    val decryptError: String? = null,
+)
+
+/**
+ * The vault rows, plus how many of them could not be read.
+ *
+ * The count is reported instead of thrown: a single item encrypted with a
+ * different key is a fact about that item, not a reason to hide the other
+ * hundred and ninety.
+ */
+data class VaultLoadResult(
+    val items: List<VaultItem>,
+    val failed: Int,
+    val total: Int,
 )
 
 /**
@@ -65,6 +86,9 @@ class VaultRepository(
             ?: fetchVaultConfig()
         val key = VaultCrypto.unwrapMasterKey(config, passcode)
         settings.vaultMasterKeyB64 = Base64.getEncoder().encodeToString(key.encoded)
+        // the key belongs to THIS configuration - remember which one, so a
+        // changed configuration can never be read with a foreign key
+        settings.vaultKeyBinding = VaultKeyBinding.idOf(config)
         return key
     }
 
@@ -98,15 +122,54 @@ class VaultRepository(
 
     fun lock() {
         settings.vaultMasterKeyB64 = null
+        settings.vaultKeyBinding = null
     }
 
-    /** the vault rows, with their metadata decrypted */
-    suspend fun loadVaultItems(): List<VaultItem> = withContext(Dispatchers.IO) {
+    /**
+     * The vault rows, with their metadata decrypted.
+     *
+     * The master key on the phone has to belong to the account's CURRENT vault
+     * configuration — otherwise every item fails with `BAD_DECRYPT` and the
+     * message says nothing about what is really wrong. A key from another
+     * configuration is dropped here and the vault asks for the passcode again.
+     *
+     * An item whose metadata cannot be read keeps its place in the list and
+     * says so; it does not take the whole vault down.
+     */
+    suspend fun loadVaultItems(): VaultLoadResult = withContext(Dispatchers.IO) {
+        val config = fetchVaultConfig()
+        if (VaultKeyBinding.isStale(settings.vaultKeyBinding, config)) {
+            // the stored key does not belong to this configuration - drop it so
+            // the next unlock stores the right one
+            settings.vaultMasterKeyB64 = null
+            settings.vaultKeyBinding = null
+            throw ImgVaultException(
+                "The vault key stored on this phone does not belong to this account's vault " +
+                    "configuration (the configuration changed - a different database, account or " +
+                    "passcode). Unlock the vault again to read it.",
+            )
+        }
+
         val rows = client().query(VAULT_SQL)
         val key = masterKey()
-        rows.map { row ->
+        var failed = 0
+        val items = rows.map { row ->
             val item = row.toMediaItem()
-            val meta = key?.let { decryptMetadata(it, item.encryptedMetadata) }
+            var meta: JsonObject? = null
+            var decryptError: String? = null
+            if (item.encryptedMetadata.isNotEmpty()) {
+                if (key == null) {
+                    decryptError = "The vault is locked — unlock it to read this item."
+                } else {
+                    try {
+                        meta = decryptMetadata(key, item.encryptedMetadata)
+                    } catch (error: Exception) {
+                        decryptError = error.message
+                            ?: "The metadata could not be decrypted with this vault key."
+                    }
+                }
+                if (decryptError != null) failed += 1
+            }
             VaultItem(
                 id = item.id,
                 fileName = meta?.get("fileName").asTextOrEmpty()
@@ -117,8 +180,10 @@ class VaultRepository(
                 sizeBytes = item.fileSize ?: 0L,
                 hosts = item.vaultHosts,
                 raw = item,
+                decryptError = decryptError,
             )
         }
+        VaultLoadResult(items = items, failed = failed, total = items.size)
     }
 
     /**

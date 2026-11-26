@@ -213,6 +213,13 @@ private fun VaultRow(item: VaultItem) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        item.decryptError?.let { problem ->
+            Text(
+                text = "This item could not be read: $problem",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
         if (item.hosts.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 item.hosts.forEach { host -> HostChip(host) }
