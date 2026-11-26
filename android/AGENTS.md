@@ -316,6 +316,13 @@ it to a `Long` or comparing it to one fails to compile, use
 `coil.decode.VideoFrameDecoder`, not `coil.video` — the `coil-video`
 artifact puts it in the `coil.decode` package.
 
+A third one, from the streaming tests: in a plain JVM unit test
+`android.net.Uri.parse` is a stub that returns null, and media3's
+`DataSpec` throws on a null Uri — so the streaming tests drive
+`VaultBlobDataSource.openAt(position, length)` (internal, the same code
+`open(DataSpec)` delegates to) instead of building a `DataSpec`. Do not
+"fix" the tests back to `DataSpec` without Robolectric.
+
 ## No secrets in this repo
 
 Not in the code, not in the resources, not in the CI logs. The app asks the

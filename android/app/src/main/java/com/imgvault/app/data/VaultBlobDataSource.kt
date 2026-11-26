@@ -60,7 +60,7 @@ class VaultBlobDataSource(
 
     override fun open(dataSpec: DataSpec): Long {
         try {
-            return openInternal(dataSpec)
+            return openAt(dataSpec.position, dataSpec.length)
         } catch (error: IOException) {
             throw error
         } catch (error: Exception) {
@@ -71,7 +71,15 @@ class VaultBlobDataSource(
         }
     }
 
-    private fun openInternal(dataSpec: DataSpec): Long {
+    /**
+     * Open at plaintext [startPosition] for [length] bytes
+     * ([C.LENGTH_UNSET] reads to the end). The [DataSpec] entry point
+     * delegates here. Internal, not private, so the unit tests can drive
+     * the stream without an `android.net.Uri` — in a plain JVM unit test
+     * `Uri.parse` is a stub that returns null, and `DataSpec` throws on a
+     * null Uri, so the tests go through this instead of `open(DataSpec)`.
+     */
+    internal fun openAt(startPosition: Long, length: Long): Long {
         val first = fetchRange(0, (VaultCrypto.VAULT_HEADER_SIZE - 1).toLong())
         val parsed = VaultCrypto.parseVaultBlobHeader(first)
         if (parsed == null) {
@@ -82,11 +90,11 @@ class VaultBlobDataSource(
             layout = VaultCrypto.getVaultChunkLayout(parsed.total, parsed.chunkSize)
             total = parsed.total
         }
-        position = dataSpec.position.coerceIn(0, total)
-        remaining = if (dataSpec.length == C.LENGTH_UNSET.toLong()) {
+        position = startPosition.coerceIn(0L, total)
+        remaining = if (length == C.LENGTH_UNSET.toLong()) {
             total - position
         } else {
-            minOf(dataSpec.length, total - position)
+            minOf(length, total - position)
         }
         return remaining
     }

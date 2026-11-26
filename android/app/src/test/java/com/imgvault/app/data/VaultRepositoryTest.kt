@@ -1,7 +1,6 @@
 package com.imgvault.app.data
 
-import android.net.Uri
-import androidx.media3.datasource.DataSpec
+import androidx.media3.common.C
 import com.imgvault.app.core.crypto.VaultCrypto
 import com.imgvault.app.data.model.MediaItem
 import java.io.ByteArrayOutputStream
@@ -127,7 +126,7 @@ class VaultRepositoryTest {
             "https://example.com/blob.bin",
             key,
         )
-        val total = source.open(DataSpec(Uri.parse("https://example.com/blob.bin")))
+        val total = source.openAt(0, C.LENGTH_UNSET.toLong())
         assertEquals(plain.size.toLong(), total)
 
         val out = ByteArrayOutputStream()
@@ -151,9 +150,7 @@ class VaultRepositoryTest {
             key,
         )
         val start = VaultCrypto.VAULT_CHUNK_SIZE.toLong()
-        val total = source.open(
-            DataSpec(Uri.parse("https://example.com/blob.bin"), start, 100),
-        )
+        val total = source.openAt(start, 100)
         assertEquals(100L, total)
 
         val buffer = ByteArray(100)
@@ -175,7 +172,7 @@ class VaultRepositoryTest {
             "https://example.com/blob.bin",
             key,
         )
-        val total = source.open(DataSpec(Uri.parse("https://example.com/blob.bin")))
+        val total = source.openAt(0, C.LENGTH_UNSET.toLong())
         assertEquals(plain.size.toLong(), total)
 
         val out = ByteArrayOutputStream()
