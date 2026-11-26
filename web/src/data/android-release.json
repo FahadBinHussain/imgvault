@@ -1,1 +1,11 @@
-{"app":"imgvault-android","available":false,"downloadUrl":"","minSupportedVersionCode":1,"notes":"No Android APK published yet. Served by GET /api/app-release. The release workflow updates this file (versionName, versionCode, sizeBytes, sha256, downloadUrl, available=true) when the first APK is published; the web app redeploys on push so the manifest updates with it.","sha256":"","sizeBytes":0,"versionCode":1,"versionName":"1.0.0"}
+{
+  "app": "imgvault-android",
+  "available": true,
+  "downloadUrl": "https://github.com/FahadBinHussain/imgvault/releases/download/android-v1/imgvault-android-1.0.0.apk",
+  "minSupportedVersionCode": 1,
+  "notes": "ImgVault for Android 1.0.0.",
+  "sha256": "bf9c3dd739a4752ccf3ada5ce7e0ec2aba7acfece9511ab94068977cb5cc4b36",
+  "sizeBytes": 16002769,
+  "versionCode": 1,
+  "versionName": "1.0.0"
+}
