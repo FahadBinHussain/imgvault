@@ -34,8 +34,8 @@ class JustifiedLayoutTest {
     private fun layout(items: List<Tile>, widthDp: Float, gapDp: Float = 0f, stretch: Boolean = true) =
         layoutRow(items, ratioOf = { it.ratio }, containerWidthDp = widthDp, gapDp = gapDp, stretch = stretch)
 
-    private fun grid(items: List<Tile>, widthDp: Float = 100f) =
-        buildGrid(items, ratioOf = { it.ratio }, dayKeyOf = { it.day }, containerWidthDp = widthDp)
+    private fun grid(items: List<Tile>, containerWidthDp: Float = 100f) =
+        buildGrid(items, ratioOf = { it.ratio }, dayKeyOf = { it.day }, containerWidthDp = containerWidthDp)
 
     @Test
     fun `a row of square photos fills the width`() {
@@ -116,7 +116,7 @@ class JustifiedLayoutTest {
             (1..10).map { item("i$it", day = if (it <= 5) "2020-11-26" else "2020-11-25") },
             containerWidthDp = 100f,
         )
-        val rows = entries.filterIsInstance<GridEntry.Photos>()
+        val rows = entries.filterIsInstance<GridEntry.Photos<Tile>>()
         // the first day has five square photos -> two rows, the second day one
         assertTrue("the days are packed apart", rows.size >= 3)
     }
