@@ -29,15 +29,15 @@ class VaultCryptoTest {
     private val passHash =
         "2b2da9c773503e4dffcc2fe5d581100dbdeb2164d8cec01a1ba428ee800bc6d1"
     private val wrappedMasterKey =
-        "qrvM3e7/ABEiM0RVZneImaf9fE3lkO+2X2m804yapvKNGSK07f12LfwnGuCePY+/epeBaacVkd22Ys2GH8+ysw=="
+        "qrvM3e7/ABEiM0RVhnr21EcmfDJXc/hlitVr62D3Gfvp/hkBtbHp369SojNPj7/nZ2mQbRs6RRqnp9v3"
     private val masterKeyHex =
         "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
     private val encryptedMetadataB64 =
-        "tpryCtEph+/fu3vFc7UQfMMrpjxomzuJGgWYIGZPN0IyQ4ryUYq+XPX6GJNrLED4KxJIEE9Yai4hXWws6aIKM0BP5couYnG8w/dCTo/BFPrpqui6KA/0EQTGdijZjno="
+        "tOBDgWp01C4YzBCbHjBEzncHy9fXOEUt22EAXozFSOKne893v6mESiZOiSl2BMO4JeaqZ8zxcKCjC2kZXq4UaUVculwdcwv3mUytHxezdHO1yS1vqpWUBroWBf/58yo="
     private val metadataPlain =
         """{"fileName":"holiday.jpg","mimeType":"image/jpeg","tags":["a","b"]}"""
     private val encryptedBlobB64 =
-        "SVZHMUMAAAAAAAAAAACAAH3/Y769N2jB2cP9u4Vf/71ZtccuhgPSDDYEJZdDgT3wFmXfkpxHHRidFKj8XMRL48WGUYC8UJraoCgSbqVJmi+4N7mdCuroosqy6JtwY9iWv/Ac94b9wSNQT24WDbsL"
+        "SVZHMUMAAAAAAAAAAACAAJnD966ZlvfMnEQRk2Slw53OrdwQpyrB0TMuNO8CKlvK76WGkom2cEbhnydYj37LG/uxxAlI5YOkKQhjgzPfMlwvqhMKtgLkV6PIYcieVAEg0S+PdQGVMziQnR0adFXi"
     private val blobPlain = "hello vault, this is the plaintext that must survive the round trip"
 
     @Test
