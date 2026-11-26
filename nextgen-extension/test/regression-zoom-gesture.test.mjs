@@ -33,6 +33,7 @@ const src = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 
 const zoomable = src('../../packages/ui/ZoomableImage.jsx');
 const modal = src('../../packages/ui/Modal.jsx');
 const minibar = src('../../packages/ui/ZoomMinibar.jsx');
+const engine = src('../../packages/shared/zoomEngine.js');
 
 test('2.19.47: the wheel listener is native and non-passive, so preventDefault actually cancels the scroll', () => {
   assert.match(zoomable, /addEventListener\('wheel',\s*onWheel,\s*\{\s*passive:\s*false\s*\}\)/);
@@ -107,7 +108,9 @@ test('2.19.48: the zoom ceiling follows the photo\'s own resolution', () => {
 test('2.19.48: every gesture honours the source-aware ceiling', () => {
   const zoomCalls = zoomable.match(/applyZoom\([^)]*maxLevel: effectiveMaxLevel/g) || [];
   assert.ok(zoomCalls.length >= 4, 'every applyZoom must clamp to effectiveMaxLevel');
-  assert.doesNotMatch(zoomable, /maxLevel: maxZoomLevel/);
+  // (2.19.50) the raw ceiling is still allowed in ONE place: the call that
+  // computes the source-aware ceiling itself. A gesture must never use it.
+  assert.doesNotMatch(zoomable, /applyZoom\([^)]*maxLevel: maxZoomLevel/);
   assert.match(zoomable, /doubleClickZoomLevel\(zoom\.level, 0, effectiveMaxLevel\)/);
 });
 
@@ -154,4 +157,45 @@ test('2.19.49: the minibar bar follows the photo\'s own resolution ceiling', () 
 test('2.19.49: clicking the minibar never closes the lightbox', () => {
   assert.match(minibar, /event\.stopPropagation\(\)/);
   assert.match(minibar, /onClick=\{stop\}/);
+});
+
+// ---------------------------------------------------------------------------
+// 2.19.50: the zoom was DEAD on a photo that has no source headroom.
+//
+// The user report (2026-11-26): "8dce6039-… zoom not working for this image"
+// + "nothing happens when i scroll".
+//
+// Measured on that item: both hosts serve the file at 1024x671, and the
+// lightbox shows it at 1024x671 inside a ~1269px pane — the photo is ALREADY
+// at its own pixel size. The source-resolution ceiling therefore computed
+// limit = 1024/1024 = 1 -> level ceiling 0 -> every gesture was clamped to
+// level 0: no zoom, no badge, no minibar, no feedback at all.
+//
+// The zoom is now allowed a small UPSCALED_ZOOM_LEVEL on those photos and
+// the UI says so: the badge reads "(upscaled)" and the minibar's bar marks
+// the upscaled part of the range in amber. The FILE is never touched — the
+// zoom is a CSS transform on the decoded image, the paint is bigger and
+// softer, the stored file stays byte-identical.
+// ---------------------------------------------------------------------------
+
+test('2.19.50: the ceiling comes from the shared helper, so a headless photo still zooms', () => {
+  assert.match(zoomable, /effectiveZoomCeiling\(\{/);
+  assert.match(engine, /UPSCALED_ZOOM_LEVEL = 1/);
+  assert.match(engine, /export function effectiveZoomCeiling/);
+});
+
+test('2.19.50: the badge says the photo is upscaled (the file is not changed)', () => {
+  assert.match(zoomable, /\(upscaled\)/);
+  assert.match(zoomable, /isZoomUpscaled\(/);
+});
+
+test('2.19.50: the minibar marks the upscaled part of the zoom range', () => {
+  assert.match(minibar, /bg-amber-400/);
+  assert.match(minibar, /isZoomUpscaled\(/);
+});
+
+test('2.19.50: the zoom is never locked to zero', () => {
+  assert.doesNotMatch(engine, /UPSCALED_ZOOM_LEVEL = 0/);
+  assert.match(engine, /if \(source > 0\) return Math\.min\(max, source\)/);
+  assert.match(engine, /return Math\.min\(max, UPSCALED_ZOOM_LEVEL\)/);
 });

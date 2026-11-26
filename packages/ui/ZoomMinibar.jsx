@@ -19,6 +19,7 @@
  */
 import React, { useCallback, useRef } from 'react';
 import {
+  isZoomUpscaled,
   zoomLevelFromSliderRatio,
   zoomSliderRatioFromLevel,
   zoomViewportRect,
@@ -53,6 +54,7 @@ export default function ZoomMinibar({
   zoom,
   naturalSize,
   maxLevel,
+  sourceLevel,
   onLevelChange,
   onPanTo,
   onReset,
@@ -64,6 +66,18 @@ export default function ZoomMinibar({
   const viewport = zoomViewportRect(zoom);
   const frame = zoomMiniMapFrame(naturalSize);
   const ratio = zoomSliderRatioFromLevel(zoom?.level, maxLevel);
+
+  /**
+   * Where the photo's own pixels end on the bar.
+   *
+   * `sourceLevel` is the level at which the painted photo reaches the file's
+   * own pixel size. Everything past it is an upscale — the file is not
+   * touched, but the paint is bigger and softer, so the bar marks it.
+   */
+  const sharpRatio = sourceLevel == null
+    ? 1
+    : Math.min(Math.max((Number(sourceLevel) || 0) / (Number(maxLevel) || 1), 0), 1);
+  const upscaled = isZoomUpscaled(zoom?.level, sourceLevel);
 
   const applyLevel = useCallback((level) => {
     if (onLevelChange) onLevelChange(Math.min(Math.max(level, 0), maxLevel));
@@ -206,7 +220,7 @@ export default function ZoomMinibar({
           aria-valuemin={0}
           aria-valuemax={maxLevel}
           aria-valuenow={Number((zoom?.level || 0).toFixed(2))}
-          aria-valuetext={`${(zoom?.factor || 1).toFixed(1)}x`}
+          aria-valuetext={`${(zoom?.factor || 1).toFixed(1)}x${upscaled ? ' (upscaled)' : ''}`}
           onKeyDown={handleTrackKeyDown}
           onPointerDown={handleTrackPointerDown}
           onPointerMove={handleTrackPointerMove}
@@ -216,8 +230,17 @@ export default function ZoomMinibar({
         >
           <div
             className="absolute inset-y-0 left-0 rounded-full bg-white/80"
-            style={{ width: `${ratio * 100}%` }}
+            style={{ width: `${Math.min(ratio, sharpRatio) * 100}%` }}
           />
+          {sharpRatio < 1 && (
+            <div
+              className="absolute inset-y-0 rounded-full bg-amber-400/90"
+              style={{
+                left: `${sharpRatio * 100}%`,
+                width: `${Math.max(ratio - sharpRatio, 0) * 100}%`,
+              }}
+            />
+          )}
           <div
             className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow"
             style={{ left: `${ratio * 100}%` }}
@@ -243,6 +266,11 @@ export default function ZoomMinibar({
         >
           {(zoom?.factor || 1).toFixed(1)}x
         </button>
+        {upscaled && (
+          <span className="text-amber-300" title="The photo is at its own resolution — this enlarges the pixels, it does not add detail">
+            upscaled
+          </span>
+        )}
       </div>
     </div>
   );

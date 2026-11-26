@@ -41,6 +41,23 @@ export const PINCH_ZOOM_DIVISOR = 0.25;
 /** default ceiling: level 3 = 8x the fit size. */
 export const DEFAULT_MAX_ZOOM_LEVEL = 3;
 
+/**
+ * How far the zoom may go when the photo has NO source-resolution headroom.
+ *
+ * A photo that is displayed at (or above) its own pixel size — a 1024x671
+ * image in a 1269px pane — has nothing left to zoom into: every level would
+ * paint MORE pixels than the file holds. Refusing the gesture outright makes
+ * the zoom silently dead (the wheel spins, nothing happens, no badge, no
+ * minibar), which reads as a broken feature.
+ *
+ * So for those photos the zoom is allowed past the source resolution, but it
+ * is labelled "(upscaled)" — the FILE is never touched (the zoom is a CSS
+ * transform on the already-decoded image); only the on-screen paint gets
+ * bigger and softer. Photos that DO have headroom keep the honest ceiling
+ * (they zoom to 1:1 with their own pixels and stop).
+ */
+export const UPSCALED_ZOOM_LEVEL = 1;
+
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 /**
@@ -358,6 +375,40 @@ export function zoomSliderRatioFromLevel(level, maxLevel = DEFAULT_MAX_ZOOM_LEVE
   const max = Number(maxLevel) || 0;
   if (!max) return 0;
   return clamp((Number(level) || 0) / max, 0, 1);
+}
+
+/**
+ * The zoom ceiling for one photo.
+ *
+ * `sourceCeiling` is the level at which the painted photo reaches the file's
+ * own pixel size (null = the photo has not been measured yet).
+ *
+ * - null            -> the caller's own ceiling (nothing is known yet)
+ * - > 0             -> the honest ceiling: the photo zooms to 1:1 with its
+ *                      own pixels and stops there
+ * - 0 (no headroom) -> the small UPSCALED_ZOOM_LEVEL allowance, so the
+ *                      gesture is never silently dead on a photo that is
+ *                      shown at (or above) its own pixel size
+ */
+export function effectiveZoomCeiling({ sourceCeiling, maxLevel = DEFAULT_MAX_ZOOM_LEVEL } = {}) {
+  const max = Number(maxLevel) || 0;
+  if (sourceCeiling == null) return max;
+  const source = Number(sourceCeiling) || 0;
+  if (source > 0) return Math.min(max, source);
+  return Math.min(max, UPSCALED_ZOOM_LEVEL);
+}
+
+/**
+ * True when the photo is being painted LARGER than the file's own pixels.
+ *
+ * That is an upscale of the DECODED pixels on screen only — the file is
+ * never touched, but the paint gets softer.
+ */
+export function isZoomUpscaled(level, sourceCeiling) {
+  if (sourceCeiling == null) return false;
+  const current = Number(level) || 0;
+  const source = Number(sourceCeiling) || 0;
+  return current > 0 && current > source + 0.0001;
 }
 
 /**

@@ -39,6 +39,8 @@ import {
   applyZoom,
   createZoomState,
   doubleClickZoomLevel,
+  effectiveZoomCeiling,
+  isZoomUpscaled,
   isZoomed,
   panZoomState,
   pinchZoomAmount,
@@ -139,6 +141,25 @@ export default function ZoomableImage({
   }, [resolveContainer]);
 
   /**
+   * The source-resolution ceiling for THIS photo.
+   *
+   * null until the photo has been measured (the natural size is unknown).
+   * 0 means the photo has NO headroom at all: it is shown at (or above) its
+   * own pixel size, so every zoom level would paint more pixels than the
+   * file holds.
+   */
+  const sourceCeiling = useMemo(() => {
+    if (!zoom || !naturalSize) return null;
+    return sourceResolutionZoomLevel({
+      naturalWidth: naturalSize.width,
+      naturalHeight: naturalSize.height,
+      baseWidth: zoom.imageWidth,
+      baseHeight: zoom.imageHeight,
+      devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
+    });
+  }, [zoom, naturalSize]);
+
+  /**
    * The zoom ceiling for THIS photo.
    *
    * Zooming past the source resolution forces the browser to upscale decoded
@@ -147,18 +168,17 @@ export default function ZoomableImage({
    * in a 1200px box runs out of detail at about 4.3x, a smaller photo much
    * earlier. The cap is the level where the rendered size reaches the
    * natural size, clamped to the caller's own ceiling.
+   *
+   * THE EXCEPTION: a photo with NO headroom (it is already shown at its own
+   * pixel size) would get a ceiling of 0 — the zoom would be silently dead
+   * and every gesture would look broken. Those photos get the small
+   * UPSCALED_ZOOM_LEVEL allowance instead, and the badge/minibar say
+   * "(upscaled)" there, so the paint is bigger but the file is untouched.
    */
-  const effectiveMaxLevel = useMemo(() => {
-    if (!zoom || !naturalSize) return maxZoomLevel;
-    const level = sourceResolutionZoomLevel({
-      naturalWidth: naturalSize.width,
-      naturalHeight: naturalSize.height,
-      baseWidth: zoom.imageWidth,
-      baseHeight: zoom.imageHeight,
-      devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
-    });
-    return Math.min(maxZoomLevel, level);
-  }, [zoom, naturalSize, maxZoomLevel]);
+  const effectiveMaxLevel = useMemo(
+    () => effectiveZoomCeiling({ sourceCeiling, maxLevel: maxZoomLevel }),
+    [sourceCeiling, maxZoomLevel],
+  );
 
   // re-measure when the image or the clipping box changes size
   useLayoutEffect(() => {
@@ -349,25 +369,37 @@ export default function ZoomableImage({
     ? `translate(${(zoom.x - origin.x).toFixed(2)}px, ${(zoom.y - origin.y).toFixed(2)}px) scale(${zoom.scale.toFixed(5)})`
     : undefined;
 
-  // at the source-resolution ceiling the photo is at 1:1 with its own pixels —
-  // zooming further would only upscale, so the badge says so.
-  const atSourceCeiling = zoom
-    && naturalSize
+  // the picture is being painted LARGER than the file's own pixels — the
+  // file is untouched, only the on-screen paint is bigger (and softer)
+  const isUpscaled = isZoomUpscaled(zoom?.level, sourceCeiling);
+
+  // at the source-resolution ceiling the photo is at 1:1 with its own pixels
+  // — zooming further would only upscale, so the zoom stops there
+  const atSourceCeiling = Boolean(
+    zoom
+    && sourceCeiling != null
+    && sourceCeiling > 0
     && effectiveMaxLevel < maxZoomLevel
-    && zoom.level >= effectiveMaxLevel - 0.001;
+    && zoom.level >= effectiveMaxLevel - 0.001,
+  );
 
   const badge = showZoomBadge && zoomed && containerEl
     ? createPortal(
       <button
         type="button"
         onClick={resetZoom}
-        title={atSourceCeiling
-          ? 'Reset zoom (this photo is at its own resolution)'
-          : 'Reset zoom'}
+        title={isUpscaled
+          ? 'Reset zoom (this photo is at its own resolution — zooming enlarges the pixels, it does not add detail)'
+          : atSourceCeiling
+            ? 'Reset zoom (this photo is at its own resolution)'
+            : 'Reset zoom'}
         className="absolute bottom-3 right-3 z-20 rounded-full bg-black/70 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg backdrop-blur transition-colors hover:bg-black/85"
       >
         {zoom.factor.toFixed(1)}x
-        {atSourceCeiling && (
+        {isUpscaled && (
+          <span className="ml-1 font-normal text-amber-300">(upscaled)</span>
+        )}
+        {!isUpscaled && atSourceCeiling && (
           <span className="ml-1 font-normal opacity-70">(max)</span>
         )}
       </button>,
@@ -398,6 +430,7 @@ export default function ZoomableImage({
         zoom={zoom}
         naturalSize={naturalSize}
         maxLevel={effectiveMaxLevel}
+        sourceLevel={sourceCeiling}
         onLevelChange={handleMinibarLevel}
         onPanTo={handleMinibarPan}
         onReset={resetZoom}

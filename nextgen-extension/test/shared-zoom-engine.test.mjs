@@ -6,6 +6,7 @@ import {
   DEFAULT_MAX_ZOOM_LEVEL,
   KEY_ZOOM_STEP,
   PINCH_ZOOM_DIVISOR,
+  UPSCALED_ZOOM_LEVEL,
   WHEEL_ZOOM_STEP,
   WHEEL_ZOOM_THROTTLE_MS,
   ZOOM_GESTURE_TYPE,
@@ -13,7 +14,9 @@ import {
   clampZoomLevel,
   createZoomState,
   doubleClickZoomLevel,
+  effectiveZoomCeiling,
   fitScale,
+  isZoomUpscaled,
   isZoomed,
   panZoomState,
   pinchZoomAmount,
@@ -399,5 +402,38 @@ describe('the zoom minibar bar', () => {
   test('without a ceiling the bar is at zero', () => {
     assert.equal(zoomSliderRatioFromLevel(2, 0), 0);
     assert.equal(zoomLevelFromSliderRatio(0.5, 0), 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A photo that is shown at (or above) its own pixel size used to have a
+// ceiling of ZERO — the zoom was silently dead on exactly those photos.
+// ---------------------------------------------------------------------------
+
+describe('the zoom ceiling when the photo has no headroom', () => {
+  test('the upscaled allowance is pinned', () => {
+    assert.equal(UPSCALED_ZOOM_LEVEL, 1);
+  });
+
+  test('an unmeasured photo keeps the caller ceiling', () => {
+    assert.equal(effectiveZoomCeiling({ sourceCeiling: null, maxLevel: 3 }), 3);
+  });
+
+  test('a photo with headroom stops at its own resolution', () => {
+    assert.equal(effectiveZoomCeiling({ sourceCeiling: 2.09, maxLevel: 3 }), 2.09);
+    assert.equal(effectiveZoomCeiling({ sourceCeiling: 2.09, maxLevel: 1 }), 1);
+  });
+
+  test('a photo with NO headroom still gets a zoom (never a dead gesture)', () => {
+    assert.equal(effectiveZoomCeiling({ sourceCeiling: 0, maxLevel: 3 }), UPSCALED_ZOOM_LEVEL);
+    assert.ok(UPSCALED_ZOOM_LEVEL > 0, 'the zoom must not be locked to zero');
+  });
+
+  test('the upscaled label only shows past the source resolution', () => {
+    assert.equal(isZoomUpscaled(0.5, 0), true);
+    assert.equal(isZoomUpscaled(0, 0), false);
+    assert.equal(isZoomUpscaled(0.5, 2.09), false);
+    assert.equal(isZoomUpscaled(2.5, 2.09), true);
+    assert.equal(isZoomUpscaled(1, null), false);
   });
 });
