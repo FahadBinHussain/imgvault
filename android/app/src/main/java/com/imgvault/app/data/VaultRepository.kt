@@ -3,6 +3,8 @@ package com.imgvault.app.data
 import com.imgvault.app.core.crypto.VaultCrypto
 import com.imgvault.app.core.crypto.VaultConfig
 import com.imgvault.app.core.neon.NeonClient
+import com.imgvault.app.core.neon.asJsonObjectOrEmpty
+import com.imgvault.app.core.neon.asTextOrEmpty
 import com.imgvault.app.core.settings.SettingsRepository
 import com.imgvault.app.data.model.MediaItem
 import com.imgvault.app.data.model.toMediaItem
@@ -81,11 +83,11 @@ class VaultRepository(
             val meta = key?.let { decryptMetadata(it, item.encryptedMetadata) }
             VaultItem(
                 id = item.id,
-                fileName = meta?.get("fileName")?.jsonPrimitive?.content
-                    ?: item.encryptedFileName
-                    ?: item.fileName,
-                mimeType = meta?.get("mimeType")?.jsonPrimitive?.content
-                    ?: item.encryptedMimeType,
+                fileName = meta?.get("fileName").asTextOrEmpty()
+                    .ifEmpty { item.encryptedFileName }
+                    .ifEmpty { item.fileName },
+                mimeType = meta?.get("mimeType").asTextOrEmpty()
+                    .ifEmpty { item.encryptedMimeType },
                 sizeBytes = item.fileSize ?: 0L,
                 hosts = item.vaultHosts,
                 raw = item,
@@ -136,13 +138,13 @@ class VaultRepository(
         val root = runCatching { json.parseToJsonElement(infoBody).jsonObject }.getOrElse { error ->
             throw ImgVaultException("Telegram getFile answered with something that is not JSON", error)
         }
-        val ok = root["ok"]?.jsonPrimitive?.content == "true"
+        val ok = root["ok"].asTextOrEmpty() == "true"
         if (!ok) {
-            val description = root["description"]?.jsonPrimitive?.content ?: "unknown error"
+            val description = root["description"].asTextOrEmpty().ifEmpty { "unknown error" }
             throw ImgVaultException("Telegram refused to hand over the vault file: $description")
         }
-        val filePath = root["result"]?.jsonObject?.get("file_path")?.jsonPrimitive?.content
-            ?: throw ImgVaultException("Telegram did not return a file path for the vault blob")
+        val filePath = root["result"].asJsonObjectOrEmpty()["file_path"].asTextOrEmpty()
+            .ifEmpty { throw ImgVaultException("Telegram did not return a file path for the vault blob") }
         return getBytes("https://api.telegram.org/file/bot$token/$filePath")
     }
 

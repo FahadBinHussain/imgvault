@@ -142,9 +142,67 @@ class NeonClient(
 
 fun JsonElement?.asTextOrEmpty(): String {
     if (this == null || this is JsonNull) return ""
-    val primitive = this as? JsonPrimitive ?: return this.toString()
+    val primitive = this as? JsonPrimitive ?: return ""
     if (primitive is JsonNull) return ""
     return primitive.content
+}
+
+// ---------------------------------------------------------------------------
+// JSON that arrives as TEXT
+//
+// With `Neon-Raw-Text-Output` EVERY value arrives as a string, so a column
+// that holds JSON (`extra_metadata` is jsonb, `tags` is a text array) shows up
+// as the JSON TEXT itself — NOT as parsed JSON. Reading such a cell with
+// `.jsonArray` therefore throws on a JsonLiteral, which is exactly what the
+// gallery did on the phone:
+//
+//   Element class kotlinx.serialization.json.JsonLiteral
+//   (Kotlin reflection is not available) is not a JsonArray
+//
+// These helpers read the cell back into the structure it holds. They never
+// throw: a cell that is not JSON yields the empty structure and every other
+// column still shows up.
+// ---------------------------------------------------------------------------
+
+/** the JSON a cell holds — parsed already, or carried as text */
+fun JsonElement?.asJsonValue(): JsonElement? {
+    when (this) {
+        null -> return null
+        is JsonNull -> return null
+        is JsonObject -> return this
+        is JsonArray -> return this
+        is JsonPrimitive -> {
+            val text = content.trim()
+            if (text.isEmpty()) return null
+            if (text[0] != '{' && text[0] != '[') return null
+            return runCatching { Json.parseToJsonElement(text) }.getOrNull()
+        }
+    }
+}
+
+/** a JSON object carried as text (`extra_metadata`) */
+fun JsonElement?.asJsonObjectOrEmpty(): JsonObject =
+    (this.asJsonValue() as? JsonObject) ?: JsonObject(emptyMap())
+
+/**
+ * A list of strings carried as text — a JSON array (`["a","b"]`), a plain
+ * comma separated list (`a,b`), or nothing at all.
+ */
+fun JsonElement?.asJsonListOrEmpty(): List<String> {
+    when (val value = this.asJsonValue()) {
+        is JsonArray -> return value
+            .map { cell -> (cell as? JsonPrimitive)?.content.orEmpty() }
+            .filter { it.isNotEmpty() }
+        is JsonObject -> return emptyList()
+        else -> Unit
+    }
+    val raw = (this as? JsonPrimitive)?.content?.trim().orEmpty()
+    if (raw.isEmpty()) return emptyList()
+    // a broken JSON array has no safe reading — do not turn it into garbage
+    if (raw.startsWith("[")) return emptyList()
+    return raw.split(',')
+        .map { it.trim().trim('"', '\'') }
+        .filter { it.isNotEmpty() }
 }
 
 fun JsonElement?.asLongOrNull(): Long? = asTextOrEmpty().trim().toLongOrNull()

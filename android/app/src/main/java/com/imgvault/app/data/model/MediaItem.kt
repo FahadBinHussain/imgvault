@@ -1,13 +1,12 @@
 package com.imgvault.app.data.model
 
 import com.imgvault.app.core.neon.asBooleanOrFalse
+import com.imgvault.app.core.neon.asJsonListOrEmpty
+import com.imgvault.app.core.neon.asJsonObjectOrEmpty
 import com.imgvault.app.core.neon.asLongOrNull
-import com.imgvault.app.core.neon.asObjectOrEmpty
 import com.imgvault.app.core.neon.asTextOrEmpty
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * One media item, mapped from a `public.media_items` row.
@@ -55,7 +54,7 @@ data class MediaItem(
     /** the image hosts the item actually has links for */
     val imageHosts: Map<String, HostLink>
         get() {
-            val fromExtra = extra["imageHosts"].asObjectOrEmpty()
+            val fromExtra = extra["imageHosts"].asJsonObjectOrEmpty()
             val map = linkedMapOf<String, HostLink>()
             map["pixvid"] = HostLink(
                 url = pixvidUrl,
@@ -66,7 +65,7 @@ data class MediaItem(
                 thumbnailUrl = imgbbThumbUrl,
             )
             fromExtra.forEach { (key, value) ->
-                val link = value.asObjectOrEmpty()
+                val link = value.asJsonObjectOrEmpty()
                 val existing = map[key]
                 map[key] = HostLink(
                     url = link["url"].asTextOrEmpty().ifEmpty { existing?.url.orEmpty() },
@@ -84,7 +83,7 @@ data class MediaItem(
     /** the video hosts the item actually has links for */
     val videoHosts: Map<String, HostLink>
         get() {
-            val fromExtra = extra["videoHosts"].asObjectOrEmpty()
+            val fromExtra = extra["videoHosts"].asJsonObjectOrEmpty()
             val map = linkedMapOf<String, HostLink>()
             map["filemoon"] = HostLink(
                 url = filemoonWatchUrl,
@@ -95,7 +94,7 @@ data class MediaItem(
                 directUrl = udropDirectUrl,
             )
             fromExtra.forEach { (key, value) ->
-                val link = value.asObjectOrEmpty()
+                val link = value.asJsonObjectOrEmpty()
                 val existing = map[key]
                 map[key] = HostLink(
                     url = link["url"].asTextOrEmpty().ifEmpty { existing?.url.orEmpty() },
@@ -183,8 +182,8 @@ data class MediaItem(
         get() = extra["encryptedBlobUrl"].asTextOrEmpty()
 
     val vaultHosts: List<String>
-        get() = extra["vaultHosts"]?.jsonArray?.map { it.jsonPrimitive.asTextOrEmpty() }
-            ?: listOfNotNull(extra["vaultHost"].asTextOrEmpty().takeIf { it.isNotEmpty() })
+        get() = extra["vaultHosts"].asJsonListOrEmpty()
+            .ifEmpty { listOfNotNull(extra["vaultHost"].asTextOrEmpty().takeIf { it.isNotEmpty() }) }
 
     /** what the card shows as its title */
     val title: String
@@ -209,7 +208,10 @@ data class HostLink(
 fun Map<String, JsonElement>.toMediaItem(): MediaItem {
     fun column(name: String): JsonElement? = this[name]
 
-    val extra = column("extra_metadata").asObjectOrEmpty()
+    // `extra_metadata` is a jsonb column: with Neon-Raw-Text-Output it arrives
+    // as the JSON TEXT, so it has to be read back into an object — otherwise
+    // every vault flag and every host link stays invisible.
+    val extra = column("extra_metadata").asJsonObjectOrEmpty()
 
     return MediaItem(
         id = column("id").asTextOrEmpty(),
@@ -218,7 +220,8 @@ fun Map<String, JsonElement>.toMediaItem(): MediaItem {
         isLink = column("is_link").asBooleanOrFalse(),
         pageTitle = column("page_title").asTextOrEmpty().ifEmpty { extra["pageTitle"].asTextOrEmpty() },
         description = column("description").asTextOrEmpty().ifEmpty { extra["description"].asTextOrEmpty() },
-        tags = column("tags")?.jsonArray?.map { it.jsonPrimitive.asTextOrEmpty() }.orEmpty(),
+        // `tags` is a text array: Neon hands it over as text ("[]", "[\"a\"]")
+        tags = column("tags").asJsonListOrEmpty(),
         collectionId = column("collection_id").asTextOrEmpty().ifEmpty { null },
         internalAddedTimestamp = column("internal_added_timestamp").asTextOrEmpty(),
         sourceImageUrl = column("source_image_url").asTextOrEmpty(),
