@@ -93,12 +93,22 @@ data class MediaItem(
                 url = udropWatchUrl,
                 directUrl = udropDirectUrl,
             )
+            // terabox keeps its links on the item itself, not on a host column
+            map["terabox"] = HostLink(
+                url = extra["teraboxUrl"].asTextOrEmpty(),
+                displayUrl = extra["teraboxWatchUrl"].asTextOrEmpty(),
+                directUrl = extra["teraboxDirectUrl"].asTextOrEmpty(),
+            )
             fromExtra.forEach { (key, value) ->
                 val link = value.asJsonObjectOrEmpty()
                 val existing = map[key]
                 map[key] = HostLink(
-                    url = link["url"].asTextOrEmpty().ifEmpty { existing?.url.orEmpty() },
-                    displayUrl = link["displayUrl"].asTextOrEmpty(),
+                    // a video host names its page "watchUrl"
+                    url = link["url"].asTextOrEmpty()
+                        .ifEmpty { link["watchUrl"].asTextOrEmpty() }
+                        .ifEmpty { existing?.url.orEmpty() },
+                    displayUrl = link["displayUrl"].asTextOrEmpty()
+                        .ifEmpty { link["watchUrl"].asTextOrEmpty() },
                     directUrl = link["directUrl"].asTextOrEmpty()
                         .ifEmpty { existing?.directUrl.orEmpty() },
                     deleteUrl = link["deleteUrl"].asTextOrEmpty(),

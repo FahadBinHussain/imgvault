@@ -251,7 +251,7 @@ private fun PhotoTile(
     ) {
         if (url.isEmpty()) {
             Log.i("ImgVault", "no thumbnail url for ${item.id}")
-            TileFallback(item)
+            if (item.isVideo) VideoPlaceholder(item) else TileFallback(item)
         } else {
             SubcomposeAsyncImage(
                 model = url,
@@ -268,6 +268,7 @@ private fun PhotoTile(
         if (item.isVideo) {
             VideoBadge(
                 item = item,
+                withPlayIcon = url.isNotEmpty(),
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(6.dp),
@@ -312,26 +313,59 @@ private fun TileFallback(item: MediaItem, loading: Boolean = false) {
     }
 }
 
-/** the play badge and the length of a video, on the photo */
+/**
+ * A video without a poster frame.
+ *
+ * The database has no thumbnail for a video, so the tile says what it is: a
+ * dark tile with a play button in the middle, the way Google Photos shows a
+ * video it has no frame for.
+ */
 @Composable
-private fun VideoBadge(item: MediaItem, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+private fun VideoPlaceholder(item: MediaItem) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF232323)),
+        contentAlignment = Alignment.Center,
     ) {
         Surface(
-            color = MaterialTheme.colorScheme.scrim,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
+            color = Color.White.copy(alpha = 0.22f),
+            contentColor = Color.White,
             shape = CircleShape,
         ) {
             Icon(
                 imageVector = Icons.Filled.PlayArrow,
                 contentDescription = "Video",
                 modifier = Modifier
-                    .padding(3.dp)
-                    .size(16.dp),
+                    .padding(10.dp)
+                    .size(28.dp),
             )
+        }
+    }
+}
+
+/** the play badge and the length of a video, on the photo */
+@Composable
+private fun VideoBadge(item: MediaItem, withPlayIcon: Boolean, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (withPlayIcon) {
+            Surface(
+                color = MaterialTheme.colorScheme.scrim,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = CircleShape,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.PlayArrow,
+                    contentDescription = "Video",
+                    modifier = Modifier
+                        .padding(3.dp)
+                        .size(16.dp),
+                )
+            }
         }
         val duration = item.durationLabel
         if (duration.isNotEmpty()) {

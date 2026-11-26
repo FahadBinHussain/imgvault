@@ -46,6 +46,21 @@ class NeonTextTest {
         assertTrue(textCell("{oops").asJsonObjectOrEmpty().isEmpty())
     }
 
+    /**
+     * Postgres writes a boolean as `t`/`f`, the json write says
+     * `true`/`false` — a cell that holds either one is a boolean.
+     */
+    @Test
+    fun `a postgres boolean reads as a boolean`() {
+        assertTrue(textCell("t").asBooleanOrFalse())
+        assertTrue(textCell("true").asBooleanOrFalse())
+        assertTrue(textCell("1").asBooleanOrFalse())
+        assertTrue(textCell("yes").asBooleanOrFalse())
+        assertTrue(!textCell("f").asBooleanOrFalse())
+        assertTrue(!textCell("false").asBooleanOrFalse())
+        assertTrue(!textCell("").asBooleanOrFalse())
+    }
+
     @Test
     fun `an extra_metadata cell holding json text reads as an object`() {
         val extra = textCell("""{"isVaulted": true, "vaultHosts": ["terabox", "telegram"]}""")

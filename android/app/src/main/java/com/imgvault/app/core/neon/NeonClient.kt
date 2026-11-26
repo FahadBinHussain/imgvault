@@ -212,7 +212,8 @@ fun JsonElement?.asDoubleOrNull(): Double? = asTextOrEmpty().trim().toDoubleOrNu
 
 fun JsonElement?.asBooleanOrFalse(): Boolean {
     val text = asTextOrEmpty().trim().lowercase()
-    return text == "true" || text == "1" || text == "yes"
+    // postgres writes a boolean as t/f, and the json write says true/false
+    return text == "true" || text == "t" || text == "1" || text == "yes"
 }
 
 fun JsonElement?.asObjectOrEmpty(): JsonObject {
