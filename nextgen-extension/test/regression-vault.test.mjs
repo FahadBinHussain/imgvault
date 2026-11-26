@@ -161,6 +161,41 @@ test('2.13.3 (2026-09-25): a vault blob missing from root is searched by fs_id i
   assert.ok(fn.includes('absent from the account listing — already deleted, no host cleanup needed'));
 });
 
+test('2.19.50 (2026-11-26): a Bot API "message can\'t be deleted" (48h window) falls back to a native-host existence check before the row is released', () => {
+  const bg = background();
+  const fn = bg.slice(bg.indexOf('async deleteVaultBlobFiles('));
+  // The age error fires even for a post that was already deleted manually
+  // (proven on vault msg 650), so the Bot API alone can never clear it.
+  assert.ok(fn.includes("if (/message can't be deleted/i.test(message)) {"));
+  assert.ok(fn.includes('gone = await isTelegramPostGoneNative({ messageId, channel });'));
+  assert.ok(fn.includes('[VAULT DELETE] telegram message ${messageId} is gone from the channel (native-host verified) — releasing the row'));
+  // A still-live post is never released on the age error alone — that
+  // would orphan it. And a broken native check throws instead of guessing.
+  assert.ok(fn.includes('48h delete window and still exists — delete it in the channel, then retry.'));
+  assert.ok(fn.includes('The native-host check also failed'));
+  assert.ok(bg.includes('isTelegramPostGoneNative,'));
+});
+
+test('2.19.50 (2026-11-26): deleteTelegramPosts has the same 48h fallback (gallery/video host copies hit the same Bot API wall)', () => {
+  const bg = background();
+  const fn = bg.slice(bg.indexOf('async deleteTelegramPosts('));
+  assert.ok(fn.includes("if (/message can't be deleted/i.test(message)) {"));
+  assert.ok(fn.includes('gone = await isTelegramPostGoneNative({ messageId, channel });'));
+  assert.ok(fn.includes('[TG DELETE] message ${messageId} is gone from the channel (native-host verified) — releasing the row'));
+  assert.ok(fn.includes('48h delete window and still exists — delete it in the channel, then retry.'));
+});
+
+test('2.19.50 (2026-11-26): updateTrashedImageNeon throws on unsupported fields instead of silently ignoring them', () => {
+  const store = storage();
+  const fn = store.slice(store.indexOf('async updateTrashedImageNeon('));
+  // Before this guard an update with only unsupported fields built zero
+  // SET clauses and returned success without changing anything (proven
+  // while fixing vault msg 650 — encryptedBlobHosts silently dropped).
+  assert.ok(fn.includes("const supportedUpdateFields = ['creationDate'];"));
+  assert.ok(fn.includes('unsupportedUpdateFields.length > 0'));
+  assert.ok(fn.includes('updateTrashedImage supports only'));
+});
+
 test('2.12.77/82 (2026-09-13): restoring from trash re-vaults on ANY vault provenance marker and clears wasVaulted', () => {
   const store = storage();
   const fn = store.slice(store.indexOf('async restoreFromTrashNeon(id) {'));
@@ -279,5 +314,5 @@ test('2.19.31 (2026-11-22): both vault upload paths probe the native host for ov
 
 test('2.19.31 (2026-11-22): background.js imports the native telegram download helpers', () => {
   const bg = background();
-  assert.ok(bg.includes('downloadTelegramFileNative, fetchTelegramFile, deleteTelegramMessage, isNativeTelegramFileId, nativeTelegramMessageId'));
+  assert.ok(bg.includes('downloadTelegramFileNative, fetchTelegramFile, deleteTelegramMessage, isNativeTelegramFileId, isTelegramPostGoneNative, nativeTelegramMessageId'));
 });

@@ -1119,6 +1119,40 @@ export async function verifyTelegramFileNative({ messageId, channel, timeoutMs =
   }
 }
 
+/**
+ * Ask the native host (Telethon) whether a channel post is gone.
+ *
+ * The Bot API deleteMessage refuses posts older than 48h with "message
+ * can't be deleted" — and returns that SAME error even after the post was
+ * deleted manually, because the age check fires before the existence
+ * check (proven 2026-11-26, vault msg 650). So a delete retry can never
+ * tell "gone" from "still there" by the Bot API alone. This is the
+ * tiebreaker: Telethon reads the channel directly (the same verify the
+ * integrity checks already use).
+ *
+ * The not-found match is anchored to the verifier's exact message
+ * ("Message <id> not found in channel <channel>.") — a loose "not found"
+ * would also match "telegram_verify.py script not found" and release a
+ * row whose post still exists (an orphan). Same for "carries no
+ * document": the post exists, it just has no file attached.
+ *
+ * @returns {Promise<boolean>} true when the post is verifiably gone,
+ *   false when it still exists. Throws on host/session/connection
+ *   failures — never guesses, so a broken check keeps the row in trash
+ *   (loud) instead of releasing it on a guess.
+ */
+export async function isTelegramPostGoneNative({ messageId, channel, timeoutMs = 30000 } = {}) {
+  try {
+    await verifyTelegramFileNative({ messageId, channel, timeoutMs });
+    return false;
+  } catch (err) {
+    const message = String(err?.message || err);
+    if (/^Message \d+ not found in channel /i.test(message)) return true;
+    if (/^Message \d+ carries no document/i.test(message)) return false;
+    throw err;
+  }
+}
+
 const fromBase64 = (b64) => {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);

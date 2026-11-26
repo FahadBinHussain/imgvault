@@ -2838,6 +2838,20 @@ export class StorageManager {
     const params = [];
     let paramIndex = 1;
 
+    // Fail LOUDLY on unsupported fields: before this guard an update with
+    // only unsupported fields built zero SET clauses and returned success
+    // without changing anything (proven 2026-11-26 — encryptedBlobHosts /
+    // encryptedBlobMessageId were silently ignored while fixing vault msg
+    // 650, and the retry failed the same way). Those fields live inside
+    // extra_metadata (JSONB), not as columns, so add a JSONB merge here to
+    // support them — never silently drop an update again. The only live
+    // caller (TrashPage creation-date edit) passes creationDate only.
+    const supportedUpdateFields = ['creationDate'];
+    const unsupportedUpdateFields = Object.keys(updates || {}).filter((key) => !supportedUpdateFields.includes(key));
+    if (unsupportedUpdateFields.length > 0) {
+      throw new Error(`updateTrashedImage supports only ${supportedUpdateFields.join(', ')} — unsupported field(s): ${unsupportedUpdateFields.join(', ')}`);
+    }
+
     if (updates.creationDate !== undefined) {
       setClauses.push(`creation_date = $${paramIndex}`);
       params.push(new Date(updates.creationDate));

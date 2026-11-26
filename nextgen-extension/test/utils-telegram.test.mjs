@@ -18,6 +18,7 @@ import {
   getTelegramFileInfo,
   isNativeTelegramFileId,
   isNumericTelegramChannel,
+  isTelegramPostGoneNative,
   listTelegramPosts,
   nativeTelegramMessageId,
   probeNativeHost,
@@ -163,7 +164,7 @@ describe('telegramFileBytesUrl / telegramLocalMediaUrl / telegramPostPageUrl / t
 
 describe('telegramCallApi', () => {
   test('GETs when there is no body, POSTs with one, and returns result', async () => {
-    fetchHandler = (url, options) => {
+    fetchHandler = (url, _options) => {
       assert.match(url, new RegExp(`^https://api\\.telegram\\.org/bot${FAKE_TOKEN}/getMe$`));
       return jsonResponse({ ok: true, result: { id: 1, username: 'bot' } });
     };
@@ -1138,6 +1139,48 @@ describe('verifyTelegramFileNative', () => {
     await assert.rejects(
       () => verifyTelegramFileNative({ messageId: '589', channel: CHANNEL }),
       /needs the extension runtime/,
+    );
+  });
+});
+
+describe('isTelegramPostGoneNative (2.19.50, 2026-11-26: the 48h Bot API delete trap)', () => {
+  test('a post the verify reads is still there (false)', async () => {
+    installNativePort(() => ({
+      success: true,
+      stdout: JSON.stringify({ ok: true, messageId: 650, size: 129287500, name: 'abc.bin' }),
+    }));
+    assert.equal(await isTelegramPostGoneNative({ messageId: '650', channel: CHANNEL }), false);
+  });
+  test('a "Message <id> not found in channel" verify error means gone (true)', async () => {
+    installNativePort(() => ({ success: false, message: 'Message 650 not found in channel -1003959088547.' }));
+    assert.equal(await isTelegramPostGoneNative({ messageId: '650', channel: CHANNEL }), true);
+  });
+  test('a "carries no document" verify error means the post still exists (false)', async () => {
+    installNativePort(() => ({ success: false, message: 'Message 650 carries no document.' }));
+    assert.equal(await isTelegramPostGoneNative({ messageId: '650', channel: CHANNEL }), false);
+  });
+  test('a "script not found" host error is NOT treated as gone — it throws', async () => {
+    installNativePort(() => ({ success: false, message: 'telegram_verify.py script not found (looked beside the exe and in the dev clone)' }));
+    await assert.rejects(
+      () => isTelegramPostGoneNative({ messageId: '650', channel: CHANNEL }),
+      /script not found/,
+    );
+  });
+  test('any other host/session error throws instead of guessing', async () => {
+    installNativePort(() => ({ success: false, message: 'Telegram session is not authorized. Please log in using telegram-account.ps1 login first.' }));
+    await assert.rejects(
+      () => isTelegramPostGoneNative({ messageId: '650', channel: CHANNEL }),
+      /not authorized/,
+    );
+  });
+  test('a missing message id or channel throws before connecting', async () => {
+    await assert.rejects(
+      () => isTelegramPostGoneNative({ channel: CHANNEL }),
+      /requires a message id/,
+    );
+    await assert.rejects(
+      () => isTelegramPostGoneNative({ messageId: '650', channel: '' }),
+      /requires a valid channel/,
     );
   });
 });

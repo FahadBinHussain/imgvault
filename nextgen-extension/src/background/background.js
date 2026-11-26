@@ -7,7 +7,7 @@
 import { StorageManager } from '../utils/storage.js';
 import { DuplicateDetector } from '../utils/duplicate-detector.js';
 import { PixvidUploader, ImgbbUploader, FilemoonUploader, UDropUploader, TeraBoxUploader, TelegramUploader } from '../utils/uploaders.js';
-import { TELEGRAM_GETFILE_MAX_BYTES, downloadTelegramFileNative, fetchTelegramFile, deleteTelegramMessage, isNativeTelegramFileId, nativeTelegramMessageId, telegramPostPageUrl } from '../utils/telegramApi.js';
+import { TELEGRAM_GETFILE_MAX_BYTES, downloadTelegramFileNative, fetchTelegramFile, deleteTelegramMessage, isNativeTelegramFileId, isTelegramPostGoneNative, nativeTelegramMessageId, telegramPostPageUrl } from '../utils/telegramApi.js';
 import { sitesConfig, isWarningSite, isGoodQualitySite, getSiteDisplayName } from '../config/sitesConfig.js';
 import {
   IMAGE_UPLOAD_SERVICES,
@@ -2883,6 +2883,34 @@ class ImgVaultServiceWorker {
               console.warn(`[VAULT DELETE] telegram message ${messageId} already gone from the channel — releasing the row`);
               continue;
             }
+            if (/message can't be deleted/i.test(message)) {
+              // The Bot API refuses posts older than 48h — and returns this
+              // SAME error even after the post was deleted manually, because
+              // the age check fires before the existence check (proven
+              // 2026-11-26, vault msg 650). So a retry can never clear it
+              // by the Bot API alone. Ask the native host (Telethon)
+              // whether the post is actually gone: gone = release, still
+              // there = keep the row and say so. Never treat the age error
+              // itself as "gone" — that would orphan a still-live post.
+              let gone;
+              try {
+                gone = await isTelegramPostGoneNative({ messageId, channel });
+              } catch (nativeErr) {
+                throw new Error(
+                  `telegram post ${messageId} delete failed: ${message}. ` +
+                    `The native-host check also failed (${nativeErr?.message || nativeErr}), so the post's state is unknown. ` +
+                    'Item kept in trash — delete the post in the channel, then retry.'
+                );
+              }
+              if (gone) {
+                console.warn(`[VAULT DELETE] telegram message ${messageId} is gone from the channel (native-host verified) — releasing the row`);
+                continue;
+              }
+              throw new Error(
+                `telegram post ${messageId} delete failed: ${message}. ` +
+                  'The post is older than the bot\'s 48h delete window and still exists — delete it in the channel, then retry.'
+              );
+            }
             throw new Error(
               `telegram post ${messageId} delete failed: ${message}. ` +
                 'Item kept in trash — fix the issue and retry (if the post is older than the bot can delete, delete it in the channel manually, then retry).'
@@ -2937,6 +2965,29 @@ class ImgVaultServiceWorker {
         if (/message to delete not found/i.test(message)) {
           console.warn(`[TG DELETE] message ${messageId} already gone from the channel — releasing the row`);
           continue;
+        }
+        if (/message can't be deleted/i.test(message)) {
+          // Same 48h trap as the vault-blob delete (see deleteVaultBlobFiles):
+          // the Bot API returns this error even for a post that was already
+          // deleted manually, so ask the native host whether it is gone.
+          let gone;
+          try {
+            gone = await isTelegramPostGoneNative({ messageId, channel });
+          } catch (nativeErr) {
+            throw new Error(
+              `Telegram post delete failed for message ${messageId}: ${message}. ` +
+                `The native-host check also failed (${nativeErr?.message || nativeErr}), so the post's state is unknown. ` +
+                'Item kept in trash — delete the post in the channel, then retry.'
+            );
+          }
+          if (gone) {
+            console.warn(`[TG DELETE] message ${messageId} is gone from the channel (native-host verified) — releasing the row`);
+            continue;
+          }
+          throw new Error(
+            `Telegram post delete failed for message ${messageId}: ${message}. ` +
+              'The post is older than the bot\'s 48h delete window and still exists — delete it in the channel, then retry.'
+          );
         }
         throw new Error(
           `Telegram post delete failed for message ${messageId}: ${message}. ` +
