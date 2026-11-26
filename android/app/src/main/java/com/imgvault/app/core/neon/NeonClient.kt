@@ -198,8 +198,9 @@ fun JsonElement?.asJsonListOrEmpty(): List<String> {
     }
     val raw = (this as? JsonPrimitive)?.content?.trim().orEmpty()
     if (raw.isEmpty()) return emptyList()
-    // a broken JSON array has no safe reading — do not turn it into garbage
-    if (raw.startsWith("[")) return emptyList()
+    // a cell that looks like JSON but does not parse has no safe reading —
+    // do not turn it into garbage
+    if (raw.startsWith("[") || raw.startsWith("{")) return emptyList()
     return raw.split(',')
         .map { it.trim().trim('"', '\'') }
         .filter { it.isNotEmpty() }
