@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- the app draws itself with Compose + Material 3 dynamic colour; this
+         theme only has to be a no-action-bar shell -->
+    <style name="Theme.ImgVault" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>
