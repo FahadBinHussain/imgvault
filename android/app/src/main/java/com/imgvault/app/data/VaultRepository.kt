@@ -59,15 +59,41 @@ class VaultRepository(
     }
 
     /** unlock the vault: the passcode unwraps the master key */
-    fun unlock(passcode: String): SecretKey {
-        val configJson = settings.vaultConfigJson
-            ?: throw ImgVaultException(
-                "This account has no vault configuration yet. Create the vault from the extension, then unlock it here.",
-            )
-        val config = parseConfig(configJson)
+    suspend fun unlock(passcode: String): SecretKey {
+        val config = settings.vaultConfigJson
+            ?.let { parseConfig(it) }
+            ?: fetchVaultConfig()
         val key = VaultCrypto.unwrapMasterKey(config, passcode)
         settings.vaultMasterKeyB64 = Base64.getEncoder().encodeToString(key.encoded)
         return key
+    }
+
+    /**
+     * The vault configuration, straight from the database.
+     *
+     * The extension stores it in the `__imgvault_vault_config__` row
+     * (`extra_metadata->'secretVaultConfig'`) — the same place the web vault
+     * reads it from, so the phone does not need the config pasted in by hand.
+     */
+    private suspend fun fetchVaultConfig(): VaultConfig = withContext(Dispatchers.IO) {
+        val row = client().query(VAULT_CONFIG_SQL).firstOrNull()
+            ?: throw ImgVaultException(
+                "This account has no vault configuration yet. Create the vault from the extension, then unlock it here.",
+            )
+        val config = row["extra_metadata"].asJsonObjectOrEmpty()["secretVaultConfig"].asJsonObjectOrEmpty()
+        if (config.isEmpty()) {
+            throw ImgVaultException("The stored vault configuration is empty - save the passcode in the extension once.")
+        }
+        VaultConfig(
+            salt = config["salt"].asTextOrEmpty(),
+            passHash = config["passHash"].asTextOrEmpty(),
+            kdfSalt = config["kdfSalt"].asTextOrEmpty(),
+            kdfIterations = config["kdfIterations"].asTextOrEmpty().toIntOrNull()
+                ?: VaultCrypto.KDF_ITERATIONS,
+            wrappedMasterKey = config["wrappedMasterKey"].asTextOrEmpty(),
+            vaultVersion = config["vaultVersion"].asTextOrEmpty().toIntOrNull()
+                ?: VaultCrypto.VAULT_VERSION,
+        )
     }
 
     fun lock() {
@@ -205,6 +231,7 @@ class VaultRepository(
         /**
          * The vault rows: an item is vaulted when it carries the vault flag or
          * any encrypted metadata (a vault MOVE blanks the plaintext columns).
+         * The system rows are not vault items.
          */
         val VAULT_SQL = """
             select
@@ -219,6 +246,8 @@ class VaultRepository(
               deleted_at, created_at, updated_at, extra_metadata
             from public.media_items
             where deleted_at is null
+              and left(id, 9) <> '__imgvault_'
+              and coalesce(extra_metadata->>'systemType', '') <> 'secretVaultConfig'
               and (
                 extra_metadata->>'isVaulted' = 'true'
                 or extra_metadata->>'encryptedMetadata' is not null
@@ -226,6 +255,14 @@ class VaultRepository(
                 or extra_metadata->>'vaultHosts' is not null
               )
             order by internal_added_timestamp desc, created_at desc
+        """.trimIndent()
+
+        /** the vault configuration the extension writes into its own row */
+        val VAULT_CONFIG_SQL = """
+            select extra_metadata
+            from public.media_items
+            where id = '__imgvault_vault_config__'
+            limit 1
         """.trimIndent()
     }
 }

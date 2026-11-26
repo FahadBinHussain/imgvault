@@ -45,6 +45,10 @@ class GalleryRepository(
         /**
          * The gallery query — the same columns and the same order as the
          * extension's `getImagesNeon`.
+         *
+         * The filters are the ones the web gallery runs: a vaulted item lives
+         * in the Secret Vault, not in the gallery, and the system rows (the
+         * vault config item) are not media at all.
          */
         val GALLERY_SQL = """
             select
@@ -59,6 +63,9 @@ class GalleryRepository(
               deleted_at, created_at, updated_at, extra_metadata
             from public.media_items
             where deleted_at is null
+              and left(id, 9) <> '__imgvault_'
+              and coalesce(extra_metadata->>'systemType', '') <> 'secretVaultConfig'
+              and coalesce(lower(extra_metadata->>'isVaulted'), 'false') not in ('true', '1', 'yes')
             order by internal_added_timestamp desc, created_at desc
         """.trimIndent()
 
@@ -75,6 +82,9 @@ class GalleryRepository(
               deleted_at, created_at, updated_at, extra_metadata
             from public.media_items
             where id = ${'$'}1 and deleted_at is null
+              and left(id, 9) <> '__imgvault_'
+              and coalesce(extra_metadata->>'systemType', '') <> 'secretVaultConfig'
+              and coalesce(lower(extra_metadata->>'isVaulted'), 'false') not in ('true', '1', 'yes')
             limit 1
         """.trimIndent()
     }
