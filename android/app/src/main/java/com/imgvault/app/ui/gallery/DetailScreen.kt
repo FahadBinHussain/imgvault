@@ -2,6 +2,8 @@
 
 package com.imgvault.app.ui.gallery
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -250,40 +252,74 @@ private fun VideoPane(
     provider: String,
     modifier: Modifier = Modifier,
 ) {
-    val url = item.displayVideo(provider)?.url.orEmpty()
-    if (url.isEmpty()) {
-        DetailMessage(
+    val link = item.displayVideo(provider)
+    val url = link?.url.orEmpty()
+    val context = LocalContext.current
+    when {
+        url.isEmpty() -> DetailMessage(
             title = "This video has no video host link",
             body = "No video host link exists for this item — Filemoon, UDrop and Telegram all " +
                 "have nothing for it. Open it from the extension.",
             modifier = modifier,
         )
-    } else {
-        val context = LocalContext.current
-        val exoPlayer = remember(item.id) { ExoPlayer.Builder(context).build() }
 
-        DisposableEffect(exoPlayer) {
-            onDispose { exoPlayer.release() }
+        // a host that serves the FILE can be played right here
+        isDirectMediaUrl(url) -> {
+            val exoPlayer = remember(item.id) { ExoPlayer.Builder(context).build() }
+
+            DisposableEffect(exoPlayer) {
+                onDispose { exoPlayer.release() }
+            }
+
+            LaunchedEffect(url) {
+                exoPlayer.setMediaItem(Media3Item.fromUri(url))
+                exoPlayer.prepare()
+                exoPlayer.playWhenReady = true
+            }
+
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        useController = true
+                        this.player = exoPlayer
+                    }
+                },
+                update = { view -> view.player = exoPlayer },
+                modifier = modifier.fillMaxSize(),
+            )
         }
 
-        LaunchedEffect(url) {
-            exoPlayer.setMediaItem(Media3Item.fromUri(url))
-            exoPlayer.prepare()
-            exoPlayer.playWhenReady = true
-        }
-
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    useController = true
-                    this.player = exoPlayer
-                }
+        // a host that serves a PAGE cannot be played by the player - the
+        // browser can, because the page is the player
+        else -> DetailMessage(
+            title = "This host serves a page, not the file",
+            body = "${link?.sourceKey ?: "The host"} plays this video on a web page, so the phone " +
+                "cannot stream it directly. Open the page and the video plays there.",
+            actionLabel = "Open in browser",
+            onAction = {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                runCatching { context.startActivity(intent) }
             },
-            update = { view -> view.player = exoPlayer },
-            modifier = modifier.fillMaxSize(),
+            modifier = modifier,
         )
     }
 }
+
+/**
+ * Does this URL hand over the file itself?
+ *
+ * Filemoon and UDrop answer with a web page that plays the video, so the
+ * player would only get HTML. A link that ends in a media file name is the
+ * real thing.
+ */
+private fun isDirectMediaUrl(url: String): Boolean {
+    val path = url.substringBefore('?').substringBefore('#').lowercase()
+    return MEDIA_FILE_ENDINGS.any { path.endsWith(it) }
+}
+
+private val MEDIA_FILE_ENDINGS = listOf(
+    ".mp4", ".webm", ".m3u8", ".mov", ".m4v", ".mkv", ".mp3", ".m4a", ".ogv",
+)
 
 @Composable
 private fun ItemInfo(

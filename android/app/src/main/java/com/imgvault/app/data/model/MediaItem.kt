@@ -139,7 +139,10 @@ data class MediaItem(
         return null
     }
 
-    /** the video to PLAY — a watch page serves HTML, so the direct link wins */
+    /**
+     * The video to PLAY — a direct file link wins, because a watch page is an
+     * html page and the player cannot read it.
+     */
     fun displayVideo(preferredProvider: String): HostLink? {
         val links = videoHosts
         if (links.isEmpty()) return null
@@ -147,7 +150,12 @@ data class MediaItem(
         val order = listOf(preferred) + links.keys.filter { it != preferred }
         for (key in order) {
             val link = links[key] ?: continue
-            val url = link.directUrl.ifEmpty { link.url }.ifEmpty { link.displayUrl }
+            val direct = link.directUrl
+            if (direct.isNotEmpty()) return link.copy(url = direct, sourceKey = key)
+        }
+        for (key in order) {
+            val link = links[key] ?: continue
+            val url = link.url.ifEmpty { link.displayUrl }
             if (url.isNotEmpty()) return link.copy(url = url, sourceKey = key)
         }
         return null
@@ -226,6 +234,16 @@ data class MediaItem(
             val rest = seconds % 60
             return if (minutes > 0) "${minutes}:${rest.toString().padStart(2, '0')}" else "${rest}s"
         }
+
+    /**
+     * The poster frame of a video.
+     *
+     * A video has no image host, but the host that holds it may keep a frame
+     * of its own (TeraBox does). The grid shows that frame when it has one.
+     */
+    val videoThumbnailUrl: String
+        get() = videoHosts.values
+            .firstNotNullOfOrNull { it.thumbnailUrl.takeIf { url -> url.isNotEmpty() } }
 
     companion object {
         const val DEFAULT_ASPECT_RATIO = 1f

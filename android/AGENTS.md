@@ -79,6 +79,14 @@ That is the crash the phone showed on 1.0.0. Read those cells with
 (`core/neon/NeonClient.kt`) — they parse the text and never throw; a cell that
 is not JSON reads as empty. `NeonTextTest.kt` pins the behaviour.
 
+### Postgres writes a boolean as t/f
+
+`is_video` and `is_link` come over as the letter `t` or `f`, not `true` or
+`false`. A boolean cell that only knows `true` reads every video as an
+image: the tile shows a broken picture icon and tapping it opens the image
+viewer instead of the player. `asBooleanOrFalse()` reads `t`, `true`, `1` and
+`yes` — keep it that way.
+
 ### The gallery and the vault split the rows
 
 The gallery shows only the rows a normal user would see:
