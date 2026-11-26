@@ -126,6 +126,44 @@ The endpoint rule was measured against the user's own database on
 the bare host; the api-prefixed form is what the JS client uses, so it is
 what the Kotlin client uses too.
 
+## ONE grid for every feed
+
+`ui/grid/` holds the Google Photos grid, and it is the only place that knows
+how a feed is drawn:
+
+- `JustifiedLayout.kt` — the geometry (rows of tiles that share one height).
+  It works on ANY item: the caller says how wide an item is (`ratioOf`) and
+  which day it belongs to (`dayKeyOf`).
+- `JustifiedGrid.kt` — the drawing: the date headers that stick to the top,
+  the rows, the pinch that changes the density.
+- `GridChrome.kt` — what a tile looks like without a picture, the video badge
+  and the video placeholder.
+
+The gallery (`ui/gallery`) and the vault (`ui/vault`) both draw THAT grid, so
+they look and behave the same and one set of unit tests pins both
+(`ui/grid/JustifiedLayoutTest.kt`). Do not copy the grid into a screen — a
+second copy is a second thing to keep right.
+
+Where the picture comes from is the caller's business: the gallery loads it
+from a host url, the vault DECRYPTS it. The grid does not care.
+
+### The vault's pictures are encrypted previews
+
+The extension encrypts a small JPEG of every vaulted item and stores it in
+`public.media_item_previews` (`item_id`, `preview_encrypted`). It is the same
+single-shot AES-GCM container as the metadata — `iv || ciphertext || tag`,
+base64 — but the plaintext is PICTURE BYTES, so it must not go through
+`decryptMetadata` (that one decodes to text). `VaultCrypto.decryptPreviewBytes`
+is the byte-level twin.
+
+The grid asks for the tiles it draws, so the asks are collected into ONE query
+per batch (`where item_id = any($1)`) — a scroll reads a page of pictures
+instead of one request per tile.
+
+A vaulted row keeps its plaintext columns blank, so the shape of the tile and
+the day it belongs under come from the DECRYPTED metadata (width, height,
+creationDate), with the day it was vaulted as the fallback.
+
 ## The vault crypto is a PORT, and it is pinned
 
 `core/crypto/VaultCrypto.kt` is a Kotlin port of
