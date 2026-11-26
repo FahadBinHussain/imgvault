@@ -47,6 +47,24 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Decide whether this run publishes
+        id: gate
+        run: |
+          set -euo pipefail
+          VERSION_CODE=$(grep -oE 'versionCode\s*=\s*[0-9]+' android/app/build.gradle.kts | head -n 1 | grep -oE '[0-9]+')
+          PUBLISHED=$(python3 -c "import json;print(int(json.load(open('web/src/data/android-release.json')).get('versionCode') or 0))")
+          if [ "$VERSION_CODE" -gt "$PUBLISHED" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "versionCode $VERSION_CODE is newer than the published $PUBLISHED - building and publishing."
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::versionCode $VERSION_CODE is NOT newer than the published $PUBLISHED." \
+              "The unit tests still run, but no APK is built, the release asset is left alone and" \
+              "the manifest keeps pointing at the published build. Bump versionCode in" \
+              "android/app/build.gradle.kts to publish again - a rebuild of the same versionCode" \
+              "would replace the asset with different bytes and leave the manifest hash stale."
+          fi
+
       - name: Restore the release keystore
         env:
           KEYSTORE_B64: ${{ secrets.IMGVAULT_KEYSTORE_BASE64 }}
@@ -72,6 +90,7 @@ jobs:
           ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest
 
       - name: Build the signed release APK
+        if: steps.gate.outputs.publish == 'true'
         working-directory: android
         env:
           IMGVAULT_KEYSTORE_PATH: ${{ github.workspace }}/android/.keystore/upload.p12
@@ -92,6 +111,7 @@ jobs:
           echo "signed apk: app/build/outputs/apk/release/app-release.apk"
 
       - name: Read the APK facts
+        if: steps.gate.outputs.publish == 'true'
         id: apk
         run: |
           set -euo pipefail
@@ -109,6 +129,7 @@ jobs:
           echo "apk: $APK  version $VERSION_NAME ($VERSION_CODE)  $SIZE bytes  sha256 $SHA"
 
       - name: Publish the APK
+        if: steps.gate.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-v${{ steps.apk.outputs.version_code }}
@@ -126,6 +147,7 @@ jobs:
           fail_on_unmatched_files: true
 
       - name: Update the update manifest
+        if: steps.gate.outputs.publish == 'true'
         env:
           SHA256: ${{ steps.apk.outputs.sha256 }}
           SIZE: ${{ steps.apk.outputs.size }}
@@ -178,6 +200,7 @@ jobs:
           PY
 
       - name: Commit the updated manifest
+        if: steps.gate.outputs.publish == 'true'
         run: |
           set -euo pipefail
           if git diff --quiet -- web/src/data/android-release.json; then
@@ -189,3 +212,4 @@ jobs:
           git add web/src/data/android-release.json
           git commit -m "android: publish v${{ steps.apk.outputs.version_name }} to the update manifest"
           git push origin HEAD:main
+
