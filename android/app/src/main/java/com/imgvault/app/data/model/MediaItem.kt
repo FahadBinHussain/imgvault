@@ -244,6 +244,7 @@ data class MediaItem(
     val videoThumbnailUrl: String
         get() = videoHosts.values
             .firstNotNullOfOrNull { it.thumbnailUrl.takeIf { url -> url.isNotEmpty() } }
+            .orEmpty()
 
     companion object {
         const val DEFAULT_ASPECT_RATIO = 1f

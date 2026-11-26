@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -185,6 +186,9 @@ private fun PhotoFeed(
     onOpenItem: (MediaItem) -> Unit,
 ) {
     var density by remember { mutableFloatStateOf(1f) }
+    val transformableState = rememberTransformableState { zoomChange, _, _ ->
+        density = (density * zoomChange).coerceIn(0.45f, 2.4f)
+    }
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val widthDp = maxWidth.value
         val targetRatio = (GRID_TARGET_RATIO / density).coerceIn(1.1f, 7f)
@@ -192,18 +196,18 @@ private fun PhotoFeed(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .transformable { zoomChange, _, _ ->
-                    density = (density * zoomChange).coerceIn(0.45f, 2.4f)
-                },
+                .transformable(state = transformableState),
         ) {
-            items(entries) { entry ->
+            entries.forEach { entry ->
                 when (entry) {
                     is GridEntry.Header -> stickyHeader { DateHeader(entry.label) }
-                    is GridEntry.Photos -> PhotoRow(
-                        row = entry.row,
-                        provider = provider,
-                        onOpenItem = onOpenItem,
-                    )
+                    is GridEntry.Photos -> item {
+                        PhotoRow(
+                            row = entry.row,
+                            provider = provider,
+                            onOpenItem = onOpenItem,
+                        )
+                    }
                 }
             }
         }
