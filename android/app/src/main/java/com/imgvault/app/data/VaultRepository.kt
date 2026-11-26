@@ -329,6 +329,11 @@ class VaultRepository(
      * file is written to a `.tmp` sibling and renamed only when the whole
      * blob decrypted — a file with the final name is always complete, so a
      * second open reuses it instead of downloading again.
+     *
+     * The blob lives on every host the item lists. Telegram is tried first
+     * when its bot token is configured; without the token the TeraBox copy
+     * is the one that can play. A host that fails does not hide the others
+     * — when every host fails, the error names them all.
      */
     suspend fun loadVaultVideoFile(item: VaultItem, cacheDir: File): File =
         withContext(Dispatchers.IO) {
@@ -337,41 +342,72 @@ class VaultRepository(
             val target = File(cacheDir, "vault-video-${item.id}.${videoFileExtension(item)}")
             if (target.exists() && target.length() > 0L) return@withContext target
 
-            val url = when {
-                item.raw.encryptedBlobFileId.isNotEmpty() -> telegramFileUrl(item.raw.encryptedBlobFileId)
-                item.raw.encryptedBlobUrl.startsWith("http") -> item.raw.encryptedBlobUrl
-                else -> throw ImgVaultException(
-                    "This vault blob has no readable host link (file id and url are both empty). " +
-                        "Open it from the extension.",
+            val failures = mutableListOf<String>()
+            if (item.raw.encryptedBlobFileId.isNotEmpty() && settings.telegramBotToken == null) {
+                failures += "telegram: no bot token is configured (add it in Settings)"
+            }
+            val candidates = mutableListOf<Pair<String, String>>()
+            for (host in vaultVideoHosts(item, settings.telegramBotToken != null)) {
+                when (host) {
+                    "telegram" -> runCatching { telegramFileUrl(item.raw.encryptedBlobFileId) }
+                        .onSuccess { candidates += "telegram" to it }
+                        .onFailure { failures += "telegram: ${it.message}" }
+                    "terabox" -> candidates += "terabox" to item.raw.encryptedBlobUrl
+                }
+            }
+            if (candidates.isEmpty()) {
+                if (failures.isEmpty()) {
+                    throw ImgVaultException(
+                        "This vault blob has no readable host link (file id and url are both empty). " +
+                            "Open it from the extension.",
+                    )
+                }
+                throw ImgVaultException(
+                    "The vault video could not be read — " + failures.joinToString("; "),
                 )
             }
-            val tmp = File(cacheDir, "${target.name}.tmp")
-            val request = Request.Builder().url(url).get().build()
-            http.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw ImgVaultException("GET $url failed (HTTP ${response.code})")
+
+            for ((host, url) in candidates) {
+                try {
+                    downloadAndDecryptVideo(key, url, target)
+                    return@withContext target
+                } catch (error: Exception) {
+                    failures += "$host: ${error.message ?: error::class.java.simpleName}"
                 }
-                val body = response.body ?: throw ImgVaultException("GET $url returned no body")
-                body.byteStream().use { stream ->
-                    FileOutputStream(tmp).use { out ->
-                        val written = decryptVaultStreamToFile(key, stream, out)
-                        out.flush()
-                        if (written != tmp.length()) {
-                            throw ImgVaultException(
-                                "The vault video decrypted to ${tmp.length()} bytes, but the blob " +
-                                    "says $written — the download is incomplete.",
-                            )
-                        }
+            }
+            throw ImgVaultException(
+                "The vault video could not be read from any host — " + failures.joinToString("; "),
+            )
+        }
+
+    /** stream one host's encrypted blob through the IVG1 decrypt into the file */
+    private fun downloadAndDecryptVideo(key: SecretKey, url: String, target: File) {
+        val tmp = File(target.parentFile, "${target.name}.tmp")
+        val request = Request.Builder().url(url).get().build()
+        http.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw ImgVaultException("GET $url failed (HTTP ${response.code})")
+            }
+            val body = response.body ?: throw ImgVaultException("GET $url returned no body")
+            body.byteStream().use { stream ->
+                FileOutputStream(tmp).use { out ->
+                    val written = decryptVaultStreamToFile(key, stream, out)
+                    out.flush()
+                    if (written != tmp.length()) {
+                        throw ImgVaultException(
+                            "The vault video decrypted to ${tmp.length()} bytes, but the blob " +
+                                "says $written — the download is incomplete.",
+                        )
                     }
                 }
             }
-            if (!tmp.renameTo(target)) {
-                // a rename across volumes can fail; fall back to a copy
-                tmp.copyTo(target, overwrite = true)
-                tmp.delete()
-            }
-            target
         }
+        if (!tmp.renameTo(target)) {
+            // a rename across volumes can fail; fall back to a copy
+            tmp.copyTo(target, overwrite = true)
+            tmp.delete()
+        }
+    }
 
     private fun downloadFromTelegram(fileId: String): ByteArray = getBytes(telegramFileUrl(fileId))
 
@@ -561,6 +597,20 @@ internal fun readExactly(input: InputStream, buffer: ByteArray, offset: Int, len
         }
         read += n
     }
+}
+
+/**
+ * Which hosts can serve this vault blob, in the order to try them.
+ *
+ * Telegram is first when its bot token is configured; without the token it
+ * is not a candidate at all, so the TeraBox copy is the one that plays.
+ * A blob with no host link at all has no candidates.
+ */
+internal fun vaultVideoHosts(item: VaultItem, telegramTokenConfigured: Boolean): List<String> {
+    val hosts = mutableListOf<String>()
+    if (item.raw.encryptedBlobFileId.isNotEmpty() && telegramTokenConfigured) hosts += "telegram"
+    if (item.raw.encryptedBlobUrl.startsWith("http")) hosts += "terabox"
+    return hosts
 }
 
 /**

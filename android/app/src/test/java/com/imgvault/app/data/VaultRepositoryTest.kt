@@ -5,6 +5,8 @@ import com.imgvault.app.data.model.MediaItem
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import javax.crypto.spec.SecretKeySpec
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -85,6 +87,44 @@ class VaultRepositoryTest {
                 ByteArrayOutputStream(),
             )
         }
+    }
+
+    @Test
+    fun `without a telegram token the terabox copy is the one that plays`() {
+        val bothHosts = VaultItem(
+            id = "x",
+            fileName = "clip.mp4",
+            mimeType = "video/mp4",
+            sizeBytes = 0L,
+            hosts = listOf("terabox", "telegram"),
+            raw = MediaItem(
+                extra = JsonObject(
+                    mapOf(
+                        "encryptedBlobFileId" to JsonPrimitive("123"),
+                        "encryptedBlobUrl" to JsonPrimitive("https://example.com/blob.bin"),
+                    ),
+                ),
+            ),
+        )
+        assertEquals(listOf("terabox"), vaultVideoHosts(bothHosts, telegramTokenConfigured = false))
+        assertEquals(
+            listOf("telegram", "terabox"),
+            vaultVideoHosts(bothHosts, telegramTokenConfigured = true),
+        )
+    }
+
+    @Test
+    fun `a blob with no host link has no video host`() {
+        val noHost = VaultItem(
+            id = "x",
+            fileName = "clip.mp4",
+            mimeType = "video/mp4",
+            sizeBytes = 0L,
+            hosts = emptyList(),
+            raw = MediaItem(),
+        )
+        assertEquals(emptyList<String>(), vaultVideoHosts(noHost, telegramTokenConfigured = true))
+        assertEquals(emptyList<String>(), vaultVideoHosts(noHost, telegramTokenConfigured = false))
     }
 
     @Test

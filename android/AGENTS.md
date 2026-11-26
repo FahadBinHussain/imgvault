@@ -236,6 +236,16 @@ decrypt reuses its chunk primitives (`parseVaultBlobHeader`,
 `VaultRepositoryTest.kt` (single chunk, multi-chunk, legacy single-shot,
 truncated blob fails loudly).
 
+**1.0.9 follow-up (same day, found by testing on the phone):** the 19s
+vault video still did not play — it failed loudly with "no bot token is
+configured". The app ships with zero secrets, so the Telegram token is
+empty until the user adds it in Settings, but the item ALSO has a TeraBox
+copy and the code never tried it: Telegram was chosen first and its missing
+token threw before TeraBox was reached. Now the video tries every host the
+item lists — Telegram first when its token is configured, otherwise the
+TeraBox copy — and when every host fails the error names them all
+(`vaultVideoHosts`, pinned by `VaultRepositoryTest.kt`).
+
 ## No secrets in this repo
 
 Not in the code, not in the resources, not in the CI logs. The app asks the
