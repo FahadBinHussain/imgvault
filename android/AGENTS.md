@@ -126,6 +126,34 @@ JS side wins and the test fails.
 Never "improve" the crypto in the Kotlin file: the format is shared with the
 extension and the web app.
 
+## The vault key belongs to a vault configuration
+
+The master key on the phone is stored in `SecureStore` together with its
+BINDING — the `passHash` of the configuration it was unwrapped from
+(`core/crypto/VaultKeyBinding.kt`). Without that binding a key from another
+database, another account or an older passcode is indistinguishable from a
+right key with dead data: every item fails with `BAD_DECRYPT`
+(`error:1e000065`), which names the symptom and not the cause.
+
+The check runs on every load: a binding that does not match the account's
+current configuration drops the key, locks the vault and asks for the
+passcode again. A key stored by an app that predates the binding counts as
+stale on purpose — the safe move is to ask, not to guess.
+
+The wrapped key is a CIPHERTEXT: compare its DECODED bytes (SHA-256 over the
+decoded blob), never the base64 text. Re-wrapping the same master key with a
+fresh IV gives different base64 and the same key.
+
+### One unreadable item does not take the vault down
+
+`loadVaultItems()` returns `VaultLoadResult(items, failed, total)`: an item
+whose metadata cannot be decrypted keeps its place in the list and says what
+is wrong with it, and the header counts them ("12 of 192 vault items could
+not be decrypted with this vault key"). Throwing on the first bad row hid
+the other 191 and turned a data problem into a broken screen — and the count
+is the measurement that tells the two apart (0 failures = the key is wrong,
+all of them = the data was written under another key).
+
 ## The Morph progress ring is a PORT too
 
 `ui/update/BoloWavyProgress.kt` + `ui/update/BoloWavyRingMath.kt` come from
