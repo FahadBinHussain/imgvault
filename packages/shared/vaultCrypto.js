@@ -267,7 +267,6 @@ export async function decryptBlob(masterKey, blob, mimeType = 'application/octet
   let done = 0;
 
   while (offset < blob.size) {
-    const remaining = blob.size - offset;
     // each chunk = 12 (iv) + (chunkSize | remainder) + 16 (tag)
     const thisChunk = Math.min(CHUNK, total - done);
     const chunkLen = 12 + thisChunk + 16;

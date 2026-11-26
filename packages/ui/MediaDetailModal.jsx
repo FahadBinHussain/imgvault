@@ -23,8 +23,6 @@ const formatDetailValue = (value) => {
   return String(value);
 };
 
-const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim());
-
 export const defaultOverviewFieldRenderer = (entry, index) => {
   const rawValue = entry.value;
   const value = formatDetailValue(rawValue);

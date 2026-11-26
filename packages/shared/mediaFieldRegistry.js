@@ -196,15 +196,6 @@ const isPlainObject = (value) => (
   !Array.isArray(value)
 );
 
-const EXPLICIT_MEDIA_KINDS = new Set([
-  MEDIA_KIND_IMAGE,
-  MEDIA_KIND_VIDEO,
-  MEDIA_KIND_AUDIO,
-  MEDIA_KIND_LINK,
-  MEDIA_KIND_SCENE,
-  MEDIA_KIND_SYSTEM,
-]);
-
 export function getExtraMetadata(item = {}) {
   return isPlainObject(item?.extraMetadata) ? item.extraMetadata : {};
 }
@@ -366,7 +357,7 @@ export function getTechnicalMetadataEntries(item = {}, options = {}) {
   ]);
 
   return Object.entries(item || {})
-    .filter(([key, value]) => key !== 'id')
+    .filter(([key]) => key !== 'id')
     .filter(([key]) => !excluded.has(key))
     // Internal display-only markers (_decryptedMeta attached by the vault
     // page, _isTrash from the trash list) are page state, not document

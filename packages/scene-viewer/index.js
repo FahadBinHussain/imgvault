@@ -134,7 +134,7 @@ export async function startSceneViewer({ spzUrl, sceneId, title = '3D Scene', fe
     const keyOffset = new THREE.Vector3();
     const keySpherical = new THREE.Spherical();
 
-    function applyKeyboardControls() {
+    const applyKeyboardControls = () => {
       if (pressedKeys.size === 0) return;
 
       keyOffset.copy(camera.position).sub(controls.target);
@@ -152,7 +152,7 @@ export async function startSceneViewer({ spzUrl, sceneId, title = '3D Scene', fe
 
       camera.position.copy(controls.target).add(keyOffset.setFromSpherical(keySpherical));
       camera.lookAt(controls.target);
-    }
+    };
 
     window.addEventListener('keydown', (event) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
