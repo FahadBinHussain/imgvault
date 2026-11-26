@@ -47,6 +47,19 @@ password in `imgvault-android-password.txt` next to it.
   live in an EncryptedSharedPreferences file whose key is held by the Android
   Keystore.
 
+### A publish needs a NEW versionCode
+
+An APK is not byte reproducible, so rebuilding the same version and
+re-uploading it replaces the published bytes under the same tag with a
+different SHA-256 — and the manifest has to follow, which churns the branch
+and leaves a phone that installed the first build with a hash the publisher
+no longer serves.
+
+The workflow therefore compares the `versionCode` with the published one
+before it does anything: the unit tests always run, but the build, the
+release and the manifest only happen when the `versionCode` is really newer.
+**To publish a change, bump `versionCode` in `android/app/build.gradle.kts`.**
+
 ## The Neon wire shape
 
 The gallery does NOT talk to the web app — it talks to Neon directly over
