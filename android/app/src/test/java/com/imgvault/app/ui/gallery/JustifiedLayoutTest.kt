@@ -17,7 +17,7 @@ class JustifiedLayoutTest {
         id: String,
         width: Int = 100,
         height: Int = 100,
-        day: String = "2026-11-26",
+        day: String = "2020-11-26",
     ) = MediaItem(
         id = id,
         width = width,
@@ -36,7 +36,11 @@ class JustifiedLayoutTest {
     @Test
     fun `every photo in a row gets the same height`() {
         val row = layoutRow(
-            listOf(item("wide", width = 200, height = 100), item("square"), item("tall", width = 50, height = 100)),
+            listOf(
+                item("wide", width = 200, height = 100),
+                item("square"),
+                item("tall", width = 50, height = 100),
+            ),
             100f,
             gapDp = 2f,
         )
@@ -59,36 +63,50 @@ class JustifiedLayoutTest {
     }
 
     @Test
-    fun `a single photo does not fill the whole screen`() {
-        val row = layoutRow(listOf(item("tall", width = 50, height = 200)), 100f)
-        assertTrue("the row is capped: ${row.heightDp}", row.heightDp <= 100f / 1.3f)
+    fun `the last row of a day is not stretched across the screen`() {
+        val row = layoutRow(listOf(item("tall", width = 50, height = 200)), 100f, stretch = false)
+        val target = 100f / 2.9f
+        assertEquals("the row keeps the target height", target, row.heightDp, 0.01f)
+        assertTrue("the photo does not fill the screen: ${row.tiles[0].widthDp}", row.tiles[0].widthDp < 100f)
     }
 
     @Test
     fun `the feed is grouped under a date header`() {
         val entries = buildGrid(
             listOf(
-                item("a", day = "2026-11-26"),
-                item("b", day = "2026-11-25"),
-                item("c", day = "2026-10-02"),
+                item("a", day = "2020-11-26"),
+                item("b", day = "2020-11-25"),
+                item("c", day = "2020-10-02"),
             ),
             containerWidthDp = 100f,
         )
         val headers = entries.filterIsInstance<GridEntry.Header>().map { it.label }
         assertEquals(3, headers.size)
         // the month NAME follows the phone's language, the day never does
-        assertTrue("the day is in the header: ${headers[0]}", headers[0].endsWith("26"))
-        assertTrue("the day is in the header: ${headers[1]}", headers[1].endsWith("25"))
-        assertTrue("the day is in the header: ${headers[2]}", headers[2].endsWith("2"))
+        assertTrue("the day is in the header: ${headers[0]}", headers[0].contains("26"))
+        assertTrue("the day is in the header: ${headers[1]}", headers[1].contains("25"))
+        assertTrue("the day is in the header: ${headers[2]}", headers[2].contains("2"))
+        assertTrue("the year is in the header: ${headers[0]}", headers[0].endsWith("2020"))
     }
 
     @Test
     fun `two photos of the same day share one header`() {
         val entries = buildGrid(
-            listOf(item("a", day = "2026-11-26"), item("b", day = "2026-11-26")),
+            listOf(item("a", day = "2020-11-26"), item("b", day = "2020-11-26")),
             containerWidthDp = 100f,
         )
         assertEquals(1, entries.filterIsInstance<GridEntry.Header>().size)
+    }
+
+    @Test
+    fun `a day never shares a row with another day`() {
+        val entries = buildGrid(
+            (1..10).map { item("i$it", day = if (it <= 5) "2020-11-26" else "2020-11-25") },
+            containerWidthDp = 100f,
+        )
+        val rows = entries.filterIsInstance<GridEntry.Photos>()
+        // the first day has five square photos -> two rows, the second day one
+        assertTrue("the days are packed apart", rows.size >= 3)
     }
 
     @Test

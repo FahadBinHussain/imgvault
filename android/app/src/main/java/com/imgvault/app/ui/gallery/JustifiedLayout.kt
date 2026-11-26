@@ -40,7 +40,7 @@ sealed interface GridEntry {
 /** the gaps Google Photos leaves between photos */
 const val GRID_GAP_DP = 3f
 
-/** how wide a full row of photos gets, in screen widths */
+/** how many screen widths of photos a full row holds */
 const val GRID_TARGET_RATIO = 2.9f
 
 /**
@@ -49,7 +49,10 @@ const val GRID_TARGET_RATIO = 2.9f
  * A row keeps filling until its photos add up to [targetRatio] screen widths,
  * then the row is closed. Every photo in a row ends up with the same height;
  * the widths follow from the photos' own aspect ratio, so a panorama gets a
- * wide tile and a portrait gets a narrow one.
+ * wide tile and a portrait a narrow one.
+ *
+ * A day never shares a row with another day — the date header sits between
+ * them, the way Google Photos groups a feed by day.
  */
 fun buildGrid(
     items: List<MediaItem>,
@@ -68,15 +71,21 @@ fun buildGrid(
         }
         val rowItems = mutableListOf<MediaItem>()
         var sum = 0f
+        var closedByTarget = false
         while (index < items.size) {
             val item = items[index]
             if (rowItems.isNotEmpty() && dayLabel(item) != label) break
             rowItems += item
             sum += item.aspectRatio
             index++
-            if (sum >= targetRatio) break
+            if (sum >= targetRatio) {
+                closedByTarget = true
+                break
+            }
         }
-        entries += GridEntry.Photos(layoutRow(rowItems, containerWidthDp, gapDp))
+        entries += GridEntry.Photos(
+            layoutRow(rowItems, containerWidthDp, gapDp, targetRatio, stretch = closedByTarget),
+        )
     }
     return entries
 }
@@ -84,16 +93,20 @@ fun buildGrid(
 /**
  * Give one row its shape.
  *
- * The height is the container width divided by the sum of the photos' aspect
- * ratios — that is what makes every photo in the row the same height while
- * keeping its own shape. A row that would end up absurdly tall (a single
- * portrait) is capped, and the leftover width is shared out over the photos,
- * which is how Google Photos fills the last row of a section.
+ * A full row ([stretch] = true) is solved so it fills the width exactly: the
+ * height is the usable width divided by the sum of the photos' aspect ratios,
+ * and every photo is that times as wide as it is high. That is what makes all
+ * the photos in a row the same height while keeping their own shape.
+ *
+ * The last row of a day is NOT stretched — it keeps the target height and
+ * stays left, so a single photo never balloons across the whole screen.
  */
 fun layoutRow(
     rowItems: List<MediaItem>,
     containerWidthDp: Float,
     gapDp: Float = GRID_GAP_DP,
+    targetRatio: Float = GRID_TARGET_RATIO,
+    stretch: Boolean = true,
 ): GridRow {
     if (rowItems.isEmpty()) return GridRow(emptyList(), 0f)
     if (containerWidthDp <= 0f) {
@@ -103,54 +116,44 @@ fun layoutRow(
     val gaps = gapDp * (rowItems.size - 1)
     val usable = containerWidthDp - gaps
     val sum = rowItems.sumOf { it.aspectRatio.toDouble() }.toFloat().coerceAtLeast(0.01f)
+    val targetHeight = containerWidthDp / targetRatio.coerceAtLeast(0.1f)
 
-    var height = usable / sum
-    // a row of one very tall photo would fill the whole screen - cap it
-    height = height.coerceIn(containerWidthDp / 6f, containerWidthDp / 1.35f)
-
-    val raw = rowItems.map { it.aspectRatio * height }
-    val rawTotal = raw.sum()
-    val extra = containerWidthDp - gaps - rawTotal
-
+    val height: Float
     val widths: List<Float>
-    val finalHeight: Float
-    if (extra >= 0f) {
-        // the row is shorter than the screen: share the leftover over the photos
-        widths = raw.map { it + if (rawTotal > 0f) extra * (it / rawTotal) else 0f }
-        finalHeight = height
+    if (stretch) {
+        // a full row: the height is solved so the row fills the width exactly
+        height = usable / sum
+        widths = rowItems.map { it.aspectRatio * height }
     } else {
-        // the row is longer than the screen: scale it down
-        val scale = (containerWidthDp - gaps) / rawTotal
-        widths = raw.map { it * scale }
-        finalHeight = height * scale
+        // the last row of a day: the target height, not stretched
+        height = targetHeight
+        widths = rowItems.map { it.aspectRatio * targetHeight }
     }
 
     return GridRow(
         tiles = rowItems.mapIndexed { index, item -> GridTile(item, widths[index]) },
-        heightDp = finalHeight,
+        heightDp = height,
     )
 }
 
 /**
  * The date header a photo belongs under.
  *
- * "Today" and "Yesterday" first, then the day and the month — and the year
- * only when it is not the current one. The same words Google Photos uses.
+ * "Today" and "Yesterday" first, then the weekday, the month and the day —
+ * and the year only when it is not the current one. The same words Google
+ * Photos uses.
  */
 fun dayLabel(item: MediaItem): String {
     val date = item.sortDate() ?: return "Earlier"
     val today = LocalDate.now()
-    return when (date) {
-        today -> "Today"
-        today.minusDays(1) -> "Yesterday"
-        else -> {
-            val month = date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())
-            if (date.year == today.year) {
-                "$month ${date.dayOfMonth}"
-            } else {
-                "$month ${date.dayOfMonth}, ${date.year}"
-            }
-        }
+    if (date == today) return "Today"
+    if (date == today.minusDays(1)) return "Yesterday"
+    val weekday = date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())
+    val month = date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())
+    return if (date.year == today.year) {
+        "$weekday, $month ${date.dayOfMonth}"
+    } else {
+        "$weekday, $month ${date.dayOfMonth}, ${date.year}"
     }
 }
 
