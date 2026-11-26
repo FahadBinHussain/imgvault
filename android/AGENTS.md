@@ -62,6 +62,44 @@ With those headers the answer is `{"fields":[...],"rows":[[...]]}` and EVERY
 value is TEXT — numbers included. `core/neon/NeonClient.kt` owns that
 conversion.
 
+### A cell that holds JSON arrives as the JSON TEXT
+
+`Neon-Raw-Text-Output` hands over EVERY value as a string, so a `jsonb`
+column (`extra_metadata`) and a text array column (`tags`) arrive as the JSON
+text itself — `"{\"isVaulted\": true}"`, `"[]"`. Reading such a cell with
+`.jsonArray` throws, because the cell is a `JsonLiteral`:
+
+```
+Element class kotlinx.serialization.json.JsonLiteral
+(Kotlin reflection is not available) is not a JsonArray
+```
+
+That is the crash the phone showed on 1.0.0. Read those cells with
+`asJsonObjectOrEmpty()` / `asJsonListOrEmpty()` / `asJsonValue()`
+(`core/neon/NeonClient.kt`) — they parse the text and never throw; a cell that
+is not JSON reads as empty. `NeonTextTest.kt` pins the behaviour.
+
+### The gallery and the vault split the rows
+
+The gallery shows only the rows a normal user would see:
+
+```sql
+where deleted_at is null
+  and left(id, 9) <> '__imgvault_'
+  and coalesce(extra_metadata->>'systemType', '') <> 'secretVaultConfig'
+  and coalesce(lower(extra_metadata->>'isVaulted'), 'false') not in ('true', '1', 'yes')
+```
+
+The same filters the web gallery runs (`web/src/app/api/images/route.js`). A
+vaulted row keeps its plaintext columns BLANK, so it shows up in the gallery
+as an empty tile with an id as its title — that is what "the gallery shows
+192 vaulted items" looks like.
+
+The vault configuration is NOT in the phone: it lives in the
+`__imgvault_vault_config__` row (`extra_metadata->'secretVaultConfig'`), the
+same place the web vault reads it from, so the passcode alone unlocks the
+vault on the phone.
+
 The endpoint rule was measured against the user's own database on
 2026-11-26: `https://api.<region>.aws.neon.tech/sql` answers 200, and so does
 the bare host; the api-prefixed form is what the JS client uses, so it is

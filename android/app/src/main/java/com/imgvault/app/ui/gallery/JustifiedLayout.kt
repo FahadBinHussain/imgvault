@@ -61,7 +61,7 @@ fun buildGrid(
     var index = 0
     var lastLabel: String? = null
     while (index < items.size) {
-        val label = monthLabel(items[index])
+        val label = dayLabel(items[index])
         if (label != lastLabel) {
             entries += GridEntry.Header(label)
             lastLabel = label
@@ -70,7 +70,7 @@ fun buildGrid(
         var sum = 0f
         while (index < items.size) {
             val item = items[index]
-            if (rowItems.isNotEmpty() && monthLabel(item) != label) break
+            if (rowItems.isNotEmpty() && dayLabel(item) != label) break
             rowItems += item
             sum += item.aspectRatio
             index++
@@ -134,16 +134,23 @@ fun layoutRow(
 /**
  * The date header a photo belongs under.
  *
- * "Today" and "Yesterday" first, then the month and the year — the same words
- * Google Photos uses.
+ * "Today" and "Yesterday" first, then the day and the month — and the year
+ * only when it is not the current one. The same words Google Photos uses.
  */
-fun monthLabel(item: MediaItem): String {
+fun dayLabel(item: MediaItem): String {
     val date = item.sortDate() ?: return "Earlier"
     val today = LocalDate.now()
     return when (date) {
         today -> "Today"
         today.minusDays(1) -> "Yesterday"
-        else -> "${date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${date.year}"
+        else -> {
+            val month = date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())
+            if (date.year == today.year) {
+                "$month ${date.dayOfMonth}"
+            } else {
+                "$month ${date.dayOfMonth}, ${date.year}"
+            }
+        }
     }
 }
 

@@ -28,8 +28,8 @@ class JustifiedLayoutTest {
     @Test
     fun `a row of square photos fills the width`() {
         val row = layoutRow(listOf(item("a"), item("b"), item("c"), item("d")), 100f, gapDp = 0f)
-        // three gaps of 0 -> the four photos share the 100dp
-        assertEquals(100f, row.heightDp, 0.01f)
+        // three gaps of 0 -> the four square photos share the 100dp, each a quarter
+        assertEquals(25f, row.heightDp, 0.01f)
         row.tiles.forEach { assertEquals(25f, it.widthDp, 0.01f) }
     }
 
@@ -76,10 +76,19 @@ class JustifiedLayoutTest {
         )
         val headers = entries.filterIsInstance<GridEntry.Header>().map { it.label }
         assertEquals(3, headers.size)
-        // the month NAME follows the phone's language, the year never does
-        assertTrue("the year is in the header: ${headers[0]}", headers[0].endsWith("2026"))
-        assertTrue("the year is in the header: ${headers[2]}", headers[2].endsWith("2026"))
-        assertTrue("the months differ", headers[0] != headers[2])
+        // the month NAME follows the phone's language, the day never does
+        assertTrue("the day is in the header: ${headers[0]}", headers[0].endsWith("26"))
+        assertTrue("the day is in the header: ${headers[1]}", headers[1].endsWith("25"))
+        assertTrue("the day is in the header: ${headers[2]}", headers[2].endsWith("2"))
+    }
+
+    @Test
+    fun `two photos of the same day share one header`() {
+        val entries = buildGrid(
+            listOf(item("a", day = "2026-11-26"), item("b", day = "2026-11-26")),
+            containerWidthDp = 100f,
+        )
+        assertEquals(1, entries.filterIsInstance<GridEntry.Header>().size)
     }
 
     @Test
@@ -88,11 +97,11 @@ class JustifiedLayoutTest {
         val yesterday = today.minusDays(1)
         assertEquals(
             "Today",
-            monthLabel(item("a", day = today.toString())),
+            dayLabel(item("a", day = today.toString())),
         )
         assertEquals(
             "Yesterday",
-            monthLabel(item("b", day = yesterday.toString())),
+            dayLabel(item("b", day = yesterday.toString())),
         )
     }
 
