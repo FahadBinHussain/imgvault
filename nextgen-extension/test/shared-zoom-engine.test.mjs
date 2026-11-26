@@ -20,7 +20,11 @@ import {
   sourceResolutionZoomLevel,
   wheelZoomAmount,
   zoomFactorToLevel,
+  zoomLevelFromSliderRatio,
   zoomLevelToFactor,
+  zoomPanToImagePoint,
+  zoomSliderRatioFromLevel,
+  zoomViewportRect,
 } from '../../packages/shared/zoomEngine.js';
 
 describe('zoom engine constants', () => {
@@ -297,5 +301,103 @@ describe('panning', () => {
   test('the transform follows the pan', () => {
     const after = panZoomState(zoomed(), -10, -5);
     assert.match(after.transform, /^translate\(/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The zoom minibar (google photos' zoom panel over a zoomed photo).
+//
+// The minibar draws a miniature of the whole photo with a rectangle on it
+// that marks the part of the photo which is on screen, and a bar underneath
+// that sets the zoom level. Both need the same geometry the transform uses.
+// ---------------------------------------------------------------------------
+
+describe('the zoom minibar viewport rectangle', () => {
+  const fitted = () => createZoomState({
+    containerWidth: 1000,
+    containerHeight: 800,
+    imageWidth: 2000,
+    imageHeight: 1600,
+    baseScale: 1,
+  });
+
+  test('at fit the rectangle covers the visible part of the photo', () => {
+    const rect = zoomViewportRect(fitted());
+    assert.deepEqual(rect, { left: 0.25, top: 0.25, width: 0.5, height: 0.5 });
+  });
+
+  test('zooming in halves the rectangle', () => {
+    const rect = zoomViewportRect(applyZoom(fitted(), 1, null));
+    assert.deepEqual(rect, { left: 0.375, top: 0.375, width: 0.25, height: 0.25 });
+  });
+
+  test('the rectangle never leaves the photo', () => {
+    const rect = zoomViewportRect(applyZoom(fitted(), 1, { x: 0, y: 0 }));
+    assert.ok(rect.left >= 0 && rect.top >= 0);
+    assert.ok(rect.left + rect.width <= 1);
+    assert.ok(rect.top + rect.height <= 1);
+  });
+
+  test('no state, no rectangle', () => {
+    assert.equal(zoomViewportRect(null), null);
+  });
+});
+
+describe('the zoom minibar miniature', () => {
+  const fitted = () => createZoomState({
+    containerWidth: 1000,
+    containerHeight: 800,
+    imageWidth: 2000,
+    imageHeight: 1600,
+    baseScale: 1,
+  });
+
+  test('clicking the middle of the miniature keeps the middle of the photo in the middle', () => {
+    const zoomed = applyZoom(fitted(), 1, null);
+    const after = zoomPanToImagePoint(zoomed, 0.5, 0.5);
+    assert.equal(after.x, zoomed.x);
+    assert.equal(after.y, zoomed.y);
+  });
+
+  test('clicking the top-left of the miniature brings that corner to the edge of the view', () => {
+    const zoomed = applyZoom(fitted(), 1, null);
+    const after = zoomPanToImagePoint(zoomed, 0, 0);
+    assert.equal(after.x, 0);
+    assert.equal(after.y, 0);
+  });
+
+  test('the photo never drifts off the container', () => {
+    const after = zoomPanToImagePoint(applyZoom(fitted(), 1, null), 0.5, 0.5);
+    assert.ok(after.x <= 0);
+    assert.ok(after.y <= 0);
+  });
+
+  test('the transform follows the jump', () => {
+    const after = zoomPanToImagePoint(applyZoom(fitted(), 1, null), 0.25, 0.25);
+    assert.match(after.transform, /^translate\(/);
+  });
+});
+
+describe('the zoom minibar bar', () => {
+  test('the bar position maps to a zoom level', () => {
+    assert.equal(zoomLevelFromSliderRatio(0.5, 3), 1.5);
+    assert.equal(zoomLevelFromSliderRatio(0, 3), 0);
+    assert.equal(zoomLevelFromSliderRatio(1, 3), 3);
+  });
+
+  test('a bar position outside the bar is clamped', () => {
+    assert.equal(zoomLevelFromSliderRatio(-2, 3), 0);
+    assert.equal(zoomLevelFromSliderRatio(9, 3), 3);
+  });
+
+  test('the level maps back to a bar position', () => {
+    assert.equal(zoomSliderRatioFromLevel(1.5, 3), 0.5);
+    assert.equal(zoomSliderRatioFromLevel(0, 3), 0);
+    assert.equal(zoomSliderRatioFromLevel(3, 3), 1);
+  });
+
+  test('without a ceiling the bar is at zero', () => {
+    assert.equal(zoomSliderRatioFromLevel(2, 0), 0);
+    assert.equal(zoomLevelFromSliderRatio(0.5, 0), 0);
   });
 });

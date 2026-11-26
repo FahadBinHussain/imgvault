@@ -32,6 +32,7 @@ const src = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 
 
 const zoomable = src('../../packages/ui/ZoomableImage.jsx');
 const modal = src('../../packages/ui/Modal.jsx');
+const minibar = src('../../packages/ui/ZoomMinibar.jsx');
 
 test('2.19.47: the wheel listener is native and non-passive, so preventDefault actually cancels the scroll', () => {
   assert.match(zoomable, /addEventListener\('wheel',\s*onWheel,\s*\{\s*passive:\s*false\s*\}\)/);
@@ -108,4 +109,49 @@ test('2.19.48: every gesture honours the source-aware ceiling', () => {
   assert.ok(zoomCalls.length >= 4, 'every applyZoom must clamp to effectiveMaxLevel');
   assert.doesNotMatch(zoomable, /maxLevel: maxZoomLevel/);
   assert.match(zoomable, /doubleClickZoomLevel\(zoom\.level, 0, effectiveMaxLevel\)/);
+});
+
+// ---------------------------------------------------------------------------
+// 2.19.49: the zoom MINIBAR.
+//
+// The user report (2026-11-25): "u missed the minibar which shows in google
+// photos, when a image is zoomed, add that to our one as well".
+//
+// What google photos shows over a zoomed photo (google photos community,
+// the scroll-to-zoom thread): "the black thumbnail of the picture appears in
+// the top right corner with the level of zoom bar at the bottom". So the
+// minibar is a small floating panel with a miniature of the whole photo and
+// a zoom bar underneath it.
+//
+// The minibar is a SIBLING of the photo (a portal into the clipping box, not
+// a child of the <img>), otherwise the zoom transform would scale the panel
+// along with the picture.
+// ---------------------------------------------------------------------------
+
+test('2.19.49: the zoom minibar is rendered over a zoomed photo', () => {
+  assert.match(zoomable, /import ZoomMinibar from '\.\/ZoomMinibar\.jsx'/);
+  assert.match(zoomable, /showZoomMinibar && zoomed && containerEl/);
+});
+
+test('2.19.49: the minibar is a sibling of the photo, so the zoom never scales it', () => {
+  assert.match(zoomable, /createPortal\(\s*<ZoomMinibar/);
+  // no transform on the panel itself
+  assert.doesNotMatch(minibar, /transform:/);
+});
+
+test('2.19.49: the minibar has a miniature of the photo and a real zoom bar', () => {
+  assert.match(minibar, /zoomViewportRect\(/);
+  assert.match(minibar, /role="slider"/);
+  assert.match(minibar, /aria-valuemin/);
+  assert.match(minibar, /zoomLevelFromSliderRatio\(/);
+  assert.match(minibar, /zoomSliderRatioFromLevel\(/);
+});
+
+test('2.19.49: the minibar bar follows the photo\'s own resolution ceiling', () => {
+  assert.match(zoomable, /maxLevel=\{effectiveMaxLevel\}/);
+});
+
+test('2.19.49: clicking the minibar never closes the lightbox', () => {
+  assert.match(minibar, /event\.stopPropagation\(\)/);
+  assert.match(minibar, /onClick=\{stop\}/);
 });

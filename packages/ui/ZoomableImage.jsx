@@ -25,6 +25,8 @@
  *                              visible area). Defaults to the img's parent.
  *   maxZoomLevel             - zoom ceiling, 1 level = 2x (default 3 = 8x)
  *   showZoomBadge            - small "2.0x" pill that resets on click
+ *   showZoomMinibar          - google photos' zoom minibar over a zoomed
+ *                              photo (miniature of the photo + a zoom bar)
  *   enabled                  - turns every gesture off
  *   onZoomChange             - called with the engine state on every change
  *   onLoad / onError         - passed through to the <img>
@@ -42,7 +44,9 @@ import {
   pinchZoomAmount,
   sourceResolutionZoomLevel,
   wheelZoomAmount,
+  zoomPanToImagePoint,
 } from '../shared/zoomEngine.js';
+import ZoomMinibar from './ZoomMinibar.jsx';
 
 const LINE_HEIGHT_PX = 16;
 
@@ -61,6 +65,7 @@ export default function ZoomableImage({
   containerRef: externalContainerRef,
   maxZoomLevel = DEFAULT_MAX_ZOOM_LEVEL,
   showZoomBadge = true,
+  showZoomMinibar = true,
   enabled = true,
   overscan = 0,
   onZoomChange,
@@ -370,6 +375,37 @@ export default function ZoomableImage({
     )
     : null;
 
+  /**
+   * The zoom minibar — google photos shows a small panel over a zoomed
+   * photo: a miniature of the whole picture with the visible part marked on
+   * it, and a zoom bar underneath. It is a sibling of the photo (never a
+   * child), so the zoom transform never scales it.
+   */
+  const handleMinibarLevel = useCallback((level) => {
+    if (!zoom) return;
+    publish(applyZoom(zoom, level, null, { maxLevel: effectiveMaxLevel, overscan }));
+  }, [zoom, publish, effectiveMaxLevel, overscan]);
+
+  const handleMinibarPan = useCallback((u, v) => {
+    if (!zoom) return;
+    publish(zoomPanToImagePoint(zoom, u, v, { overscan }));
+  }, [zoom, publish, overscan]);
+
+  const minibar = showZoomMinibar && zoomed && containerEl && zoom
+    ? createPortal(
+      <ZoomMinibar
+        src={src}
+        zoom={zoom}
+        naturalSize={naturalSize}
+        maxLevel={effectiveMaxLevel}
+        onLevelChange={handleMinibarLevel}
+        onPanTo={handleMinibarPan}
+        onReset={resetZoom}
+      />,
+      containerEl,
+    )
+    : null;
+
   return (
     <>
       <img
@@ -409,6 +445,7 @@ export default function ZoomableImage({
         }}
       />
       {badge}
+      {minibar}
     </>
   );
 }

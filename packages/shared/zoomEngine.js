@@ -282,6 +282,85 @@ export function sourceResolutionZoomLevel({
 }
 
 /**
+ * The part of the photo the container is currently showing, normalised to
+ * 0..1 of the image box.
+ *
+ * This is what google photos' zoom minibar draws as a little viewport
+ * rectangle on top of a miniature of the photo: the miniature is the whole
+ * image, the rectangle is the part of it that is on screen right now.
+ *
+ * Returns null when the state has no usable geometry.
+ */
+export function zoomViewportRect(state) {
+  const current = state || null;
+  if (!current) return null;
+  const scale = Number(current.scale) || 0;
+  const imageWidth = Number(current.imageWidth) || 0;
+  const imageHeight = Number(current.imageHeight) || 0;
+  if (!scale || !imageWidth || !imageHeight) return null;
+  const containerWidth = Number(current.containerWidth) || 0;
+  const containerHeight = Number(current.containerHeight) || 0;
+  // the image's top-left corner sits at (x, y) in container pixels
+  const left = clamp(-(Number(current.x) || 0) / scale / imageWidth, 0, 1);
+  const top = clamp(-(Number(current.y) || 0) / scale / imageHeight, 0, 1);
+  const width = clamp(containerWidth / scale / imageWidth, 0, 1 - left);
+  const height = clamp(containerHeight / scale / imageHeight, 0, 1 - top);
+  return { left, top, width, height };
+}
+
+/**
+ * Move the photo so that the image point (u, v) — 0..1 of the photo, u from
+ * the left, v from the top — ends up in the middle of the container.
+ *
+ * The zoom minibar's miniature is a map of the photo: click a spot on it and
+ * the photo jumps there.
+ */
+export function zoomPanToImagePoint(state, u, v, options = {}) {
+  const { overscan = 0 } = options;
+  const current = state || createZoomState();
+  const scale = Number(current.scale) || 1;
+  const imageWidth = Number(current.imageWidth) || 0;
+  const imageHeight = Number(current.imageHeight) || 0;
+  const containerWidth = Number(current.containerWidth) || 0;
+  const containerHeight = Number(current.containerHeight) || 0;
+  const renderedWidth = imageWidth * scale;
+  const renderedHeight = imageHeight * scale;
+  const x = clampOffset(
+    containerWidth / 2 - clamp(Number(u) || 0, 0, 1) * imageWidth * scale,
+    containerWidth,
+    renderedWidth,
+    overscan,
+  );
+  const y = clampOffset(
+    containerHeight / 2 - clamp(Number(v) || 0, 0, 1) * imageHeight * scale,
+    containerHeight,
+    renderedHeight,
+    overscan,
+  );
+  return { ...current, x, y, transform: formatZoomTransform(x, y, scale) };
+}
+
+/**
+ * A slider position (0..1) -> a zoom level.
+ *
+ * Linear in LEVEL space, which is logarithmic in the rendered size — the same
+ * reason the wheel uses levels: every step of the slider looks like the same
+ * amount of "more zoom".
+ */
+export function zoomLevelFromSliderRatio(ratio, maxLevel = DEFAULT_MAX_ZOOM_LEVEL) {
+  const max = Number(maxLevel) || 0;
+  if (!max) return 0;
+  return clamp(Number(ratio) || 0, 0, 1) * max;
+}
+
+/** A zoom level -> a slider position (0..1). */
+export function zoomSliderRatioFromLevel(level, maxLevel = DEFAULT_MAX_ZOOM_LEVEL) {
+  const max = Number(maxLevel) || 0;
+  if (!max) return 0;
+  return clamp((Number(level) || 0) / max, 0, 1);
+}
+
+/**
  * Double click / double tap: google photos zooms one level in, and a second
  * double click on an already zoomed image returns it to fit.
  */
