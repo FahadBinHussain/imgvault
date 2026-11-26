@@ -246,6 +246,69 @@ item lists — Telegram first when its token is configured, otherwise the
 TeraBox copy — and when every host fails the error names them all
 (`vaultVideoHosts`, pinned by `VaultRepositoryTest.kt`).
 
+## 1.0.10 — six fixes in one release
+
+**The signing certificate changed every release (the update could never
+install).** 1.0.7, 1.0.8 and 1.0.9 were each signed with a DIFFERENT
+certificate (v2 SHA-256: 1.0.7 `42828de9…`, 1.0.8 `f2681c8a…`, 1.0.9
+`02874b1c…`), so 1.0.9 could not install over the 1.0.8 on the user's phone
+at all — `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, and the in-app screen only
+said "the system installer did not install the update". **One-time
+consequence: 1.0.8 must be UNINSTALLED once, then 1.0.10 installs clean.**
+From now on the certificate MUST stay `02874b1c…` (the current secret's
+cert): `android/signing-cert-sha256.txt` pins it, and the CI step "Pin the
+signing certificate" extracts the built APK's v2 signing-block certificate
+(python3 + struct/hashlib, no extra tool) and FAILS the build when it
+differs. The keystore secret itself was NOT changed or regenerated.
+
+1. **Install button.** Two gaps: the app declares `REQUEST_INSTALL_PACKAGES`
+but the user still has to turn on "Install unknown apps" for ImgVault, and
+the button gave no hint — `UpdateViewModel.install()` now checks
+`canRequestPackageInstalls()` first, fails loudly naming the setting, and
+opens that exact settings page (`ACTION_MANAGE_UNKNOWN_APP_SOURCES`). The
+install-result failure now carries the numeric status code ("(status 6)" is
+`STATUS_FAILURE_INCOMPATIBLE`, a signature mismatch), so the next failure
+is diagnosable instead of a bare "it did not install".
+2. **Launcher icon.** The hand-drawn white frame+mountains vector on solid
+`#3D5AFE` is gone. The icon is now the project's real shield
+(`nextgen-extension/public/icon128.png`, teal/blue gradient, cloud + padlock
+over a picture): a 432×432 adaptive foreground (shield in the centre 288
+safe zone), legacy mipmap PNGs (48/72/96/144/192, shield + round), and the
+background is the shield body's deep blue `#1F57A8`. The adaptive XMLs
+already referenced `@drawable/ic_launcher_foreground`, which now resolves
+to the PNG — they needed no edit.
+3. **Gallery video thumbnails.** Videos showed an empty placeholder: the
+built-in video hosts carry no `thumbnailUrl`. A video tile with no thumbnail
+URL now loads a real frame from the video's direct URL with Coil's
+`VideoFrameDecoder` (`io.coil-kt:coil-video:2.7.0`), keeping the duration
+badge + play icon; a failed frame falls back to the placeholder. The
+image-tile path is unchanged.
+4. **Vault lock.** The master key lived in the Keystore-backed store, so it
+survived a restart and the vault opened itself — the LockedPane flashed
+once and the vault was open. The key now lives ONLY in memory
+(`inMemoryKey`): `unlock()` derives it and writes only the key binding,
+`lock()` drops it and clears any key a 1.0.8/1.0.9 build stored, and a null
+binding is NOT stale (`VaultKeyBinding.isStale` — null means "no key was
+stored", so the vault is simply locked). On app start the vault shows
+LockedPane and STAYS there until the passcode is entered.
+5. **Vault video: source setting + true streaming.** Settings now offers
+TeraBox as a default video host. The host order follows the user's source
+(`vaultVideoHosts(item, defaultVideoSource, token)` — the source first when
+the item has it, then the rest; Telegram is NOT a hardcoded constant, it is
+first only when the user picked it). The video no longer downloads to a
+cache file: `VaultBlobDataSource` (an ExoPlayer `DataSource`) reads the
+16-byte IVG1 header with one Range request, then fetches exactly the
+encrypted chunks each read spans with one Range request and decrypts them
+with the existing `VaultCrypto` primitives — a 700 MB video starts in
+seconds and is never held on disk. Legacy single-shot blobs fall back to
+decrypting in memory. The same host order now applies to vault IMAGES
+(`loadVaultBytes`), which used to throw "no bot token" before trying
+TeraBox. The old file path (`loadVaultVideoFile`, `downloadAndDecryptVideo`,
+`decryptVaultStreamToFile`, `readExactly`, `videoFileExtension`) is deleted;
+the streaming decrypt is pinned by `VaultRepositoryTest.kt` (span math,
+multi-chunk stream, seek, legacy) against an in-memory Range-serving
+OkHttp interceptor.
+
 ## No secrets in this repo
 
 Not in the code, not in the resources, not in the CI logs. The app asks the

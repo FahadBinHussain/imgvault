@@ -44,8 +44,14 @@ class VaultKeyBindingTest {
     }
 
     @Test
-    fun `a key without a binding is stale - the passcode is asked again`() {
-        assertTrue(VaultKeyBinding.isStale(null, config))
+    fun `no stored binding means no stored key, so nothing is stale`() {
+        // a fresh lock clears the binding: there is no key to be stale, the
+        // vault is simply locked and the passcode is asked for
+        assertFalse(VaultKeyBinding.isStale(null, config))
+    }
+
+    @Test
+    fun `a key with an empty binding is stale - the passcode is asked again`() {
         assertTrue(VaultKeyBinding.isStale("", config))
     }
 

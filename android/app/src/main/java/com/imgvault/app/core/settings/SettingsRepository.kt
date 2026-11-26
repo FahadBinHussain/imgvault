@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.imgvault.app.core.security.SecureStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(
@@ -67,6 +68,9 @@ class SettingsRepository(
     suspend fun setUpdateCheckEnabled(value: Boolean) {
         context.settingsDataStore.edit { it[KEY_UPDATE_CHECK] = value.toString() }
     }
+
+    /** the current settings, read once (a suspend read of the DataStore) */
+    suspend fun current(): AppSettings = settings.first()
 
     // --- secrets -----------------------------------------------------------
 

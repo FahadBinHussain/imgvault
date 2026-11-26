@@ -343,4 +343,4 @@ private fun SettingDropdown(
 }
 
 private val IMAGE_HOSTS = listOf("imgbb", "pixvid", "telegram")
-private val VIDEO_HOSTS = listOf("filemoon", "udrop", "telegram")
+private val VIDEO_HOSTS = listOf("filemoon", "udrop", "telegram", "terabox")

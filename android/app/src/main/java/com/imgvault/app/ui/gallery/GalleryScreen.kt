@@ -39,11 +39,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
+import coil.video.VideoFrameDecoder
 import com.imgvault.app.core.time.isoDayOf
 import com.imgvault.app.data.model.MediaItem
 import com.imgvault.app.ui.grid.JustifiedGrid
@@ -200,6 +203,11 @@ private fun PhotoTile(
     onOpen: () -> Unit,
 ) {
     val url = item.thumbnail(provider).ifEmpty { item.videoThumbnailUrl }
+    // a video with no thumbnail URL at all: the built-in video hosts carry no
+    // thumbnailUrl, so the tile would be an empty placeholder. A real frame
+    // from the video's direct URL is the thumbnail instead — the frame
+    // decoder reads it without downloading the whole video.
+    val videoUrl = if (item.isVideo) item.displayVideo(provider)?.url.orEmpty() else ""
     Box(
         modifier = Modifier
             .width(widthDp.dp)
@@ -208,10 +216,7 @@ private fun PhotoTile(
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable { onOpen() },
     ) {
-        if (url.isEmpty()) {
-            Log.i("ImgVault", "no thumbnail url for ${item.id}")
-            if (item.isVideo) VideoPlaceholder() else TileFallback(item.title, isVideo = false)
-        } else {
+        if (url.isNotEmpty()) {
             SubcomposeAsyncImage(
                 model = url,
                 contentDescription = item.title,
@@ -223,11 +228,32 @@ private fun PhotoTile(
                     TileFallback(item.title, isVideo = item.isVideo)
                 },
             )
+        } else if (item.isVideo && videoUrl.isNotEmpty()) {
+            SubcomposeAsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(videoUrl)
+                    .decoderFactory(VideoFrameDecoder.Factory())
+                    .build(),
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+                loading = { TileFallback(item.title, isVideo = true, loading = true) },
+                error = {
+                    Log.w("ImgVault", "video frame failed: $videoUrl")
+                    VideoPlaceholder()
+                },
+            )
+        } else if (item.isVideo) {
+            Log.i("ImgVault", "no thumbnail url for ${item.id}")
+            VideoPlaceholder()
+        } else {
+            Log.i("ImgVault", "no thumbnail url for ${item.id}")
+            TileFallback(item.title, isVideo = false)
         }
         if (item.isVideo) {
             VideoBadge(
                 duration = item.durationLabel,
-                withPlayIcon = url.isNotEmpty(),
+                withPlayIcon = url.isNotEmpty() || videoUrl.isNotEmpty(),
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(6.dp),

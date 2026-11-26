@@ -13,11 +13,6 @@ import com.imgvault.app.core.time.isoDayOf
 import com.imgvault.app.data.model.MediaItem
 import com.imgvault.app.data.model.durationLabelOf
 import com.imgvault.app.data.model.toMediaItem
-import java.io.File
-import java.io.FileOutputStream
-import java.io.InputStream
-import java.io.OutputStream
-import java.util.Base64
 import javax.crypto.SecretKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -118,6 +113,17 @@ class VaultRepository(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
+    /**
+     * The master key, ONLY in memory.
+     *
+     * It used to live in the Keystore-backed store, so it survived a restart
+     * and the vault opened itself on launch — the LockedPane flashed once and
+     * the vault was open again. A vault that opens itself is not locked. The
+     * key is derived from the passcode on unlock and dropped on lock (and on
+     * process death, which is the same as locking).
+     */
+    private var inMemoryKey: SecretKey? = null
+
     private fun client(): NeonClient {
         val connectionString = settings.neonUrl
             ?: throw ImgVaultException(
@@ -126,11 +132,8 @@ class VaultRepository(
         return NeonClient(connectionString, http)
     }
 
-    /** the master key, while the vault is unlocked */
-    fun masterKey(): SecretKey? {
-        val encoded = settings.vaultMasterKeyB64 ?: return null
-        return javax.crypto.spec.SecretKeySpec(Base64.getDecoder().decode(encoded), "AES")
-    }
+    /** the master key, while the vault is unlocked (in memory only) */
+    fun masterKey(): SecretKey? = inMemoryKey
 
     /** unlock the vault: the passcode unwraps the master key */
     suspend fun unlock(passcode: String): SecretKey {
@@ -138,7 +141,7 @@ class VaultRepository(
             ?.let { parseConfig(it) }
             ?: fetchVaultConfig()
         val key = VaultCrypto.unwrapMasterKey(config, passcode)
-        settings.vaultMasterKeyB64 = Base64.getEncoder().encodeToString(key.encoded)
+        inMemoryKey = key
         // the key belongs to THIS configuration - remember which one, so a
         // changed configuration can never be read with a foreign key
         settings.vaultKeyBinding = VaultKeyBinding.idOf(config)
@@ -174,6 +177,9 @@ class VaultRepository(
     }
 
     fun lock() {
+        inMemoryKey = null
+        // drop any key a 1.0.8/1.0.9 build stored, so the old persisted key
+        // can never unlock the vault on its own again
         settings.vaultMasterKeyB64 = null
         settings.vaultKeyBinding = null
     }
@@ -194,6 +200,7 @@ class VaultRepository(
         if (VaultKeyBinding.isStale(settings.vaultKeyBinding, config)) {
             // the stored key does not belong to this configuration - drop it so
             // the next unlock stores the right one
+            inMemoryKey = null
             settings.vaultMasterKeyB64 = null
             settings.vaultKeyBinding = null
             throw ImgVaultException(
@@ -289,9 +296,12 @@ class VaultRepository(
     /**
      * Download + decrypt the encrypted blob of a vault item.
      *
-     * Two hosts carry the blob in V1:
-     *  - telegram: the row keeps the file id, the Bot API serves the bytes
-     *  - terabox: the row keeps a direct link
+     * The blob lives on every host the item lists, and the host order is the
+     * user's default video source first (see [vaultBlobHosts]) — Telegram is
+     * NOT a hardcoded constant, it is first only when the user picked it (or
+     * when no other host is available). A host that fails does not hide the
+     * others: every host is tried in order, and when they all fail the error
+     * names them all.
      *
      * Anything else fails LOUDLY — there is no silent "preview unavailable"
      * that would look like a broken vault.
@@ -299,18 +309,49 @@ class VaultRepository(
     suspend fun loadVaultBytes(item: MediaItem): ByteArray = withContext(Dispatchers.IO) {
         val key = masterKey()
             ?: throw ImgVaultException("The vault is locked — unlock it to read this file.")
+        val defaultSource = settings.current().defaultVideoSource
 
-        val bytes = when {
-            item.encryptedBlobFileId.isNotEmpty() -> downloadFromTelegram(item.encryptedBlobFileId)
-            item.encryptedBlobUrl.startsWith("http") -> downloadFromUrl(item.encryptedBlobUrl)
-            else -> throw ImgVaultException(
-                "This vault blob has no readable host link (file id and url are both empty). " +
-                    "Open it from the extension.",
+        val failures = mutableListOf<String>()
+        if (item.encryptedBlobFileId.isNotEmpty() && settings.telegramBotToken == null) {
+            failures += "telegram: no bot token is configured (add it in Settings)"
+        }
+        val hosts = vaultBlobHosts(
+            item.encryptedBlobFileId,
+            item.encryptedBlobUrl,
+            defaultSource,
+            settings.telegramBotToken != null,
+        )
+        if (hosts.isEmpty()) {
+            if (failures.isEmpty()) {
+                throw ImgVaultException(
+                    "This vault blob has no readable host link (file id and url are both empty). " +
+                        "Open it from the extension.",
+                )
+            }
+            throw ImgVaultException(
+                "The vault blob could not be read — " + failures.joinToString("; "),
             )
         }
 
+        var bytes: ByteArray? = null
+        for (host in hosts) {
+            try {
+                bytes = when (host) {
+                    "telegram" -> downloadFromTelegram(item.encryptedBlobFileId)
+                    "terabox" -> downloadFromUrl(item.encryptedBlobUrl)
+                    else -> throw ImgVaultException("Unknown vault host: $host")
+                }
+                break
+            } catch (error: Exception) {
+                failures += "$host: ${error.message ?: error::class.java.simpleName}"
+            }
+        }
+        val blob = bytes ?: throw ImgVaultException(
+            "The vault blob could not be read from any host — " + failures.joinToString("; "),
+        )
+
         try {
-            VaultCrypto.decryptBlob(key, bytes)
+            VaultCrypto.decryptBlob(key, blob)
         } catch (error: Exception) {
             throw ImgVaultException(
                 "The vault blob could not be decrypted: ${error.message ?: "wrong key or damaged file"}",
@@ -320,34 +361,38 @@ class VaultRepository(
     }
 
     /**
-     * Download + decrypt a vault VIDEO to a cache file, then hand the file to
-     * the player.
+     * The streamable vault video: its blob URL and the key that decrypts it.
      *
-     * The blob is never held in memory: the encrypted bytes stream straight
-     * from the host through the IVG1 chunk decrypt into the file, so a
-     * hundred-megabyte video does not need a hundred megabytes of heap. The
-     * file is written to a `.tmp` sibling and renamed only when the whole
-     * blob decrypted — a file with the final name is always complete, so a
-     * second open reuses it instead of downloading again.
-     *
-     * The blob lives on every host the item lists. Telegram is tried first
-     * when its bot token is configured; without the token the TeraBox copy
-     * is the one that can play. A host that fails does not hide the others
-     * — when every host fails, the error names them all.
+     * The player streams the blob through [VaultBlobDataSource] — nothing is
+     * downloaded to a file first. A 700 MB video starts playing in seconds
+     * instead of after a 700 MB download, and the phone never holds the
+     * decrypted video on disk.
      */
-    suspend fun loadVaultVideoFile(item: VaultItem, cacheDir: File): File =
+    data class VaultVideoSource(val blobUrl: String, val key: SecretKey)
+
+    /**
+     * Pick the blob URL a vault video streams from.
+     *
+     * The host order is the user's default video source first (see
+     * [vaultVideoHosts]) — Telegram is NOT a hardcoded constant, it is first
+     * only when the user picked it (or when no other host is available). The
+     * URL resolution itself can fail (the Bot API refusing the file id), so a
+     * host that cannot even hand over a URL falls through to the next one.
+     * The actual bytes are fetched by the player, lazily, through
+     * [VaultBlobDataSource]; if the stream itself fails the player says why.
+     */
+    suspend fun resolveVaultVideoSource(item: VaultItem): VaultVideoSource =
         withContext(Dispatchers.IO) {
             val key = masterKey()
                 ?: throw ImgVaultException("The vault is locked — unlock it to read this file.")
-            val target = File(cacheDir, "vault-video-${item.id}.${videoFileExtension(item)}")
-            if (target.exists() && target.length() > 0L) return@withContext target
+            val defaultSource = settings.current().defaultVideoSource
 
             val failures = mutableListOf<String>()
             if (item.raw.encryptedBlobFileId.isNotEmpty() && settings.telegramBotToken == null) {
                 failures += "telegram: no bot token is configured (add it in Settings)"
             }
             val candidates = mutableListOf<Pair<String, String>>()
-            for (host in vaultVideoHosts(item, settings.telegramBotToken != null)) {
+            for (host in vaultVideoHosts(item, defaultSource, settings.telegramBotToken != null)) {
                 when (host) {
                     "telegram" -> runCatching { telegramFileUrl(item.raw.encryptedBlobFileId) }
                         .onSuccess { candidates += "telegram" to it }
@@ -366,48 +411,8 @@ class VaultRepository(
                     "The vault video could not be read — " + failures.joinToString("; "),
                 )
             }
-
-            for ((host, url) in candidates) {
-                try {
-                    downloadAndDecryptVideo(key, url, target)
-                    return@withContext target
-                } catch (error: Exception) {
-                    failures += "$host: ${error.message ?: error::class.java.simpleName}"
-                }
-            }
-            throw ImgVaultException(
-                "The vault video could not be read from any host — " + failures.joinToString("; "),
-            )
+            VaultVideoSource(candidates.first().second, key)
         }
-
-    /** stream one host's encrypted blob through the IVG1 decrypt into the file */
-    private fun downloadAndDecryptVideo(key: SecretKey, url: String, target: File) {
-        val tmp = File(target.parentFile, "${target.name}.tmp")
-        val request = Request.Builder().url(url).get().build()
-        http.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw ImgVaultException("GET $url failed (HTTP ${response.code})")
-            }
-            val body = response.body ?: throw ImgVaultException("GET $url returned no body")
-            body.byteStream().use { stream ->
-                FileOutputStream(tmp).use { out ->
-                    val written = decryptVaultStreamToFile(key, stream, out)
-                    out.flush()
-                    if (written != tmp.length()) {
-                        throw ImgVaultException(
-                            "The vault video decrypted to ${tmp.length()} bytes, but the blob " +
-                                "says $written — the download is incomplete.",
-                        )
-                    }
-                }
-            }
-        }
-        if (!tmp.renameTo(target)) {
-            // a rename across volumes can fail; fall back to a copy
-            tmp.copyTo(target, overwrite = true)
-            tmp.delete()
-        }
-    }
 
     private fun downloadFromTelegram(fileId: String): ByteArray = getBytes(telegramFileUrl(fileId))
 
@@ -545,93 +550,46 @@ class VaultRepository(
 }
 
 /**
- * Decrypt an encrypted vault blob from a stream into a file, chunk by chunk.
- *
- * This is the streaming twin of [VaultCrypto.decryptBlob]: the same IVG1
- * chunk layout and the same per-chunk decrypt, but the encrypted bytes are
- * read from the stream and the plaintext is written out as it decrypts, so
- * a video never has to sit in memory whole. A legacy single-shot blob
- * (`iv || ciphertext || tag`, no magic header) is decrypted the same way the
- * byte version does it.
- *
- * @return the number of plaintext bytes written
- */
-internal fun decryptVaultStreamToFile(
-    key: SecretKey,
-    input: InputStream,
-    output: OutputStream,
-): Long {
-    val headerBytes = ByteArray(VaultCrypto.VAULT_HEADER_SIZE)
-    readExactly(input, headerBytes, 0, headerBytes.size)
-    val header = VaultCrypto.parseVaultBlobHeader(headerBytes)
-    if (header == null) {
-        // legacy single-shot: the 16 bytes already read are the IV, so the
-        // whole blob is those bytes plus the rest of the stream
-        val rest = input.readBytes()
-        val plain = VaultCrypto.decryptRaw(key, headerBytes + rest)
-        output.write(plain)
-        return plain.size.toLong()
-    }
-    val layout = VaultCrypto.getVaultChunkLayout(header.total, header.chunkSize)
-    var written = 0L
-    for (index in 0 until layout.chunkCount) {
-        val length = layout.encryptedChunkLength(index)
-        val encrypted = ByteArray(length)
-        readExactly(input, encrypted, 0, length)
-        val plain = VaultCrypto.decryptEncryptedChunk(key, encrypted)
-        output.write(plain)
-        written += plain.size
-    }
-    return written
-}
-
-/** read exactly `length` bytes, or fail loudly when the stream ends early */
-internal fun readExactly(input: InputStream, buffer: ByteArray, offset: Int, length: Int) {
-    var read = 0
-    while (read < length) {
-        val n = input.read(buffer, offset + read, length - read)
-        if (n < 0) {
-            throw ImgVaultException(
-                "The vault blob ended early: expected $length bytes, got $read.",
-            )
-        }
-        read += n
-    }
-}
-
-/**
  * Which hosts can serve this vault blob, in the order to try them.
  *
- * Telegram is first when its bot token is configured; without the token it
- * is not a candidate at all, so the TeraBox copy is the one that plays.
- * A blob with no host link at all has no candidates.
+ * The user's default video source goes first when the item has it; the rest
+ * follow in the built-in order (telegram, then terabox). Telegram is NOT a
+ * hardcoded constant — it is first only because the user picked it, or
+ * because it is the only host left. Without a bot token Telegram is not a
+ * candidate at all, so the TeraBox copy is the one that plays. A blob with
+ * no host link at all has no candidates.
  */
-internal fun vaultVideoHosts(item: VaultItem, telegramTokenConfigured: Boolean): List<String> {
-    val hosts = mutableListOf<String>()
-    if (item.raw.encryptedBlobFileId.isNotEmpty() && telegramTokenConfigured) hosts += "telegram"
-    if (item.raw.encryptedBlobUrl.startsWith("http")) hosts += "terabox"
-    return hosts
-}
+internal fun vaultVideoHosts(
+    item: VaultItem,
+    defaultVideoSource: String,
+    telegramTokenConfigured: Boolean,
+): List<String> = vaultBlobHosts(
+    item.raw.encryptedBlobFileId,
+    item.raw.encryptedBlobUrl,
+    defaultVideoSource,
+    telegramTokenConfigured,
+)
 
 /**
- * The extension for a cached vault video, so the player can tell the
- * container.
+ * The same host order, from the blob's own references instead of an item.
  *
- * The decrypted mime type names it first; the file name's own extension is
- * the fallback. The player sniffs the container anyway, so the extension is
- * a hint, not a promise.
+ * Shared by the video path and the image path ([VaultRepository.loadVaultBytes]),
+ * so the two never drift apart: the user's source first, Telegram only with
+ * a token, TeraBox when there is a direct link.
  */
-internal fun videoFileExtension(item: VaultItem): String {
-    val fromMime = when (item.mimeType.lowercase()) {
-        "video/mp4" -> "mp4"
-        "video/webm" -> "webm"
-        "video/quicktime" -> "mov"
-        "video/x-matroska" -> "mkv"
-        "video/x-msvideo" -> "avi"
-        "video/3gpp" -> "3gp"
-        else -> ""
+internal fun vaultBlobHosts(
+    encryptedBlobFileId: String,
+    encryptedBlobUrl: String,
+    defaultVideoSource: String,
+    telegramTokenConfigured: Boolean,
+): List<String> {
+    val available = mutableListOf<String>()
+    if (encryptedBlobFileId.isNotEmpty() && telegramTokenConfigured) available += "telegram"
+    if (encryptedBlobUrl.startsWith("http")) available += "terabox"
+    val preferred = defaultVideoSource.trim().lowercase()
+    return if (preferred in available) {
+        listOf(preferred) + available.filter { it != preferred }
+    } else {
+        available
     }
-    if (fromMime.isNotEmpty()) return fromMime
-    val fromName = item.fileName.substringAfterLast('.', "").lowercase()
-    return fromName.ifEmpty { "mp4" }
 }

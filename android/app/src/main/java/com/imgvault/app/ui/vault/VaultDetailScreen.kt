@@ -2,7 +2,6 @@
 
 package com.imgvault.app.ui.vault
 
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,9 +36,13 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem as Media3Item
+import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.PlayerView
 import coil.compose.SubcomposeAsyncImage
+import com.imgvault.app.core.ServiceLocator
+import com.imgvault.app.data.VaultBlobDataSource
 import com.imgvault.app.data.VaultItem
 import com.imgvault.app.data.VaultPreview
 import com.imgvault.app.ui.grid.TileFallback
@@ -201,12 +204,14 @@ private fun VaultPreviewImage(item: VaultItem, preview: VaultPreview?, modifier:
 }
 
 /**
- * A vault video: the decrypted blob, played from disk.
+ * A vault video: the encrypted blob, streamed and decrypted as it plays.
  *
- * The preview still is only the poster while the blob downloads and
- * decrypts — a still with a spinner says the video is coming, and a still
- * with no spinner would be a video that never plays. A failure says why
- * instead of leaving the poster up.
+ * The preview still is only the poster while the stream is being picked —
+ * a still with a spinner says the video is coming, and a still with no
+ * spinner would be a video that never plays. A failure says why instead of
+ * leaving the poster up. The player reads through [VaultBlobDataSource],
+ * which fetches each chunk's encrypted bytes with a Range request and
+ * decrypts them on the fly — the video is never downloaded to a file first.
  */
 @Composable
 private fun VaultVideoPane(item: VaultItem, preview: VaultPreview?, video: VaultVideoState?) {
@@ -244,8 +249,15 @@ private fun VaultVideoPane(item: VaultItem, preview: VaultPreview?, video: Vault
                 onDispose { exoPlayer.release() }
             }
 
-            LaunchedEffect(video.file) {
-                exoPlayer.setMediaItem(Media3Item.fromUri(Uri.fromFile(video.file)))
+            LaunchedEffect(video.blobUrl) {
+                val factory = ProgressiveMediaSource.Factory(
+                    DataSource.Factory {
+                        VaultBlobDataSource(ServiceLocator.http, video.blobUrl, video.key)
+                    },
+                )
+                exoPlayer.setMediaSource(
+                    factory.createMediaSource(Media3Item.fromUri(video.blobUrl)),
+                )
                 exoPlayer.prepare()
                 exoPlayer.playWhenReady = true
             }

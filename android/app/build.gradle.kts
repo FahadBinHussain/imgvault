@@ -13,8 +13,8 @@ android {
         applicationId = "com.imgvault.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "1.0.9"
+        versionCode = 11
+        versionName = "1.0.10"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -109,6 +109,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     implementation(libs.coil.compose)
+    implementation(libs.coil.video)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
 

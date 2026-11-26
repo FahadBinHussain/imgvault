@@ -110,6 +110,100 @@ jobs:
           fi
           echo "signed apk: app/build/outputs/apk/release/app-release.apk"
 
+      - name: Pin the signing certificate
+        # Every release MUST be signed with the same certificate, or a phone
+        # cannot update over the build it already has
+        # (INSTALL_FAILED_UPDATE_INCOMPATIBLE). 1.0.7, 1.0.8 and 1.0.9 were
+        # each signed with a DIFFERENT certificate, so 1.0.9 could not install
+        # over 1.0.8 at all. This step extracts the v2 signing-block
+        # certificate SHA-256 from the built APK and FAILS the build when it
+        # is not the pinned one in android/signing-cert-sha256.txt — the
+        # keystore secret must never be swapped or regenerated.
+        if: steps.gate.outputs.publish == 'true'
+        working-directory: android
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import struct
+          import sys
+
+          APK = "app/build/outputs/apk/release/app-release.apk"
+          PIN = "signing-cert-sha256.txt"
+          V2_BLOCK_ID = 0x7109871a
+
+          def fail(message):
+              print(f"::error::{message}", file=sys.stderr)
+              sys.exit(1)
+
+          def u32(data, off):
+              return struct.unpack_from("<I", data, off)[0]
+
+          def u64(data, off):
+              return struct.unpack_from("<Q", data, off)[0]
+
+          expected = open(PIN, encoding="utf-8").read().strip().lower()
+          if len(expected) != 64 or any(c not in "0123456789abcdef" for c in expected):
+              fail(f"the signing-cert pin in {PIN} is not a SHA-256 hex string: {expected!r}")
+
+          data = open(APK, "rb").read()
+          eocd = data.rfind(b"PK\x05\x06")
+          if eocd < 0:
+              fail(f"{APK} has no end-of-central-directory record - it is not a valid APK")
+          cd_offset = u32(data, eocd + 16)
+          if cd_offset < 24 or cd_offset > len(data):
+              fail(f"{APK} has a bogus central-directory offset ({cd_offset})")
+          footer_size = u64(data, cd_offset - 24)
+          magic = data[cd_offset - 16:cd_offset]
+          if magic != b"APK Sig Block 42":
+              fail(f"{APK} has no APK Signing Block - the APK is unsigned or v1-only")
+          block_start = cd_offset - footer_size - 8
+          if block_start < 0 or u64(data, block_start) != footer_size:
+              fail(f"{APK} has a malformed APK Signing Block footer")
+          pos = block_start + 8
+          end = cd_offset - 24
+          v2 = None
+          while pos < end:
+              pair_len = u64(data, pos)
+              pair_id = u32(data, pos + 8)
+              if pair_id == V2_BLOCK_ID:
+                  v2 = data[pos + 12:pos + 8 + pair_len]
+                  break
+              pos += 8 + pair_len
+          if v2 is None:
+              fail(f"{APK} has no v2 signing block (id 0x7109871a) - it was not signed with v2")
+          # first signer -> signed data -> certificates -> first certificate
+          off = 0
+          signer_len = u32(v2, off)
+          off += 4
+          signer = v2[off:off + signer_len]
+          soff = 0
+          sd_len = u32(signer, soff)
+          soff += 4
+          signed_data = signer[soff:soff + sd_len]
+          doff = 0
+          digests_len = u32(signed_data, doff)
+          doff += 4 + digests_len
+          certs_len = u32(signed_data, doff)
+          doff += 4
+          certs = signed_data[doff:doff + certs_len]
+          coff = 0
+          cert_len = u32(certs, coff)
+          coff += 4
+          cert = certs[coff:coff + cert_len]
+          actual = hashlib.sha256(cert).hexdigest()
+          if actual != expected:
+              fail(
+                  f"the release APK is signed with a DIFFERENT certificate "
+                  f"(v2 SHA-256 {actual}) than the pinned one ({expected}). "
+                  f"Every release must use the same signing certificate, or phones "
+                  f"cannot update (INSTALL_FAILED_UPDATE_INCOMPATIBLE). "
+                  f"Check the IMGVAULT_KEYSTORE_BASE64 secret - it must be the keystore "
+                  f"whose certificate is {expected}."
+              )
+          print(f"signing certificate matches the pin: {actual}")
+          PY
+
       - name: Read the APK facts
         if: steps.gate.outputs.publish == 'true'
         id: apk

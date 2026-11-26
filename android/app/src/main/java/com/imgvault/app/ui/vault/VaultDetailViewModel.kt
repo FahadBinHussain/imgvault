@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.imgvault.app.core.ServiceLocator
 import com.imgvault.app.data.VaultItem
 import com.imgvault.app.data.VaultPreview
-import java.io.File
+import javax.crypto.SecretKey
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,11 +28,11 @@ sealed interface VaultDetailState {
 
 /** what the video of a vault item managed to load */
 sealed interface VaultVideoState {
-    /** the encrypted blob is downloading and decrypting into a file */
+    /** the blob URL is being picked — the stream starts after this */
     data object Loading : VaultVideoState
 
-    /** the decrypted video, on disk, ready for the player */
-    data class Ready(val file: File) : VaultVideoState
+    /** the blob URL and the key that decrypts it — the player streams it */
+    data class Ready(val blobUrl: String, val key: SecretKey) : VaultVideoState
 
     data class Failed(val message: String) : VaultVideoState
 }
@@ -44,8 +44,8 @@ sealed interface VaultVideoState {
  * lives on the vault host, and that host is not always reachable from a phone.
  *
  * A video is NOT its preview: the preview is only a still. The video itself
- * is the decrypted blob, downloaded and decrypted into a cache file and
- * played from disk — the blob is never held in memory whole.
+ * streams from its host through the decrypting player source — the blob is
+ * never downloaded to a file first, so a 700 MB video starts in seconds.
  */
 class VaultDetailViewModel : ViewModel() {
 
@@ -87,15 +87,15 @@ class VaultDetailViewModel : ViewModel() {
         }
     }
 
-    /** a video is not its preview: fetch the decrypted blob as a file for the player */
+    /** a video is not its preview: pick the blob URL and the key, the player streams it */
     private fun loadVideo(item: VaultItem) {
         _video.value = VaultVideoState.Loading
         viewModelScope.launch {
             try {
-                val file = withContext(Dispatchers.IO) {
-                    repository.loadVaultVideoFile(item, ServiceLocator.cacheDir)
+                val source = withContext(Dispatchers.IO) {
+                    repository.resolveVaultVideoSource(item)
                 }
-                _video.value = VaultVideoState.Ready(file)
+                _video.value = VaultVideoState.Ready(source.blobUrl, source.key)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {

@@ -1,8 +1,11 @@
 package com.imgvault.app.ui.update
 
 import android.app.Application
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.imgvault.app.core.ServiceLocator
@@ -64,8 +67,12 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
                 if (result.succeeded) {
                     _state.value = UpdateState.Installed(_installed.value.versionName)
                 } else {
+                    // the numeric status names the failure: 6 is
+                    // STATUS_FAILURE_INCOMPATIBLE (the update was signed with a
+                    // different certificate), 2 is BLOCKED, 5 is STORAGE — a
+                    // bare "it did not install" hides which one it was
                     _state.value = UpdateState.Failed(
-                        "The system installer did not install the update" +
+                        "The system installer did not install the update (status ${result.status})" +
                             (result.message?.let { ": $it" } ?: "."),
                     )
                 }
@@ -121,6 +128,24 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
 
     fun install() {
         val current = _state.value as? UpdateState.ReadyToInstall ?: return
+        val context = getApplication<Application>()
+        if (!context.packageManager.canRequestPackageInstalls()) {
+            // The app declares REQUEST_INSTALL_PACKAGES, but that is only the
+            // declaration — the user still has to turn on "Install unknown
+            // apps" for ImgVault in system Settings. Without it the
+            // PackageInstaller session is refused and the button looks dead.
+            // Say so out loud and open that exact settings page.
+            _state.value = UpdateState.Failed(
+                "ImgVault is not allowed to install apps yet. Turn on \"Install unknown apps\" " +
+                    "for ImgVault in system Settings, then tap Install again.",
+            )
+            val intent = Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${context.packageName}"),
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            return
+        }
         _state.value = UpdateState.Installing(current.manifest)
         viewModelScope.launch {
             val result = installer.install(current.apk)

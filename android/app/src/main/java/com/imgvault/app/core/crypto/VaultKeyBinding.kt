@@ -15,6 +15,11 @@ package com.imgvault.app.core.crypto
  *
  * A key without a binding (an app from before this existed) counts as STALE:
  * the safe move is to ask for the passcode again, not to guess.
+ *
+ * EXCEPT a binding that was never stored at all (null): there is no stored
+ * key to be stale, the vault is simply locked. A fresh lock clears the
+ * binding, so null must mean "not stale" — otherwise the vault could never
+ * open after a lock, because the very first read would throw "stale".
  */
 object VaultKeyBinding {
 
@@ -24,12 +29,14 @@ object VaultKeyBinding {
     /**
      * Is the stored key unusable for this configuration?
      *
-     * @param storedBinding the binding stored next to the key (null = unknown)
+     * @param storedBinding the binding stored next to the key (null = no key
+     *   was ever stored, so nothing is stale)
      * @param currentConfig the configuration the account has right now
      */
     fun isStale(storedBinding: String?, currentConfig: VaultConfig): Boolean {
         val current = idOf(currentConfig)
         if (current.isBlank()) return true
-        return storedBinding.isNullOrBlank() || storedBinding != current
+        if (storedBinding == null) return false
+        return storedBinding.isBlank() || storedBinding != current
     }
 }
