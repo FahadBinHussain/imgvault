@@ -56,7 +56,7 @@ class VaultBlobDataSource(
     private var legacyPlain: ByteArray? = null
     private var total: Long = 0L
     private var position: Long = 0L
-    private var remaining: Long = C.LENGTH_UNSET
+    private var remaining: Long = C.LENGTH_UNSET.toLong()
 
     override fun open(dataSpec: DataSpec): Long {
         try {
@@ -83,7 +83,7 @@ class VaultBlobDataSource(
             total = parsed.total
         }
         position = dataSpec.position.coerceIn(0, total)
-        remaining = if (dataSpec.length == C.LENGTH_UNSET) {
+        remaining = if (dataSpec.length == C.LENGTH_UNSET.toLong()) {
             total - position
         } else {
             minOf(dataSpec.length, total - position)

@@ -309,6 +309,13 @@ the streaming decrypt is pinned by `VaultRepositoryTest.kt` (span math,
 multi-chunk stream, seek, legacy) against an in-memory Range-serving
 OkHttp interceptor.
 
+Two compile gotchas this release, so the next person does not re-hit
+them: in media3 `C.LENGTH_UNSET` is a Java `int`, not a `Long` — assigning
+it to a `Long` or comparing it to one fails to compile, use
+`C.LENGTH_UNSET.toLong()`. And Coil's video frame decoder is
+`coil.decode.VideoFrameDecoder`, not `coil.video` — the `coil-video`
+artifact puts it in the `coil.decode` package.
+
 ## No secrets in this repo
 
 Not in the code, not in the resources, not in the CI logs. The app asks the

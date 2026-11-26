@@ -46,7 +46,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
-import coil.video.VideoFrameDecoder
+import coil.decode.VideoFrameDecoder
 import com.imgvault.app.core.time.isoDayOf
 import com.imgvault.app.data.model.MediaItem
 import com.imgvault.app.ui.grid.JustifiedGrid
