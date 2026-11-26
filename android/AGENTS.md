@@ -213,6 +213,29 @@ numbers from M3 1.5.0-rc01). Only the package changed; the maths is pinned
 by `BoloWavyRingMathTest.kt`. It needs `androidx.graphics:graphics-shapes`
 (1.1.0 — that is the version that ships `Morph`).
 
+### The vault detail screen had no video player
+
+A vault video opened on its preview still and stayed there: the detail
+screen only rendered the decrypted preview JPEG, with no `isVideo` branch,
+no player and no call to `loadVaultBytes` anywhere in the UI. The preview
+is a still — a video needs its decrypted blob.
+
+The fix (1.0.8): the vault detail loads the video as a FILE and plays it
+with ExoPlayer, the same player the gallery detail uses. The blob streams
+from its host (Telegram via the Bot API `getFile` URL, or a direct TeraBox
+link) through the IVG1 chunk decrypt straight into a cache file
+(`loadVaultVideoFile`, `decryptVaultStreamToFile`) — it is never held in
+memory whole, so a hundred-megabyte video does not need a hundred-megabyte
+heap. The file is written to a `.tmp` sibling and renamed only when the
+whole blob decrypted, so a cached file is always complete and a second open
+reuses it. While the blob downloads the preview still is the poster with a
+spinner and a "Loading the video…" label; a failure says why instead of
+leaving the poster up. `VaultCrypto.kt` itself is untouched — the stream
+decrypt reuses its chunk primitives (`parseVaultBlobHeader`,
+`getVaultChunkLayout`, `decryptEncryptedChunk`) and is pinned by
+`VaultRepositoryTest.kt` (single chunk, multi-chunk, legacy single-shot,
+truncated blob fails loudly).
+
 ## No secrets in this repo
 
 Not in the code, not in the resources, not in the CI logs. The app asks the

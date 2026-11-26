@@ -13,6 +13,10 @@ import com.imgvault.app.core.time.isoDayOf
 import com.imgvault.app.data.model.MediaItem
 import com.imgvault.app.data.model.durationLabelOf
 import com.imgvault.app.data.model.toMediaItem
+import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.Base64
 import javax.crypto.SecretKey
 import kotlinx.coroutines.Dispatchers
@@ -315,7 +319,70 @@ class VaultRepository(
         }
     }
 
-    private fun downloadFromTelegram(fileId: String): ByteArray {
+    /**
+     * Download + decrypt a vault VIDEO to a cache file, then hand the file to
+     * the player.
+     *
+     * The blob is never held in memory: the encrypted bytes stream straight
+     * from the host through the IVG1 chunk decrypt into the file, so a
+     * hundred-megabyte video does not need a hundred megabytes of heap. The
+     * file is written to a `.tmp` sibling and renamed only when the whole
+     * blob decrypted — a file with the final name is always complete, so a
+     * second open reuses it instead of downloading again.
+     */
+    suspend fun loadVaultVideoFile(item: VaultItem, cacheDir: File): File =
+        withContext(Dispatchers.IO) {
+            val key = masterKey()
+                ?: throw ImgVaultException("The vault is locked — unlock it to read this file.")
+            val target = File(cacheDir, "vault-video-${item.id}.${videoFileExtension(item)}")
+            if (target.exists() && target.length() > 0L) return@withContext target
+
+            val url = when {
+                item.raw.encryptedBlobFileId.isNotEmpty() -> telegramFileUrl(item.raw.encryptedBlobFileId)
+                item.raw.encryptedBlobUrl.startsWith("http") -> item.raw.encryptedBlobUrl
+                else -> throw ImgVaultException(
+                    "This vault blob has no readable host link (file id and url are both empty). " +
+                        "Open it from the extension.",
+                )
+            }
+            val tmp = File(cacheDir, "${target.name}.tmp")
+            val request = Request.Builder().url(url).get().build()
+            http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw ImgVaultException("GET $url failed (HTTP ${response.code})")
+                }
+                val body = response.body ?: throw ImgVaultException("GET $url returned no body")
+                body.byteStream().use { stream ->
+                    FileOutputStream(tmp).use { out ->
+                        val written = decryptVaultStreamToFile(key, stream, out)
+                        out.flush()
+                        if (written != tmp.length()) {
+                            throw ImgVaultException(
+                                "The vault video decrypted to ${tmp.length()} bytes, but the blob " +
+                                    "says $written — the download is incomplete.",
+                            )
+                        }
+                    }
+                }
+            }
+            if (!tmp.renameTo(target)) {
+                // a rename across volumes can fail; fall back to a copy
+                tmp.copyTo(target, overwrite = true)
+                tmp.delete()
+            }
+            target
+        }
+
+    private fun downloadFromTelegram(fileId: String): ByteArray = getBytes(telegramFileUrl(fileId))
+
+    /**
+     * The download URL of a Telegram-hosted vault blob.
+     *
+     * The Bot API hands over a file path, and the file itself is served from
+     * `api.telegram.org/file` — the same URL the byte download uses, so the
+     * video can stream it instead of holding the whole blob in memory.
+     */
+    private fun telegramFileUrl(fileId: String): String {
         val token = settings.telegramBotToken
             ?: throw ImgVaultException(
                 "This vault blob lives on Telegram, but no bot token is configured. Add it in Settings.",
@@ -332,7 +399,7 @@ class VaultRepository(
         }
         val filePath = root["result"].asJsonObjectOrEmpty()["file_path"].asTextOrEmpty()
             .ifEmpty { throw ImgVaultException("Telegram did not return a file path for the vault blob") }
-        return getBytes("https://api.telegram.org/file/bot$token/$filePath")
+        return "https://api.telegram.org/file/bot$token/$filePath"
     }
 
     private fun downloadFromUrl(url: String): ByteArray = getBytes(url)
@@ -439,4 +506,82 @@ class VaultRepository(
             where item_id = any($1)
         """.trimIndent()
     }
+}
+
+/**
+ * Decrypt an encrypted vault blob from a stream into a file, chunk by chunk.
+ *
+ * This is the streaming twin of [VaultCrypto.decryptBlob]: the same IVG1
+ * chunk layout and the same per-chunk decrypt, but the encrypted bytes are
+ * read from the stream and the plaintext is written out as it decrypts, so
+ * a video never has to sit in memory whole. A legacy single-shot blob
+ * (`iv || ciphertext || tag`, no magic header) is decrypted the same way the
+ * byte version does it.
+ *
+ * @return the number of plaintext bytes written
+ */
+internal fun decryptVaultStreamToFile(
+    key: SecretKey,
+    input: InputStream,
+    output: OutputStream,
+): Long {
+    val headerBytes = ByteArray(VaultCrypto.VAULT_HEADER_SIZE)
+    readExactly(input, headerBytes, 0, headerBytes.size)
+    val header = VaultCrypto.parseVaultBlobHeader(headerBytes)
+    if (header == null) {
+        // legacy single-shot: the 16 bytes already read are the IV, so the
+        // whole blob is those bytes plus the rest of the stream
+        val rest = input.readBytes()
+        val plain = VaultCrypto.decryptRaw(key, headerBytes + rest)
+        output.write(plain)
+        return plain.size.toLong()
+    }
+    val layout = VaultCrypto.getVaultChunkLayout(header.total, header.chunkSize)
+    var written = 0L
+    for (index in 0 until layout.chunkCount) {
+        val length = layout.encryptedChunkLength(index)
+        val encrypted = ByteArray(length)
+        readExactly(input, encrypted, 0, length)
+        val plain = VaultCrypto.decryptEncryptedChunk(key, encrypted)
+        output.write(plain)
+        written += plain.size
+    }
+    return written
+}
+
+/** read exactly `length` bytes, or fail loudly when the stream ends early */
+internal fun readExactly(input: InputStream, buffer: ByteArray, offset: Int, length: Int) {
+    var read = 0
+    while (read < length) {
+        val n = input.read(buffer, offset + read, length - read)
+        if (n < 0) {
+            throw ImgVaultException(
+                "The vault blob ended early: expected $length bytes, got $read.",
+            )
+        }
+        read += n
+    }
+}
+
+/**
+ * The extension for a cached vault video, so the player can tell the
+ * container.
+ *
+ * The decrypted mime type names it first; the file name's own extension is
+ * the fallback. The player sniffs the container anyway, so the extension is
+ * a hint, not a promise.
+ */
+internal fun videoFileExtension(item: VaultItem): String {
+    val fromMime = when (item.mimeType.lowercase()) {
+        "video/mp4" -> "mp4"
+        "video/webm" -> "webm"
+        "video/quicktime" -> "mov"
+        "video/x-matroska" -> "mkv"
+        "video/x-msvideo" -> "avi"
+        "video/3gpp" -> "3gp"
+        else -> ""
+    }
+    if (fromMime.isNotEmpty()) return fromMime
+    val fromName = item.fileName.substringAfterLast('.', "").lowercase()
+    return fromName.ifEmpty { "mp4" }
 }

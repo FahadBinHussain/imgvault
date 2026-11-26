@@ -5,6 +5,7 @@ import com.imgvault.app.core.security.SecureStore
 import com.imgvault.app.core.settings.SettingsRepository
 import com.imgvault.app.data.GalleryRepository
 import com.imgvault.app.data.VaultRepository
+import java.io.File
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 
@@ -21,6 +22,9 @@ object ServiceLocator {
     fun init(context: Context) {
         appContext = context.applicationContext
     }
+
+    /** where the app keeps decrypted files that can be rebuilt (vault videos) */
+    val cacheDir: File get() = appContext.cacheDir
 
     val http: OkHttpClient by lazy {
         OkHttpClient.Builder()

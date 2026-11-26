@@ -2,6 +2,7 @@
 
 package com.imgvault.app.ui.vault
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
@@ -22,16 +22,23 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.MediaItem as Media3Item
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import coil.compose.SubcomposeAsyncImage
 import com.imgvault.app.data.VaultItem
 import com.imgvault.app.data.VaultPreview
@@ -46,6 +53,10 @@ import java.util.Locale
  * Every state says what is happening: a spinner while it loads, the reason it
  * could not be read when it cannot, and the metadata of the item below the
  * picture.
+ *
+ * A video is NOT its preview: the preview is only a still, so a video item
+ * plays its decrypted blob with the player — the still is the poster while
+ * the blob downloads, never the end of the story.
  */
 @Composable
 fun VaultDetailScreen(
@@ -55,6 +66,7 @@ fun VaultDetailScreen(
     viewModel: VaultDetailViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val video by viewModel.video.collectAsStateWithLifecycle()
 
     LaunchedEffect(itemId) { viewModel.load(itemId) }
 
@@ -97,14 +109,14 @@ fun VaultDetailScreen(
                     modifier = Modifier.padding(24.dp),
                 )
 
-                is VaultDetailState.Ready -> VaultDetailContent(current.item, current.preview)
+                is VaultDetailState.Ready -> VaultDetailContent(current.item, current.preview, video)
             }
         }
     }
 }
 
 @Composable
-private fun VaultDetailContent(item: VaultItem, preview: VaultPreview?) {
+private fun VaultDetailContent(item: VaultItem, preview: VaultPreview?, video: VaultVideoState?) {
     Column(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
@@ -112,23 +124,10 @@ private fun VaultDetailContent(item: VaultItem, preview: VaultPreview?) {
                 .weight(1f),
             contentAlignment = Alignment.Center,
         ) {
-            when {
-                preview == null -> TileFallback(item.title, isVideo = item.isVideo, loading = true)
-                preview is VaultPreview.Missing -> TileFallback(item.title, isVideo = item.isVideo)
-                preview is VaultPreview.Failed -> Text(
-                    text = preview.message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(24.dp),
-                )
-                preview is VaultPreview.Image -> SubcomposeAsyncImage(
-                    model = preview.bytes,
-                    contentDescription = item.title,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize(),
-                    loading = { TileFallback(item.title, isVideo = item.isVideo, loading = true) },
-                    error = { Text("The preview could not be shown.", color = Color.White) },
-                )
+            if (item.isVideo) {
+                VaultVideoPane(item = item, preview = preview, video = video)
+            } else {
+                VaultPreviewImage(item = item, preview = preview, modifier = Modifier.fillMaxSize())
             }
         }
         Surface(color = MaterialTheme.colorScheme.surface) {
@@ -174,6 +173,93 @@ private fun VaultDetailContent(item: VaultItem, preview: VaultPreview?) {
                     }
                 }
             }
+        }
+    }
+}
+
+/** the decrypted preview still of an item */
+@Composable
+private fun VaultPreviewImage(item: VaultItem, preview: VaultPreview?, modifier: Modifier = Modifier) {
+    when {
+        preview == null -> TileFallback(item.title, isVideo = item.isVideo, loading = true)
+        preview is VaultPreview.Missing -> TileFallback(item.title, isVideo = item.isVideo)
+        preview is VaultPreview.Failed -> Text(
+            text = preview.message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(24.dp),
+        )
+        preview is VaultPreview.Image -> SubcomposeAsyncImage(
+            model = preview.bytes,
+            contentDescription = item.title,
+            contentScale = ContentScale.Fit,
+            modifier = modifier.fillMaxSize(),
+            loading = { TileFallback(item.title, isVideo = item.isVideo, loading = true) },
+            error = { Text("The preview could not be shown.", color = Color.White) },
+        )
+    }
+}
+
+/**
+ * A vault video: the decrypted blob, played from disk.
+ *
+ * The preview still is only the poster while the blob downloads and
+ * decrypts — a still with a spinner says the video is coming, and a still
+ * with no spinner would be a video that never plays. A failure says why
+ * instead of leaving the poster up.
+ */
+@Composable
+private fun VaultVideoPane(item: VaultItem, preview: VaultPreview?, video: VaultVideoState?) {
+    val context = LocalContext.current
+    when (video) {
+        null, is VaultVideoState.Loading -> Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            VaultPreviewImage(item = item, preview = preview, modifier = Modifier.fillMaxSize())
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CircularProgressIndicator()
+                Text(
+                    text = "Loading the video…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White,
+                )
+            }
+        }
+
+        is VaultVideoState.Failed -> Text(
+            text = video.message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(24.dp),
+        )
+
+        is VaultVideoState.Ready -> {
+            val exoPlayer = remember(item.id) { ExoPlayer.Builder(context).build() }
+
+            DisposableEffect(exoPlayer) {
+                onDispose { exoPlayer.release() }
+            }
+
+            LaunchedEffect(video.file) {
+                exoPlayer.setMediaItem(Media3Item.fromUri(Uri.fromFile(video.file)))
+                exoPlayer.prepare()
+                exoPlayer.playWhenReady = true
+            }
+
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        useController = true
+                        this.player = exoPlayer
+                    }
+                },
+                update = { view -> view.player = exoPlayer },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
