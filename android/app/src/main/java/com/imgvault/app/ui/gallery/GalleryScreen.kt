@@ -3,12 +3,10 @@
 package com.imgvault.app.ui.gallery
 
 import android.util.Log
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,18 +15,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BrokenImage
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
@@ -40,26 +31,25 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.SubcomposeAsyncImage
+import com.imgvault.app.core.time.isoDayOf
 import com.imgvault.app.data.model.MediaItem
+import com.imgvault.app.ui.grid.JustifiedGrid
+import com.imgvault.app.ui.grid.TileFallback
+import com.imgvault.app.ui.grid.VideoBadge
+import com.imgvault.app.ui.grid.VideoPlaceholder
 
 /**
  * The gallery grid.
@@ -68,6 +58,10 @@ import com.imgvault.app.data.model.MediaItem
  * all share one height, every photo keeps its own shape inside that height,
  * the photos have small rounded corners and the feed is grouped under a date
  * header. Nothing is squashed into a square.
+ *
+ * The drawing of that grid is SHARED with the vault (`ui/grid/JustifiedGrid`)
+ * — the two feeds look and behave the same, and the geometry is pinned by one
+ * set of unit tests.
  *
  * Every state says what is happening: a spinner while the feed loads, the
  * failure message with a retry when the database cannot be reached, and an
@@ -173,81 +167,26 @@ fun GalleryScreen(
 /**
  * The feed itself: date headers with the photo rows under them.
  *
- * The row geometry comes from [buildGrid], so the screen only draws it. The
- * date header sticks to the top while its day is on screen, and a pinch
- * changes how many photos fit in a row — the same two things Google Photos
- * lets you do.
+ * The grid is the shared one — the vault draws the very same feed.
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PhotoFeed(
     items: List<MediaItem>,
     provider: String,
     onOpenItem: (MediaItem) -> Unit,
 ) {
-    var density by remember { mutableFloatStateOf(1f) }
-    val transformableState = rememberTransformableState { zoomChange, _, _ ->
-        density = (density * zoomChange).coerceIn(0.45f, 2.4f)
-    }
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val widthDp = maxWidth.value
-        val targetRatio = (GRID_TARGET_RATIO / density).coerceIn(1.1f, 7f)
-        val entries = remember(items, widthDp, targetRatio) { buildGrid(items, widthDp, targetRatio = targetRatio) }
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .transformable(state = transformableState),
-        ) {
-            entries.forEach { entry ->
-                when (entry) {
-                    is GridEntry.Header -> stickyHeader { DateHeader(entry.label) }
-                    is GridEntry.Photos -> item {
-                        PhotoRow(
-                            row = entry.row,
-                            provider = provider,
-                            onOpenItem = onOpenItem,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** the date header, the way Google Photos groups a feed */
-@Composable
-private fun DateHeader(label: String) {
-    Text(
-        text = label,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
-    )
-}
-
-/** one row of photos, all of them the same height */
-@Composable
-private fun PhotoRow(
-    row: GridRow,
-    provider: String,
-    onOpenItem: (MediaItem) -> Unit,
-) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(GRID_GAP_DP.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = GRID_GAP_DP.dp),
-    ) {
-        row.tiles.forEach { tile ->
-            val item = tile.item
-            PhotoTile(
-                item = item,
-                provider = provider,
-                widthDp = tile.widthDp,
-                heightDp = row.heightDp,
-                onOpen = { onOpenItem(item) },
-            )
-        }
+    JustifiedGrid(
+        items = items,
+        ratioOf = { it.aspectRatio },
+        dayKeyOf = { isoDayOf(it.internalAddedTimestamp.ifEmpty { it.creationDate }) },
+    ) { item, widthDp, heightDp ->
+        PhotoTile(
+            item = item,
+            provider = provider,
+            widthDp = widthDp,
+            heightDp = heightDp,
+            onOpen = { onOpenItem(item) },
+        )
     }
 }
 
@@ -271,135 +210,28 @@ private fun PhotoTile(
     ) {
         if (url.isEmpty()) {
             Log.i("ImgVault", "no thumbnail url for ${item.id}")
-            if (item.isVideo) VideoPlaceholder(item) else TileFallback(item)
+            if (item.isVideo) VideoPlaceholder() else TileFallback(item.title, isVideo = false)
         } else {
             SubcomposeAsyncImage(
                 model = url,
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
-                loading = { TileFallback(item, loading = true) },
+                loading = { TileFallback(item.title, isVideo = item.isVideo, loading = true) },
                 error = {
                     Log.w("ImgVault", "image failed: $url")
-                    TileFallback(item)
+                    TileFallback(item.title, isVideo = item.isVideo)
                 },
             )
         }
         if (item.isVideo) {
             VideoBadge(
-                item = item,
+                duration = item.durationLabel,
                 withPlayIcon = url.isNotEmpty(),
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(6.dp),
             )
-        }
-    }
-}
-
-/**
- * What is shown when there is no picture to show.
- *
- * It never hides the problem: a file without a thumbnail says so with an
- * icon and the file name, so the grid is never a row of empty squares.
- */
-@Composable
-private fun TileFallback(item: MediaItem, loading: Boolean = false) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(8.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        if (loading) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-        } else {
-            Icon(
-                imageVector = if (item.isVideo) Icons.Filled.PlayArrow else Icons.Filled.BrokenImage,
-                contentDescription = null,
-                modifier = Modifier.size(22.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Text(
-            text = item.title,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-    }
-}
-
-/**
- * A video without a poster frame.
- *
- * The database has no thumbnail for a video, so the tile says what it is: a
- * dark tile with a play button in the middle, the way Google Photos shows a
- * video it has no frame for.
- */
-@Composable
-private fun VideoPlaceholder(item: MediaItem) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF232323)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Surface(
-            color = Color.White.copy(alpha = 0.22f),
-            contentColor = Color.White,
-            shape = CircleShape,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.PlayArrow,
-                contentDescription = "Video",
-                modifier = Modifier
-                    .padding(10.dp)
-                    .size(28.dp),
-            )
-        }
-    }
-}
-
-/** the play badge and the length of a video, on the photo */
-@Composable
-private fun VideoBadge(item: MediaItem, withPlayIcon: Boolean, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (withPlayIcon) {
-            Surface(
-                color = MaterialTheme.colorScheme.scrim,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = CircleShape,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = "Video",
-                    modifier = Modifier
-                        .padding(3.dp)
-                        .size(16.dp),
-                )
-            }
-        }
-        val duration = item.durationLabel
-        if (duration.isNotEmpty()) {
-            Surface(
-                color = Color.Black.copy(alpha = 0.6f),
-                contentColor = Color.White,
-                shape = RoundedCornerShape(6.dp),
-            ) {
-                Text(
-                    text = duration,
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                )
-            }
         }
     }
 }

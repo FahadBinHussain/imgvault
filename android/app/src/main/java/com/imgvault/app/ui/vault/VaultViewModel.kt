@@ -4,8 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.imgvault.app.core.ServiceLocator
 import com.imgvault.app.data.VaultItem
+import com.imgvault.app.data.VaultLoadResult
+import com.imgvault.app.data.VaultPreview
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,6 +39,13 @@ class VaultViewModel : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    /** the decrypted previews, by item id */
+    private val _previews = MutableStateFlow<Map<String, VaultPreview>>(emptyMap())
+    val previews: StateFlow<Map<String, VaultPreview>> = _previews.asStateFlow()
+
+    private val pendingPreviews = mutableSetOf<String>()
+    private var previewJob: Job? = null
+
     init {
         load()
     }
@@ -56,10 +67,7 @@ class VaultViewModel : ViewModel() {
             }
             _error.value = null
             try {
-                val result = repository.loadVaultItems()
-                _items.value = result.items
-                _locked.value = false
-                _error.value = unreadableMessage(result.failed, result.total)
+                apply(repository.loadVaultItems())
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -86,10 +94,7 @@ class VaultViewModel : ViewModel() {
                 // the key derivation is deliberately slow, so it must not run on
                 // the main thread
                 withContext(Dispatchers.IO) { repository.unlock(passcode) }
-                val result = repository.loadVaultItems()
-                _items.value = result.items
-                _locked.value = false
-                _error.value = unreadableMessage(result.failed, result.total)
+                apply(repository.loadVaultItems())
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -111,7 +116,51 @@ class VaultViewModel : ViewModel() {
                 ?: "The vault could not be locked: ${error::class.java.simpleName}"
         }
         _items.value = emptyList()
+        _previews.value = emptyMap()
         _locked.value = true
+    }
+
+    /**
+     * Ask for the preview of an item.
+     *
+     * The grid asks for every tile it draws, so the asks are collected into
+     * one query per batch: a scroll reads a page of pictures instead of one
+     * request per tile.
+     */
+    fun requestPreview(itemId: String) {
+        if (_previews.value.containsKey(itemId)) return
+        synchronized(pendingPreviews) { pendingPreviews += itemId }
+        if (previewJob?.isActive == true) return
+        previewJob = viewModelScope.launch {
+            while (true) {
+                // let the tiles that are on screen ask first
+                delay(PREVIEW_BATCH_DELAY_MS)
+                val batch = synchronized(pendingPreviews) {
+                    pendingPreviews.toList().also { pendingPreviews.clear() }
+                }
+                if (batch.isEmpty()) break
+                val loaded = try {
+                    withContext(Dispatchers.IO) { repository.loadPreviews(batch) }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    // one batch that cannot be read must not kill the rest
+                    batch.associateWith {
+                        VaultPreview.Failed(
+                            error.message ?: "The preview could not be read.",
+                        )
+                    }
+                }
+                _previews.value = _previews.value + loaded
+            }
+        }
+    }
+
+    /** show what was loaded and say how many items could not be read */
+    private fun apply(result: VaultLoadResult) {
+        _items.value = result.items
+        _locked.value = false
+        _error.value = unreadableMessage(result.failed, result.total)
     }
 
     /**
@@ -124,5 +173,10 @@ class VaultViewModel : ViewModel() {
         if (failed <= 0) return null
         return "$failed of $total vault items could not be decrypted with this vault key. " +
             "They were encrypted with a different key - open them in the extension."
+    }
+
+    private companion object {
+        /** how long a tile waits before its batch is fetched */
+        const val PREVIEW_BATCH_DELAY_MS = 80L
     }
 }

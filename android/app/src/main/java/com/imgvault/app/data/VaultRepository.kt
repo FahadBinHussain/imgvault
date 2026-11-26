@@ -4,17 +4,23 @@ import com.imgvault.app.core.crypto.VaultCrypto
 import com.imgvault.app.core.crypto.VaultConfig
 import com.imgvault.app.core.crypto.VaultKeyBinding
 import com.imgvault.app.core.neon.NeonClient
+import com.imgvault.app.core.neon.asBooleanOrFalse
 import com.imgvault.app.core.neon.asJsonObjectOrEmpty
+import com.imgvault.app.core.neon.asLongOrNull
 import com.imgvault.app.core.neon.asTextOrEmpty
 import com.imgvault.app.core.settings.SettingsRepository
+import com.imgvault.app.core.time.isoDayOf
 import com.imgvault.app.data.model.MediaItem
+import com.imgvault.app.data.model.durationLabelOf
 import com.imgvault.app.data.model.toMediaItem
 import java.util.Base64
 import javax.crypto.SecretKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
@@ -35,7 +41,50 @@ data class VaultItem(
      * its place in the list and says what is wrong with it.
      */
     val decryptError: String? = null,
-)
+    /** the shape of the picture, out of the decrypted metadata */
+    val width: Int? = null,
+    val height: Int? = null,
+    val isVideo: Boolean = false,
+    val durationLabel: String = "",
+    /** the day the item belongs to in the feed ("2026-11-26") */
+    val dayKey: String? = null,
+) {
+    /**
+     * The tile's shape — the picture's own, never squashed into a square.
+     *
+     * A vaulted row keeps its plaintext columns blank, so the size comes from
+     * the decrypted metadata; an item that could not be read falls back to a
+     * square.
+     */
+    val aspectRatio: Float
+        get() {
+            val w = width ?: return 1f
+            val h = height ?: return 1f
+            if (w <= 0 || h <= 0) return 1f
+            return (w.toFloat() / h.toFloat()).coerceIn(0.55f, 2.2f)
+        }
+
+    /** what the tile shows when there is no picture */
+    val title: String get() = fileName.ifBlank { "unnamed file" }
+}
+
+/**
+ * The preview of a vault item.
+ *
+ * The extension encrypts a small JPEG of every vaulted item and stores it in
+ * `media_item_previews` — without it the vault grid would be a wall of empty
+ * squares.
+ */
+sealed interface VaultPreview {
+    /** the decrypted picture bytes */
+    class Image(val bytes: ByteArray) : VaultPreview
+
+    /** this item has no preview at all */
+    data object Missing : VaultPreview
+
+    /** the preview exists but could not be read with the current key */
+    data class Failed(val message: String) : VaultPreview
+}
 
 /**
  * The vault rows, plus how many of them could not be read.
@@ -170,21 +219,68 @@ class VaultRepository(
                 }
                 if (decryptError != null) failed += 1
             }
+            val fileName = meta?.get("fileName").asTextOrEmpty()
+                .ifEmpty { meta?.get("originalFileName").asTextOrEmpty() }
+                .ifEmpty { item.encryptedFileName }
+                .ifEmpty { item.fileName }
+            // the day the item belongs under: the picture's own date, and the
+            // day it was vaulted when the metadata could not be read
+            val dayKey = isoDayOf(meta?.get("creationDate").asTextOrEmpty())
+                ?: isoDayOf(item.extra["vaultedAt"].asTextOrEmpty())
+                ?: isoDayOf(item.internalAddedTimestamp)
             VaultItem(
                 id = item.id,
-                fileName = meta?.get("fileName").asTextOrEmpty()
-                    .ifEmpty { item.encryptedFileName }
-                    .ifEmpty { item.fileName },
+                fileName = fileName,
                 mimeType = meta?.get("mimeType").asTextOrEmpty()
                     .ifEmpty { item.encryptedMimeType },
                 sizeBytes = item.fileSize ?: 0L,
                 hosts = item.vaultHosts,
                 raw = item,
                 decryptError = decryptError,
+                width = meta?.get("width").asLongOrNull()?.toInt(),
+                height = meta?.get("height").asLongOrNull()?.toInt(),
+                isVideo = meta?.get("isVideo").asBooleanOrFalse() || item.isVideo,
+                durationLabel = durationLabelOf(
+                    meta?.get("duration").asTextOrEmpty().ifEmpty { item.duration },
+                ),
+                dayKey = dayKey,
             )
         }
         VaultLoadResult(items = items, failed = failed, total = items.size)
     }
+
+    /**
+     * The previews of a batch of vault items, decrypted with the master key.
+     *
+     * One query for the whole batch — the grid asks for what is on screen, so
+     * a scroll reads a page of pictures instead of one request per tile.
+     */
+    suspend fun loadPreviews(itemIds: List<String>): Map<String, VaultPreview> =
+        withContext(Dispatchers.IO) {
+            if (itemIds.isEmpty()) return@withContext emptyMap()
+            val key = masterKey()
+                ?: throw ImgVaultException("The vault is locked — unlock it to read this file.")
+            val rows = client().query(PREVIEW_SQL, listOf(JsonArray(itemIds.map { JsonPrimitive(it) })))
+            val encrypted = mutableMapOf<String, String>()
+            rows.forEach { row ->
+                val id = row["item_id"].asTextOrEmpty()
+                val value = row["preview_encrypted"].asTextOrEmpty()
+                if (id.isNotEmpty() && value.isNotEmpty()) encrypted[id] = value
+            }
+            itemIds.associateWith { id ->
+                val value = encrypted[id]
+                when {
+                    value == null -> VaultPreview.Missing
+                    else -> try {
+                        VaultPreview.Image(VaultCrypto.decryptPreviewBytes(key, value))
+                    } catch (error: Exception) {
+                        VaultPreview.Failed(
+                            error.message ?: "The preview could not be decrypted with this vault key.",
+                        )
+                    }
+                }
+            }
+        }
 
     /**
      * Download + decrypt the encrypted blob of a vault item.
@@ -328,6 +424,19 @@ class VaultRepository(
             from public.media_items
             where id = '__imgvault_vault_config__'
             limit 1
+        """.trimIndent()
+
+        /**
+         * The encrypted previews of a batch of vault items.
+         *
+         * The extension encrypts a small JPEG of every vaulted item and stores
+         * it here — the only picture the phone can show without downloading
+         * the encrypted blob from its host.
+         */
+        val PREVIEW_SQL = """
+            select item_id, preview_encrypted
+            from public.media_item_previews
+            where item_id = any($1)
         """.trimIndent()
     }
 }

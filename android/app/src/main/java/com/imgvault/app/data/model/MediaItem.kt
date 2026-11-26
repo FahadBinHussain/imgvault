@@ -224,16 +224,7 @@ data class MediaItem(
 
     /** how long the video runs, for the badge on the tile */
     val durationLabel: String
-        get() {
-            val raw = duration.trim()
-            if (raw.isEmpty()) return ""
-            val seconds = raw.toLongOrNull()
-                ?: raw.toDoubleOrNull()?.toLong()
-                ?: return ""
-            val minutes = seconds / 60
-            val rest = seconds % 60
-            return if (minutes > 0) "${minutes}:${rest.toString().padStart(2, '0')}" else "${rest}s"
-        }
+        get() = durationLabelOf(duration)
 
     /**
      * The poster frame of a video.
@@ -265,6 +256,24 @@ data class HostLink(
     val hasAnything: Boolean
         get() = url.isNotEmpty() || displayUrl.isNotEmpty() || directUrl.isNotEmpty() ||
             deleteUrl.isNotEmpty() || thumbnailUrl.isNotEmpty()
+}
+
+/**
+ * How long a video runs, in the unit a human reads.
+ *
+ * The length comes as seconds ("83", "83.5") — from a column for a normal
+ * item and from the decrypted metadata for a vaulted one.
+ */
+fun durationLabelOf(raw: String): String {
+    val text = raw.trim()
+    if (text.isEmpty()) return ""
+    val seconds = text.toLongOrNull()
+        ?: text.toDoubleOrNull()?.toLong()
+        ?: return ""
+    if (seconds < 0) return ""
+    val minutes = seconds / 60
+    val rest = seconds % 60
+    return if (minutes > 0) "${minutes}:${rest.toString().padStart(2, '0')}" else "${rest}s"
 }
 
 /** map a `public.media_items` row (Neon: text values, column names) to an item */

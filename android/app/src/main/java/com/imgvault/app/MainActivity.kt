@@ -19,6 +19,7 @@ import com.imgvault.app.ui.gallery.GalleryScreen
 import com.imgvault.app.ui.settings.SettingsScreen
 import com.imgvault.app.ui.theme.ImgVaultTheme
 import com.imgvault.app.ui.update.UpdateScreen
+import com.imgvault.app.ui.vault.VaultDetailScreen
 import com.imgvault.app.ui.vault.VaultScreen
 
 class MainActivity : ComponentActivity() {
@@ -45,8 +46,10 @@ object Routes {
     const val SETTINGS = "settings"
     const val UPDATE = "update"
     const val DETAIL = "detail/{itemId}"
+    const val VAULT_DETAIL = "vault-detail/{itemId}"
 
     fun detail(itemId: String) = "detail/$itemId"
+    fun vaultDetail(itemId: String) = "vault-detail/$itemId"
 }
 
 @Composable
@@ -63,7 +66,19 @@ fun AppRoot() {
             )
         }
         composable(Routes.VAULT) {
-            VaultScreen(onBack = { navController.popBackStack() })
+            VaultScreen(
+                onBack = { navController.popBackStack() },
+                onOpenItem = { item -> navController.navigate(Routes.vaultDetail(item.id)) },
+            )
+        }
+        composable(
+            route = Routes.VAULT_DETAIL,
+            arguments = listOf(navArgument("itemId") { type = NavType.StringType }),
+        ) { entry ->
+            VaultDetailScreen(
+                itemId = entry.arguments?.getString("itemId").orEmpty(),
+                onBack = { navController.popBackStack() },
+            )
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(onBack = { navController.popBackStack() })

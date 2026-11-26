@@ -190,6 +190,19 @@ object VaultCrypto {
     fun decryptMetadata(key: SecretKey, base64: String): String =
         String(decryptRaw(key, Base64.getDecoder().decode(base64)), Charsets.UTF_8)
 
+    /**
+     * Decrypt a stored vault preview.
+     *
+     * The preview is a small JPEG the extension encrypted with the master key
+     * and stored in `media_item_previews` — the same single-shot AES-GCM
+     * container as the metadata, but the plaintext is PICTURE BYTES, not text,
+     * so it must not go through [decryptMetadata].
+     *
+     * @param base64 `iv || ciphertext || tag`
+     */
+    fun decryptPreviewBytes(key: SecretKey, base64: String): ByteArray =
+        decryptRaw(key, Base64.getDecoder().decode(base64))
+
     // -----------------------------------------------------------------------
     // blobs (IVG1)
     // -----------------------------------------------------------------------
