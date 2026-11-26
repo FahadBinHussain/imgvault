@@ -2,23 +2,26 @@
 
 package com.imgvault.app.ui.gallery
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
@@ -39,18 +42,27 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.imgvault.app.data.model.MediaItem
 
 /**
  * The gallery grid.
+ *
+ * The layout is Google Photos': the feed is packed into rows of photos that
+ * all share one height, every photo keeps its own shape inside that height,
+ * the photos have small rounded corners and the feed is grouped under a date
+ * header. Nothing is squashed into a square.
  *
  * Every state says what is happening: a spinner while the feed loads, the
  * failure message with a retry when the database cannot be reached, and an
@@ -103,6 +115,7 @@ fun GalleryScreen(
                 onValueChange = viewModel::setQuery,
                 label = { Text("Search") },
                 singleLine = true,
+                shape = RoundedCornerShape(28.dp),
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 trailingIcon = {
                     if (query.isNotEmpty()) {
@@ -141,74 +154,199 @@ fun GalleryScreen(
                         modifier = Modifier.align(Alignment.Center),
                     )
 
-                    else -> LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 120.dp),
-                        contentPadding = PaddingValues(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        items(items) { item ->
-                            GalleryCard(
-                                item = item,
-                                provider = provider,
-                                onOpenItem = onOpenItem,
-                            )
-                        }
-                    }
+                    else -> PhotoFeed(
+                        items = items,
+                        provider = provider,
+                        onOpenItem = onOpenItem,
+                    )
                 }
             }
         }
     }
 }
 
+/**
+ * The feed itself: date headers with the photo rows under them.
+ *
+ * The row geometry comes from [buildGrid], so the screen only draws it.
+ */
 @Composable
-private fun GalleryCard(
-    item: MediaItem,
+private fun PhotoFeed(
+    items: List<MediaItem>,
     provider: String,
     onOpenItem: (MediaItem) -> Unit,
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onOpenItem(item) },
-    ) {
-        Box {
-            AsyncImage(
-                model = item.thumbnail(provider),
-                contentDescription = item.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            )
-            if (item.isVideo) {
-                Surface(
-                    color = MaterialTheme.colorScheme.scrim,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = CircleShape,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(6.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = "Video",
-                        modifier = Modifier
-                            .padding(4.dp)
-                            .size(18.dp),
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val widthDp = maxWidth.value
+        val entries = remember(items, widthDp) { buildGrid(items, widthDp) }
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            items(entries) { entry ->
+                when (entry) {
+                    is GridEntry.Header -> DateHeader(entry.label)
+                    is GridEntry.Photos -> PhotoRow(
+                        row = entry.row,
+                        provider = provider,
+                        onOpenItem = onOpenItem,
                     )
                 }
             }
         }
+    }
+}
+
+/** the date header, the way Google Photos groups a feed */
+@Composable
+private fun DateHeader(label: String) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
+    )
+}
+
+/** one row of photos, all of them the same height */
+@Composable
+private fun PhotoRow(
+    row: GridRow,
+    provider: String,
+    onOpenItem: (MediaItem) -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(GRID_GAP_DP.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = GRID_GAP_DP.dp),
+    ) {
+        row.tiles.forEach { tile ->
+            val item = tile.item
+            PhotoTile(
+                item = item,
+                provider = provider,
+                widthDp = tile.widthDp,
+                heightDp = row.heightDp,
+                onOpen = { onOpenItem(item) },
+            )
+        }
+    }
+}
+
+/** one photo, cropped to fill its own shape — never squashed */
+@Composable
+private fun PhotoTile(
+    item: MediaItem,
+    provider: String,
+    widthDp: Float,
+    heightDp: Float,
+    onOpen: () -> Unit,
+) {
+    val url = item.thumbnail(provider)
+    Box(
+        modifier = Modifier
+            .width(widthDp.dp)
+            .height(heightDp.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable { onOpen() },
+    ) {
+        if (url.isEmpty()) {
+            Log.i("ImgVault", "no thumbnail url for ${item.id}")
+            TileFallback(item)
+        } else {
+            SubcomposeAsyncImage(
+                model = url,
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+                loading = { TileFallback(item, loading = true) },
+                error = {
+                    Log.w("ImgVault", "image failed: $url")
+                    TileFallback(item)
+                },
+            )
+        }
+        if (item.isVideo) {
+            VideoBadge(
+                item = item,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(6.dp),
+            )
+        }
+    }
+}
+
+/**
+ * What is shown when there is no picture to show.
+ *
+ * It never hides the problem: a file without a thumbnail says so with an
+ * icon and the file name, so the grid is never a row of empty squares.
+ */
+@Composable
+private fun TileFallback(item: MediaItem, loading: Boolean = false) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(8.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (loading) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+        } else {
+            Icon(
+                imageVector = if (item.isVideo) Icons.Filled.PlayArrow else Icons.Filled.BrokenImage,
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Text(
             text = item.title,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 1,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            modifier = Modifier.padding(top = 4.dp),
         )
+    }
+}
+
+/** the play badge and the length of a video, on the photo */
+@Composable
+private fun VideoBadge(item: MediaItem, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.scrim,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            shape = CircleShape,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.PlayArrow,
+                contentDescription = "Video",
+                modifier = Modifier
+                    .padding(3.dp)
+                    .size(16.dp),
+            )
+        }
+        val duration = item.durationLabel
+        if (duration.isNotEmpty()) {
+            Surface(
+                color = Color.Black.copy(alpha = 0.6f),
+                contentColor = Color.White,
+                shape = RoundedCornerShape(6.dp),
+            ) {
+                Text(
+                    text = duration,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
+        }
     }
 }
 
@@ -220,10 +358,7 @@ private fun GalleryError(
     modifier: Modifier = Modifier,
 ) {
     Card(modifier = modifier.padding(16.dp)) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 text = "The gallery could not be loaded",
                 style = MaterialTheme.typography.titleMedium,

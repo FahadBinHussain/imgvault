@@ -188,6 +188,40 @@ data class MediaItem(
     /** what the card shows as its title */
     val title: String
         get() = pageTitle.ifEmpty { fileName.ifEmpty { sourceImageUrl } }
+
+    /**
+     * The shape of the file, the way the grid needs it.
+     *
+     * The database knows the real width and height, so a panorama gets a wide
+     * tile and a portrait a narrow one — the photo is never squashed into a
+     * square. A file without a size falls back to a square.
+     */
+    val aspectRatio: Float
+        get() {
+            val w = width ?: return DEFAULT_ASPECT_RATIO
+            val h = height ?: return DEFAULT_ASPECT_RATIO
+            if (w <= 0 || h <= 0) return DEFAULT_ASPECT_RATIO
+            return (w.toFloat() / h.toFloat()).coerceIn(MIN_ASPECT_RATIO, MAX_ASPECT_RATIO)
+        }
+
+    /** how long the video runs, for the badge on the tile */
+    val durationLabel: String
+        get() {
+            val raw = duration.trim()
+            if (raw.isEmpty()) return ""
+            val seconds = raw.toLongOrNull()
+                ?: raw.toDoubleOrNull()?.toLong()
+                ?: return ""
+            val minutes = seconds / 60
+            val rest = seconds % 60
+            return if (minutes > 0) "${minutes}:${rest.toString().padStart(2, '0')}" else "${rest}s"
+        }
+
+    companion object {
+        const val DEFAULT_ASPECT_RATIO = 1f
+        const val MIN_ASPECT_RATIO = 0.55f
+        const val MAX_ASPECT_RATIO = 2.2f
+    }
 }
 
 /** one host's link bundle */
