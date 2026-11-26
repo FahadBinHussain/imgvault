@@ -62,7 +62,9 @@ class BoloWavyRingMathTest {
 
         val atHalf = wavyTrackSegment(0.5f, trackLength, gap, stroke)
         assertNotNull(atHalf)
-        assertEquals(330f, atHalf!!.start, 0.001f)
+        // pStop 330 + spacing (2 * cap inset 5 + track gap 4 = 14) = 344
+        assertEquals(344f, atHalf!!.start, 0.001f)
+        assertEquals(646f, atHalf.stop, 0.001f)
         assertTrue(atHalf.stop < trackLength)
 
         // the progress plus its gap ate the whole track

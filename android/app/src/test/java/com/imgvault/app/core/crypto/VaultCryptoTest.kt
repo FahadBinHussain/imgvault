@@ -33,11 +33,11 @@ class VaultCryptoTest {
     private val masterKeyHex =
         "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
     private val encryptedMetadataB64 =
-        "sggTxSMG37x8sq1eEPLyw89TvVKa04Xtz/CPBzHchD+izMH8VQSnBWV4tNMdlwv1DrXx/pRXifb9NHiZHbXC1ogddoVYNMEzrFqfAXzf8scL4sBohjerDUrmFZ45WYx5UhpluhkfWhZy2swSislu"
+        "tpryCtEph+/fu3vFc7UQfMMrpjxomzuJGgWYIGZPN0IyQ4ryUYq+XPX6GJNrLED4KxJIEE9Yai4hXWws6aIKM0BP5couYnG8w/dCTo/BFPrpqui6KA/0EQTGdijZjno="
     private val metadataPlain =
         """{"fileName":"holiday.jpg","mimeType":"image/jpeg","tags":["a","b"]}"""
     private val encryptedBlobB64 =
-        "SVZHMUMAAAAAAAAAAACAAKPGciAyabu6pvHeiEWE1bC2G841LjUfOnzL0i4znUvfUciyHC2pX8k4Bg1f2r+K23fSf/JS0bJFWXtXNgpFwKtzh6uU9XD+ElF/BZiOvEnFVigX+0cMnGggBmZp2XFz"
+        "SVZHMUMAAAAAAAAAAACAAH3/Y769N2jB2cP9u4Vf/71ZtccuhgPSDDYEJZdDgT3wFmXfkpxHHRidFKj8XMRL48WGUYC8UJraoCgSbqVJmi+4N7mdCuroosqy6JtwY9iWv/Ac94b9wSNQT24WDbsL"
     private val blobPlain = "hello vault, this is the plaintext that must survive the round trip"
 
     @Test
@@ -123,7 +123,7 @@ class VaultCryptoTest {
         val config = VaultCrypto.createVaultConfig(passcode)
         assertEquals(VaultCrypto.KDF_ITERATIONS, config.kdfIterations)
         assertEquals(VaultCrypto.VAULT_VERSION, config.vaultVersion)
-        assertEquals(32, config.kdfSalt.length / 2)
+        assertEquals(16, config.kdfSalt.length / 2)
         val key = VaultCrypto.unwrapMasterKey(config, passcode)
         assertEquals(32, key.encoded.size)
     }

@@ -6,10 +6,9 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 import javax.crypto.Cipher
+import javax.crypto.Mac
 import javax.crypto.SecretKey
-import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
@@ -52,15 +51,65 @@ object VaultCrypto {
         return digest.toHex()
     }
 
-    /** PBKDF2-HMAC-SHA256 -> AES-256 key */
+    /**
+     * PBKDF2-HMAC-SHA256 -> AES-256 key.
+     *
+     * WHY NOT `SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")`: the JDK
+     * implementation encodes the passcode as UTF-16BE, while the browser's
+     * WebCrypto (and therefore `packages/shared/vaultCrypto.js`) uses UTF-8.
+     * The two derive DIFFERENT keys for the same passcode, and the vault then
+     * cannot be unwrapped. So the KDF is done by hand here, with the passcode
+     * as its UTF-8 bytes — exactly what the JS side does.
+     */
     fun derivePasscodeKey(
         passcode: String,
         saltHex: String,
         iterations: Int = KDF_ITERATIONS,
     ): SecretKey {
-        val spec = PBEKeySpec(passcode.toCharArray(), saltHex.hexToBytes(), iterations, 256)
-        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-        return SecretKeySpec(factory.generateSecret(spec).encoded, "AES")
+        val derived = pbkdf2Sha256(
+            password = passcode.toByteArray(Charsets.UTF_8),
+            salt = saltHex.hexToBytes(),
+            iterations = iterations,
+            keyLength = 32,
+        )
+        return SecretKeySpec(derived, "AES")
+    }
+
+    /** PBKDF2 (RFC 2898) with HMAC-SHA256, written out so the bytes match WebCrypto. */
+    private fun pbkdf2Sha256(
+        password: ByteArray,
+        salt: ByteArray,
+        iterations: Int,
+        keyLength: Int,
+    ): ByteArray {
+        require(iterations > 0) { "PBKDF2 needs at least one iteration" }
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(password, "HmacSHA256"))
+        val hashLength = mac.macLength
+        val blocks = (keyLength + hashLength - 1) / hashLength
+        val output = ByteArray(blocks * hashLength)
+
+        for (block in 1..blocks) {
+            mac.update(salt)
+            mac.update(
+                byteArrayOf(
+                    (block ushr 24).toByte(),
+                    (block ushr 16).toByte(),
+                    (block ushr 8).toByte(),
+                    block.toByte(),
+                ),
+            )
+            var u = mac.doFinal()
+            val t = u.copyOf()
+            for (iteration in 1 until iterations) {
+                u = mac.doFinal(u)
+                for (index in t.indices) {
+                    t[index] = (t[index].toInt() xor u[index].toInt()).toByte()
+                }
+            }
+            System.arraycopy(t, 0, output, (block - 1) * hashLength, hashLength)
+        }
+        return output.copyOf(keyLength)
     }
 
     /** AES-GCM encrypt: returns iv || ciphertext || tag */
