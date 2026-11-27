@@ -82,19 +82,6 @@ jobs:
           chmod 600 android/.keystore/upload.p12
           echo "keystore restored: $(stat -c%s android/.keystore/upload.p12) bytes"
 
-      - name: Find every keystore on the runner
-        # TEMPORARY diagnostic: the restored file is bda52264 yet the APK
-        # comes out c22109fc, so the build must be reading a DIFFERENT
-        # keystore file somewhere on this machine. List them all.
-        run: |
-          set -euo pipefail
-          echo "--- keystore files ---"
-          find /home/runner /root /tmp -name "*.p12" -o -name "*.jks" -o -name "*.keystore" -o -name "debug.keystore" 2>/dev/null | head -20
-          echo "--- upload.p12 fingerprint (must be bda52264) ---"
-          keytool -list -v -keystore android/.keystore/upload.p12 -storepass "${{ secrets.IMGVAULT_STORE_PASSWORD }}" -storetype PKCS12 2>&1 | grep -i "SHA256" | head -2
-          echo "--- IMGVAULT_KEYSTORE_PATH resolves to ---"
-          ls -l "${{ github.workspace }}/android/.keystore/upload.p12"
-
       - name: Unit tests
         working-directory: android
         run: |
@@ -112,11 +99,14 @@ jobs:
           IMGVAULT_STORE_PASSWORD: ${{ secrets.IMGVAULT_STORE_PASSWORD }}
         run: |
           set -euo pipefail
-          # clean first: a stale app-release.apk (or a cached signing
-          # output) from an earlier keystore must never survive into this
-          # build — the pin checks the APK on disk, so a stale one fails
-          # the pin even when the restored keystore is already the right one.
-          ./gradlew --no-daemon --stacktrace clean :app:assembleRelease
+          # clean first, and NO build cache: a stale app-release.apk (or a
+          # cached signing output) from an earlier keystore must never
+          # survive into this build. The build cache kept serving the
+          # c22109fc-signed APK even after the restored keystore became
+          # bda52264 — its cache key does not capture the keystore file
+          # content — so the pin kept failing on an APK this run never
+          # signed. --no-build-cache forces the real sign with the real key.
+          ./gradlew --no-daemon --no-build-cache --stacktrace clean :app:assembleRelease
           # ONLY the signed APK counts. `assembleRelease` also leaves an
           # app-release-unsigned.apk behind when the signing config did not
           # apply, and publishing that would ship an APK no phone can update.
