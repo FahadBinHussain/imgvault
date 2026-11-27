@@ -265,13 +265,20 @@ imgvault-secrets\imgvault-android.p12`, cert `bda52264…`): on 2026-11-27
 the GitHub secrets were set from that file (`IMGVAULT_KEYSTORE_BASE64` +
 `IMGVAULT_KEY_ALIAS=imgvault` + both passwords from
 `imgvault-android-password.txt`), and `android/signing-cert-sha256.txt`
-now pins `bda52264…`. The CI step "Pin the signing certificate" extracts
-the built APK's v2 signing-block certificate (python3 + struct/hashlib, no
-extra tool) and FAILS the build when it differs. **The local `.p12` is the
-canonical copy — never regenerate it, never replace it, and keep it in the
-vault; the GitHub secret is set FROM it, never the other way round.** If
-the secret ever drifts again the pin fails the build instead of shipping
-an update no phone can install.
+now pins `bda52264…`. The CI step "Pin the signing certificate" reads the
+built APK's signing certificate with **apksigner** (`verify --print-certs`,
+the same tool Android uses) and FAILS the build when it differs. The
+earlier hand-rolled v2-block parser (python3 + struct/hashlib) was WRONG:
+it kept reporting a stale `c22109fc…` certificate while apksigner proved
+the same APK is signed with the pinned `bda52264…` — the build had been
+signing correctly all along and the pin's parser was the bug, not the
+keystore, the secret, or any cache (config cache, build cache and stale
+APK were all ruled out the hard way). Never bring back a hand-rolled
+signing-block parser for the pin; apksigner is the authority. **The local
+`.p12` is the canonical copy — never regenerate it, never replace it, and
+keep it in the vault; the GitHub secret is set FROM it, never the other way
+round.** If the secret ever drifts again the pin fails the build instead of
+shipping an update no phone can install.
 
 1. **Install button.** Two gaps: the app declares `REQUEST_INSTALL_PACKAGES`
 but the user still has to turn on "Install unknown apps" for ImgVault, and
