@@ -82,21 +82,6 @@ jobs:
           chmod 600 android/.keystore/upload.p12
           echo "keystore restored: $(stat -c%s android/.keystore/upload.p12) bytes"
 
-      - name: Show the signing config the build will use
-        # TEMPORARY diagnostic: signingReport prints the store path + the
-        # cert SHA-256 the build resolved, so we can see which keystore the
-        # build actually picked (the restored file is bda52264, yet the APK
-        # comes out c22109fc — the build must be reading a different file).
-        working-directory: android
-        env:
-          IMGVAULT_KEYSTORE_PATH: ${{ github.workspace }}/android/.keystore/upload.p12
-          IMGVAULT_KEY_ALIAS: ${{ secrets.IMGVAULT_KEY_ALIAS }}
-          IMGVAULT_KEY_PASSWORD: ${{ secrets.IMGVAULT_KEY_PASSWORD }}
-          IMGVAULT_STORE_PASSWORD: ${{ secrets.IMGVAULT_STORE_PASSWORD }}
-        run: |
-          set -euo pipefail
-          ./gradlew --no-daemon :app:signingReport 2>&1 | grep -iE "Variant: release|Config: release|Store:|Alias:|SHA-256|SHA1:" | head -12
-
       - name: Unit tests
         working-directory: android
         run: |
@@ -114,7 +99,11 @@ jobs:
           IMGVAULT_STORE_PASSWORD: ${{ secrets.IMGVAULT_STORE_PASSWORD }}
         run: |
           set -euo pipefail
-          ./gradlew --no-daemon --stacktrace :app:assembleRelease
+          # clean first: a stale app-release.apk (or a cached signing
+          # output) from an earlier keystore must never survive into this
+          # build — the pin checks the APK on disk, so a stale one fails
+          # the pin even when the restored keystore is already the right one.
+          ./gradlew --no-daemon --stacktrace clean :app:assembleRelease
           # ONLY the signed APK counts. `assembleRelease` also leaves an
           # app-release-unsigned.apk behind when the signing config did not
           # apply, and publishing that would ship an APK no phone can update.
