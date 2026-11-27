@@ -26,11 +26,18 @@ android {
         // APK that the user's phone could never update.
         create("release") {
             val keystorePath = System.getenv("IMGVAULT_KEYSTORE_PATH")
+            // TEMPORARY diagnostic: print exactly what the build resolved,
+            // so a wrong store path shows up in the log instead of silently
+            // signing with a stale key. (No password is printed.)
+            println("SIGNING-DEBUG keystorePath=$keystorePath exists=${keystorePath?.let { file(it).exists() }} alias=${System.getenv("IMGVAULT_KEY_ALIAS")}")
             if (!keystorePath.isNullOrBlank() && file(keystorePath).exists()) {
                 storeFile = file(keystorePath)
                 storePassword = System.getenv("IMGVAULT_STORE_PASSWORD")
                 keyAlias = System.getenv("IMGVAULT_KEY_ALIAS")
                 keyPassword = System.getenv("IMGVAULT_KEY_PASSWORD")
+                println("SIGNING-DEBUG storeFile set to ${storeFile}")
+            } else {
+                println("SIGNING-DEBUG keystore NOT configured (path missing or file absent)")
             }
         }
     }
