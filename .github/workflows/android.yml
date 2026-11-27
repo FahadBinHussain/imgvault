@@ -132,7 +132,19 @@ jobs:
           fi
           echo "signed apk: app/build/outputs/apk/release/app-release.apk"
 
-      - name: Pin the signing certificate
+      - name: List every signer in the built APK
+        # TEMPORARY diagnostic: apksigner lists ALL v2 signers + certs.
+        # The pin reads the FIRST signer (c22109fc) — if the APK was signed
+        # twice (stale c22109fc signer + fresh bda52264 signer), this shows
+        # both and explains why the pin sees the old cert first.
+        if: steps.gate.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          echo "--- apksigner verify --print-certs ---"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" 2>&1 | grep -iE "Signer|Subject|SHA-256|WARNING|ERROR" | head -12 || true
+          echo "--- keytool fingerprint of the keystore the build used ---"
+          keytool -list -v -keystore android/.keystore/upload.p12 -storepass "${{ secrets.IMGVAULT_STORE_PASSWORD }}" -storetype PKCS12 2>&1 | grep -i "SHA256" | head -2
         # Every release MUST be signed with the same certificate, or a phone
         # cannot update over the build it already has
         # (INSTALL_FAILED_UPDATE_INCOMPATIBLE). 1.0.7, 1.0.8 and 1.0.9 were
