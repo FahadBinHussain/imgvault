@@ -82,6 +82,21 @@ jobs:
           chmod 600 android/.keystore/upload.p12
           echo "keystore restored: $(stat -c%s android/.keystore/upload.p12) bytes"
 
+      - name: Show the signing config the build resolves
+        # TEMPORARY diagnostic: signingReport prints the store path + the
+        # cert SHA-256 Gradle resolved for the release variant. The restored
+        # file is bda52264 yet the APK comes out c22109fc, so this shows
+        # whether Gradle resolved a different store. No grep pipe — a
+        # no-match grep under pipefail killed this step last time.
+        working-directory: android
+        env:
+          IMGVAULT_KEYSTORE_PATH: ${{ github.workspace }}/android/.keystore/upload.p12
+          IMGVAULT_KEY_ALIAS: ${{ secrets.IMGVAULT_KEY_ALIAS }}
+          IMGVAULT_KEY_PASSWORD: ${{ secrets.IMGVAULT_KEY_PASSWORD }}
+          IMGVAULT_STORE_PASSWORD: ${{ secrets.IMGVAULT_STORE_PASSWORD }}
+        run: |
+          ./gradlew --no-daemon --no-build-cache :app:signingReport || true
+
       - name: Unit tests
         working-directory: android
         run: |
