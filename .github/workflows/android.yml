@@ -82,15 +82,6 @@ jobs:
           chmod 600 android/.keystore/upload.p12
           echo "keystore restored: $(stat -c%s android/.keystore/upload.p12) bytes"
 
-      - name: Debug the restored keystore fingerprint
-        # TEMPORARY diagnostic: prints ONLY the cert SHA-256 (a fingerprint,
-        # not the keystore) so we can see which key the secret actually holds.
-        env:
-          STORE_PASSWORD: ${{ secrets.IMGVAULT_STORE_PASSWORD }}
-        run: |
-          set -euo pipefail
-          keytool -list -v -keystore android/.keystore/upload.p12 -storepass "$STORE_PASSWORD" -storetype PKCS12 2>&1 | grep -iE "Alias name|SHA256|Owner:" | head -6
-
       - name: Unit tests
         working-directory: android
         run: |
