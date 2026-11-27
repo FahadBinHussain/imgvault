@@ -255,11 +255,23 @@ certificate (v2 SHA-256: 1.0.7 `42828de9…`, 1.0.8 `f2681c8a…`, 1.0.9
 at all — `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, and the in-app screen only
 said "the system installer did not install the update". **One-time
 consequence: 1.0.8 must be UNINSTALLED once, then 1.0.10 installs clean.**
-From now on the certificate MUST stay `02874b1c…` (the current secret's
-cert): `android/signing-cert-sha256.txt` pins it, and the CI step "Pin the
-signing certificate" extracts the built APK's v2 signing-block certificate
-(python3 + struct/hashlib, no extra tool) and FAILS the build when it
-differs. The keystore secret itself was NOT changed or regenerated.
+The 02874b1c keystore that signed 1.0.9 is LOST — it only ever lived in the
+GitHub secret, which rotated again after 1.0.9 (the CI build then signed
+with a fourth cert, `c22109fc…`), and the local `.p12` turned out to be a
+FIFTH cert (`bda52264…`, CN=ImgVault Android, alias `imgvault`) that had
+never signed any release. So 02874b1c cannot be restored from anywhere.
+**The stable keystore is the local `.p12`** (`C:\Users\Admin\Downloads\
+imgvault-secrets\imgvault-android.p12`, cert `bda52264…`): on 2026-11-27
+the GitHub secrets were set from that file (`IMGVAULT_KEYSTORE_BASE64` +
+`IMGVAULT_KEY_ALIAS=imgvault` + both passwords from
+`imgvault-android-password.txt`), and `android/signing-cert-sha256.txt`
+now pins `bda52264…`. The CI step "Pin the signing certificate" extracts
+the built APK's v2 signing-block certificate (python3 + struct/hashlib, no
+extra tool) and FAILS the build when it differs. **The local `.p12` is the
+canonical copy — never regenerate it, never replace it, and keep it in the
+vault; the GitHub secret is set FROM it, never the other way round.** If
+the secret ever drifts again the pin fails the build instead of shipping
+an update no phone can install.
 
 1. **Install button.** Two gaps: the app declares `REQUEST_INSTALL_PACKAGES`
 but the user still has to turn on "Install unknown apps" for ImgVault, and
