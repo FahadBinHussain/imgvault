@@ -63,7 +63,7 @@ fun TeraBoxLoginScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val settings = remember { ServiceLocator.settings }
+    val settingsRepo = remember { ServiceLocator.settings }
     var status by remember { mutableStateOf("Sign in to TeraBox below — the app keeps the session from here.") }
     var loggedIn by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
@@ -74,14 +74,14 @@ fun TeraBoxLoginScreen(
             // the session cookie, fresh from the browser — this is what
             // keeps the gallery working without a paste.
             CoroutineScope(Dispatchers.IO).launch {
-                settings.teraboxCookie = cookies
+                settingsRepo.teraboxCookie = cookies
             }
             view.evaluateJavascript("(function(){return window.jsToken||''})()") { raw ->
                 val token = raw?.trim()?.trim('"').orEmpty()
                 if (token.length >= 10) {
                     CoroutineScope(Dispatchers.IO).launch {
-                        settings.teraboxJsToken = token
-                        settings.teraboxJsTokenAtMs = System.currentTimeMillis()
+                        settingsRepo.teraboxJsToken = token
+                        settingsRepo.teraboxJsTokenAtMs = System.currentTimeMillis()
                     }
                     Log.i("ImgVault", "terabox webview login: session + jsToken captured")
                     status = "Logged in to TeraBox — the gallery can use fresh links now."
