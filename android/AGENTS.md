@@ -356,6 +356,23 @@ legacy mipmaps 48/72/96/144/192 + round, and the adaptive background is
 entirely — it still lives in the extension (`nextgen-extension/public/
 icon128.png`) and the extension was NOT re-branded here.
 
+## 1.0.13 — the app resolves fresh TeraBox links itself (no extension)
+
+1.0.12 proved the fallback triggers but cannot help old TeraBox videos:
+both the thumbnail and the video dlink are stale (8h expiry) and the app
+had no way to mint a fresh one. Now it does — `core/terabox/
+TeraBoxClient.kt`, entirely in-app: it fetches `window.jsToken` with a
+plain GET of https://www.terabox.com/ (a native client sends no browser
+Sec-Fetch headers, so it gets the real page, not /simple-verify — verified
+by curl 2026-11-28), then calls /api/list (fresh `thumbs.url3`) and
+/api/filemetas (fresh dlink, dlna mode) with the user's TeraBox cookie from
+Settings. The root listing is cached 60s so a gallery of TeraBox videos
+shares one call; the jsToken is cached 12h. The gallery tile mints a fresh
+thumbnail when the stored one fails, and a fresh dlink when the frame
+decoder needs one. Requires the TeraBox cookie in Settings (ndus= session)
+— without it the client logs a warning and the tile falls back as before.
+This is what makes the app independent of the extension for TeraBox media.
+
 ## 1.0.12 — a dead thumbnail URL falls back to a video frame
 
 Phone test 2026-11-28: every gallery video tile was a placeholder, no

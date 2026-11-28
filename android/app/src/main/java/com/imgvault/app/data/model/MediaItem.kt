@@ -237,6 +237,30 @@ data class MediaItem(
             .firstNotNullOfOrNull { it.thumbnailUrl.takeIf { url -> url.isNotEmpty() } }
             .orEmpty()
 
+    /**
+     * The TeraBox file id for this item, when it lives on TeraBox.
+     *
+     * TeraBox dlinks embed the id: ?fid=<vuk>-<app>-<fs_id> — the trailing
+     * segment IS the fs_id. The client uses it to mint a FRESH thumbnail
+     * (via /api/list) and a fresh dlink (via /api/filemetas) once the
+     * stored 8h links have expired.
+     */
+    val teraboxFsId: String
+        get() {
+            val candidates = listOf(
+                videoHosts["terabox"]?.url,
+                videoHosts["terabox"]?.directUrl,
+                videoHosts["terabox"]?.displayUrl,
+                videoHosts["terabox"]?.thumbnailUrl,
+                videoThumbnailUrl,
+            )
+            for (url in candidates) {
+                val id = com.imgvault.app.core.terabox.TeraBoxClient.fsIdFromUrl(url.orEmpty())
+                if (id.isNotEmpty()) return id
+            }
+            return ""
+        }
+
     companion object {
         const val DEFAULT_ASPECT_RATIO = 1f
         const val MIN_ASPECT_RATIO = 0.55f

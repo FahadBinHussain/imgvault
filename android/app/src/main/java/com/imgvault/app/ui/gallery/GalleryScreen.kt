@@ -34,6 +34,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +51,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import coil.decode.VideoFrameDecoder
+import com.imgvault.app.core.ServiceLocator
 import com.imgvault.app.core.time.isoDayOf
 import com.imgvault.app.data.model.MediaItem
 import com.imgvault.app.ui.grid.JustifiedGrid
@@ -212,12 +214,49 @@ private fun PhotoTile(
     // decoder reads it without downloading the whole video.
     val videoUrl = if (item.isVideo) item.displayVideo(provider)?.url.orEmpty() else ""
     // a thumbnail URL that EXISTS but no longer loads (a TeraBox dlink past
-    // its 8h expiry) must fall back the same way — the frame decoder reads
-    // the video's direct URL, which on filemoon/udrop does not expire. The
-    // first image only runs until it fails; the failure flips this flag and
-    // the frame decoder takes over.
-    var thumbFailed by remember(url, videoUrl) { mutableStateOf(false) }
-    val showThumb = url.isNotEmpty() && !thumbFailed
+    // its 8h expiry) is resolved FRESH from TeraBox itself — the app mints a
+    // new thumbnail via /api/list (and a new dlink via /api/filemetas for the
+    // frame decoder) with the user's cookie, no extension needed. Only when
+    // that also fails does the tile fall through to the frame decoder, and
+    // only when the decoder has no working URL does it show a placeholder.
+    val fsId = item.teraboxFsId
+    var freshThumb by remember(url, fsId) { mutableStateOf<String?>(null) }
+    var triedFreshThumb by remember(url, fsId) { mutableStateOf(false) }
+    var thumbFailed by remember(url, fsId) { mutableStateOf(false) }
+    var freshVideo by remember(videoUrl, fsId) { mutableStateOf<String?>(null) }
+    var triedFreshVideo by remember(videoUrl, fsId) { mutableStateOf(false) }
+    val effectiveThumb = freshThumb ?: url
+    val showThumb = effectiveThumb.isNotEmpty() && !thumbFailed
+    val effectiveVideo = freshVideo ?: videoUrl
+    // once the stored thumbnail fails, mint a fresh one from TeraBox.
+    LaunchedEffect(thumbFailed) {
+        if (thumbFailed && !triedFreshThumb && item.isVideo && fsId.isNotEmpty()) {
+            triedFreshThumb = true
+            val fresh = runCatching { ServiceLocator.teraBoxClient.resolveThumbnail(fsId) }.getOrNull()
+            if (!fresh.isNullOrEmpty() && fresh != url) {
+                Log.i("ImgVault", "terabox fresh thumbnail for $fsId")
+                freshThumb = fresh
+                thumbFailed = false
+            } else {
+                Log.w("ImgVault", "terabox thumbnail refresh failed for $fsId — using video frame")
+            }
+        }
+    }
+    // the frame decoder needs a working video URL; a stored TeraBox dlink is
+    // as stale as the thumbnail, so mint a fresh one when the tile falls
+    // through to the decoder.
+    LaunchedEffect(showThumb) {
+        if (!showThumb && item.isVideo && videoUrl.isNotEmpty() && !triedFreshVideo && fsId.isNotEmpty()) {
+            triedFreshVideo = true
+            val fresh = runCatching { ServiceLocator.teraBoxClient.resolveDlink(fsId, item.title) }.getOrNull()
+            if (!fresh.isNullOrEmpty() && fresh != videoUrl) {
+                Log.i("ImgVault", "terabox fresh dlink for $fsId")
+                freshVideo = fresh
+            } else {
+                Log.w("ImgVault", "terabox dlink refresh failed for $fsId — decoding stored url")
+            }
+        }
+    }
     Box(
         modifier = Modifier
             .width(widthDp.dp)
@@ -228,21 +267,21 @@ private fun PhotoTile(
     ) {
         if (showThumb) {
             SubcomposeAsyncImage(
-                model = url,
+                model = effectiveThumb,
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
                 loading = { TileFallback(item.title, isVideo = item.isVideo, loading = true) },
                 error = {
-                    Log.w("ImgVault", "image failed: $url — falling back to video frame")
+                    Log.w("ImgVault", "image failed: $effectiveThumb")
                     thumbFailed = true
                     TileFallback(item.title, isVideo = item.isVideo)
                 },
             )
-        } else if (item.isVideo && videoUrl.isNotEmpty()) {
+        } else if (item.isVideo && effectiveVideo.isNotEmpty()) {
             SubcomposeAsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(videoUrl)
+                    .data(effectiveVideo)
                     .decoderFactory(VideoFrameDecoder.Factory())
                     .build(),
                 contentDescription = item.title,
@@ -250,7 +289,7 @@ private fun PhotoTile(
                 modifier = Modifier.fillMaxSize(),
                 loading = { TileFallback(item.title, isVideo = true, loading = true) },
                 error = {
-                    Log.w("ImgVault", "video frame failed: $videoUrl")
+                    Log.w("ImgVault", "video frame failed: $effectiveVideo")
                     VideoPlaceholder()
                 },
             )
@@ -264,7 +303,7 @@ private fun PhotoTile(
         if (item.isVideo) {
             VideoBadge(
                 duration = item.durationLabel,
-                withPlayIcon = url.isNotEmpty() || videoUrl.isNotEmpty(),
+                withPlayIcon = effectiveThumb.isNotEmpty() || effectiveVideo.isNotEmpty(),
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(6.dp),

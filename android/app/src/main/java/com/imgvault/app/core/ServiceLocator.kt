@@ -3,6 +3,7 @@ package com.imgvault.app.core
 import android.content.Context
 import com.imgvault.app.core.security.SecureStore
 import com.imgvault.app.core.settings.SettingsRepository
+import com.imgvault.app.core.terabox.TeraBoxClient
 import com.imgvault.app.data.GalleryRepository
 import com.imgvault.app.data.VaultRepository
 import java.io.File
@@ -40,4 +41,7 @@ object ServiceLocator {
     val galleryRepository: GalleryRepository by lazy { GalleryRepository(settings, http) }
 
     val vaultRepository: VaultRepository by lazy { VaultRepository(settings, http) }
+
+    /** resolves fresh TeraBox thumbnails + dlinks in-app (no extension needed) */
+    val teraBoxClient: TeraBoxClient by lazy { TeraBoxClient(settings, http) }
 }
