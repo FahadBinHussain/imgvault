@@ -356,6 +356,23 @@ legacy mipmaps 48/72/96/144/192 + round, and the adaptive background is
 entirely — it still lives in the extension (`nextgen-extension/public/
 icon128.png`) and the extension was NOT re-branded here.
 
+## 1.0.18 — the jsToken homepage fetch sends the stored cookie
+
+`TeraBoxClient.jsToken()` fetched `https://www.terabox.com/` with NO
+Cookie header, so the phone's carrier IP always got the 8 KB logged-out
+landing page (no jsToken). 1.0.18 sends the stored cookie with that fetch.
+Verified by phone curl 2026-11-28: full 13-cookie set = 23,452-byte page
+WITH `fn("<jsToken>")`; `ndus` alone = 8,051-byte stripped page, no token.
+But the app's fetch STILL returns no jsToken even after a fresh cookie was
+pasted and the app restarted — the stored cookie is probably mangled by
+`adb shell input text` (the two `g_state` values are JSON with `\"`
+escapes) or the raw-header send differs from curl's Netscape-file send.
+Open test: full cookie set MINUS the two `g_state` entries — if that gets
+the token, the app must sanitize the cookie (drop `g_state`) before
+sending it. The WebView login is still captcha-gated (a text captcha
+appears before any login form, and the mobile landing page's menu has no
+sign-in entry), so the cookie paste remains the working session source.
+
 ## 1.0.17 — TeraBox WebView starts fresh (no seeded cookie)
 
 1.0.16 seeded the WebView with the Edge cookie — that made TeraBox show a
