@@ -142,6 +142,22 @@ fun TeraBoxLoginScreen(
                                 syncFromWebView(view)
                             }
                         }
+                        // seed the WebView with the cookie the app already
+                        // has (pasted in Settings), so it opens already
+                        // signed in instead of asking again. If that cookie
+                        // is dead, the page just shows the sign-in form and
+                        // the user signs in here once.
+                        val stored = settingsRepo.teraboxCookie.orEmpty()
+                        if (stored.isNotBlank()) {
+                            val mgr = CookieManager.getInstance()
+                            stored.split(";").forEach { part ->
+                                val cookie = part.trim()
+                                if (cookie.contains("=")) {
+                                    mgr.setCookie("https://www.terabox.com", cookie)
+                                }
+                            }
+                            mgr.flush()
+                        }
                         webView = this
                         loadUrl("https://www.terabox.com/")
                     }
