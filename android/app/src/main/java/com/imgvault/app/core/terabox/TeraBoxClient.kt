@@ -95,8 +95,10 @@ class TeraBoxClient(
         if (!forceFresh && cachedJsToken != null && now - jsTokenAtMs < JS_TOKEN_TTL_MS) {
             return@withContext cachedJsToken
         }
-        // the WebView-captured token first — it is the only one that works
-        // from this phone's network.
+        // the WebView-captured token first, when fresh — it avoids a
+        // homepage fetch. The plain-HTTP scrape below is the fallback and
+        // works from the phone too, as long as the stored cookie rides
+        // along (see the Cookie header in the fetch).
         if (!forceFresh) {
             val stored = settings.teraboxJsToken?.trim().orEmpty()
             val storedAt = settings.teraboxJsTokenAtMs
@@ -107,10 +109,18 @@ class TeraBoxClient(
             }
         }
         val html = try {
-            val req = Request.Builder()
+            // Send the stored session cookie with this fetch. Without it
+            // TeraBox answers the phone's carrier IP with the 8 KB
+            // logged-out landing page (no jsToken in it); with it the
+            // same phone gets the full logged-in page and the token.
+            // Verified live 2026-11-28: phone curl + cookie = 23,452-byte
+            // page with fn("<jsToken>"); without = 8,051-byte page, none.
+            val cookie = cookie()
+            val reqBuilder = Request.Builder()
                 .url("$TOKEN_BASE/")
                 .header("User-Agent", USER_AGENT)
-                .build()
+            if (!cookie.isNullOrBlank()) reqBuilder.header("Cookie", cookie)
+            val req = reqBuilder.build()
             http.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) {
                     Log.w(tag, "terabox homepage HTTP ${resp.code} — no jsToken")
