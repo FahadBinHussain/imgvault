@@ -356,6 +356,16 @@ legacy mipmaps 48/72/96/144/192 + round, and the adaptive background is
 entirely — it still lives in the extension (`nextgen-extension/public/
 icon128.png`) and the extension was NOT re-branded here.
 
+## 1.0.14 — the TeraBox client runs on Dispatchers.IO
+
+1.0.13 shipped the client but every call failed with "terabox homepage
+fetch failed: null" — the gallery tile calls it from the main thread and a
+blocking OkHttp `execute()` there throws NetworkOnMainThreadException, whose
+message IS null. The phone reaches terabox.com fine (ping + curl 200), so
+it was never a network problem. `jsToken()` and `apiGet()` now run inside
+`withContext(Dispatchers.IO)`. Lesson: any blocking call reached from a
+composable's LaunchedEffect must be IO-dispatched — LaunchedEffect is Main.
+
 ## 1.0.13 — the app resolves fresh TeraBox links itself (no extension)
 
 1.0.12 proved the fallback triggers but cannot help old TeraBox videos:

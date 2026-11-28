@@ -4,6 +4,8 @@ import android.util.Log
 import com.imgvault.app.core.settings.SettingsRepository
 import java.net.URLDecoder
 import java.net.URLEncoder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -76,11 +78,16 @@ class TeraBoxClient(
      * The jsToken, scraped from the TeraBox homepage HTML. Cached ~12h like
      * the extension; a fetch that finds nothing is retried on the next call
      * (no negative cache — a captcha clears on its own).
+     *
+     * The HTTP call is blocking, so it runs on Dispatchers.IO — the gallery
+     * tile calls this from the main thread and a network call there throws
+     * NetworkOnMainThreadException (whose message is null, which is why the
+     * first build logged only "fetch failed: null").
      */
-    private suspend fun jsToken(forceFresh: Boolean = false): String? {
+    private suspend fun jsToken(forceFresh: Boolean = false): String? = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         if (!forceFresh && cachedJsToken != null && now - jsTokenAtMs < JS_TOKEN_TTL_MS) {
-            return cachedJsToken
+            return@withContext cachedJsToken
         }
         val html = try {
             val req = Request.Builder()
@@ -90,24 +97,24 @@ class TeraBoxClient(
             http.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) {
                     Log.w(tag, "terabox homepage HTTP ${resp.code} — no jsToken")
-                    return null
+                    return@withContext null
                 }
                 resp.body?.string().orEmpty()
             }
         } catch (e: Exception) {
             Log.w(tag, "terabox homepage fetch failed: ${e.message}")
-            return null
+            return@withContext null
         }
         // the page embeds fn("<64-hex-token>") — the same pattern the
         // extension's hidden-tab scrape reads out of window.jsToken.
         val token = JS_TOKEN_RE.find(html)?.groupValues?.getOrNull(1).orEmpty()
         if (token.isEmpty()) {
             Log.w(tag, "terabox homepage had no jsToken (captcha gate?)")
-            return null
+            return@withContext null
         }
         cachedJsToken = token
         jsTokenAtMs = now
-        return token
+        return@withContext token
     }
 
     private fun apiUrl(pathname: String, jsToken: String?, params: Map<String, String>): String {
@@ -127,8 +134,8 @@ class TeraBoxClient(
         return "$API_BASE$pathname?$qp"
     }
 
-    private fun apiGet(url: String, cookie: String): JsonObject? {
-        return try {
+    private suspend fun apiGet(url: String, cookie: String): JsonObject? = withContext(Dispatchers.IO) {
+        return@withContext try {
             val req = Request.Builder()
                 .url(url)
                 .header("Cookie", cookie)
@@ -141,7 +148,7 @@ class TeraBoxClient(
                 val body = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) {
                     Log.w(tag, "terabox api HTTP ${resp.code}: ${body.take(120)}")
-                    return null
+                    return@withContext null
                 }
                 runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
             }
