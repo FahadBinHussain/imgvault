@@ -57,6 +57,10 @@ class SecureStore(context: Context) {
         const val KEY_IMGBB_API_KEY = "imgbbApiKey"
         const val KEY_PIXVID_API_KEY = "pixvidApiKey"
         const val KEY_TERABOX_COOKIE = "teraboxCookie"
+        /** the jsToken captured from the TeraBox WebView login (1.0.15) */
+        const val KEY_TERABOX_JS_TOKEN = "teraboxJsToken"
+        /** millis when that jsToken was captured, so its 12h age can be checked */
+        const val KEY_TERABOX_JS_TOKEN_AT = "teraboxJsTokenAtMs"
         const val KEY_VAULT_MASTER_KEY = "vaultMasterKeyB64"
         const val KEY_VAULT_CONFIG = "vaultConfigJson"
         const val KEY_VAULT_KEY_BINDING = "vaultKeyBinding"

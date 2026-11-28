@@ -56,6 +56,7 @@ import com.imgvault.app.core.settings.AppSettings
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onOpenTeraBoxLogin: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = viewModel(),
 ) {
@@ -142,6 +143,21 @@ fun SettingsScreen(
                 value = secrets.teraboxCookieDraft,
                 onValueChange = viewModel::setTeraboxCookieDraft,
                 stored = secrets.hasTeraboxCookie,
+            )
+            OutlinedButton(
+                onClick = onOpenTeraBoxLogin,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    if (secrets.hasTeraboxCookie) "TeraBox: logged in — tap to re-login"
+                    else "Log in to TeraBox",
+                )
+            }
+            Text(
+                text = "Sign in once in the app's browser and the session stays fresh " +
+                    "on its own — no more pasting a cookie that keeps expiring.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             HorizontalDivider()

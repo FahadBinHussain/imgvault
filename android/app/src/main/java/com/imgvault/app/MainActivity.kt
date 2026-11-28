@@ -17,6 +17,7 @@ import androidx.navigation.navArgument
 import com.imgvault.app.ui.gallery.DetailScreen
 import com.imgvault.app.ui.gallery.GalleryScreen
 import com.imgvault.app.ui.settings.SettingsScreen
+import com.imgvault.app.ui.terabox.TeraBoxLoginScreen
 import com.imgvault.app.ui.theme.ImgVaultTheme
 import com.imgvault.app.ui.update.UpdateScreen
 import com.imgvault.app.ui.vault.VaultDetailScreen
@@ -47,6 +48,7 @@ object Routes {
     const val UPDATE = "update"
     const val DETAIL = "detail/{itemId}"
     const val VAULT_DETAIL = "vault-detail/{itemId}"
+    const val TERABOX_LOGIN = "terabox-login"
 
     fun detail(itemId: String) = "detail/$itemId"
     fun vaultDetail(itemId: String) = "vault-detail/$itemId"
@@ -81,7 +83,13 @@ fun AppRoot() {
             )
         }
         composable(Routes.SETTINGS) {
-            SettingsScreen(onBack = { navController.popBackStack() })
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenTeraBoxLogin = { navController.navigate(Routes.TERABOX_LOGIN) },
+            )
+        }
+        composable(Routes.TERABOX_LOGIN) {
+            TeraBoxLoginScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.UPDATE) {
             UpdateScreen(onBack = { navController.popBackStack() })

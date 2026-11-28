@@ -98,6 +98,21 @@ class SettingsRepository(
         get() = secureStore.get(SecureStore.KEY_TERABOX_COOKIE)
         set(value) = store(SecureStore.KEY_TERABOX_COOKIE, value)
 
+    /**
+     * The jsToken captured from the TeraBox WebView login (1.0.15). The
+     * WebView keeps it fresh; TeraBoxClient prefers it over the plain-HTTP
+     * scrape, which returns the logged-out landing page on this phone's
+     * network. The plain-HTTP scrape stays as the fallback.
+     */
+    var teraboxJsToken: String?
+        get() = secureStore.get(SecureStore.KEY_TERABOX_JS_TOKEN)
+        set(value) = store(SecureStore.KEY_TERABOX_JS_TOKEN, value)
+
+    /** millis when [teraboxJsToken] was captured */
+    var teraboxJsTokenAtMs: Long
+        get() = secureStore.get(SecureStore.KEY_TERABOX_JS_TOKEN_AT)?.toLongOrNull() ?: 0L
+        set(value) = store(SecureStore.KEY_TERABOX_JS_TOKEN_AT, value.toString())
+
     /** the vault master key, kept in the Keystore-backed store while unlocked */
     var vaultMasterKeyB64: String?
         get() = secureStore.get(SecureStore.KEY_VAULT_MASTER_KEY)

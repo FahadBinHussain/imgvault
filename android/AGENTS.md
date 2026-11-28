@@ -356,6 +356,26 @@ legacy mipmaps 48/72/96/144/192 + round, and the adaptive background is
 entirely — it still lives in the extension (`nextgen-extension/public/
 icon128.png`) and the extension was NOT re-branded here.
 
+## 1.0.15 — TeraBox login in an in-app WebView (the viable persistent login)
+
+A pasted cookie is not durable: TeraBox rotates/expires it and the user
+has to re-paste by hand. Settings now has a "Log in to TeraBox" button that
+opens `TeraBoxLoginScreen` — a real WebView on https://www.terabox.com/.
+The user signs in once; the WebView's CookieManager persists the session,
+and on every page finish the screen pulls the fresh cookie + `window.jsToken`
+out of the WebView and stores them (cookie → Settings, token → secure
+store, with a capture timestamp). `TeraBoxClient.jsToken()` prefers the
+stored WebView token; the plain-HTTP scrape is only the fallback.
+
+Why the WebView was needed at all: a plain HTTP GET from the phone's
+network returns the 8 KB logged-out landing page with NO jsToken in it,
+even with the cookie attached — the VM's datacenter IP gets the full page,
+the phone's carrier IP does not. A WebView sends a real browser's headers
+and runs the page's JS, so `window.jsToken` is actually there. The
+TeraBox app's own session (`com.dubox.drive`) cannot be reused: no root,
+so its private data is unreadable, and its 260 MB APK was pulled only to
+confirm that — no extractable token without root.
+
 ## 1.0.14 — the TeraBox client runs on Dispatchers.IO
 
 1.0.13 shipped the client but every call failed with "terabox homepage

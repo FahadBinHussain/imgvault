@@ -18,14 +18,15 @@ import okhttp3.Request
  * A TeraBox API client that runs entirely in the app — no extension, no
  * browser tab, no hidden scrape.
  *
- * The extension resolves fresh TeraBox links by scraping `window.jsToken`
- * from a hidden tab, because a fetch() from a chrome-extension page gets
- * bounced to /simple-verify. A native app sends no browser Sec-Fetch
- * headers, so a plain GET of https://www.terabox.com/ returns the real
- * homepage HTML with the jsToken embedded (`fn("<hex>")`) — verified
- * 2026-11-28 from a plain curl. That token + the user's TeraBox session
- * cookie (pasted in Settings, `ndus=` is the session) is everything the
- * /api/list and /api/filemetas calls need.
+ * The jsToken comes from the in-app TeraBox WebView login (1.0.15): a real
+ * browser's page has `window.jsToken`, and the WebView keeps the session
+ * cookie fresh itself. A plain GET of https://www.terabox.com/ from this
+ * phone's network returns only the 8 KB logged-out landing page with no
+ * token in it (the VM's datacenter IP gets the full page; the phone's
+ * carrier IP does not), so the plain-HTTP scrape is only a fallback — the
+ * stored WebView token is tried first. That token + the user's TeraBox
+ * session cookie (kept fresh by the WebView, or pasted in Settings) is
+ * everything the /api/list and /api/filemetas calls need.
  *
  * Stored TeraBox dlinks (thumbnail + video) expire in 8h, so a gallery
  * video older than a day has BOTH links dead. This client mints fresh ones:
@@ -75,9 +76,14 @@ class TeraBoxClient(
     fun hasCookie(): Boolean = !cookie().isNullOrBlank()
 
     /**
-     * The jsToken, scraped from the TeraBox homepage HTML. Cached ~12h like
-     * the extension; a fetch that finds nothing is retried on the next call
-     * (no negative cache — a captcha clears on its own).
+     * The jsToken. First the one the TeraBox WebView login captured and
+     * stored (1.0.15) — a real browser's page has the token, while a plain
+     * HTTP GET from this phone's network returns the 8 KB logged-out landing
+     * page with no token in it. Only when there is no stored token (or it is
+     * older than ~12h) does the client fall back to the plain-HTTP scrape,
+     * which works from some networks. Cached ~12h like the extension; a
+     * fetch that finds nothing is retried on the next call (no negative
+     * cache — a captcha clears on its own).
      *
      * The HTTP call is blocking, so it runs on Dispatchers.IO — the gallery
      * tile calls this from the main thread and a network call there throws
@@ -88,6 +94,17 @@ class TeraBoxClient(
         val now = System.currentTimeMillis()
         if (!forceFresh && cachedJsToken != null && now - jsTokenAtMs < JS_TOKEN_TTL_MS) {
             return@withContext cachedJsToken
+        }
+        // the WebView-captured token first — it is the only one that works
+        // from this phone's network.
+        if (!forceFresh) {
+            val stored = settings.teraboxJsToken?.trim().orEmpty()
+            val storedAt = settings.teraboxJsTokenAtMs
+            if (stored.length >= 10 && storedAt > 0 && now - storedAt < JS_TOKEN_TTL_MS) {
+                cachedJsToken = stored
+                jsTokenAtMs = storedAt
+                return@withContext stored
+            }
         }
         val html = try {
             val req = Request.Builder()
