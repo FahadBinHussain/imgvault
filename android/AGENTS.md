@@ -356,6 +356,25 @@ legacy mipmaps 48/72/96/144/192 + round, and the adaptive background is
 entirely — it still lives in the extension (`nextgen-extension/public/
 icon128.png`) and the extension was NOT re-branded here.
 
+## 1.0.17 — TeraBox WebView starts fresh (no seeded cookie)
+
+1.0.16 seeded the WebView with the Edge cookie — that made TeraBox show a
+text captcha ("A 5 U N") and, after solving it, loop on
+dm.terabox.com/?clearCache=1 (ERR_TOO_MANY_REDIRECTS): the old cookie and
+the new captcha session conflict. 1.0.17 removes the seeding entirely and
+clears stale WebView cookies when no jsToken has been captured yet. The
+user signs in once in the WebView; the WebView's own session is what gets
+captured and kept fresh. The login itself still needs the user — his
+TeraBox password is not available to any agent. The extension faces the
+same captcha gate on the dm homepage and never solves it; it relies on
+Edge's trusted session.
+
+## 1.0.16 — seed the TeraBox WebView with the stored cookie (REVERTED in 1.0.17)
+
+1.0.16 seeded the WebView with the stored Edge cookie before loading, so
+it would open already signed in. That is what produced the captcha +
+redirect loop — see 1.0.17.
+
 ## 1.0.15 — TeraBox login in an in-app WebView (the viable persistent login)
 
 A pasted cookie is not durable: TeraBox rotates/expires it and the user
