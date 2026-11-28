@@ -1,11 +1,11 @@
 {
   "app": "imgvault-android",
   "available": true,
-  "downloadUrl": "https://github.com/FahadBinHussain/imgvault/releases/download/android-v14/imgvault-android-1.0.13.apk",
+  "downloadUrl": "https://github.com/FahadBinHussain/imgvault/releases/download/android-v15/imgvault-android-1.0.14.apk",
   "minSupportedVersionCode": 1,
-  "notes": "ImgVault for Android 1.0.13.",
-  "sha256": "f908244d02f9f3a0e925db90aa549a5fa43e8c35aee9051ee90e03e7fdfbf4bd",
-  "sizeBytes": 16265845,
-  "versionCode": 14,
-  "versionName": "1.0.13"
+  "notes": "ImgVault for Android 1.0.14.",
+  "sha256": "eb0e023c3608ae677782f538ae5d606817452f19b105545276b076e36bf4fc1d",
+  "sizeBytes": 16249461,
+  "versionCode": 15,
+  "versionName": "1.0.14"
 }
