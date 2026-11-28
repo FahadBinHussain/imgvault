@@ -342,6 +342,22 @@ A third one, from the streaming tests: in a plain JVM unit test
 `open(DataSpec)` delegates to) instead of building a `DataSpec`. Do not
 "fix" the tests back to `DataSpec` without Robolectric.
 
+## 1.0.11 — the launcher icon is the new brand, not the old shield
+
+1.0.10 shipped the extension's old shield (`nextgen-extension/public/
+icon128.png`, cloud + padlock) as the launcher icon. The user called it
+foul — ImgVault's new brand is the purple lightning bolt, and the white
+one is the one to use (`nextgen-extension/public/icons/1.png`, 512×512,
+white bolt on deep purple `#370278`, transparent rounded corners; the
+web app's BrandLogo already serves the same series via
+`/api/brand/icon`). The cyan bolt (`icons/2.png`) is NOT the brand — do
+not use it. The launcher icon is now the white bolt: a 432×432 adaptive
+foreground (the 512 source scaled to 288 and centred in the safe zone),
+legacy mipmaps 48/72/96/144/192 + round, and the adaptive background is
+`#370278` (was `#1F57A8`). The old shield is gone from the Android app
+entirely — it still lives in the extension (`nextgen-extension/public/
+icon128.png`) and the extension was NOT re-branded here.
+
 ## No secrets in this repo
 
 Not in the code, not in the resources, not in the CI logs. The app asks the
