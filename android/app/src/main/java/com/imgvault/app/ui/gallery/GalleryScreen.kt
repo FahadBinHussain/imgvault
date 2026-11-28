@@ -35,6 +35,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -208,6 +211,13 @@ private fun PhotoTile(
     // from the video's direct URL is the thumbnail instead — the frame
     // decoder reads it without downloading the whole video.
     val videoUrl = if (item.isVideo) item.displayVideo(provider)?.url.orEmpty() else ""
+    // a thumbnail URL that EXISTS but no longer loads (a TeraBox dlink past
+    // its 8h expiry) must fall back the same way — the frame decoder reads
+    // the video's direct URL, which on filemoon/udrop does not expire. The
+    // first image only runs until it fails; the failure flips this flag and
+    // the frame decoder takes over.
+    var thumbFailed by remember(url, videoUrl) { mutableStateOf(false) }
+    val showThumb = url.isNotEmpty() && !thumbFailed
     Box(
         modifier = Modifier
             .width(widthDp.dp)
@@ -216,7 +226,7 @@ private fun PhotoTile(
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable { onOpen() },
     ) {
-        if (url.isNotEmpty()) {
+        if (showThumb) {
             SubcomposeAsyncImage(
                 model = url,
                 contentDescription = item.title,
@@ -224,7 +234,8 @@ private fun PhotoTile(
                 modifier = Modifier.fillMaxSize(),
                 loading = { TileFallback(item.title, isVideo = item.isVideo, loading = true) },
                 error = {
-                    Log.w("ImgVault", "image failed: $url")
+                    Log.w("ImgVault", "image failed: $url — falling back to video frame")
+                    thumbFailed = true
                     TileFallback(item.title, isVideo = item.isVideo)
                 },
             )

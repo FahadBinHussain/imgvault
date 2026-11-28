@@ -342,9 +342,7 @@ A third one, from the streaming tests: in a plain JVM unit test
 `open(DataSpec)` delegates to) instead of building a `DataSpec`. Do not
 "fix" the tests back to `DataSpec` without Robolectric.
 
-## 1.0.11 — the launcher icon is the new brand, not the old shield
-
-1.0.10 shipped the extension's old shield (`nextgen-extension/public/
+## 1.0.11 — the launcher icon is the new brand, not the old shield1.0.10 shipped the extension's old shield (`nextgen-extension/public/
 icon128.png`, cloud + padlock) as the launcher icon. The user called it
 foul — ImgVault's new brand is the purple lightning bolt, and the white
 one is the one to use (`nextgen-extension/public/icons/1.png`, 512×512,
@@ -357,6 +355,23 @@ legacy mipmaps 48/72/96/144/192 + round, and the adaptive background is
 `#370278` (was `#1F57A8`). The old shield is gone from the Android app
 entirely — it still lives in the extension (`nextgen-extension/public/
 icon128.png`) and the extension was NOT re-branded here.
+
+## 1.0.12 — a dead thumbnail URL falls back to a video frame
+
+Phone test 2026-11-28: every gallery video tile was a placeholder, no
+frame, while image thumbnails loaded fine. Logcat showed `image failed`
+for the TeraBox thumbnail endpoint (`dm-data.terabox.com/thumbnail/...
+&ft=video`) — those dlinks expire in 8h, so the `thumbnailUrl` stored in
+the DB is stale within a day. The 1.0.10 frame-decoder fallback only ran
+when the item had NO thumbnail URL at all; a URL that EXISTS but fails to
+load showed the placeholder and never tried the frame. Now the tile
+tracks the failure (`thumbFailed`, reset per item) and, on failure, loads
+the video's direct URL through `VideoFrameDecoder` — the direct URL on
+filemoon/udrop does not expire, so those videos get a real frame. A
+TeraBox-only video whose direct dlink is ALSO stale still shows the
+placeholder: the app cannot mint a fresh TeraBox dlink (that needs the
+extension's hidden-tab jsToken scrape, which cannot run here — see
+`web/src/lib/vaultBlobSource.js`). That is a data limit, not a code bug.
 
 ## No secrets in this repo
 
