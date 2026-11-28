@@ -142,24 +142,25 @@ fun TeraBoxLoginScreen(
                                 syncFromWebView(view)
                             }
                         }
-                        // seed the WebView with the cookie the app already
-                        // has (pasted in Settings), so it opens already
-                        // signed in instead of asking again. If that cookie
-                        // is dead, the page just shows the sign-in form and
-                        // the user signs in here once.
-                        val stored = settingsRepo.teraboxCookie.orEmpty()
-                        if (stored.isNotBlank()) {
-                            val mgr = CookieManager.getInstance()
-                            stored.split(";").forEach { part ->
-                                val cookie = part.trim()
-                                if (cookie.contains("=")) {
-                                    mgr.setCookie("https://www.terabox.com", cookie)
-                                }
-                            }
-                            mgr.flush()
-                        }
+                        // No cookie is seeded here on purpose: seeding the
+                        // Edge cookie made TeraBox show a captcha and then
+                        // loop on dm.terabox.com/?clearCache=1 (the old
+                        // cookie + the new captcha session conflict). The
+                        // user signs in once in this WebView instead, and
+                        // the WebView's own session is what gets captured
+                        // and kept fresh from then on. When no jsToken has
+                        // been captured yet, clear any stale WebView cookies
+                        // first so a dead seeded cookie cannot poison the
+                        // fresh sign-in.
                         webView = this
-                        loadUrl("https://www.terabox.com/")
+                        val hasToken = settingsRepo.teraboxJsToken?.isNotBlank() == true
+                        if (!hasToken) {
+                            CookieManager.getInstance().removeAllCookies {
+                                loadUrl("https://www.terabox.com/")
+                            }
+                        } else {
+                            loadUrl("https://www.terabox.com/")
+                        }
                     }
                 },
                 update = { view -> webView = view },
